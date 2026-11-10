@@ -1,0 +1,13 @@
+# Hidden folder and build folders
+.gradle/
+build/
+out_src/
+asset_backup/
+recover/
+
+# Temporary files for minecraft
+*.class
+*.bak
+*.bin
+*.recovered
+*.restored

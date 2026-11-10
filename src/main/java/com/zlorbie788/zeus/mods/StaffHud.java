@@ -1,0 +1,1109 @@
+package com.zlorbie788.zeus.mods;
+
+import com.zlorbie788.zeus.core.Category;
+import com.zlorbie788.zeus.core.Module;
+import com.zlorbie788.zeus.core.Setting;
+import com.zlorbie788.zeus.core.Zeus;
+import com.zlorbie788.zeus.render.EspKit;
+import com.zlorbie788.zeus.ui.Accent;
+import com.zlorbie788.zeus.ui.Draw;
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.PlayerFaceRenderer;
+import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.client.resources.sounds.SimpleSoundInstance;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.world.level.GameType;
+import net.minecraft.world.scores.PlayerTeam;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Queue;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.regex.Pattern;
+
+/**
+ * Staff HUD: finds the staff on the server you are on, tells you which of them are hidden or watching you, and lists them.
+ *
+ * <p>Finding works in layers, from sure to guessed:</p>
+ * <ol>
+ *   <li><b>Standard rules</b> (the shared staff matcher): a rank word in the name tag, suffix or tab text (also
+ *   in small capitals or with accents), a team name that starts with a rank number such as <i>01-</i>, a marker star or
+ *   icon glyph, and a list of known staff names (the DonutSMP list is built in).</li>
+ *   <li><b>Evidence</b> (Zeus): every other player collects weighted clues, each shown with <i>Show reasons</i> — a creative
+ *   or spectator game mode, a game-mode change while online, a tag that known staff also wear, a tag only one or two people
+ *   wear, a name you added, or somebody who was confirmed as staff earlier on this server. The sum is a confidence.</li>
+ *   <li><b>Presence</b>: staff that sit in the tab list but are not listed (hidden from TAB) are shown as <i>vanished</i>;
+ *   staff in spectator mode as <i>spectating</i>; staff that left the tab list while their body is still loaded stay as
+ *   <i>vanished</i> instead of silently disappearing.</li>
+ *   <li><b>Watching you</b>: the server sends you a game-mode change for a player only when that player is on your side of
+ *   the server. When a listed staff member switches game mode, or their body shows up near you, Zeus raises an alarm, a
+ *   "WATCHING YOU" screen alert, a chat line and a timer on their row. That is the proof the finder relies on.</li>
+ * </ol>
+ *
+ * <p>Everything is read from the tab list, the scoreboard teams and packets the game already received. Nothing is sent.
+ * A server that shows no ranks and no teams to players hides them from this module too, and a staff member who is fully
+ * removed from the tab list and far away cannot be seen by any client.</p>
+ */
+public final class StaffHud extends Module {
+    private static volatile StaffHud instance;
+
+    /** DonutSMP staff accounts (the built-in list). */
+    public static final List<String> DONUT_STAFF = List.of("FluffyMaster07", "archivePedro", "Munkerlich", "Frenk_Btw", "Napooo_", "auzzitech", "CryptoDaveYT", "W1zox_", "ZEEF69", "showered", "CaptainMoose35", "BobIsFound", "NoahvdAa", "0GSummer", "LzouzMP5", "Pastagamer08", "u_vv", "Owen1212055", "Splaterd", "Fallerfly", "Bloodspulse", "_chaon", "Dough4", "evify");
+
+    private static final Pattern ACCOUNT_NAME = Pattern.compile("[.*]?[A-Za-z0-9_]{1,16}");
+    private static final int SCAN_TICKS = 10;
+    private static final int SETTLE_TICKS = 60;
+    private static final int VANISH_SCANS = 2;
+    private static final int ALERT_GATHER_TICKS = 5;
+    private static final int SWITCH_ECHO_TICKS = 20;
+    private static final long HIGHLIGHT_MS = 4000L;
+    private static final long COOLDOWN_MS = 120_000L;
+    private static final long REGION_MARK_MS = 600_000L;
+    private static final long WATCH_MS = 10_000L;
+    private static final long BODY_GRACE_MS = 10_000L;
+    private static final long SWITCH_EVIDENCE_MS = 600_000L;
+    private static final int MAX_REMEMBERED = 300;
+
+    /** Rank words that mark a rank, with how serious they look. 0 owners and admins, 1 moderators, 2 helpers, 3 other staff. */
+    private static final Map<String, Integer> RANKS = new LinkedHashMap<>();
+
+    static {
+        for (String s : new String[] {"owner", "founder", "co-owner", "coowner", "admin", "administrator", "manager", "head", "ceo", "director", "headadmin", "sradmin", "op", "ops"}) RANKS.put(s, 0);
+        for (String s : new String[] {"mod", "moderator", "srmod", "sr", "gm", "gamemaster", "guard", "warden", "mod+", "smod"}) RANKS.put(s, 1);
+        for (String s : new String[] {"helper", "support", "trainee", "jrmod", "jr", "guide", "intern", "assistant", "trial", "jrhelper", "tmod"}) RANKS.put(s, 2);
+        for (String s : new String[] {"staff", "dev", "developer", "builder", "build", "organizer", "event", "yt", "youtuber", "team", "tech", "bot"}) RANKS.put(s, 3);
+    }
+
+    /** Words that look like ranks but are the opposite: paying members and ordinary players. */
+    private static final Set<String> NOT_STAFF = Set.of("vip", "mvp", "donor", "member", "default", "player", "elite", "legend", "premium", "plus", "pro", "supporter", "booster");
+
+    private static final int[] RANK_COLORS = {0xFFFF5C6C, 0xFFFFA24D, 0xFF5EE6A0, 0xFF6AA6FF};
+    private static final String[] RANK_NAMES = {"Admin", "Mod", "Helper", "Staff"};
+    private static final int[] RANK_CONF = {94, 90, 82, 70};
+
+    private final Setting.Choice corner = Hud.corner(this, 0);
+    private final Setting.Num minConf = add(new Setting.Num("Show from confidence", "Players below this confidence are left out. Lower it to see guesses, raise it to see only the sure ones.", 60, 30, 95, 5, " %"));
+    private final Setting.Choice detect = add(new Setting.Choice("Detect by", "Which rules look at the tab list: rank words, marker stars, and the team rank number.", 0, StaffMatcher.MODES));
+    private final Setting.Text rankWords = add(new Setting.Text("Rank word list", "Comma separated rank words the tab list is searched for.", StaffMatcher.DEFAULT_RANK_WORDS, 400));
+    private final Setting.Text markers = add(new Setting.Text("Marker glyphs", "Characters (or U+2605 style codes) that mark staff in the tab list.", StaffMatcher.DEFAULT_MARKERS, 200));
+    private final Setting.Bool iconGlyphs = add(new Setting.Bool("Private icon glyphs count as markers", "Resource-pack icons in the tab list (private use characters) count as a staff marker. Can match donor icons too.", false));
+    private final Setting.Num teamRankMax = add(new Setting.Num("Team rank up to", "A team named 00- to this number counts as staff (DonutSMP uses a rank number at the start of the team name).", 5, 0, 20, 1, ""));
+    private final Setting.Bool knownList = add(new Setting.Bool("DonutSMP staff list", "Always treat the staff accounts of the built-in DonutSMP list as staff.", true));
+    private final Setting.Text ignored = add(new Setting.Text("Ignored names", "Names separated by commas that are never listed.", "", 200));
+    private final Setting.Bool modes = add(new Setting.Bool("Creative / spectator", "Creative and spectator mode count as weak evidence: on most servers only staff can be in them.", true));
+    private final Setting.Bool ranks = add(new Setting.Bool("Rank words", "Extra rank words (ceo, gm, guard, trainee...) in the name tag and the tab-list team. Words that mean paying members cancel a match.", true));
+    private final Setting.Bool rare = add(new Setting.Bool("Rare tags", "A tag that only one or two players wear on a busy server is weak evidence.", true));
+    private final Setting.Bool remember = add(new Setting.Bool("Remember confirmed staff", "Staff that were confirmed by a rank, a team rank or the list stay recognised on this server after they hide their tag.", true));
+    private final Setting.Bool showVanished = add(new Setting.Bool("Show vanished staff", "Staff that are hidden from the tab list, or that left the list while their body is still near, stay on the list as vanished.", true));
+    private final Setting.Bool regionAlert = add(new Setting.Bool("Watching alert", "When a staff member switches game mode or comes into view, raise the alarm and mark them as watching you.", true));
+    private final Setting.Choice alarm = add(new Setting.Choice("Alarm sound", "The sound that plays for a watching alert.", 0, "Guardian", "Beep", "Bell", "Siren", "Off")).showIf(regionAlert::on);
+    private final Setting.Num alarmSeconds = add(new Setting.Num("Alarm length", "How long the alarm rings.", 3, 1, 10, 0.5, " s")).showIf(regionAlert::on);
+    private final Setting.Num alarmVolume = add(new Setting.Num("Alarm volume", "How loud the alarm is.", 100, 10, 100, 5, " %")).showIf(regionAlert::on);
+    private final Setting.Bool screenAlert = add(new Setting.Bool("Screen alert", "Show a big WATCHING YOU message with the head of the staff member.", true)).showIf(regionAlert::on);
+    private final Setting.Bool near = add(new Setting.Bool("Show who is near you", "Adds the distance, and marks staff in spectator mode close to you.", true));
+    private final Setting.Bool reasons = add(new Setting.Bool("Show reasons", "A small line under each name that says why they are listed.", false));
+    private final Setting.Num most = add(new Setting.Num("Most rows", "More are summed up at the bottom.", 8, 3, 16, 1, ""));
+    private final Setting.Bool alerts = add(new Setting.Bool("Tell me when staff joins or leaves", "A short message when a staff member appears or goes.", true));
+    private final Setting.Bool chatLines = add(new Setting.Bool("Chat messages", "Also write joins, leaves, vanishes and watching alerts into the chat.", true));
+    private final Setting.Bool heads = add(new Setting.Bool("Heads", "Show the player head in front of each name.", true));
+    private final Setting.Text staffMarker = add(new Setting.Text("Staff marker", "Emoji or short text shown before every detected staff name. Default is a star; clear it to disable.", "⭐", 8));
+    private final Setting.Num scale = add(new Setting.Num("Size", "The size of the box.", 100, 70, 160, 5, " %"));
+    private final Setting.Num opacity = add(new Setting.Num("Background", "How solid the box is.", 88, 30, 100, 5, " %"));
+    private final Setting.Choice accent = add(new Setting.Choice("Accent", "The colour of the outline and title.", 0, EspKit.COLOR_NAMES));
+    private final Setting.Secret custom = addSetting(new Setting.Secret("custom"));
+    private final Setting.Secret rememberedStore = addSetting(new Setting.Secret("remembered"));
+    private final Setting.Action add = addSetting(new Setting.Action("Add name from clipboard", "Copy a player name, then press this to always count that player as staff.", this::addFromClipboard));
+    private final Setting.Text typedName = addSetting(new Setting.Text("Or type a name", "Type a player name here, then press the button under it.", "", 16).temporary());
+    private final Setting.Action addTyped = addSetting(new Setting.Action("Add the typed name", "Always counts the typed player as staff.", this::addTyped));
+    private final Setting.Action clear = addSetting(new Setting.Action("Forget my added names", "Removes the names you added.", () -> {
+        custom.set("");
+        Zeus.toast("Added names removed", true);
+    }));
+    private final Setting.Action forgetSeen = addSetting(new Setting.Action("Forget remembered staff", "Removes everybody Zeus learned was staff on earlier visits.", this::forgetRemembered));
+    private final Setting.Action testAlarm = addSetting(new Setting.Action("Test the alarm", "Plays the alarm and the screen alert once.", this::test));
+    private final Setting.Info listed = addSetting(new Setting.Info("Names you added", () -> {
+        String v = custom.get();
+        return v.isEmpty() ? List.of("None yet.") : List.of(v.replace(",", ", "));
+    }));
+    private final Setting.Info status = addSetting(new Setting.Info("Right now", this::statusLines));
+
+    private enum Presence { ONLINE, SPECTATOR, VANISHED }
+
+    /** One staff member the module follows. */
+    private static final class Staff {
+        final UUID id;
+        String name = "";
+        String rank = "Staff";
+        int rankClass = 3;
+        int seniority = 999;
+        int conf;
+        int peak;
+        String why = "";
+        Presence presence = Presence.ONLINE;
+        int offTabScans;
+        PlayerInfo info;
+        boolean sure;
+
+        Staff(UUID id) {
+            this.id = id;
+        }
+    }
+
+    /** What is known about a staff member being on your side of the server. */
+    private static final class Sighting {
+        long provenAt;
+        long watchingSince;
+        long alertedAt;
+        long highlightUntil;
+        boolean nearby;
+        float distance;
+        long bodyLostAt;
+        int bodyTick;
+        int switchAlertTick = -1;
+        boolean switchedToSpectator;
+        long untrackedSince;
+
+        boolean marked(long now) {
+            return nearby || provenAt != 0L && now - provenAt < REGION_MARK_MS;
+        }
+
+        void prove(long now) {
+            if (!watching(now)) watchingSince = now;
+            provenAt = now;
+        }
+
+        boolean watching(long now) {
+            return nearby || provenAt != 0L && now - provenAt < WATCH_MS;
+        }
+
+        boolean coolingDown(long now) {
+            return alertedAt != 0L && now - alertedAt < COOLDOWN_MS;
+        }
+    }
+
+    private record GameModeSwitch(UUID id, GameType mode) {}
+
+    private record Cached(String key, StaffMatcher.Match match) {}
+
+    private static final class Changes {
+        final List<Staff> joined = new ArrayList<>();
+        final List<Staff> changed = new ArrayList<>();
+        final List<Staff> left = new ArrayList<>();
+        final List<Staff> dropped = new ArrayList<>();
+
+        boolean isEmpty() {
+            return joined.isEmpty() && changed.isEmpty() && left.isEmpty();
+        }
+    }
+
+    private final Map<UUID, Staff> staff = new LinkedHashMap<>();
+    private List<Staff> sorted = List.of();
+    private boolean resort;
+    private final Map<UUID, Sighting> sightings = new HashMap<>();
+    private final Queue<GameModeSwitch> switches = new ConcurrentLinkedQueue<>();
+    private final Map<UUID, Long> switchedAt = new HashMap<>();
+    private final Map<UUID, Cached> cache = new HashMap<>();
+    private final Map<UUID, String> pendingAlerts = new LinkedHashMap<>();
+    private final Set<String> learned = new HashSet<>();
+    private final Set<String> remembered = new HashSet<>();
+    private final Alarm sound = new Alarm();
+    private final MediaBaseFinder.Tracker shard = new MediaBaseFinder.Tracker();
+    private StaffMatcher matcher;
+    private String matcherKey = "";
+    private ClientPacketListener connection;
+    private String server = "";
+    private int ticksToScan;
+    private int settle;
+    private boolean primed;
+    private int alertGather;
+    private int tickCount;
+
+    // screen alert
+    private UUID ghostId;
+    private String ghostName = "";
+    private int ghostOthers;
+    private long ghostStart;
+    private boolean ghostOn;
+
+    public StaffHud() {
+        super("staffhud", "Staff HUD", "Finds the staff on the server, even vanished ones, and warns you when they are watching you.", Category.PANELS);
+        anywhere();
+        instance = this;
+    }
+
+    // ------------------------------------------------------------------ the packet hook
+
+    /** Called for every player-info packet before the game applies it. A game-mode action on an account is the proof used for the watching alert. */
+    public static void notePlayerInfoUpdate(ClientboundPlayerInfoUpdatePacket packet) {
+        StaffHud h = instance;
+        if (h == null || !h.enabled() || packet == null || !h.regionAlert.on()) return;
+        try {
+            var actions = packet.actions();
+            if (!actions.contains(ClientboundPlayerInfoUpdatePacket.Action.UPDATE_GAME_MODE) || actions.contains(ClientboundPlayerInfoUpdatePacket.Action.ADD_PLAYER)) return;
+            for (var entry : packet.entries()) {
+                if (entry != null && entry.profileId() != null) h.switches.offer(new GameModeSwitch(entry.profileId(), entry.gameMode()));
+            }
+        } catch (RuntimeException ignored) {
+            // a changed packet layout must never break packet handling
+        }
+    }
+
+    /** True when this account is on the staff list Zeus follows right now. */
+    public static boolean isStaff(UUID id) {
+        StaffHud h = instance;
+        return h != null && h.enabled() && id != null && h.staff.containsKey(id);
+    }
+
+    // ------------------------------------------------------------------ names you add and remember
+
+    private void addFromClipboard() {
+        String clip = "";
+        try {
+            clip = Minecraft.getInstance().keyboardHandler.getClipboard();
+        } catch (RuntimeException ignoredClipboard) {
+            // no clipboard
+        }
+        addName(clip);
+    }
+
+    private void addTyped() {
+        addName(typedName.get());
+        typedName.set("");
+    }
+
+    private void addName(String clip) {
+        clip = clip == null ? "" : clip.trim();
+        if (!clip.matches("[A-Za-z0-9_.]{1,16}")) {
+            Zeus.toast("That is not a player name", false);
+            return;
+        }
+        Set<String> names = names();
+        names.add(clip.toLowerCase(Locale.ROOT));
+        custom.set(String.join(",", names));
+        Zeus.toast("Added " + clip, true);
+    }
+
+    private Set<String> names() {
+        Set<String> out = new TreeSet<>();
+        for (String s : custom.get().split(",")) if (!s.isBlank()) out.add(s.trim().toLowerCase(Locale.ROOT));
+        return out;
+    }
+
+    private void forgetRemembered() {
+        rememberedStore.set("");
+        remembered.clear();
+        Zeus.toast("Remembered staff removed", true);
+    }
+
+    private void loadRemembered() {
+        remembered.clear();
+        for (String s : rememberedStore.get().split(",")) if (!s.isBlank()) remembered.add(s.trim());
+    }
+
+    private void saveRemembered() {
+        if (remembered.size() > MAX_REMEMBERED) {
+            Iterator<String> it = remembered.iterator();
+            while (remembered.size() > MAX_REMEMBERED && it.hasNext()) {
+                it.next();
+                it.remove();
+            }
+        }
+        rememberedStore.set(String.join(",", remembered));
+    }
+
+    private String key(String name) {
+        return server + "|" + name.toLowerCase(Locale.ROOT);
+    }
+
+    // ------------------------------------------------------------------ life cycle
+
+    @Override
+    protected void onEnable() {
+        forget();
+        connection = null;
+        shard.clear();
+        loadRemembered();
+    }
+
+    @Override
+    protected void onDisable() {
+        forget();
+        connection = null;
+        shard.clear();
+        sound.stop();
+        ghostOn = false;
+    }
+
+    private void forget() {
+        staff.clear();
+        sorted = List.of();
+        cache.clear();
+        learned.clear();
+        switchedAt.clear();
+        forgetShard();
+        primed = false;
+    }
+
+    private void forgetShard() {
+        switches.clear();
+        sightings.clear();
+        pendingAlerts.clear();
+        sound.stop();
+        resort = true;
+    }
+
+    private void test() {
+        Minecraft mc = Minecraft.getInstance();
+        sound.start(alarm.value(), alarmSeconds.f(), alarmVolume.f() / 100f);
+        ghostId = mc.player == null ? null : mc.player.getUUID();
+        ghostName = mc.player == null ? "Staff" : mc.player.getName().getString();
+        ghostOthers = 0;
+        ghostStart = System.nanoTime() / 1_000_000L;
+        ghostOn = screenAlert.on();
+    }
+
+    @Override
+    public String info() {
+        return sorted.isEmpty() ? null : Integer.toString(sorted.size());
+    }
+
+    // ------------------------------------------------------------------ the tick
+
+    @Override
+    protected void onTick(Minecraft mc) {
+        sound.tick(mc);
+        ClientPacketListener conn = mc.getConnection();
+        if (conn == null || mc.player == null || mc.level == null) {
+            if (connection != null || !staff.isEmpty() || !sightings.isEmpty()) forget();
+            switches.clear();
+            connection = null;
+            shard.clear();
+            primed = false;
+            return;
+        }
+        boolean moved = shard.moved(mc);
+        String nowServer = mc.getCurrentServer() == null ? "singleplayer" : String.valueOf(mc.getCurrentServer().ip);
+        if (conn != connection || !nowServer.equals(server)) {
+            connection = conn;
+            server = nowServer;
+            forget();
+            settle = SETTLE_TICKS;
+            primed = false;
+        } else if (moved) {
+            forgetShard();
+        }
+        if (settle > 0) settle--;
+        tickCount++;
+        long now = System.currentTimeMillis();
+        if (regionAlert.on()) {
+            drainSwitches(conn, mc.player.getUUID(), now);
+            trackBodies(mc, now);
+        } else {
+            switches.clear();
+        }
+        if (--ticksToScan <= 0) {
+            ticksToScan = SCAN_TICKS;
+            Changes changes = scan(mc, conn, now);
+            if (primed) {
+                announce(mc, changes);
+            } else if (settle == 0) {
+                primed = true;
+            }
+        }
+        if (!pendingAlerts.isEmpty() && --alertGather <= 0) raise(mc);
+        if (resort) sortView(now);
+    }
+
+    // ------------------------------------------------------------------ settings -> matcher
+
+    private StaffMatcher matcher() {
+        String known = knownList.on() ? String.join(",", DONUT_STAFF) : "";
+        String k = detect.index() + "|" + rankWords.get() + "|" + markers.get() + "|" + iconGlyphs.on() + "|" + teamRankMax.i() + "|" + known.length() + "|" + ignored.get();
+        if (matcher == null || !k.equals(matcherKey)) {
+            matcher = new StaffMatcher(detect.value(), rankWords.get(), markers.get(), iconGlyphs.on(), teamRankMax.i(), known, ignored.get());
+            matcherKey = k;
+            cache.clear();
+        }
+        return matcher;
+    }
+
+    private static String plain(Component c) {
+        return c == null ? null : c.getString();
+    }
+
+    private static String text(Component c) {
+        return c == null ? "" : c.getString();
+    }
+
+    /** The best rank hint in some text (lowest number), or -1. Whole words only, so "Modern" is not a mod. */
+    static int rankIn(String s) {
+        int best = -1;
+        for (String tok : s.toLowerCase(Locale.ROOT).split("[^a-z0-9\\-+]+")) {
+            if (tok.isEmpty()) continue;
+            if (NOT_STAFF.contains(tok)) return -1;
+            Integer r = RANKS.get(tok);
+            if (r != null && (best < 0 || r < best)) best = r;
+        }
+        return best;
+    }
+
+    /** A tag without colour codes, spaces and brackets, for comparing. */
+    static String tagKey(String s) {
+        return s.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9+]", "");
+    }
+
+    private static boolean isAccount(UUID id, String name) {
+        return name != null && id != null && id.version() != 2 && ACCOUNT_NAME.matcher(name).matches();
+    }
+
+    private static String safeName(PlayerInfo pi) {
+        try {
+            return pi.getProfile().name();
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    private static UUID safeId(PlayerInfo pi, String name) {
+        try {
+            return pi.getProfile().id();
+        } catch (RuntimeException e) {
+            return UUID.nameUUIDFromBytes(name.getBytes());
+        }
+    }
+
+    // ------------------------------------------------------------------ the scan
+
+    /** The verdict about one player. */
+    private static final class Verdict {
+        int conf;
+        String label;
+        int rankClass = 3;
+        int seniority = 999;
+        boolean sure;
+        final List<String> why = new ArrayList<>();
+    }
+
+    private static int classOfSeniority(StaffMatcher.Match m) {
+        if (m.kind() == StaffMatcher.KIND_TEAM) {
+            int n = m.seniority() % 100;
+            return n <= 1 ? 0 : n <= 3 ? 1 : 2;
+        }
+        int r = rankIn(m.rank());
+        return r < 0 ? 3 : r;
+    }
+
+    private Changes scan(Minecraft mc, ClientPacketListener conn, long now) {
+        Changes changes = new Changes();
+        UUID self = mc.player.getUUID();
+        StaffMatcher m = matcher();
+        Set<String> mine = names();
+        Set<UUID> listed = new HashSet<>();
+        for (PlayerInfo info : conn.getListedOnlinePlayers()) {
+            UUID id = safeId(info, "?");
+            if (id != null) listed.add(id);
+        }
+        List<PlayerInfo> online = new ArrayList<>(conn.getOnlinePlayers());
+        // how common is each tag? the biggest group is "ordinary player", tiny groups are interesting
+        Map<String, Integer> tagCount = new HashMap<>();
+        Map<UUID, String> tagOf = new HashMap<>();
+        for (PlayerInfo pi : online) {
+            String name = safeName(pi);
+            if (name == null) continue;
+            UUID id = safeId(pi, name);
+            PlayerTeam team = pi.getTeam();
+            String tag = text(team == null ? null : team.getPlayerPrefix()) + text(team == null ? null : team.getPlayerSuffix())
+                    + text(pi.getTabListDisplayName()).replace(name, " ");
+            tagOf.put(id, tag);
+            tagCount.merge(tagKey(tag), 1, Integer::sum);
+        }
+        int players = online.size();
+        Set<UUID> inTab = new HashSet<>();
+        Set<UUID> evaluated = new HashSet<>();
+        for (PlayerInfo pi : online) {
+            String name = safeName(pi);
+            if (name == null) continue;
+            UUID id = safeId(pi, name);
+            if (id.equals(self) || !isAccount(id, name)) continue;
+            inTab.add(id);
+            Staff tracked = staff.get(id);
+            Verdict v = judge(m, pi, id, name, tagOf.getOrDefault(id, ""), tagCount, players, mine, tracked);
+            if (v == null || v.conf < minConf.i() || v.label == null) {
+                if (tracked != null && tracked.peak >= 70 && tracked.conf >= minConf.i()) {
+                    // seen as staff earlier and now shows nothing: they may have switched their tag off; keep them, lower
+                    tracked.info = pi;
+                    tracked.offTabScans = 0;
+                    tracked.presence = presenceOf(pi, listed.contains(id));
+                    tracked.why = "was listed earlier";
+                    evaluated.add(id);
+                } else if (tracked != null) {
+                    staff.remove(id);
+                    changes.dropped.add(tracked);
+                }
+                continue;
+            }
+            evaluated.add(id);
+            Presence presence = presenceOf(pi, listed.contains(id));
+            if (tracked == null) {
+                tracked = new Staff(id);
+                staff.put(id, tracked);
+                tracked.name = name;
+                apply(tracked, v, pi, presence);
+                changes.joined.add(tracked);
+            } else {
+                Presence before = tracked.presence;
+                apply(tracked, v, pi, presence);
+                tracked.offTabScans = 0;
+                if (before != presence) changes.changed.add(tracked);
+            }
+            if (remember.on() && v.sure) {
+                if (remembered.add(key(name))) saveRemembered();
+            }
+        }
+        cache.keySet().retainAll(inTab);
+        switchedAt.keySet().removeIf(id -> now - switchedAt.get(id) > SWITCH_EVIDENCE_MS);
+        Iterator<Staff> it = staff.values().iterator();
+        while (it.hasNext()) {
+            Staff s = it.next();
+            if (evaluated.contains(s.id)) continue;
+            if (inTab.contains(s.id)) continue;
+            boolean bodyHere = bodyLoaded(mc, s.id);
+            if (bodyHere && showVanished.on()) {
+                if (++s.offTabScans >= VANISH_SCANS && s.presence != Presence.VANISHED) {
+                    s.presence = Presence.VANISHED;
+                    changes.changed.add(s);
+                }
+            } else {
+                it.remove();
+                changes.left.add(s);
+            }
+        }
+        pruneSightings(now);
+        sortView(now);
+        return changes;
+    }
+
+    private static Presence presenceOf(PlayerInfo pi, boolean listed) {
+        if (pi.getGameMode() == GameType.SPECTATOR) return Presence.SPECTATOR;
+        return listed ? Presence.ONLINE : Presence.VANISHED;
+    }
+
+    private static boolean bodyLoaded(Minecraft mc, UUID id) {
+        for (var p : mc.level.players()) if (p.getUUID().equals(id)) return true;
+        return false;
+    }
+
+    private void apply(Staff s, Verdict v, PlayerInfo pi, Presence presence) {
+        s.name = safeName(pi) == null ? s.name : safeName(pi);
+        s.rank = v.label;
+        s.rankClass = v.rankClass;
+        s.seniority = v.seniority;
+        s.conf = Math.min(100, v.conf);
+        s.peak = Math.max(v.sure ? 100 : 0, v.conf >= 70 ? v.conf : s.peak);
+        s.why = String.join(", ", v.why);
+        s.sure = v.sure;
+        s.info = pi;
+        s.presence = presence;
+    }
+
+    /** Collects the evidence about one player. */
+    private Verdict judge(StaffMatcher m, PlayerInfo pi, UUID id, String name, String tag, Map<String, Integer> tagCount, int players, Set<String> mine, Staff tracked) {
+        Verdict v = new Verdict();
+        String key = tagKey(tag);
+        PlayerTeam team = pi.getTeam();
+        String teamName = team == null ? "" : team.getName();
+        String lower = name.toLowerCase(Locale.ROOT);
+        if (mine.contains(lower)) {
+            v.conf = 100;
+            v.label = "Added";
+            v.sure = true;
+            v.seniority = 0;
+            v.why.add("you added them");
+            if (!key.isEmpty() && tagCount.getOrDefault(key, 0) <= 6) learned.add(key);
+        }
+        // standard rules
+        StaffMatcher.Match match = matched(m, pi, id, name, teamName, team);
+        if (match != null) {
+            int c = switch (match.kind()) {
+                case StaffMatcher.KIND_KNOWN -> 98;
+                case StaffMatcher.KIND_RANK -> 96;
+                case StaffMatcher.KIND_TEAM -> 90;
+                default -> 84;
+            };
+            String how = switch (match.kind()) {
+                case StaffMatcher.KIND_KNOWN -> "on the known staff list";
+                case StaffMatcher.KIND_RANK -> "tab text says " + match.rank().toLowerCase(Locale.ROOT);
+                case StaffMatcher.KIND_TEAM -> "team " + teamName + " is a staff rank";
+                default -> "wears a staff marker";
+            };
+            if (c > v.conf) {
+                v.conf = c;
+                if (v.label == null) {
+                    v.label = match.rank();
+                    v.rankClass = classOfSeniority(match);
+                    v.seniority = match.seniority();
+                }
+            }
+            v.sure = v.sure || match.kind() != StaffMatcher.KIND_MARKER;
+            v.why.add(how);
+            if (!key.isEmpty() && c >= 84 && tagCount.getOrDefault(key, 0) <= 6) learned.add(key);
+        }
+        // Zeus evidence
+        if (ranks.on()) {
+            int r = rankIn(tag);
+            int rt = rankIn(teamName.replace('_', ' '));
+            if (r >= 0) {
+                v.conf = Math.max(v.conf, RANK_CONF[r]);
+                v.rankClass = Math.min(v.rankClass, r);
+                if (v.label == null) v.label = RANK_NAMES[r];
+                v.why.add("tag says " + RANK_NAMES[r].toLowerCase(Locale.ROOT));
+                if (!key.isEmpty() && v.conf >= 80) learned.add(key);
+            }
+            if (rt >= 0) {
+                v.conf = Math.max(v.conf, RANK_CONF[rt] - 4) + (r >= 0 ? 4 : 0);
+                v.rankClass = Math.min(v.rankClass, rt);
+                if (v.label == null) v.label = RANK_NAMES[rt];
+                v.why.add("team name says " + RANK_NAMES[rt].toLowerCase(Locale.ROOT));
+            }
+        }
+        if (!key.isEmpty() && learned.contains(key) && v.conf < 75) {
+            v.conf = Math.max(v.conf, 76);
+            if (v.label == null) v.label = "Staff";
+            v.why.add("wears the same tag as other staff");
+        }
+        if (modes.on()) {
+            GameType gt = pi.getGameMode();
+            if (gt == GameType.SPECTATOR) {
+                v.conf = Math.min(100, Math.max(v.conf, 58) + (v.conf > 0 ? 8 : 0));
+                if (v.label == null) v.label = "Spectator";
+                v.why.add("in spectator mode");
+            } else if (gt == GameType.CREATIVE) {
+                v.conf = Math.min(100, Math.max(v.conf, 52) + (v.conf > 0 ? 8 : 0));
+                if (v.label == null) v.label = "Creative";
+                v.why.add("in creative mode");
+            }
+        }
+        Long switched = switchedAt.get(id);
+        if (switched != null) {
+            v.conf = Math.min(100, Math.max(v.conf, 56) + (v.conf > 0 ? 12 : 0));
+            if (v.label == null) v.label = "Game mode change";
+            v.why.add("changed game mode while online");
+        }
+        if (rare.on() && players >= 12 && !key.isEmpty() && tagCount.getOrDefault(key, 0) <= 2 && !NOT_STAFF.contains(key)) {
+            v.conf = Math.min(100, Math.max(v.conf, 38) + (v.conf > 0 ? 6 : 0));
+            if (v.label == null) v.label = "Rare tag";
+            v.why.add("rare tag " + tag.trim());
+        }
+        if (remember.on() && v.conf < 70 && remembered.contains(key(name))) {
+            v.conf = Math.max(v.conf, 72);
+            if (v.label == null) v.label = "Staff";
+            v.why.add("confirmed as staff earlier");
+        }
+        if (tracked != null && v.conf == 0 && tracked.peak >= 70) return null;
+        return v.conf == 0 ? null : v;
+    }
+
+    private StaffMatcher.Match matched(StaffMatcher m, PlayerInfo pi, UUID id, String name, String teamName, PlayerTeam team) {
+        Component display = pi.getTabListDisplayName();
+        String prefix = team == null ? null : plain(team.getPlayerPrefix());
+        String suffix = team == null ? null : plain(team.getPlayerSuffix());
+        String shown = plain(display);
+        String k = name + "\u0001" + teamName + "\u0001" + shown + "\u0001" + prefix + "\u0001" + suffix;
+        Cached last = cache.get(id);
+        if (last != null && last.key().equals(k)) return last.match();
+        StaffMatcher.Match match = m.match(name, teamName.isEmpty() ? null : teamName, shown, prefix, suffix);
+        cache.put(id, new Cached(k, match));
+        return match;
+    }
+
+    private void sortView(long now) {
+        List<Staff> view = new ArrayList<>(staff.values());
+        view.sort(Comparator.<Staff>comparingInt(s -> group(s, now))
+                .thenComparing((a, b) -> Integer.compare(b.conf, a.conf))
+                .thenComparingInt(s -> s.seniority)
+                .thenComparing(s -> s.name, String.CASE_INSENSITIVE_ORDER));
+        sorted = List.copyOf(view);
+        resort = false;
+    }
+
+    private int group(Staff s, long now) {
+        Sighting seen = sightings.get(s.id);
+        if (seen != null && seen.nearby) return 0;
+        if (seen != null && seen.marked(now)) return 1;
+        return s.presence != Presence.ONLINE ? 2 : 3;
+    }
+
+    // ------------------------------------------------------------------ watching
+
+    private void drainSwitches(ClientPacketListener conn, UUID self, long now) {
+        GameModeSwitch change;
+        while ((change = switches.poll()) != null) {
+            UUID id = change.id();
+            if (id.equals(self)) continue;
+            switchedAt.put(id, now);
+            Staff tracked = staff.get(id);
+            String name;
+            if (tracked != null) {
+                name = tracked.name;
+            } else {
+                PlayerInfo info = conn.getPlayerInfo(id);
+                name = info == null ? null : safeName(info);
+                if (name == null || !isAccount(id, name) || !knownList.on() || DONUT_STAFF.stream().noneMatch(name::equalsIgnoreCase)) continue;
+            }
+            Sighting seen = sightings.computeIfAbsent(id, k -> new Sighting());
+            if (!seen.marked(now)) resort = true;
+            seen.prove(now);
+            if (!seen.coolingDown(now)) {
+                seen.switchAlertTick = tickCount;
+                seen.switchedToSpectator = change.mode() == GameType.SPECTATOR;
+                alert(id, seen, now, name);
+            }
+        }
+    }
+
+    private void trackBodies(Minecraft mc, long now) {
+        var self = mc.player;
+        for (var body : mc.level.players()) {
+            if (body == self) continue;
+            Staff tracked = staff.get(body.getUUID());
+            if (tracked == null) continue;
+            Sighting seen = sightings.computeIfAbsent(tracked.id, k -> new Sighting());
+            seen.prove(now);
+            seen.bodyTick = tickCount;
+            seen.distance = (float) Math.sqrt(self.distanceToSqr(body));
+            if (!seen.nearby) {
+                seen.nearby = true;
+                resort = true;
+                boolean newAppearance = seen.bodyLostAt == 0L || now - seen.bodyLostAt > BODY_GRACE_MS;
+                if (newAppearance) alert(tracked.id, seen, now, tracked.name);
+            }
+        }
+        for (Sighting seen : sightings.values()) {
+            if (seen.nearby && seen.bodyTick != tickCount) {
+                seen.nearby = false;
+                seen.bodyLostAt = now;
+                resort = true;
+            }
+        }
+    }
+
+    private void pruneSightings(long now) {
+        Iterator<Map.Entry<UUID, Sighting>> it = sightings.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<UUID, Sighting> entry = it.next();
+            Sighting seen = entry.getValue();
+            if (staff.containsKey(entry.getKey())) {
+                seen.untrackedSince = 0L;
+            } else if (seen.untrackedSince == 0L) {
+                seen.untrackedSince = now;
+            } else if (now - seen.untrackedSince > BODY_GRACE_MS) {
+                it.remove();
+                resort = true;
+            }
+        }
+    }
+
+    private void alert(UUID id, Sighting seen, long now, String name) {
+        seen.alertedAt = now;
+        seen.highlightUntil = now + HIGHLIGHT_MS;
+        if (pendingAlerts.isEmpty()) alertGather = ALERT_GATHER_TICKS;
+        pendingAlerts.put(id, name);
+    }
+
+    private void raise(Minecraft mc) {
+        Map.Entry<UUID, String> first = pendingAlerts.entrySet().iterator().next();
+        int others = pendingAlerts.size() - 1;
+        UUID id = first.getKey();
+        String name = first.getValue();
+        pendingAlerts.clear();
+        sound.start(alarm.value(), alarmSeconds.f(), alarmVolume.f() / 100f);
+        if (chatLines.on()) {
+            say(mc, Component.literal(name).withStyle(ChatFormatting.RED, ChatFormatting.BOLD)
+                    .append(Component.literal(others > 0 ? " (+" + others + " more) is watching you" : " is watching you").withStyle(ChatFormatting.RED)));
+        }
+        Zeus.LOG.info("[Staff HUD] watching alert: {} (+{})", name, others);
+        if (screenAlert.on()) {
+            ghostId = id;
+            ghostName = name;
+            ghostOthers = others;
+            ghostStart = System.nanoTime() / 1_000_000L;
+            ghostOn = true;
+        }
+    }
+
+    // ------------------------------------------------------------------ chat
+
+    private static void say(Minecraft mc, Component body) {
+        if (mc.gui == null) return;
+        mc.gui.getChat().addMessage(Component.literal("[Staff HUD] ").withStyle(ChatFormatting.GOLD).append(body));
+    }
+
+    private void announce(Minecraft mc, Changes changes) {
+        changes.changed.removeIf(this::echoesSwitchAlert);
+        if (changes.isEmpty()) return;
+        boolean toast = alerts.on();
+        boolean chat = chatLines.on();
+        describe(mc, changes.joined, "joined", toast, chat, s -> s.presence == Presence.SPECTATOR ? " (spectating)" : s.presence == Presence.VANISHED ? " (vanished)" : "", false);
+        describe(mc, changes.changed, "changed visibility", toast, chat, s -> switch (s.presence) {
+            case ONLINE -> " is visible again";
+            case SPECTATOR -> " switched to spectator";
+            case VANISHED -> s.offTabScans > 0 ? " vanished (off TAB, still nearby)" : " vanished (hidden from TAB)";
+        }, false);
+        describe(mc, changes.left, "left", toast, chat, s -> s.presence == Presence.VANISHED ? " is out of sight" : " left", true);
+        boolean urgent = !changes.joined.isEmpty() || changes.changed.stream().anyMatch(s -> s.presence != Presence.ONLINE);
+        if (urgent && mc.getSoundManager() != null) mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.NOTE_BLOCK_BELL, 1.25f));
+    }
+
+    private void describe(Minecraft mc, List<Staff> group, String verb, boolean toast, boolean chat, java.util.function.Function<Staff, String> tail, boolean good) {
+        if (group.isEmpty()) return;
+        if (group.size() > 3) {
+            StringBuilder names = new StringBuilder();
+            for (int i = 0; i < group.size(); i++) names.append(i == 0 ? "" : ", ").append(group.get(i).name).append(" (").append(group.get(i).rank).append(")");
+            if (chat) say(mc, Component.literal(group.size() + " staff " + verb + ": ").withStyle(ChatFormatting.GRAY).append(Component.literal(names.toString()).withStyle(ChatFormatting.YELLOW)));
+            if (toast) Zeus.toast(group.size() + " staff " + verb, good);
+            return;
+        }
+        for (Staff s : group) {
+            String line = tail.apply(s);
+            if (chat) {
+                say(mc, Component.literal(s.name).withStyle(ChatFormatting.YELLOW)
+                        .append(Component.literal(" (" + s.rank + ", " + s.conf + " %)").withStyle(ChatFormatting.GRAY))
+                        .append(Component.literal(line.startsWith(" ") ? line : " " + line).withStyle(good ? ChatFormatting.GREEN : ChatFormatting.RED)));
+            }
+            if (toast) Zeus.toast((good ? "Staff left: " : "Staff: ") + s.name + " (" + s.rank + ")" + (good ? "" : line), good);
+        }
+    }
+
+    private boolean echoesSwitchAlert(Staff s) {
+        Sighting seen = sightings.get(s.id);
+        if (seen != null && seen.switchAlertTick >= 0 && tickCount - seen.switchAlertTick <= SWITCH_ECHO_TICKS) {
+            return s.presence == Presence.SPECTATOR ? seen.switchedToSpectator : s.presence == Presence.ONLINE && !seen.switchedToSpectator;
+        }
+        return false;
+    }
+
+    // ------------------------------------------------------------------ settings page
+
+    private List<String> statusLines() {
+        List<Staff> list = sorted;
+        if (settle > 0) return List.of("Checking... " + (settle / 20 + 1) + " s");
+        if (list.isEmpty()) return List.of("No staff found on this server.");
+        long now = System.currentTimeMillis();
+        List<String> out = new ArrayList<>();
+        out.add(list.size() + " staff found");
+        for (int i = 0; i < Math.min(8, list.size()); i++) {
+            Staff s = list.get(i);
+            Sighting seen = sightings.get(s.id);
+            String extra = seen != null && seen.watching(now) ? "  |  watching " + formatAge(now - seen.watchingSince) : "";
+            out.add(s.name + "  |  " + s.rank + "  |  " + s.conf + " %  |  " + s.presence.name().toLowerCase(Locale.ROOT) + extra);
+        }
+        return out;
+    }
+
+    static String formatAge(long ms) {
+        long total = Math.max(0L, ms) / 1000L;
+        long hours = total / 3600L;
+        long minutes = total / 60L % 60L;
+        long seconds = total % 60L;
+        StringBuilder out = new StringBuilder(8);
+        if (hours > 0L) out.append(hours).append(minutes < 10L ? ":0" : ":");
+        return out.append(minutes).append(seconds < 10L ? ":0" : ":").append(seconds).toString();
+    }
+
+    // ------------------------------------------------------------------ drawing
+
+    @Override
+    protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+        if (mc.player == null) return;
+        if (ghostOn) drawGhost(g, mc, w, h);
+        List<Staff> list = sorted;
+        if (list.isEmpty()) return;
+        long now = System.currentTimeMillis();
+        float sc = scale.f() / 100f;
+        int shown = Math.min(list.size(), most.i());
+        boolean why = reasons.on();
+        int rh = Math.round((why ? 25 : 16) * sc);
+        int hs = heads.on() ? Math.round((why ? 17 : 12) * sc) : 0;
+        int ac = EspKit.pick(accent, Hud.accent());
+        String title = "Staff · " + list.size();
+        String markerText = staffMarker.get().isBlank() ? "" : staffMarker.get().trim() + " ";
+        int bw = Draw.widthBoldS(title, sc) + Math.round(24 * sc);
+        String[] rights = new String[shown];
+        for (int i = 0; i < shown; i++) {
+            Staff s = list.get(i);
+            rights[i] = rightText(s, sightings.get(s.id), now);
+            int rw = Math.round(8 * sc) + (hs > 0 ? hs + Math.round(5 * sc) : 0) + Draw.widthS(markerText, sc) + Draw.widthS(s.name, sc) + Math.round(10 * sc) + Draw.widthS(rights[i], sc) + Math.round(8 * sc);
+            if (why) rw = Math.max(rw, Math.round(8 * sc) + (hs > 0 ? hs + Math.round(5 * sc) : 0) + Math.min(Draw.widthS(s.why, sc * 0.85f), 150));
+            bw = Math.max(bw, rw);
+        }
+        bw = Math.min(bw, Math.round(280 * sc));
+        int extra = list.size() > shown ? Math.round(12 * sc) : 0;
+        int head = Math.round(20 * sc);
+        int bh = head + shown * rh + extra + 4;
+        int[] at = Hud.place(corner.index(), bw, bh, w, h);
+        float bg = opacity.f() / 100f;
+        Hud.panel(g, at[0], at[1], bw, bh);
+        Draw.rrectLine(g, at[0], at[1], bw, bh, 7, Draw.rgba(ac, 0.55f));
+        Draw.boldS(g, title, at[0] + Math.round(8 * sc), at[1] + Math.round(6 * sc), 0xFFFFFFFF, sc);
+        g.fill(at[0] + 8, at[1] + head - 2, at[0] + bw - 8, at[1] + head - 1, Draw.rgba(ac, 0.4f));
+        int y = at[1] + head + 1;
+        for (int i = 0; i < shown; i++) {
+            Staff s = list.get(i);
+            Sighting seen = sightings.get(s.id);
+            boolean watching = seen != null && seen.watching(now);
+            boolean nearby = seen != null && seen.nearby;
+            float flash = seen == null ? 0f : Math.max(0f, Math.min(1f, (seen.highlightUntil - now) / (float) HIGHLIGHT_MS));
+            int col = watching ? 0xFFFF4D5E : RANK_COLORS[Math.min(3, s.rankClass)];
+            if (flash > 0f) g.fill(at[0] + 3, y - 1, at[0] + bw - 3, y + rh - 2, Draw.rgba(0xFFFF3B4D, 0.25f * flash));
+            int x = at[0] + Math.round(8 * sc);
+            if (hs > 0) {
+                try {
+                    PlayerFaceRenderer.draw(g, s.info.getSkin(), x, y, hs, s.presence == Presence.VANISHED ? 0x88FFFFFF : 0xFFFFFFFF);
+                } catch (RuntimeException e) {
+                    Draw.rrect(g, x, y, hs, hs, 3, Draw.rgba(col, 0.6f));
+                }
+                // soft focus ring: a restrained pulse keeps the card readable without a costly blur
+                float pulse = 0.5f + 0.5f * (float) Math.sin(now / 360.0 + i * 0.7);
+                Draw.rrectLine(g, x - 2, y - 2, hs + 4, hs + 4, 4, Draw.rgba(col, (watching ? 0.5f : 0.28f) + pulse * 0.42f));
+                // a thin confidence bar under the head communicates evidence strength
+                g.fill(x, y + hs + 1, x + Math.round(hs * s.conf / 100f), y + hs + 2, Draw.rgba(col, 0.9f));
+                x += hs + Math.round(5 * sc);
+            }
+            int rightW = Draw.widthS(rights[i], sc);
+            int markerW = markerText.isEmpty() ? 0 : Draw.widthS(markerText, sc);
+            int ty = y + Math.round(2 * sc);
+            if (!markerText.isEmpty()) Draw.textS(g, markerText, x, ty, Draw.rgba(0xFFFFD76A, 1f), sc);
+            String nm = Draw.fit(s.name, Math.max(16, Math.round((at[0] + bw - Math.round(16 * sc) - rightW - x - markerW) / Math.max(0.5f, sc))));
+            float nameAlpha = s.presence == Presence.VANISHED ? 0.55f : s.conf < 70 ? 0.75f : 1f;
+            Draw.textS(g, nm, x + markerW, ty, Draw.rgba(nearby ? 0xFFFFC27A : 0xFFFFFFFF, nameAlpha), sc);
+            Draw.textRightS(g, rights[i], at[0] + bw - Math.round(8 * sc), ty, col, sc);
+            if (why) Draw.textS(g, Draw.fit(s.why, Math.max(20, Math.round((at[0] + bw - Math.round(8 * sc) - x) / Math.max(0.5f, sc * 0.8f)))), x, ty + Math.round(10 * sc), 0xFF8B97B3, sc * 0.8f);
+            y += rh;
+        }
+        if (extra > 0) Draw.textS(g, "+" + (list.size() - shown) + " more", at[0] + Math.round(8 * sc), y + 1, Accent.DIM, sc);
+    }
+
+    private String rightText(Staff s, Sighting seen, long now) {
+        StringBuilder out = new StringBuilder(s.rank);
+        if (seen != null && seen.watching(now) && regionAlert.on()) {
+            out.append("  watching ").append(formatAge(now - seen.watchingSince));
+        } else if (s.presence == Presence.VANISHED) {
+            out.append("  vanished");
+        } else if (s.presence == Presence.SPECTATOR) {
+            out.append("  spectating");
+        }
+        if (near.on() && seen != null && seen.nearby) out.append("  ").append(Math.round(seen.distance)).append('m');
+        return out.toString();
+    }
+
+    private void drawGhost(GuiGraphics g, Minecraft mc, int w, int h) {
+        long t = System.nanoTime() / 1_000_000L - ghostStart;
+        if (t > 4500L) {
+            ghostOn = false;
+            return;
+        }
+        PlayerInfo info = ghostId == null || mc.getConnection() == null ? null : mc.getConnection().getPlayerInfo(ghostId);
+        if (t < 1500L && info != null) {
+            float f = t / 1500f;
+            float alpha = 0.05f + 0.6f * (float) Math.sin(f * Math.PI);
+            int size = Math.round(h * (0.25f + 0.55f * f));
+            try {
+                PlayerFaceRenderer.draw(g, info.getSkin(), w / 2 - size / 2, h / 2 - size / 2 - Math.round(h * 0.05f), size, Draw.rgba(0xFFFFFFFF, alpha));
+            } catch (RuntimeException ignored) {
+                // no skin yet: the text below still shows
+            }
+        }
+        if (t >= 1250L) {
+            float a = t < 1450L ? (t - 1250L) / 200f : t > 3900L ? Math.max(0f, (4500L - t) / 600f) : 1f;
+            String line = ghostOthers > 0 ? ghostName + " +" + ghostOthers : ghostName;
+            Draw.boldCenterS(g, "WATCHING YOU", w / 2, h / 4, Draw.rgba(0xFFFF4D5E, a), 3f);
+            Draw.boldCenterS(g, line, w / 2, h / 4 + 34, Draw.rgba(0xFFFF4D5E, a), 1.6f);
+        }
+    }
+
+    // ------------------------------------------------------------------ alarm
+
+    /** The repeating sound for a watching alert: four alert sounds. */
+    private static final class Alarm {
+        private String mode = "Off";
+        private float volume;
+        private int ticksLeft;
+        private int step;
+
+        void start(String mode, float seconds, float volume) {
+            if (mode == null || "Off".equals(mode) || volume <= 0f || seconds <= 0f) return;
+            int ticks = Math.max(1, Math.round(seconds * 20f));
+            this.volume = Math.min(1f, volume);
+            if (ticksLeft > 0 && mode.equals(this.mode)) {
+                ticksLeft = Math.max(ticksLeft, ticks);
+            } else {
+                this.mode = mode;
+                ticksLeft = ticks;
+                step = 0;
+            }
+        }
+
+        void tick(Minecraft mc) {
+            if (ticksLeft <= 0) return;
+            int interval = interval(mode);
+            if (step % interval == 0) play(mc, step / interval);
+            step++;
+            if (--ticksLeft == 0) step = 0;
+        }
+
+        void stop() {
+            ticksLeft = 0;
+            step = 0;
+        }
+
+        private void play(Minecraft mc, int note) {
+            if (mc.getSoundManager() == null) return;
+            SoundEvent sound;
+            float pitch;
+            switch (mode) {
+                case "Beep" -> {
+                    sound = SoundEvents.NOTE_BLOCK_PLING.value();
+                    pitch = 1.6f;
+                }
+                case "Bell" -> {
+                    sound = SoundEvents.BELL_BLOCK;
+                    pitch = 1.0f;
+                }
+                case "Guardian" -> {
+                    sound = SoundEvents.ELDER_GUARDIAN_CURSE;
+                    pitch = 1.0f;
+                }
+                default -> {
+                    sound = SoundEvents.NOTE_BLOCK_PLING.value();
+                    pitch = note % 2 == 0 ? 1.5f : 1.0f;
+                }
+            }
+            mc.getSoundManager().play(SimpleSoundInstance.forUI(sound, pitch, volume));
+        }
+
+        private static int interval(String mode) {
+            return switch (mode) {
+                case "Beep" -> 3;
+                case "Bell" -> 10;
+                case "Guardian" -> 60;
+                default -> 4;
+            };
+        }
+    }
+}

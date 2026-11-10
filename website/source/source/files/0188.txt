@@ -1,0 +1,476 @@
+package com.zlorbie788.zeus.ui;
+
+import com.zlorbie788.zeus.core.Zeus;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.gui.screens.multiplayer.JoinMultiplayerScreen;
+import net.minecraft.client.gui.screens.options.OptionsScreen;
+import net.minecraft.client.gui.screens.worldselection.SelectWorldScreen;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.resources.sounds.SimpleSoundInstance;
+import net.minecraft.network.chat.Component;
+import net.minecraft.sounds.SoundEvents;
+import org.lwjgl.glfw.GLFW;
+
+/**
+ * The Zeus main menu: a storm over a temple, the god on his throne, and six stone tablets. The picture, the tablets and
+ * the lettering are drawn from files made from the design, resized once to the exact pixel size of the window, so the
+ * menu is sharp at every size. Rain, a drifting mist and now and then a lightning strike are drawn live on top.
+ */
+public final class ZeusTitleScreen extends Screen {
+    // the design is 783 x 473; positions below are in those units
+    private static final float DW = 783f;
+    private static final float DH = 473f;
+    private static final float BX = 261f;
+    private static final float BW = 239f;
+    private static final float BH = 44f;
+    private static final float[] BY = {84f, 136f, 188f, 240f, 292f, 344f};
+    /** The lightning title in the top right corner: height of its picture in design units, and the picture's shape. */
+    private static final float TITLE_H = 74f;
+    private static final float TITLE_RATIO = 1343f / 979f;
+    /** The picture has transparent room around the lettering for its glow (tools/make_title_glow.py): this much on top, in picture pixels. */
+    private static final float TITLE_PAD_TOP = 100f / 979f;
+    /** The Z logo beside the title, in design units. */
+    private static final float LOGO = 52f;
+    private static final String[] NAMES = {"singleplayer", "multiplayer", "customs", "settings", "credits", "exit"};
+    private static final float HOVER_MARGIN = 8f;
+
+    private final long born = System.nanoTime();
+    private final float[] glow = new float[6];
+    private final MenuNews news = new MenuNews();
+    private int selected = 1;
+    /** Where the logo and the lettering are on screen (x, y, w, h): clicking there opens the Zeus settings. */
+    private final int[] logoBox = {0, 0, 0, 0};
+    private int curX = -1;
+    private int curY = -1;
+    private boolean mouseMoved;
+    private int lastMx = -1;
+    private int lastMy = -1;
+    private long lastNanos;
+    private long flashAt;
+    private int flashSeed;
+    private float sceneParX;
+    private float sceneParY;
+
+    public ZeusTitleScreen() {
+        super(Component.literal("Zeus Client"));
+    }
+
+    @Override
+    protected void init() {
+        warm();
+    }
+
+    /** Builds every picture the menu needs while the screen fades in, so nothing is made in the middle of an animation. */
+    private void warm() {
+        try {
+            int gs = Tex.guiScale();
+            float k = k();
+            int w = bw(k);
+            int h = bh(k);
+            int hm = Math.round(HOVER_MARGIN * k);
+            Tex.fitted("menu_bg", "textures/gui/menu/background.png", (width + 2 * bgMargin(width)) * gs, (height + 2 * bgMargin(width)) * gs, true, 0.5f, 0.5f);
+            float ts = titleScale(k);
+            Tex.fitted("menu_title", "textures/gui/menu/title.png", Math.round(TITLE_H * TITLE_RATIO * k * ts) * gs, Math.round(TITLE_H * k * ts) * gs, false, 0, 0);
+            Tex.fitted("menu_logo", "textures/gui/menu/logo.png", Math.round(LOGO * k * ts) * gs, Math.round(LOGO * k * ts) * gs, false, 0, 0);
+            Tex.fitted("menu_tablet", "textures/gui/menu/tablet.png", w * gs, h * gs, false, 0, 0);
+            Tex.fitted("menu_hover", "textures/gui/menu/tablet_hover.png", (w + 2 * hm) * gs, (h + 2 * hm) * gs, false, 0, 0);
+            for (String n : NAMES) Tex.fitted("menu_ink_" + n, "textures/gui/menu/ink_" + n + ".png", w * gs, h * gs, false, 0, 0);
+            rain(width * gs, height * gs);
+            int tabletRight = bx(k) + bw(k);
+            int bottomMargin = Math.max(22, Math.round(14 * k) + 14);
+            if (news.layout(width, height, tabletRight, bottomMargin)) news.prepare();
+        } catch (RuntimeException | LinkageError e) {
+            Zeus.LOG.warn("Menu pictures could not be prepared", e);
+        }
+    }
+
+    @Override
+    public boolean isPauseScreen() {
+        return false;
+    }
+
+    @Override
+    public boolean shouldCloseOnEsc() {
+        return false;
+    }
+
+    @Override
+    public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        // drawn in render, without the game's blurred panorama
+    }
+
+    private float time() {
+        return (System.nanoTime() - born) / 1e9f;
+    }
+
+    // ------------------------------------------------------------ layout
+
+    private float k() {
+        return height / DH;
+    }
+
+    private int bx(float k) {
+        return Math.round(width / 2f - BW * k / 2f);
+    }
+
+    private int by(int i, float k) {
+        return Math.round(BY[i] * k);
+    }
+
+    private int bw(float k) {
+        return Math.round(BW * k);
+    }
+
+    private int bh(float k) {
+        return Math.round(BH * k);
+    }
+
+    /** Shrinks the corner title when the window is so narrow that it would run into the tablets. */
+    private float titleScale(float k) {
+        float need = (TITLE_H * TITLE_RATIO * 0.8f + LOGO + 6f) * k;
+        float room = width - (bx(k) + bw(k)) - 14f;
+        return Math.max(0.45f, Math.min(1f, room / need));
+    }
+
+    private int buttonAt(int mx, int my) {
+        float k = k();
+        for (int i = 0; i < 6; i++) {
+            if (mx >= bx(k) && mx < bx(k) + bw(k) && my >= by(i, k) && my < by(i, k) + bh(k)) return i;
+        }
+        return -1;
+    }
+
+    // ------------------------------------------------------------ drawing
+
+    /** Where the mouse is on the screen, -0.5 to 0.5 each way, for a slight parallax of the picture. Set by the screens that draw the scene. */
+    static float parX;
+    static float parY;
+
+    /** Spare picture around the screen that the slow sway moves into, in gui units. */
+    static int bgMargin(int width) {
+        return Math.max(4, Math.round(width * 0.02f));
+    }
+
+    /** The scene shared by the menu and the credits: the picture, a soft vignette, rain and the occasional strike. */
+    static void scene(GuiGraphics g, int width, int height, float t, long[] flash) {
+        int gs = Tex.guiScale();
+        // The picture is made 1:1 with the screen's real pixels (plus a small margin all round) and only ever moved by whole
+        // pixels, so it is never stretched or resampled on the way to the screen: that is what keeps it sharp.
+        int m = bgMargin(width);
+        Tex.Img bg = Tex.fitted("menu_bg", "textures/gui/menu/background.png", (width + 2 * m) * gs, (height + 2 * m) * gs, true, 0.5f, 0.5f);
+        if (bg != null) {
+            boolean calm = UiSettings.CALM.on() || Perf.fast();
+            float sway = calm ? 0f : (float) Math.sin(t * 0.12f) * 0.45f + (float) Math.sin(t * 0.047f + 1.3f) * 0.25f;
+            int ox = -m + Math.round(sway * m * 0.8f) - (calm ? 0 : Math.round(parX * m * 0.9f));
+            int oy = -m + Math.round((float) Math.sin(t * 0.09f + 0.7f) * 0.3f * m * (calm ? 0f : 1f)) - (calm ? 0 : Math.round(parY * m * 0.9f));
+            ox = Math.max(-2 * m, Math.min(0, ox));
+            oy = Math.max(-2 * m, Math.min(0, oy));
+            bg.draw(g, ox, oy, width + 2 * m, height + 2 * m, 0xFFFFFFFF);
+        } else {
+            g.fillGradient(0, 0, width, height, 0xFF1A2438, 0xFF0A0F1A);
+        }
+        // the dark pool behind the buttons and the shaded sides are part of the picture itself (tools/grade_menu_background.py),
+        // so nothing is laid over it here but a very light top and bottom shade
+        g.fillGradient(0, 0, width, Math.max(1, height / 6), 0x33000000, 0x00000000);
+        g.fillGradient(0, height - Math.max(1, height / 6), width, height, 0x00000000, 0x44000000);
+
+        // rain: one picture of streaks, drawn twice at different speeds (a handful of blits instead of a hundred lines)
+        Tex.Img rain = rain(width * gs, height * gs);
+        if (rain != null) {
+            for (int layer = 0; layer < (Perf.fast() ? 1 : 2); layer++) {
+                float speed = height * (layer == 0 ? 0.95f : 0.62f);
+                int off = Math.round((t * speed) % height);
+                int tint = layer == 0 ? 0xFFFFFFFF : 0x99FFFFFF;
+                int srcOff = Math.round(off * (rain.h / (float) height));
+                // the part that has fallen off the bottom comes back in at the top
+                if (off > 0) rain.drawPart(g, 0, 0, width, off, 0, rain.h - srcOff, rain.w, srcOff, tint);
+                if (height - off > 0) rain.drawPart(g, 0, off, width, height - off, 0, 0, rain.w, rain.h - srcOff, tint);
+            }
+        }
+    }
+
+    private static Tex.Img rain(int w, int h) {
+        w = Math.max(64, Math.min(w, 1920));
+        h = Math.max(64, Math.min(h, 1080));
+        Tex.Img have = Tex.cached("menu_rain");
+        if (have != null && have.w == w && have.h == h) return have;
+        try {
+            java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            java.awt.Graphics2D g2 = img.createGraphics();
+            g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+            int n = Math.max(80, w / 8);
+            for (int i = 0; i < n; i++) {
+                float x = Lightning.hash(i, 1) * (w + h * 0.2f);
+                float y = Lightning.hash(i, 2) * h;
+                float len = h * (0.02f + 0.035f * Lightning.hash(i, 4));
+                int a = (int) (36 + 70 * Lightning.hash(i, 5));
+                g2.setColor(new java.awt.Color(200, 220, 240, a));
+                g2.setStroke(new java.awt.BasicStroke(Math.max(1f, h / 700f) * (0.8f + 0.6f * Lightning.hash(i, 6))));
+                float dx = len * 0.16f;
+                float y2 = Math.min(y + len, h - 1f);
+                g2.draw(new java.awt.geom.Line2D.Float(x, y, x - dx, y2));
+            }
+            g2.dispose();
+            return Tex.made("menu_rain", img.getRGB(0, 0, w, h, null, 0, w), w, h);
+        } catch (RuntimeException | LinkageError e) {
+            return null;
+        }
+    }
+
+    /** Strikes: returns the flash strength (0..1) and draws the bolt. {@code state} is {next strike nanos, seed}. */
+    static float strike(GuiGraphics g, int width, int height, float t, long[] state) {
+        long now = System.nanoTime();
+        if (state[0] == 0) state[0] = now + (long) (3.5e9 + 3e9 * Lightning.hash((int) (now >> 20), 9));
+        float since = (now - state[0]) / 1e9f;
+        if (since < 0f) return 0f;
+        if (since > 0.9f) {
+            state[1]++;
+            state[0] = now + (long) ((3.0 + 4.5 * Lightning.hash((int) state[1], 11)) * 1e9);
+            return 0f;
+        }
+        int seed = (int) state[1] * 7 + (since > 0.18f && since < 0.3f ? 1 : 0);
+        float fl = since < 0.08f ? since / 0.08f : since < 0.18f ? 0.35f : since < 0.3f ? 1f : Math.max(0f, 1f - (since - 0.3f) / 0.6f);
+        float x0 = width * (0.55f + 0.3f * Lightning.hash(seed >> 1, 21));
+        float x1 = x0 + width * (Lightning.hash(seed >> 1, 22) - 0.5f) * 0.25f;
+        float alpha = Math.min(1f, fl * 1.1f);
+        Lightning.bolt(g, x0, -4, x1, height * (0.45f + 0.2f * Lightning.hash(seed >> 1, 23)), 1f, seed, alpha, 0xFF8EC8FF, 0xFFD6E6FF, Math.max(1.2f, height / 190f), 1, 0.7f, 0.3f, 3);
+        return fl;
+    }
+
+    @Override
+    public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        long now = System.nanoTime();
+        float dt = lastNanos == 0 ? 0.016f : Math.min(0.05f, (now - lastNanos) / 1e9f);
+        lastNanos = now;
+        float t = time();
+        float k = k();
+        if (mouseX != lastMx || mouseY != lastMy) {
+            if (lastMx >= 0) mouseMoved = true;
+            lastMx = mouseX;
+            lastMy = mouseY;
+        }
+        curX = mouseMoved ? mouseX : -1;
+        curY = mouseMoved ? mouseY : -1;
+        float targetParX = mouseMoved ? mouseX / (float) Math.max(1, width) - 0.5f : 0f;
+        float targetParY = mouseMoved ? mouseY / (float) Math.max(1, height) - 0.5f : 0f;
+        float parallaxDamping = 1f - (float) Math.exp(-dt * 2.8f);
+        sceneParX += (targetParX - sceneParX) * parallaxDamping;
+        sceneParY += (targetParY - sceneParY) * parallaxDamping;
+        parX = sceneParX;
+        parY = sceneParY;
+        int hoverBtn = mouseMoved ? buttonAt(mouseX, mouseY) : -1;
+        if (hoverBtn >= 0) selected = hoverBtn;
+
+        long[] st = {flashAt, flashSeed};
+        scene(g, width, height, t, st);
+        float fl = strike(g, width, height, t, st);
+        if (UiSettings.CALM.on()) fl *= 0.15f;
+        flashAt = st[0];
+        flashSeed = (int) st[1];
+        if (fl > 0.01f) g.fill(0, 0, width, height, Draw.rgba(0xFFCFE4FF, 0.20f * fl));
+
+        int gs = Tex.guiScale();
+        drawTitle(g, k, t, fl, gs);
+        int w = bw(k);
+        int h = bh(k);
+        Tex.Img tablet = Tex.fitted("menu_tablet", "textures/gui/menu/tablet.png", w * gs, h * gs, false, 0, 0);
+        int hm = Math.round(HOVER_MARGIN * k);
+        int hw = w + 2 * hm;
+        int hh = h + 2 * hm;
+        Tex.Img hover = Tex.fitted("menu_hover", "textures/gui/menu/tablet_hover.png", hw * gs, hh * gs, false, 0, 0);
+        for (int i = 0; i < 6; i++) {
+            float want = i == selected ? 1f : 0f;
+            // Exponential damping is independent of frame rate and avoids the twitchy feel of a fixed per-frame lerp.
+            float hoverBlend = 1f - (float) Math.exp(-dt * 12.5f);
+            glow[i] += (want - glow[i]) * hoverBlend;
+            if (Math.abs(want - glow[i]) < 0.0025f) glow[i] = want;
+            // Staggered cubic ease-out: tablets settle into place instead of simply sliding to a stop.
+            float appear = Math.max(0f, Math.min(1f, (t - 0.38f - i * 0.075f) / 0.62f));
+            float ease = 1f - (float) Math.pow(1f - appear, 3.0);
+            float settle = appear < 1f ? (float) Math.sin(appear * Math.PI) * 1.15f : 0f;
+            int x = bx(k);
+            int y = by(i, k) + Math.round(((1f - ease) * 20f - settle) * k) - Math.round(glow[i] * 2f * k);
+            int ia = Math.round(ease * 255f) << 24 | 0xFFFFFF;
+            Draw.shadow(g, x, y + Math.round(2 * k), w, h, 3, 6, (0.30f + 0.25f * glow[i]) * ease);
+            if (tablet != null) tablet.draw(g, x, y, w, h, ia);
+            else Draw.rrect(g, x, y, w, h, 3, Draw.rgba(0xFFC9C2B2, ease));
+            if (glow[i] > 0.01f && hover != null) hover.draw(g, x - hm, y - hm, hw, hh, Draw.rgba(0xFFFFFFFF, glow[i] * 0.6f * ease));
+            if (glow[i] > 0.01f) Thunder.outline(g, x, y, w, h, t, glow[i] * ease, k, 1f);
+            Tex.Img ink = Tex.fitted("menu_ink_" + NAMES[i], "textures/gui/menu/ink_" + NAMES[i] + ".png", w * gs, h * gs, false, 0, 0);
+            int inkCol = Draw.rgba(Draw.mix(0xFF2B2117, 0xFFF1F6FF, glow[i]), ease);
+            if (ink != null) ink.draw(g, x, y, w, h, inkCol);
+            else Draw.boldCenter(g, NAMES[i].toUpperCase(), x + w / 2, y + h / 2 - 4, inkCol);
+        }
+
+        // bottom right: the news scroll, then version and who is playing
+        int tabletRight = bx(k) + bw(k);
+        int bottomMargin = Math.max(22, Math.round(14 * k) + 14);
+        if (news.layout(width, height, tabletRight, bottomMargin)) {
+            float na = Math.max(0f, Math.min(1f, (t - 0.9f) / 0.6f));
+            news.draw(g, mouseX, mouseY, dt, 1f - (1f - na) * (1f - na));
+        }
+        String name = minecraft.getUser().getName().toUpperCase(java.util.Locale.ROOT);
+        String line = "VERSION " + ZeusMenu.MENU_VERSION + " - " + name + " ONLINE";
+        float ts = Math.max(1f, k * 0.95f);
+        Draw.textRightS(g, line, width - Math.round(8 * k), height - Math.round(14 * k), 0xFFE8EEF8, ts);
+
+        // bottom left: the way back to the game's own menu
+        String back = "Classic menu";
+        boolean hotB = mouseX >= 6 && mouseX < 6 + Draw.width(back) + 8 && mouseY >= height - 16 && mouseY < height - 4;
+        Draw.text(g, back, 10, height - 13, hotB ? 0xFFFFFFFF : 0x99C8D6EE);
+
+        // fade in from black
+        float in = Math.max(0f, 1f - t / 0.9f);
+        if (in > 0.01f) g.fill(0, 0, width, height, Draw.rgba(0xFF000000, in * in));
+    }
+
+    /** The Z logo and the lightning lettering in the top right corner. It brightens when the sky flashes and breathes the rest of the time. */
+    private void drawTitle(GuiGraphics g, float k, float t, float fl, int gs) {
+        float sc = titleScale(k);
+        int th = Math.round(TITLE_H * k * sc);
+        int tw = Math.round(TITLE_H * TITLE_RATIO * k * sc);
+        int lg = Math.round(LOGO * k * sc);
+        Tex.Img title = Tex.fitted("menu_title", "textures/gui/menu/title.png", tw * gs, th * gs, false, 0, 0);
+        Tex.Img logo = Tex.fitted("menu_logo", "textures/gui/menu/logo.png", lg * gs, lg * gs, false, 0, 0);
+        float appear = Math.max(0f, Math.min(1f, (t - 0.2f) / 0.7f));
+        if (title == null || appear <= 0.01f) return;
+        float pulse = 0.5f + 0.5f * (float) Math.sin(t * 2.1f);
+        float slide = (1f - appear) * (1f - appear) * 24f;
+        // the picture has glow room around the letters; the visible part is about the middle 80 %
+        int tx = width - tw + Math.round(tw * 0.08f) - 4 + Math.round(slide);
+        int ty = -Math.round(th * TITLE_PAD_TOP) + Math.round(9 * k);
+        int hw = Math.round(tw * 1.025f);
+        int hh = Math.round(th * 1.025f);
+        title.draw(g, tx - (hw - tw) / 2, ty - (hh - th) / 2, hw, hh, Draw.rgba(0xFFFFFFFF, (0.16f + 0.14f * pulse + 0.55f * fl) * appear));
+        title.draw(g, tx, ty, tw, th, Draw.rgba(0xFFFFFFFF, appear));
+        if (fl > 0.05f) title.draw(g, tx, ty, tw, th, Draw.rgba(0xFFFFFFFF, Math.min(1f, fl) * 0.8f * appear));
+        int bx0 = Math.max(0, tx + Math.round(tw * 0.04f) - lg - Math.round(lg * 0.02f));
+        int bx1 = Math.min(width, tx + tw);
+        int by0 = Math.max(0, ty + Math.round(th * 0.08f));
+        int by1 = Math.max(by0 + 10, ty + Math.round(th * 0.78f));
+        logoBox[0] = bx0;
+        logoBox[1] = by0;
+        logoBox[2] = bx1 - bx0;
+        logoBox[3] = by1 - by0;
+        if (inLogo(curX, curY)) {
+            // the mouse is over it: it lights up and says what a click does
+            title.draw(g, tx, ty, tw, th, Draw.rgba(0xFFFFFFFF, 0.55f * appear));
+            String tip = "Zeus settings";
+            int tipW = Draw.width(tip) + 10;
+            int tipX = Math.max(2, Math.min(width - tipW - 2, bx0 + logoBox[2] / 2 - tipW / 2));
+            int tipY = Math.min(height - 16, by1 + 4);
+            Draw.rrect(g, tipX, tipY, tipW, 13, 4, 0xF0050914);
+            Draw.rrectLine(g, tipX, tipY, tipW, 13, 4, 0xFF3C92FF);
+            Draw.text(g, tip, tipX + 5, tipY + 3, 0xFFFFFFFF);
+        }
+        if (logo != null) {
+            int lx = tx + Math.round(tw * 0.04f) - lg - Math.round(lg * 0.02f);
+            int ly = Math.max(4, Math.round(th * 0.30f) - lg / 2 + Math.round(th * 0.05f) + Math.round(9 * k));
+            Lightning.bloom(g, lx + lg / 2f, ly + lg / 2f, lg * 0.75f, 0xFF3C78FF, (0.10f + 0.08f * pulse + 0.35f * fl) * appear);
+            logo.draw(g, lx, ly, lg, lg, Draw.rgba(0xFFFFFFFF, appear));
+            if (fl > 0.05f) logo.draw(g, lx, ly, lg, lg, Draw.rgba(0xFFFFFFFF, Math.min(1f, fl) * 0.8f * appear));
+            // a few small thunders crawl around the logo
+            Thunder.ring(g, lx + lg / 2f, ly + lg / 2f, lg * 0.46f, t, appear * 0.8f, k);
+        }
+    }
+
+    // ------------------------------------------------------------ input
+
+    private void play() {
+        try {
+            minecraft.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1f));
+        } catch (Throwable ignored) {
+            // silence is fine
+        }
+    }
+
+    private boolean inLogo(int x, int y) {
+        return logoBox[2] > 0 && x >= logoBox[0] && x < logoBox[0] + logoBox[2] && y >= logoBox[1] && y < logoBox[1] + logoBox[3];
+    }
+
+    /** The Zeus settings, the same panel the Zeus Customs button opens. */
+    private void openSettings() {
+        play();
+        try {
+            minecraft.setScreen(new ZeusScreen(this));
+        } catch (RuntimeException e) {
+            Zeus.LOG.warn("The Zeus settings could not be opened from the logo", e);
+        }
+    }
+
+    private void activate(int i) {
+        play();
+        try {
+            switch (i) {
+                case 0 -> minecraft.setScreen(new SelectWorldScreen(this));
+                case 1 -> minecraft.setScreen(new JoinMultiplayerScreen(this));
+                case 2 -> minecraft.setScreen(new ZeusScreen(this));
+                case 3 -> minecraft.setScreen(new OptionsScreen(this, minecraft.options));
+                case 4 -> minecraft.setScreen(new ZeusCreditsScreen(this));
+                default -> minecraft.stop();
+            }
+        } catch (RuntimeException e) {
+            Zeus.LOG.warn("Menu button {} failed", NAMES[i], e);
+        }
+    }
+
+    @Override
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        if (event.button() == 0) {
+            if (news.click(event.x(), event.y())) {
+                play();
+                return true;
+            }
+            int i = buttonAt((int) event.x(), (int) event.y());
+            if (i >= 0) {
+                activate(i);
+                return true;
+            }
+            if (inLogo((int) event.x(), (int) event.y())) {
+                openSettings();
+                return true;
+            }
+            int mx = (int) event.x();
+            int my = (int) event.y();
+            if (mx >= 6 && mx < 6 + Draw.width("Classic menu") + 8 && my >= height - 16 && my < height - 4) {
+                UiSettings.MENU.set(false);
+                Zeus.save();
+                minecraft.setScreen(new TitleScreen());
+                return true;
+            }
+        }
+        return super.mouseClicked(event, doubleClick);
+    }
+
+    @Override
+    public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
+        if (news.wheel(x, y, scrollY)) return true;
+        return super.mouseScrolled(x, y, scrollX, scrollY);
+    }
+
+    @Override
+    public boolean keyPressed(KeyEvent event) {
+        int key = event.key();
+        if (key == GLFW.GLFW_KEY_DOWN || key == GLFW.GLFW_KEY_TAB) {
+            selected = (selected + 1) % 6;
+            return true;
+        }
+        if (key == GLFW.GLFW_KEY_UP) {
+            selected = (selected + 5) % 6;
+            return true;
+        }
+        if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER || key == GLFW.GLFW_KEY_SPACE) {
+            activate(selected);
+            return true;
+        }
+        return super.keyPressed(event);
+    }
+
+    @Override
+    public void removed() {
+        // pictures stay cached for the next time the menu opens
+    }
+}

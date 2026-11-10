@@ -1,0 +1,122 @@
+package com.zlorbie788.zeus.ui;
+
+import com.zlorbie788.zeus.core.Zeus;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.network.chat.Component;
+
+/** One screen with the highlights of the version you just installed. Shown once per version; /zeus whatsnew shows it again. */
+public final class ZeusWhatsNewScreen extends Screen {
+    /** Keep this short and in plain words: it has to fit one screen. Update it for every release. */
+    private static final String[][] ITEMS = {
+        {"Zeus loading screen", "The Mojang start screen is replaced by the Zeus ring with the real percent of the game loading."},
+        {"Anubis-style chunks and tracers", "Suspicious Chunks draws flat tiles with a rounded edge, and tracers are thin lines that no longer glitch when the target is behind you."},
+        {"A livelier main menu", "The news scroll unrolls on a spring, and the clouds change shape and cover the sky when a storm forms."},
+        {"Camera-accurate overlays", "Boxes, names and tracers follow the real camera in third person, freecam and while zooming."},
+        {"New start-up sound", "A rising ring, a hard crack, rolling thunder and a warm chord."},
+        {"Website for phones", "The Zeus website now fits a phone screen, and the Source code page works again."}
+    };
+    private final Screen parent;
+    private final long born = System.nanoTime();
+    private final long[] strike = new long[2];
+
+    public ZeusWhatsNewScreen(Screen parent) {
+        super(Component.literal("What's new"));
+        this.parent = parent;
+    }
+
+    @Override public boolean isPauseScreen() { return false; }
+
+    @Override public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        // drawn in render
+    }
+
+    @Override public void onClose() {
+        UiState.markWhatsNewSeen();
+        minecraft.setScreen(parent);
+    }
+
+    private float k() { return Math.max(0.8f, height / 473f); }
+
+    private int panelW() { return Math.min(width - 16, Math.round(380 * k())); }
+    private int panelH() { return Math.min(height - 16, Math.round(380 * k())); }
+
+    private int[] button() {
+        float k = k();
+        int bw = Math.round(110 * k), bh = Math.round(24 * k);
+        int px = (width - panelW()) / 2, py = (height - panelH()) / 2;
+        return new int[] {(width - bw) / 2, py + panelH() - bh - Math.round(14 * k), bw, bh};
+    }
+
+    @Override public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        float t = (System.nanoTime() - born) / 1e9f;
+        ZeusTitleScreen.scene(g, width, height, t, strike);
+        float fl = ZeusTitleScreen.strike(g, width, height, t, strike);
+        if (fl > 0.01f) g.fill(0, 0, width, height, Draw.rgba(0xFFCFE4FF, 0.14f * fl));
+        float k = k();
+        int pw = panelW(), ph = panelH();
+        int px = (width - pw) / 2, py = (height - ph) / 2;
+        int r = Math.max(4, Math.round(8 * k));
+        Draw.rrect(g, px, py, pw, ph, r, 0xE0070C1A, 0xE0050914);
+        Draw.rrectLine(g, px, py, pw, ph, r, 0xFF234A8A);
+        float s = Math.max(1f, k * 1.7f);
+        int pad = Math.round(18 * k);
+        Draw.textS(g, "WHAT'S NEW", px + pad, py + Math.round(14 * k), 0xFF6FA8FF, Math.max(1f, k * 0.95f));
+        Draw.textS(g, "Zeus " + Zeus.VERSION, px + pad, py + Math.round(27 * k), 0xFFFFFFFF, s);
+        float ts = Math.max(1f, k * 0.95f), bs = Math.max(1f, k * 0.9f);
+        int y = py + Math.round(58 * k);
+        int maxW = pw - pad * 2;
+        int bottom = button()[1] - Math.round(8 * k);
+        for (String[] it : ITEMS) {
+            if (y > bottom - Math.round(20 * k)) break;
+            g.fill(px + pad, y + 1, px + pad + Math.max(2, Math.round(2 * k)), y + Math.round(10 * k), 0xFF3C92FF);
+            Draw.textS(g, it[0], px + pad + Math.round(8 * k), y, 0xFFFFFFFF, ts);
+            y += Math.round(12 * k);
+            y = wrapped(g, it[1], px + pad + Math.round(8 * k), y, maxW - Math.round(8 * k), 0xFFA9BAD9, bs, bottom);
+            y += Math.round(9 * k);
+        }
+        int[] b = button();
+        boolean hot = mouseX >= b[0] && mouseX < b[0] + b[2] && mouseY >= b[1] && mouseY < b[1] + b[3];
+        Draw.rrect(g, b[0], b[1], b[2], b[3], 6, hot ? 0xFF10306E : 0xFF0A1A3C);
+        Draw.rrectLine(g, b[0], b[1], b[2], b[3], 6, hot ? 0xFF3C92FF : 0xFF234A8A);
+        Draw.textCenterS(g, "Got it", width / 2, b[1] + (b[3] - Math.round(8 * bs)) / 2, 0xFFFFFFFF, bs);
+        float in = Math.max(0f, 1f - t / 0.4f);
+        if (in > 0.01f) g.fill(0, 0, width, height, Draw.rgba(0xFF000000, in));
+    }
+
+    /** Draws wrapped text and returns the y below the last line. */
+    private int wrapped(GuiGraphics g, String text, int x, int y, int maxW, int color, float sc, int limit) {
+        int lineH = Math.round(9 * sc) + 2;
+        StringBuilder line = new StringBuilder();
+        for (String word : text.split(" ")) {
+            String cand = line.length() == 0 ? word : line + " " + word;
+            if (font.width(cand) * sc > maxW && line.length() > 0) {
+                if (y + lineH > limit) return y;
+                Draw.textS(g, line.toString(), x, y, color, sc);
+                y += lineH;
+                line.setLength(0);
+                cand = word;
+            }
+            line.setLength(0);
+            line.append(cand);
+        }
+        if (line.length() > 0 && y + lineH <= limit) { Draw.textS(g, line.toString(), x, y, color, sc); y += lineH; }
+        return y;
+    }
+
+    @Override public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        int[] b = button();
+        if (event.button() == 0 && event.x() >= b[0] && event.x() < b[0] + b[2] && event.y() >= b[1] && event.y() < b[1] + b[3]) {
+            onClose();
+            return true;
+        }
+        return super.mouseClicked(event, doubleClick);
+    }
+
+    @Override public boolean keyPressed(net.minecraft.client.input.KeyEvent event) {
+        int code = event.key();
+        if (code == 257 || code == 335 || code == 32) { onClose(); return true; } // Enter, keypad Enter, Space
+        return super.keyPressed(event);
+    }
+}

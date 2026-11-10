@@ -1,0 +1,208 @@
+import io
+import json
+
+WEB = "src/main/resources/assets/zeus/web/features.json"
+WCP = "website/features.json"
+
+
+def rd(p):
+    return io.open(p, encoding="utf-8").read()
+
+
+def wr(p, s):
+    io.open(p, "w", encoding="utf-8", newline="").write(s)
+
+
+data = json.loads(rd(WEB))
+mods = data["modules"]
+ids = {m["id"]: m for m in mods}
+
+
+def switch(name, desc, default):
+    return {"name": name, "desc": desc, "type": "switch", "default": default}
+
+
+def slider(name, desc, lo, hi, step, default, unit=None):
+    s = {"name": name, "desc": desc,
+         "type": "slider", "min": float(lo), "max": float(hi),
+         "step": float(step), "default": float(default)}
+    if unit:
+        s["unit"] = unit
+    return s
+
+
+def choice(name, desc, options, default):
+    return {"name": name, "desc": desc, "type": "choice",
+            "options": options, "default": default}
+
+
+def text(name, desc, default):
+    return {"name": name, "desc": desc, "type": "text", "default": default}
+
+
+# 1) the pre-existing display-only card currently owns id="fakelag".
+#    Rename it to "lagmonitor" so the real module can own "fakelag".
+#    If the new Fakelag module is already present, do nothing (idempotent).
+old = ids.get("fakelag")
+if old is None:
+    raise SystemExit("no fakelag card found")
+if old.get("name") == "Fake Lag Monitor":
+    old["id"] = "lagmonitor"
+    old["description"] = ("Rolling ping and jitter monitor with a display-only latency simulator. It reads your real ping "
+                          "and never touches a packet; the Fake Lag module is the one that delays them.")
+elif old.get("name") == "Fake Lag":
+    # already the new module; nothing to do
+    pass
+else:
+    raise SystemExit("unexpected fakelag card: %r" % old.get("name"))
+
+# 2) the two new modules, inserted right after the renamed monitor
+fakelag = {
+    "id": "fakelag",
+    "name": "Fake Lag",
+    "description": ("Holds the packets you send for a moment and releases them in order, so the server works from an older "
+                    "picture of you. Keeps answers and containers out of it, caps the queue and empties it when you are hit."),
+    "category": "UTILITY",
+    "rank": 61,
+    "weight": "light",
+    "cost": 2,
+    "runs": ["tick", "hud"],
+    "settings": [
+        choice("Mode", "Constant: one steady delay. Jitter: the delay wanders a little. Pulse: hold for a while, then release everything at once. Spike: nothing most of the time, then a short burst. Adaptive: the delay follows the server's real answer time.",
+               ["Constant", "Jitter", "Pulse", "Spike", "Adaptive"], "Constant"),
+        slider("Delay", "How long packets wait before they are sent. 150 ms is a bad connection, 400 ms is unplayable for the server but very hard to hit.",
+               20, 1000, 10, 150, " ms"),
+        slider("Jitter", "How far the delay wanders around the value above. 0 is a fixed rhythm, which is easier to spot.",
+               0, 400, 10, 60, " ms"),
+        slider("Hold for", "How long each pulse keeps packets back.",
+               40, 2000, 10, 250, " ms"),
+        slider("Then release for", "How long everything flows normally between two pulses.",
+               40, 3000, 10, 250, " ms"),
+        slider("Spike length", "How long each burst holds packets.",
+               50, 2000, 10, 300, " ms"),
+        slider("Between spikes", "How long it behaves normally between two bursts.",
+               1, 30, 1, 3, " s"),
+        slider("Follow the server by", "Adaptive only: the delay is your measured answer time times this. 1.2 waits a little longer than the server needs.",
+               0.5, 3, 0.1, 1.2, "x"),
+        choice("What waits", "Movement only is the usual choice and the least disruptive. Actions add clicks and swings. The last one adds chat, containers and everything else, and can confuse an inventory badly.",
+               ["Movement only", "Movement and actions", "Everything but answers"], "Movement only"),
+        switch("Only while fighting", "Holds packets only when you swung or landed a hit in the last two seconds, so walking and building stay normal.",
+               False),
+        switch("Release everything when I am hit", "The moment you take damage, everything waiting is sent at once, so you are never fighting from a stale position.",
+               True),
+        slider("Most packets held", "A full queue is emptied instead of growing, which is what keeps a server from kicking you for silence.",
+               5, 200, 5, 40),
+        {"name": "Right now", "type": "info"},
+    ],
+}
+
+spoof = {
+    "id": "spoof",
+    "name": "Vanilla Spoof",
+    "description": ("Tells the server it is talking to the ordinary game: vanilla brand, no mod channel list, nothing extra "
+                    "sent. The panel shows what a server would see."),
+    "category": "UTILITY",
+    "rank": 42,
+    "weight": "light",
+    "cost": 1,
+    "runs": ["tick"],
+    "settings": [
+        switch("Vanilla client brand", "Sends the ordinary game's brand instead of the loader's name. This is the single most obvious hint a server gets.",
+               True),
+        text("Brand the server sees", "What the server is told about your client. \"vanilla\" is what the unmodded game sends; anything else is a lie a staff member can compare with the real thing.",
+               "vanilla"),
+        switch("Hide mod channels", "Stops the client from announcing the network channels that mods register. A server or an anti-cheat reads that list to spot a modded client even when the brand says vanilla. Chat, movement, inventory and every normal action still work.",
+               True),
+        switch("Hide other mod payloads", "Also stops the small custom payloads other mods send to servers. Keep it on unless one of your server's plugins needs a mod channel.",
+               False),
+        {"name": "What the server sees", "type": "info"},
+    ],
+}
+
+at = None
+for i, m in enumerate(mods):
+    if m["id"] == "lagmonitor":
+        at = i
+        break
+if at is None:
+    raise SystemExit("lagmonitor not in module list after rename")
+for newmod in fakelag.get("id") and [fakelag, spoof]:
+    mods.insert(at + 1, newmod)
+    ids[newmod["id"]] = newmod
+    at += 1
+
+# 3) zoom gained three settings
+z = ids.get("zoom")
+if z is not None:
+    z["settings"] = [
+        slider("Zoom", "How much closer. The game does not go below a field of view of 30, so a very large zoom stops there.",
+               1.5, 8, 0.5, 3, "x"),
+        switch("Smooth", "Slide in and out instead of snapping, like a real scope.",
+               True),
+        slider("Mouse sensitivity while zoomed", "Scales your mouse sensitivity while the zoom is in, so aiming stays precise. 100 keeps it exactly as it is.",
+               10, 100, 5, 45, " %"),
+        switch("Works in third person", "The zoom is a field of view change, so it is the same in first and third person. Turn this off to have the zoom switch to first person while it is in.",
+               True),
+    ]
+
+# 4) every tracer can now start at your body
+for m in mods:
+    for s in m.get("settings", []):
+        if s.get("name") == "Tracer from" and s.get("type") == "choice":
+            if "My body" not in s["options"]:
+                s["options"].append("My body")
+
+# 5) the listing toolbar, rebuilt sniper
+aht = ids.get("auction_house_tweaks")
+if aht is not None:
+    aht["description"] = ("Auction listing workflow, learned-price bargain alerts, an in-game price graph and the AH Sniper: it "
+                          "reads every listing, pages through the auction house, prices each one against your rule and the "
+                          "learned market value, buys the biggest discount, confirms it and checks the item actually arrived.")
+    keep = [s for s in aht["settings"]
+            if not s.get("name", "").startswith("Sniper:")]
+    aht["settings"] = keep + [
+        switch("Sniper: auto-buy", "Buys listings that match a rule below by itself. Off: the sniper does nothing. It switches itself off again when a limit is reached.",
+               False),
+        text("Sniper: items and highest price", "One rule per line or comma: item = the most you will pay. For example: elytra=2m, mace=500k, netherite ingot=300k. Write an item with no price (just \"shulker box\") to buy it whenever it is under the discount below. k, m, b and t work.", ""),
+        choice("Sniper: the price is", "Whole listing: the price on the listing. Per item: the price divided by the number of items in the stack.",
+               ["For the whole listing", "Per item"], "For the whole listing"),
+        switch("Sniper: use learned prices", "Also compares the price with what the client has seen that item sell for, so a rule without a price still has a ceiling and a \"bargain\" is measured against the market, not only your limit.",
+               True),
+        slider("Sniper: buy below market", "With learned prices on, a listing is worth buying only when it is at least this far under the learned price for that item.",
+               5, 90, 5, 25, " %"),
+        text("Sniper: spending limit", "It stops buying once it has spent this much since you switched it on. 0 means no limit (not recommended).", "1m"),
+        slider("Sniper: most purchases", "It stops after this many purchases.",
+               1, 50, 1, 3),
+        slider("Sniper: pause after a purchase", "Seconds it waits after a confirmed purchase before it looks again.",
+               0.5, 30, 0.5, 1.5, " s"),
+        slider("Sniper: reaction time", "How long a matching listing can sit before it is clicked. 0 clicks on the tick it appears; a small value looks more like a person.",
+               0, 400, 10, 0, " ms"),
+        choice("Sniper: how to buy", "Click listing then confirm: the usual two-step. Shift-click: many servers buy instantly, with no confirm window. Both: tries shift-click, then falls back to clicking the listing.",
+               ["Click listing, then confirm", "Shift-click the listing", "Both"], "Both"),
+        switch("Sniper: open the auction house for me", "When no window is open, types the command below to open it again.",
+               True),
+        text("Sniper: open command", "The command (without the slash) that opens the auction house.", "ah"),
+        text("Sniper: search command", "The command used to put the auction house on one item. %s is replaced with the search text. Leave it empty to never search.", "ah search %s"),
+        text("Sniper: search for", "What the search command gets, for example: elytra, mace. One search is tried every so often when the listings show nothing worth buying.", ""),
+        slider("Sniper: search again every", "Seconds between two searches, so the auction house is not flooded with commands.",
+               5, 300, 5, 30, " s"),
+        slider("Sniper: pages to turn", "How many pages it pages through per pass when nothing on the page is worth buying. 0 never turns a page.",
+               0, 20, 1, 3),
+        switch("Sniper: check the item arrived", "Counts the item in your inventory before and after the purchase, and only counts the money as spent when it is really there. Off: trusts the click.",
+               True),
+        text("Sniper: auction window title", "Words that appear in the title of the listing window, separated by commas.", "auction,ah,market"),
+        text("Sniper: confirm window title", "Words that appear in the title of the window that asks you to confirm a purchase.", "confirm,purchase,buy"),
+        {"name": "Sniper: status", "type": "info"},
+    ]
+
+# 6) the card only appears after a real base is found
+st = ids.get("storageesp")
+if st is not None:
+    st["description"] = ("Marks storage blocks in chunks and block states your client has. Its Discoveries card only appears "
+                         "after a real base is found (recorded by a finder here, or a spot with several containers and machines "
+                         "or displays), and its footer says which base was found and whether it is intact or looted.")
+
+wr(WEB, json.dumps(data, ensure_ascii=False, separators=(",", ":")))
+wr(WCP, json.dumps(data, ensure_ascii=False, separators=(",", ":")))
+print("features.json / website/features.json:", len(data["modules"]), "modules")
+print("new:", fakelag["id"], spoof["id"], "renamed:", old["id"])

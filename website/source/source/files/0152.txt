@@ -1,0 +1,134 @@
+package com.zlorbie788.zeus.mods;
+
+import com.zlorbie788.zeus.core.Category;
+import com.zlorbie788.zeus.core.Env;
+import com.zlorbie788.zeus.core.Module;
+import com.zlorbie788.zeus.core.Setting;
+import com.zlorbie788.zeus.mixin.MinecraftAccessor;
+import com.zlorbie788.zeus.mixin.MultiPlayerGameModeAccessor;
+import net.minecraft.client.Minecraft;
+
+/** World modules. */
+public final class WorldMods {
+    private WorldMods() {}
+
+    /** Breaks blocks much faster. */
+    public static final class FastBreak extends Module {
+        private final Setting.Num speed = add(new Setting.Num("Mining speed", "How many times faster you break blocks on your screen. Servers put the block back if it breaks more than about 1.4x early, so that is the default.", 1.4, 1.1, 20, 0.1, "x"));
+        private final Setting.Bool delay = add(new Setting.Bool("No pause between blocks", "Removes the short wait before the next block starts breaking.", true));
+
+        public FastBreak() {
+            super("fastbreak", "Fast Break", "Break blocks much faster.", Category.WORLD);
+            speed.onChange(this::apply);
+        }
+
+        private void apply() {
+            if (enabled()) Env.attribute("block_break_speed", "fastbreak", speed.get() - 1.0, "add_multiplied_total");
+        }
+
+        @Override
+        protected void onEnable() {
+            apply();
+        }
+
+        @Override
+        protected void onTick(Minecraft mc) {
+            if (delay.on() && mc.gameMode != null) ((MultiPlayerGameModeAccessor) mc.gameMode).zeus$setDestroyDelay(0);
+        }
+
+        @Override
+        protected void onDisable() {
+            Env.attributeOff("block_break_speed", "fastbreak");
+        }
+
+        @Override
+        protected void cleanSlate() {
+            onDisable();
+        }
+
+        @Override
+        public String info() {
+            return speed.text();
+        }
+    }
+
+    /** Places blocks without the wait between clicks. */
+    public static final class FastPlace extends Module {
+        private final Setting.Num ticks = add(new Setting.Num("Delay", "Ticks between two placements. 4 is normal, 0 is as fast as the game can go.", 0, 0, 3, 1, " ticks"));
+
+        public FastPlace() {
+            super("fastplace", "Fast Place", "Place blocks and use items without the wait.", Category.WORLD);
+        }
+
+        @Override
+        protected void onTick(Minecraft mc) {
+            MinecraftAccessor acc = (MinecraftAccessor) mc;
+            if (acc.zeus$getRightClickDelay() > ticks.i()) acc.zeus$setRightClickDelay(ticks.i());
+        }
+    }
+
+    /** Breaks the blocks around you. */
+    public static final class Nuker extends Module {
+        private final Setting.Num radius = add(new Setting.Num("Radius", "How far around you it breaks. Your reach also limits this.", 4, 1, 6, 1, " blocks"));
+        private final Setting.Choice filter = add(new Setting.Choice("Blocks", "Which blocks are broken.", 0, "Everything", "Ores only", "Plants and leaves only"));
+        private final Setting.Bool flat = add(new Setting.Bool("Only at or above feet", "Never digs the floor out from under you.", true));
+        private final Setting.Bool swing = add(new Setting.Bool("Swing hand", "Show the hand swing.", false));
+        private net.minecraft.core.BlockPos target;
+
+        public Nuker() {
+            super("nuker", "Area Clearer", "Clears a selected block category around you, nearest first. Your reach and the selected radius limit the work.", Category.WORLD);
+        }
+
+        private boolean wanted(net.minecraft.world.level.block.state.BlockState st) {
+            if (st.isAir()) return false;
+            String n = com.zlorbie788.zeus.core.Names.block(st.getBlock());
+            return switch (filter.index()) {
+                case 1 -> n.endsWith("_ore") || n.equals("ancient_debris");
+                case 2 -> n.endsWith("_leaves") || n.contains("grass") || n.contains("fern") || n.contains("flower") || n.contains("vine") || n.contains("bush") || n.contains("sapling") || n.contains("mushroom");
+                default -> true;
+            };
+        }
+
+        @Override
+        protected void onDisable() {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.gameMode != null && target != null) mc.gameMode.stopDestroyBlock();
+            target = null;
+        }
+
+        @Override
+        protected void onTick(Minecraft mc) {
+            if (mc.player == null || mc.level == null || mc.gameMode == null || mc.screen != null) return;
+            if (target != null) {
+                var st = mc.level.getBlockState(target);
+                if (!wanted(st) || com.zlorbie788.zeus.core.Build.distTo(target) > radius.get() + 0.5) {
+                    target = null;
+                }
+            }
+            if (target == null) {
+                net.minecraft.core.BlockPos c = mc.player.blockPosition();
+                int r = radius.i();
+                double best = Double.MAX_VALUE;
+                for (int x = -r; x <= r; x++) {
+                    for (int y = -r; y <= r; y++) {
+                        for (int z = -r; z <= r; z++) {
+                            net.minecraft.core.BlockPos p = c.offset(x, y, z);
+                            if (flat.on() && p.getY() < c.getY()) continue;
+                            var st = mc.level.getBlockState(p);
+                            if (!wanted(st) || st.getDestroySpeed(mc.level, p) < 0f) continue;
+                            double d = com.zlorbie788.zeus.core.Build.distTo(p);
+                            if (d > radius.get() || d >= best) continue;
+                            best = d;
+                            target = p;
+                        }
+                    }
+                }
+            }
+            if (target == null) return;
+            net.minecraft.core.Direction face = net.minecraft.core.Direction.UP;
+            mc.gameMode.startDestroyBlock(target, face);
+            mc.gameMode.continueDestroyBlock(target, face);
+            if (swing.on()) mc.player.swing(net.minecraft.world.InteractionHand.MAIN_HAND);
+        }
+    }
+}

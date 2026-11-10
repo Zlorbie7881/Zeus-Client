@@ -1,0 +1,79 @@
+package com.zlorbie788.zeus.ui;
+
+import com.zlorbie788.zeus.core.Zeus;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
+
+/** Lightweight, replayable first-run guide. Uses vanilla widgets and no per-frame allocations. */
+public final class ZeusTutorialScreen extends Screen {
+    private static final String[][] PAGES = {
+        {"Welcome to Zeus", "Your client-side toolkit. This short tour explains where features live and how to configure them.", "Tip: press Z in a world to open the module panel."},
+        {"Combat", "Combat contains combat-related tools and coordination settings. Review every setting before enabling a feature.", "Use the module descriptions and keybind controls to understand each option."},
+        {"Movement & Player", "Movement contains movement and navigation utilities. Player contains personal inventory and quality-of-life tools.", "Some movement automation is restricted to singleplayer for safety."},
+        {"Visuals", "Visuals contains ESP, tracers, overlays, X-Ray and other rendering options.", "Use the performance presets if you notice frame-time spikes."},
+        {"Base Finding & World", "Base Finding groups local-world clues, chunk activity and finder tools. World contains block and world interaction utilities.", "Client-side scans can only inspect data the game has received."},
+        {"HUD, Tools & Profiles", "HUD & Info contains radar and status displays. Tools contains utilities. Profiles lets you save and restore configurations.", "Search modules globally, use the Active page to review enabled modules, and customize your panel."},
+        {"Make Zeus yours", "Open a module's settings for detailed controls. Use the search box to find settings by name or description.", "You can replay this guide any time with /zeus tutorial."}
+    };
+    private final Screen parent;
+    private int page;
+    private long opened = System.nanoTime();
+
+    public ZeusTutorialScreen(Screen parent) {
+        super(Component.literal("Zeus tutorial"));
+        this.parent = parent;
+    }
+
+    @Override protected void init() {
+        int cy = height - 42;
+        addRenderableWidget(Button.builder(Component.literal("Back"), b -> { if (page > 0) page--; else onClose(); })
+            .bounds(width / 2 - 112, cy, 70, 20).build());
+        addRenderableWidget(Button.builder(Component.literal(page == PAGES.length - 1 ? "Finish" : "Next"), b -> {
+            if (page < PAGES.length - 1) page++; else onClose();
+            clearWidgets(); init();
+        }).bounds(width / 2 - 35, cy, 70, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Skip"), b -> onClose())
+            .bounds(width / 2 + 42, cy, 70, 20).build());
+    }
+
+    @Override public void onClose() {
+        UiState.markTutorialSeen();
+        if (minecraft != null) minecraft.setScreen(parent);
+    }
+
+    @Override public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        renderBackground(g, mouseX, mouseY, partialTick);
+        float t = Math.min(1f, (System.nanoTime() - opened) / 420_000_000f);
+        float ease = 1f - (float)Math.pow(1f - t, 3);
+        int w = Math.min(390, width - 32), h = 188;
+        int x = (width - w) / 2, y = (height - h) / 2 - 8 + Math.round((1f - ease) * 18);
+        g.fill(0, 0, width, height, 0x99040A18);
+        g.fill(x, y, x + w, y + h, 0xF00B1428);
+        g.fill(x, y, x + w, y + 2, 0xFF58A6FF);
+        g.fill(x + 14, y + 17, x + 17, y + h - 17, 0xFF27436E);
+        g.drawString(font, "ZEUS  /  QUICK START", x + 28, y + 17, 0xFF82B9FF, false);
+        g.drawString(font, PAGES[page][0], x + 28, y + 42, 0xFFFFFFFF, false);
+        drawWrapped(g, PAGES[page][1], x + 28, y + 66, w - 54, 0xFFD7E3F7);
+        drawWrapped(g, PAGES[page][2], x + 28, y + 111, w - 54, 0xFF91A9C9);
+        int bx = x + 28, by = y + h - 19, bw = w - 56;
+        g.fill(bx, by, bx + bw, by + 3, 0xFF1B2A45);
+        g.fill(bx, by, bx + Math.round(bw * (page + 1f) / PAGES.length), by + 3, 0xFF58A6FF);
+        g.drawString(font, (page + 1) + " / " + PAGES.length, x + w - 52, y + 17, 0xFF9EB4D5, false);
+        super.render(g, mouseX, mouseY, partialTick);
+    }
+
+    private void drawWrapped(GuiGraphics g, String text, int x, int y, int maxWidth, int color) {
+        StringBuilder line = new StringBuilder();
+        for (String word : text.split(" ")) {
+            String candidate = line.length() == 0 ? word : line + " " + word;
+            if (font.width(candidate) > maxWidth && line.length() > 0) {
+                g.drawString(font, line.toString(), x, y, color, false); y += 12; line.setLength(0);
+            }
+            if (line.length() > 0) line.append(' ');
+            line.append(word);
+        }
+        if (line.length() > 0) g.drawString(font, line.toString(), x, y, color, false);
+    }
+}

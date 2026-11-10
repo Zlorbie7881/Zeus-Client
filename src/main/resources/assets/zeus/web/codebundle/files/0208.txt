@@ -1,0 +1,861 @@
+package com.zlorbie788.zeus.ui;
+
+import com.zlorbie788.zeus.render.Projector;
+import net.minecraft.client.gui.GuiGraphics;
+
+import java.util.Random;
+
+/**
+ * The night sky of the Atmosphere module: a deep gradient with a diagonal Milky Way, thousands of stars that twinkle, shooting
+ * stars that cross the sky now and then, and banks of dark, finely textured clouds. (The northern lights are {@link AuroraSky}.)
+ *
+ * <p>Everything is placed by direction in the sky (bearing and elevation) and projected with the camera of the frame, so it
+ * turns with you and stays exact when you look straight up, where a flat sky picture would smear. Nothing is rebuilt per frame:
+ * the stars and cloud puffs are made once, the cloud pictures are baked on a background thread and the rest is a few hundred
+ * to a few thousand small rectangles.</p>
+ */
+public final class SkyScape {
+    // ------------------------------------------------------------------------------------------------------------ maths
+    private static float clamp01(float x) {
+        return x < 0f ? 0f : x > 1f ? 1f : x;
+    }
+
+    private static float smooth(float a, float b, float x) {
+        float t = clamp01((x - a) / (b - a));
+        return t * t * (3f - 2f * t);
+    }
+
+    private static float lerp(float a, float b, float t) {
+        return a + (b - a) * t;
+    }
+
+    private static float n2(float x, float y, int sd) {
+        int ix = (int) Math.floor(x);
+        int iy = (int) Math.floor(y);
+        float fx = x - ix;
+        float fy = y - iy;
+        fx = fx * fx * (3f - 2f * fx);
+        fy = fy * fy * (3f - 2f * fy);
+        int s = sd * 1013;
+        float a = Lightning.hash(ix * 7 + s, iy * 13 + sd);
+        float b = Lightning.hash(ix * 7 + 7 + s, iy * 13 + sd);
+        float c = Lightning.hash(ix * 7 + s, iy * 13 + 13 + sd);
+        float d = Lightning.hash(ix * 7 + 7 + s, iy * 13 + 13 + sd);
+        return lerp(lerp(a, b, fx), lerp(c, d, fx), fy);
+    }
+
+    private static float f2(float x, float y, int oct, int sd) {
+        float sum = 0f;
+        float amp = 0.5f;
+        float norm = 0f;
+        for (int i = 0; i < oct; i++) {
+            sum += amp * n2(x, y, sd + i * 17);
+            norm += amp;
+            x = x * 2.03f + 11.7f;
+            y = y * 2.03f + 3.1f;
+            amp *= 0.5f;
+        }
+        return sum / norm;
+    }
+
+    private static float n3(float x, float y, float z, int sd) {
+        int ix = (int) Math.floor(x);
+        int iy = (int) Math.floor(y);
+        int iz = (int) Math.floor(z);
+        float fx = x - ix;
+        float fy = y - iy;
+        float fz = z - iz;
+        fx = fx * fx * (3f - 2f * fx);
+        fy = fy * fy * (3f - 2f * fy);
+        fz = fz * fz * (3f - 2f * fz);
+        float r = 0f;
+        for (int k = 0; k < 2; k++) {
+            float wz = k == 0 ? 1f - fz : fz;
+            float a = Lightning.hash(ix * 1619 + (iz + k) * 31337, iy * 6971 + sd);
+            float b = Lightning.hash((ix + 1) * 1619 + (iz + k) * 31337, iy * 6971 + sd);
+            float c = Lightning.hash(ix * 1619 + (iz + k) * 31337, (iy + 1) * 6971 + sd);
+            float d = Lightning.hash((ix + 1) * 1619 + (iz + k) * 31337, (iy + 1) * 6971 + sd);
+            r += wz * lerp(lerp(a, b, fx), lerp(c, d, fx), fy);
+        }
+        return r;
+    }
+
+    private static float f3(float x, float y, float z, int oct, int sd) {
+        float sum = 0f;
+        float amp = 0.5f;
+        float norm = 0f;
+        for (int i = 0; i < oct; i++) {
+            sum += amp * n3(x, y, z, sd + i * 29);
+            norm += amp;
+            x = x * 2.07f + 5.3f;
+            y = y * 2.07f + 1.9f;
+            z = z * 2.07f + 8.1f;
+            amp *= 0.5f;
+        }
+        return sum / norm;
+    }
+
+    private static int argb(float a, float r, float g, float b) {
+        return Math.round(clamp01(a) * 255f) << 24 | Math.round(clamp01(r) * 255f) << 16 | Math.round(clamp01(g) * 255f) << 8
+                | Math.round(clamp01(b) * 255f);
+    }
+
+    // ------------------------------------------------------------------------------------------------------------ the Milky Way
+    // the pole of the band; it runs over the head at a slant, like the picture
+    private static final double PX = 0.62;
+    private static final double PY = 0.12;
+    private static final double PZ = 0.78;
+    private static final double PL = Math.sqrt(PX * PX + PY * PY + PZ * PZ);
+    private static final float QX = (float) (PX / PL);
+    private static final float QY = (float) (PY / PL);
+    private static final float QZ = (float) (PZ / PL);
+    // a direction inside the band plane, and the one across it
+    private static final float AX;
+    private static final float AY;
+    private static final float AZ;
+    private static final float BX;
+    private static final float BY;
+    private static final float BZ;
+
+    static {
+        // A = normalize(P x up)
+        double ax = QY * 0 - QZ * 1;
+        double ay = QZ * 0 - QX * 0;
+        double az = QX * 1 - QY * 0;
+        double al = Math.sqrt(ax * ax + ay * ay + az * az);
+        ax /= al;
+        ay /= al;
+        az /= al;
+        AX = (float) ax;
+        AY = (float) ay;
+        AZ = (float) az;
+        BX = (float) (QY * az - QZ * ay);
+        BY = (float) (QZ * ax - QX * az);
+        BZ = (float) (QX * ay - QY * ax);
+    }
+
+    private static float latitude(float x, float y, float z) {
+        float d = x * QX + y * QY + z * QZ;
+        return (float) Math.toDegrees(Math.asin(Math.max(-1f, Math.min(1f, d))));
+    }
+
+    private static float bandDensity(float x, float y, float z) {
+        float lat = latitude(x, y, z);
+        float t = lat / 11f;
+        float wide = lat / 26f;
+        float lon = (float) Math.atan2(x * BX + y * BY + z * BZ, x * AX + y * AY + z * AZ);
+        float core = 0.62f + 0.38f * (float) Math.cos(lon - 0.5f);
+        return ((float) Math.exp(-t * t) * 0.85f + (float) Math.exp(-wide * wide) * 0.30f) * core;
+    }
+
+    // ------------------------------------------------------------------------------------------------------------ stars
+    private static final int MAXSTAR = 12000;
+    private final float[] sdx = new float[MAXSTAR];
+    private final float[] sdy = new float[MAXSTAR];
+    private final float[] sdz = new float[MAXSTAR];
+    private final float[] saz = new float[MAXSTAR];
+    private final float[] sel = new float[MAXSTAR];
+    private final float[] smag = new float[MAXSTAR];
+    private final float[] stw = new float[MAXSTAR];
+    private final float[] sr = new float[MAXSTAR];
+    private final float[] sg = new float[MAXSTAR];
+    private final float[] sb = new float[MAXSTAR];
+    private final float[] pt = new float[2];
+
+    /** Only the shooting stars (the Atmosphere module draws the sky from a picture). */
+    public SkyScape() {
+    }
+
+    public SkyScape(int seed) {
+        buildGrid();
+        Random rnd = new Random(seed * 7919L + 13);
+        int n = 0;
+        while (n < MAXSTAR) {
+            double z = rnd.nextDouble() * 2 - 1;
+            double a = rnd.nextDouble() * Math.PI * 2;
+            double r = Math.sqrt(1 - z * z);
+            float x = (float) (r * Math.cos(a));
+            float y = (float) z;
+            float zz = (float) (r * Math.sin(a));
+            if (y < -0.12f) continue;
+            boolean field = (n % 10) < 3;
+            float band = bandDensity(x, y, zz);
+            float lane = f3(x * 5.5f, y * 5.5f, zz * 5.5f, 3, 4);
+            float clump = f3(x * 14f, y * 14f, zz * 14f, 3, 6);
+            if (!field) {
+                // stars of the band: they crowd along its centre, thin out in the dust lanes and clump
+                float p = band * band * (1.0f - 0.80f * smooth(0.46f, 0.70f, lane)) * (0.35f + 1.3f * clump);
+                if (rnd.nextFloat() > p * 1.25f) continue;
+            }
+            sdx[n] = x;
+            sdy[n] = y;
+            sdz[n] = zz;
+            saz[n] = (float) Math.toDegrees(Math.atan2(x, -zz));
+            sel[n] = (float) Math.toDegrees(Math.asin(y));
+            float m = (float) Math.pow(rnd.nextDouble(), field ? 3.0 : 2.4);
+            smag[n] = m;
+            stw[n] = rnd.nextFloat() * 6.2832f;
+            float t = rnd.nextFloat();
+            if (t < 0.50f) {            // blue-white
+                sr[n] = 0.70f; sg[n] = 0.82f; sb[n] = 1.0f;
+            } else if (t < 0.70f) {     // white
+                sr[n] = 0.96f; sg[n] = 0.97f; sb[n] = 1.0f;
+            } else if (t < 0.88f) {     // lilac
+                sr[n] = 0.82f; sg[n] = 0.74f; sb[n] = 1.0f;
+            } else {                    // warm
+                sr[n] = 1.0f; sg[n] = 0.86f; sb[n] = 0.68f;
+            }
+            n++;
+        }
+    }
+
+    /** Draws the stars, the brightest first in the list order being the faintest last; {@code count} caps how many. */
+    public void renderStars(GuiGraphics g, AuroraSky.View view, float gain, int count, float time, int gs) {
+        if (gain <= 0.01f) return;
+        count = Math.min(count, MAXSTAR);
+        double ex = Projector.eyeX();
+        double ey = Projector.eyeY();
+        double ez = Projector.eyeZ();
+        boolean land = view.hasSkyline();
+        g.pose().pushMatrix();
+        g.pose().scale(1f / gs, 1f / gs);
+        for (int i = 0; i < count; i++) {
+            float el = sel[i];
+            if (el < 0.4f) continue;
+            if (land && el < view.skyline(saz[i]) + 0.3f) continue;
+            if (!Projector.project(ex + sdx[i] * 160.0, ey + sdy[i] * 160.0, ez + sdz[i] * 160.0, pt)) continue;
+            int x = (int) (pt[0] * gs);
+            int y = (int) (pt[1] * gs);
+            float m = smag[i];
+            // a little twinkle, more on the bright ones, and a fade into the haze at the horizon
+            float tw = 0.80f + 0.20f * (float) Math.sin(time * (1.6f + 2.6f * (stw[i] % 1f)) + stw[i]);
+            float a = (0.50f + 0.50f * m) * tw * gain * smooth(0.4f, 9f, el);
+            if (m > 0.86f) {
+                int s = m > 0.975f ? 3 : 2;
+                int c = argb(a, sr[i], sg[i], sb[i]);
+                g.fill(x, y, x + s, y + s, c);
+                int h = argb(a * 0.34f, sr[i], sg[i], sb[i]);
+                g.fill(x - 2, y, x, y + 1, h);
+                g.fill(x + s, y, x + s + 2, y + 1, h);
+                g.fill(x, y - 2, x + 1, y, h);
+                g.fill(x, y + s, x + 1, y + s + 2, h);
+                if (s == 3) {
+                    int hh = argb(a * 0.14f, sr[i], sg[i], sb[i]);
+                    g.fill(x - 4, y + 1, x - 2, y + 2, hh);
+                    g.fill(x + s + 2, y + 1, x + s + 4, y + 2, hh);
+                    g.fill(x + 1, y - 4, x + 2, y - 2, hh);
+                    g.fill(x + 1, y + s + 2, x + 2, y + s + 4, hh);
+                }
+            } else {
+                g.fill(x, y, x + 1, y + 1, argb(a, sr[i], sg[i], sb[i]));
+            }
+        }
+        g.pose().popMatrix();
+    }
+
+    // ------------------------------------------------------------------------------------------------------------ the haze
+    private final float[] hout = new float[4];
+
+    // The Milky Way glow depends only on the direction, so it is worked out once on a grid (a half degree of bearing, a degree of
+    // elevation) by a background thread, and each frame only looks it up.
+    private static final int GA = 720;
+    private static final int GE = 98;          // elevations -8 .. 89
+    private static final float GE0 = -8f;
+    private volatile float[] grid;             // r, g, b per cell
+
+    private void buildGrid() {
+        Thread t = new Thread(() -> {
+            try {
+                float[] gr = new float[GA * GE * 3];
+                for (int e = 0; e < GE; e++) {
+                    float el = GE0 + e;
+                    float re = (float) Math.toRadians(el);
+                    float ce = (float) Math.cos(re);
+                    float y = (float) Math.sin(re);
+                    for (int i = 0; i < GA; i++) {
+                        float ra = (float) Math.toRadians(i * 0.5f);
+                        float x = ce * (float) Math.sin(ra);
+                        float z = -ce * (float) Math.cos(ra);
+                        float band = bandDensity(x, y, z);
+                        if (band < 0.02f) continue;
+                        float n1 = f3(x * 3.4f, y * 3.4f, z * 3.4f, 4, 2);
+                        float n2 = f3(x * 9.0f + 4f, y * 9.0f, z * 9.0f, 4, 3);
+                        float n3 = f3(x * 22.0f, y * 22.0f + 3f, z * 22.0f, 3, 8);
+                        float lane = smooth(0.50f, 0.74f, f3(x * 5.5f, y * 5.5f, z * 5.5f, 3, 4));
+                        float fine = smooth(0.40f, 0.72f, n3);
+                        float glow = band * (0.40f + 1.15f * n1) * (1f - 0.70f * lane) * (0.65f + 0.7f * n2) * (0.9f + 0.2f * fine);
+                        glow = clamp01(glow * 1.7f);
+                        float warm = smooth(0.35f, 0.75f, n1);
+                        int k = (e * GA + i) * 3;
+                        gr[k] = lerp(0.40f, 0.86f, warm * 0.85f) * glow * 0.85f;
+                        gr[k + 1] = lerp(0.52f, 0.66f, warm * 0.85f) * glow * 0.82f;
+                        gr[k + 2] = lerp(0.92f, 0.90f, warm * 0.85f) * glow * 0.95f;
+                    }
+                }
+                // a light blur so neighbouring columns never differ by more than a shade or two
+                float[] bl = new float[gr.length];
+                for (int e = 0; e < GE; e++) {
+                    for (int i = 0; i < GA; i++) {
+                        for (int c = 0; c < 3; c++) {
+                            float s = 0f;
+                            float wsum = 0f;
+                            for (int de = -2; de <= 2; de++) {
+                                int ee = e + de;
+                                if (ee < 0 || ee >= GE) continue;
+                                for (int da = -4; da <= 4; da++) {
+                                    float wgt = 1f / (1f + de * de + da * da * 0.25f);
+                                    s += gr[(ee * GA + (i + da + GA) % GA) * 3 + c] * wgt;
+                                    wsum += wgt;
+                                }
+                            }
+                            bl[(e * GA + i) * 3 + c] = s / wsum;
+                        }
+                    }
+                }
+                grid = bl;
+            } catch (RuntimeException | OutOfMemoryError e) {
+                grid = new float[0];
+            }
+        }, "zeus-sky-bake");
+        t.setDaemon(true);
+        t.setPriority(Thread.MIN_PRIORITY);
+        t.start();
+    }
+
+    /** The base colour and the Milky Way glow for a bearing and elevation: out = r, g, b, alpha. */
+    private void haze(float az, float el, float gain, boolean milky, float[] out) {
+        float e01 = clamp01(el / 90f);
+        float pw = (float) Math.pow(e01, 0.55);
+        // the deep blue of the picture: nearly black at the top, a lighter teal-blue near the horizon
+        float r = lerp(0.050f, 0.010f, pw);
+        float gg = lerp(0.120f, 0.026f, pw);
+        float b = lerp(0.230f, 0.080f, pw);
+        float[] gr = grid;
+        if (milky && gr != null && gr.length > 0) {
+            float fe = Math.max(0f, Math.min(GE - 1.001f, el - GE0));
+            int e0 = (int) fe;
+            float te = fe - e0;
+            float fa = az * 2f;
+            fa %= GA;
+            if (fa < 0f) fa += GA;
+            int a0 = (int) fa;
+            float ta = fa - a0;
+            int a1 = a0 + 1 == GA ? 0 : a0 + 1;
+            for (int c = 0; c < 3; c++) {
+                float v00 = gr[(e0 * GA + a0) * 3 + c];
+                float v10 = gr[(e0 * GA + a1) * 3 + c];
+                float v01 = gr[((e0 + 1) * GA + a0) * 3 + c];
+                float v11 = gr[((e0 + 1) * GA + a1) * 3 + c];
+                float v = lerp(lerp(v00, v10, ta), lerp(v01, v11, ta), te);
+                if (c == 0) r += v;
+                else if (c == 1) gg += v;
+                else b += v;
+            }
+        }
+        // hold the colour at the very horizon so it blends with the game's own haze
+        float a = 0.95f * smooth(-1.5f, 5.5f, el);
+        out[0] = r;
+        out[1] = gg;
+        out[2] = b;
+        out[3] = a * gain;
+    }
+
+    private final float[] azel = new float[2];
+    private float[] ys = new float[160];
+    private final float[] cr = new float[160];
+    private final float[] cg = new float[160];
+    private final float[] cb = new float[160];
+    private final float[] ca = new float[160];
+
+    /** Draws the gradient and the Milky Way as thin vertical columns of colour, cut along the skyline of the land. */
+    public void renderHaze(GuiGraphics g, int w, int h, AuroraSky.View view, float gain, int colStep, int rowStep, boolean milky) {
+        if (gain <= 0.01f) return;
+        boolean land = view.hasSkyline();
+        if (ys.length < 160) ys = new float[160];
+        for (int x = 0; x < w; x += colStep) {
+            int xe = Math.min(w, x + colStep);
+            float sx = (x + xe) * 0.5f;
+            float yEnd = h;
+            if (land) {
+                float bottom = gap(view, sx, h);
+                if (bottom < 0f) {
+                    float top = gap(view, sx, 0);
+                    if (top < 0f) continue;
+                    float lo = 0;
+                    float hi = h;
+                    for (int it = 0; it < 8; it++) {
+                        float mid = (lo + hi) * 0.5f;
+                        if (gap(view, sx, mid) >= 0f) lo = mid;
+                        else hi = mid;
+                    }
+                    yEnd = lo;
+                }
+            }
+            int n = 0;
+            for (float y = 0; ; y += rowStep) {
+                boolean last = y >= yEnd;
+                float yy = last ? yEnd : y;
+                float a = 0f;
+                if (view.at(sx, yy, azel) && azel[1] > -4f) {
+                    haze(azel[0], azel[1], gain, milky, hout);
+                    cr[n] = hout[0];
+                    cg[n] = hout[1];
+                    cb[n] = hout[2];
+                    a = hout[3];
+                }
+                ys[n] = yy;
+                ca[n] = a;
+                n++;
+                if (last || n >= cr.length - 1) break;
+            }
+            for (int k = 0; k + 1 < n; k++) {
+                if (ca[k] <= 0.004f && ca[k + 1] <= 0.004f) continue;
+                int yt = Math.round(ys[k]);
+                int yb = Math.round(ys[k + 1]);
+                if (yb <= yt) continue;
+                g.fillGradient(x, yt, xe, yb, argb(ca[k], cr[k], cg[k], cb[k]), argb(ca[k + 1], cr[k + 1], cg[k + 1], cb[k + 1]));
+            }
+        }
+    }
+
+    private float gap(AuroraSky.View view, float sx, float sy) {
+        if (!view.at(sx, sy, azel)) return -1f;
+        return azel[1] - view.skyline(azel[0]);
+    }
+
+    // ------------------------------------------------------------------------------------------------------------ shooting stars
+    private static final class Meteor {
+        float x, y, z;          // where it starts (unit vector)
+        float tx, ty, tz;       // the way it travels (unit, across the start)
+        float speed;            // degrees per second
+        float age;
+        float life;
+        float tail;             // degrees
+        float bright;
+        float hue;
+    }
+
+    private final java.util.ArrayList<Meteor> meteors = new java.util.ArrayList<>();
+    private final Random mrnd = new Random();
+    private float nextMeteor = 1.5f;
+    private float lastTime = -1f;
+    private final float[] p2 = new float[2];
+
+    /** How often, as the average number of seconds between two: 0 never. */
+    public void updateMeteors(float time, float meanGap) {
+        float dt = lastTime < 0f ? 0f : Math.min(0.1f, Math.max(0f, time - lastTime));
+        lastTime = time;
+        for (int i = meteors.size() - 1; i >= 0; i--) {
+            Meteor m = meteors.get(i);
+            m.age += dt;
+            if (m.age >= m.life) meteors.remove(i);
+        }
+        if (meanGap <= 0f) {
+            meteors.clear();
+            return;
+        }
+        if (time >= nextMeteor && meteors.size() < 3) {
+            nextMeteor = time + meanGap * (0.35f + 1.3f * mrnd.nextFloat());
+            spawn();
+        } else if (time >= nextMeteor) {
+            nextMeteor = time + 1f;
+        }
+    }
+
+    private void spawn() {
+        Meteor m = new Meteor();
+        float az = mrnd.nextFloat() * 6.2832f;
+        float el = (float) Math.toRadians(32 + mrnd.nextFloat() * 48);
+        float ce = (float) Math.cos(el);
+        m.x = ce * (float) Math.sin(az);
+        m.y = (float) Math.sin(el);
+        m.z = -ce * (float) Math.cos(az);
+        float rx = mrnd.nextFloat() - 0.5f;
+        float ry = mrnd.nextFloat() - 0.5f;
+        float rz = mrnd.nextFloat() - 0.5f;
+        float d = rx * m.x + ry * m.y + rz * m.z;
+        rx -= m.x * d;
+        ry -= m.y * d;
+        rz -= m.z * d;
+        float l = (float) Math.sqrt(rx * rx + ry * ry + rz * rz);
+        if (l < 1e-4f) {
+            rx = 1f;
+            ry = 0f;
+            rz = 0f;
+            l = 1f;
+        }
+        m.tx = rx / l;
+        m.ty = ry / l;
+        m.tz = rz / l;
+        if (m.ty > 0f) {         // they fall
+            m.tx = -m.tx;
+            m.ty = -m.ty;
+            m.tz = -m.tz;
+        }
+        m.speed = 48f + mrnd.nextFloat() * 70f;
+        m.life = 0.55f + mrnd.nextFloat() * 0.75f;
+        m.tail = 9f + mrnd.nextFloat() * 14f;
+        m.bright = 0.75f + 0.25f * mrnd.nextFloat();
+        m.hue = mrnd.nextFloat();
+        meteors.add(m);
+    }
+
+    public int meteorCount() {
+        return meteors.size();
+    }
+
+    private boolean at(Meteor m, float deg, double[] out) {
+        double th = Math.toRadians(deg);
+        double c = Math.cos(th);
+        double s = Math.sin(th);
+        double x = m.x * c + m.tx * s;
+        double y = m.y * c + m.ty * s;
+        double z = m.z * c + m.tz * s;
+        out[0] = x;
+        out[1] = y;
+        out[2] = z;
+        return true;
+    }
+
+    private final double[] md = new double[3];
+
+    public void renderMeteors(GuiGraphics g, AuroraSky.View view, float gain, int gs) {
+        if (meteors.isEmpty() || gain <= 0.01f) return;
+        double ex = Projector.eyeX();
+        double ey = Projector.eyeY();
+        double ez = Projector.eyeZ();
+        g.pose().pushMatrix();
+        g.pose().scale(1f / gs, 1f / gs);
+        for (Meteor m : meteors) {
+            float u = m.age / m.life;
+            float env = Math.min(1f, m.age / 0.07f) * (float) Math.pow(1f - u, 0.75);
+            if (env <= 0.01f) continue;
+            float headDeg = m.speed * m.age;
+            at(m, headDeg, md);
+            if (!Projector.project(ex + md[0] * 160, ey + md[1] * 160, ez + md[2] * 160, pt)) continue;
+            float hx = pt[0] * gs;
+            float hy = pt[1] * gs;
+            float tailDeg = m.tail * (0.55f + 0.45f * Math.min(1f, m.age / 0.25f));
+            at(m, headDeg - tailDeg, md);
+            if (!Projector.project(ex + md[0] * 160, ey + md[1] * 160, ez + md[2] * 160, p2)) continue;
+            float tx = p2[0] * gs;
+            float ty = p2[1] * gs;
+            float len = (float) Math.hypot(hx - tx, hy - ty);
+            if (len > 4000f) continue;
+            int steps = Math.max(8, Math.min(220, (int) (len / 1.6f)));
+            float cr0 = lerp(0.82f, 0.72f, m.hue);
+            float cg0 = lerp(0.95f, 1.0f, m.hue);
+            float cb0 = 1.0f;
+            for (int k = steps; k >= 0; k--) {
+                float f = k / (float) steps;               // 0 head, 1 tail end
+                float x = hx + (tx - hx) * f;
+                float y = hy + (ty - hy) * f;
+                if (view.hasSkyline()) {
+                    // stay above the land: skip points whose bearing and elevation fall below the skyline
+                    if (view.at(x / gs, y / gs, azel) && azel[1] < view.skyline(azel[0])) continue;
+                }
+                float a = env * m.bright * gain * (float) Math.pow(1f - f, 1.7);
+                if (a < 0.01f) continue;
+                int s = f < 0.12f ? 3 : f < 0.5f ? 2 : 1;
+                int xi = (int) x;
+                int yi = (int) y;
+                g.fill(xi, yi, xi + s, yi + s, argb(a, cr0, cg0, cb0));
+                if (s >= 2 && f < 0.5f) {
+                    float a2 = a * 0.18f;
+                    g.fill(xi - 1, yi - 1, xi + s + 1, yi + s + 1, argb(a2, 0.5f, 0.85f, 1f));
+                }
+            }
+            // a soft glow at the head
+            float ha = env * m.bright * gain;
+            g.fill((int) hx - 3, (int) hy - 3, (int) hx + 5, (int) hy + 5, argb(ha * 0.10f, 0.7f, 0.9f, 1f));
+            g.fill((int) hx - 1, (int) hy - 1, (int) hx + 3, (int) hy + 3, argb(ha * 0.55f, 1f, 1f, 1f));
+        }
+        g.pose().popMatrix();
+    }
+
+    // ------------------------------------------------------------------------------------------------------------ clouds
+    private static final int SPRITES = 6;
+    private static final int SPR = 384;
+    private static final int[][] BAKED = new int[SPRITES][];
+    private static final Tex.Img[] IMGS = new Tex.Img[SPRITES];
+    private static volatile boolean baking;
+    private static volatile boolean bakeDone;
+
+    /** Starts the background thread that paints the cloud pictures (once per game session). */
+    private static void startBake() {
+        if (baking) return;
+        baking = true;
+        Thread t = new Thread(() -> {
+            for (int i = 0; i < SPRITES; i++) {
+                try {
+                    int[] px = paintPuff(i);
+                    synchronized (BAKED) {
+                        BAKED[i] = px;
+                    }
+                } catch (RuntimeException | OutOfMemoryError e) {
+                    // that picture stays missing
+                }
+            }
+            bakeDone = true;
+        }, "zeus-cloud-bake");
+        t.setDaemon(true);
+        t.setPriority(Thread.MIN_PRIORITY);
+        t.start();
+    }
+
+    /** Uploads one finished cloud picture per call; true when all of them are on the graphics card. */
+    private static boolean uploadOne() {
+        startBake();
+        boolean all = true;
+        boolean done = false;
+        for (int i = 0; i < SPRITES; i++) {
+            if (IMGS[i] != null) continue;
+            int[] px;
+            synchronized (BAKED) {
+                px = BAKED[i];
+            }
+            if (px == null) {
+                all = false;
+                continue;
+            }
+            if (!done) {
+                IMGS[i] = Tex.made("atmo_cloud_" + i, px, SPR, SPR);
+                synchronized (BAKED) {
+                    BAKED[i] = null;
+                }
+                done = true;
+            } else {
+                all = false;
+            }
+        }
+        return all && !done;
+    }
+
+    /**
+     * One cloud puff, as a grey picture with its own transparency. It is a cauliflower: a few big domes, each carrying smaller
+     * domes round its rim, each of those carrying smaller ones again. The height of the pile at every pixel is the tallest dome
+     * there, and the grey is worked out from the slope of that height, with a light above and to the left, so every lump is lit
+     * on its upper edge and dark in the creases between lumps and on the underside. Tinted per puff when drawn.
+     */
+    private static int[] paintPuff(int variant) {
+        int S = SPR;
+        Random r = new Random(9100 + variant * 7717L);
+        float[] hgt = new float[S * S];
+        java.util.ArrayList<float[]> lumps = new java.util.ArrayList<>();
+        int big = 6 + (variant % 3);
+        for (int i = 0; i < big; i++) {
+            double a = r.nextDouble() * Math.PI * 2;
+            double d = Math.sqrt(r.nextDouble()) * 0.42;
+            float rad = 0.26f + 0.14f * r.nextFloat();
+            float cx = (float) (Math.cos(a) * d * 1.05);
+            float cy = (float) (Math.sin(a) * d * 0.70 + 0.10);
+            cx = Math.max(-0.60f, Math.min(0.60f, cx));
+            cy = Math.max(-0.45f, Math.min(0.55f, cy));
+            grow(lumps, r, cx, cy, rad, 0, 1f);
+        }
+        float half = S * 0.5f;
+        for (float[] l : lumps) {
+            float cx = (l[0] + 1f) * half;
+            float cy = (l[1] + 1f) * half;
+            float rr = l[2] * half;
+            float zz = l[3];
+            int x0 = Math.max(0, (int) (cx - rr));
+            int x1 = Math.min(S - 1, (int) (cx + rr) + 1);
+            int y0 = Math.max(0, (int) (cy - rr));
+            int y1 = Math.min(S - 1, (int) (cy + rr) + 1);
+            float inv = 1f / rr;
+            for (int y = y0; y <= y1; y++) {
+                float dy = (y + 0.5f - cy) * inv;
+                for (int x = x0; x <= x1; x++) {
+                    float dx = (x + 0.5f - cx) * inv;
+                    float q = 1f - dx * dx - dy * dy;
+                    if (q <= 0f) continue;
+                    float z = (float) Math.sqrt(q) * rr * zz;
+                    int i = y * S + x;
+                    if (z > hgt[i]) hgt[i] = z;
+                }
+            }
+        }
+        // tiny grain on the surface so it is not smooth like plastic
+        int sd = 77 + variant * 13;
+        int[] out = new int[S * S];
+        float hs = 0.012f * S;
+        for (int y = 0; y < S; y++) {
+            for (int x = 0; x < S; x++) {
+                int i = y * S + x;
+                float hh = hgt[i];
+                if (hh <= 0f) continue;
+                float edge = clamp01(hh / (S * 0.010f));
+                int xm = Math.max(0, x - 1);
+                int xp = Math.min(S - 1, x + 1);
+                int ym = Math.max(0, y - 1);
+                int yp = Math.min(S - 1, y + 1);
+                float gx = (hgt[y * S + xp] - hgt[y * S + xm]) * 0.5f;
+                float gy = (hgt[yp * S + x] - hgt[ym * S + x]) * 0.5f;
+                float nl = (float) Math.sqrt(gx * gx + gy * gy + 1f);
+                float nx = -gx / nl;
+                float ny = -gy / nl;
+                float nz = 1f / nl;
+                // light from the upper left and in front
+                float lam = Math.max(0f, nx * -0.30f + ny * -0.72f + nz * 0.62f);
+                float rim = (float) Math.pow(1f - nz, 1.5);
+                float ao = 0.30f + 0.70f * smooth(0f, S * 0.10f, hh);
+                float grain = 0.80f + 0.40f * f2(x * 0.11f + sd, y * 0.11f, 3, sd);
+                float shade = (0.022f + 0.40f * (float) Math.pow(lam, 2.2) * ao + 0.10f * rim * lam) * grain;
+                int a = Math.round(edge * 255f);
+                int c = Math.round(clamp01(shade) * 255f);
+                out[i] = a << 24 | c << 16 | c << 8 | c;
+            }
+        }
+        return out;
+    }
+
+    /** Adds a dome and, round its rim, smaller ones, down a few levels. A lump is {x, y, radius, height scale}. */
+    private static void grow(java.util.ArrayList<float[]> out, Random r, float x, float y, float rad, int level, float zs) {
+        out.add(new float[] {x, y, rad, zs});
+        if (level >= 4 || rad < 0.022f) return;
+        int kids = level == 0 ? 9 : level == 1 ? 8 : level == 2 ? 6 : 5;
+        for (int i = 0; i < kids; i++) {
+            double a = r.nextDouble() * Math.PI * 2;
+            // most of the children sit on the upper half of the parent, like a billowing top
+            if (Math.sin(a) > 0.4 && r.nextFloat() < 0.6f) a = -a;
+            float d = rad * (0.62f + 0.34f * r.nextFloat());
+            float cr = rad * (0.34f + 0.16f * r.nextFloat());
+            grow(out, r, x + (float) Math.cos(a) * d, y + (float) Math.sin(a) * d * 0.9f, cr, level + 1, zs * (1f + 0.10f * (level + 1)));
+        }
+    }
+
+    private static final class Puff {
+        float az;
+        float el;
+        float rad;          // degrees
+        float flat;         // vertical squash
+        int sprite;
+        float speed;        // degrees per second
+        float phase;
+        float shade;
+        int tier;           // drawn from this quality tier up
+    }
+
+    private Puff[] puffs = new Puff[0];
+    private int puffSeed = -1;
+    private final float[] cp = new float[2];
+    private final float[] cq = new float[2];
+
+    /** Makes the bank layout for a seed. Cheap; done again only when the seed changes. */
+    private void layout(int seed) {
+        puffSeed = seed;
+        Random r = new Random(seed * 104729L + 5);
+        java.util.ArrayList<Puff> list = new java.util.ArrayList<>();
+        int banks = 26;
+        for (int b = 0; b < banks; b++) {
+            boolean low = b < 17;
+            float baz = (b * 360f / 17f) + (r.nextFloat() - 0.5f) * 14f;
+            if (!low) baz = r.nextFloat() * 360f;
+            float bel = low ? 2f + r.nextFloat() * 24f : 22f + r.nextFloat() * 28f;
+            float wAz = low ? 14f + r.nextFloat() * 22f : 8f + r.nextFloat() * 14f;
+            float wEl = low ? 6f + r.nextFloat() * 8f : 5f + r.nextFloat() * 7f;
+            int n = low ? 40 : 22;
+            for (int i = 0; i < n; i++) {
+                Puff p = new Puff();
+                p.az = baz + (float) r.nextGaussian() * wAz * 0.6f;
+                p.el = bel + (float) r.nextGaussian() * wEl * 0.6f;
+                if (p.el < 0.5f) p.el = 0.5f + r.nextFloat() * 3f;
+                if (p.el > 74f) continue;
+                p.rad = (low ? 3.2f : 2.6f) + r.nextFloat() * (low ? 6.5f : 4.5f);
+                p.flat = lerp(0.62f, 0.98f, clamp01(p.el / 55f)) * (0.88f + 0.24f * r.nextFloat());
+                p.sprite = r.nextInt(SPRITES);
+                p.speed = 0.08f + 0.14f * r.nextFloat() + (low ? 0f : 0.04f);
+                p.phase = r.nextFloat() * 6.2832f;
+                p.shade = 0.80f + 0.20f * r.nextFloat();
+                p.tier = r.nextInt(4);
+                list.add(p);
+            }
+        }
+        // far to near: high puffs first, the low big ones in front
+        list.sort((a, b) -> Float.compare(b.el, a.el));
+        puffs = list.toArray(new Puff[0]);
+    }
+
+    /**
+     * Draws the clouds. {@code detail} 1..4 picks how many puffs (tiers), {@code auroraGlow} 0..1 tints the lit edges green.
+     */
+    public void renderClouds(GuiGraphics g, AuroraSky.View view, float gain, int detail, float time, float windScale, float auroraGlow) {
+        if (gain <= 0.01f || detail <= 0) return;
+        if (!uploadOne() && IMGS[0] == null) {
+            // nothing painted yet: a few frames of waiting
+            if (puffSeed < 0) layout(1);
+            return;
+        }
+        if (puffSeed < 0) layout(1);
+        double ex = Projector.eyeX();
+        double ey = Projector.eyeY();
+        double ez = Projector.eyeZ();
+        boolean land = view.hasSkyline();
+        int sw = Projector.width();
+        int sh = Projector.height();
+        for (Puff p : puffs) {
+            if (p.tier >= detail) continue;
+            Tex.Img img = IMGS[p.sprite];
+            if (img == null) continue;
+            float az = p.az + time * p.speed * windScale;
+            float breathe = 1f + 0.05f * (float) Math.sin(time * 0.11f + p.phase);
+            float el = p.el;
+            float ra = (float) Math.toRadians(az);
+            float re = (float) Math.toRadians(el);
+            float ce = (float) Math.cos(re);
+            double dx = ce * Math.sin(ra);
+            double dy = Math.sin(re);
+            double dz = -ce * Math.cos(ra);
+            if (!Projector.project(ex + dx * 160, ey + dy * 160, ez + dz * 160, cp)) continue;
+            // the size on screen: how far one degree of bearing reaches here, in pixels
+            float ra2 = (float) Math.toRadians(az + 1.5f);
+            double dx2 = ce * Math.sin(ra2);
+            double dz2 = -ce * Math.cos(ra2);
+            float perDeg;
+            if (Projector.project(ex + dx2 * 160, ey + dy * 160, ez + dz2 * 160, cq)) {
+                perDeg = (float) Math.hypot(cq[0] - cp[0], cq[1] - cp[1]) / 1.5f;
+            } else {
+                perDeg = 0f;
+            }
+            float re2 = (float) Math.toRadians(Math.min(89f, el + 1.5f));
+            double ce2 = Math.cos(re2);
+            double ey2 = Math.sin(re2);
+            float perDegV;
+            if (Projector.project(ex + ce2 * Math.sin(ra) * 160, ey + ey2 * 160, ez - ce2 * Math.cos(ra) * 160, cq)) {
+                perDegV = (float) Math.hypot(cq[0] - cp[0], cq[1] - cp[1]) / 1.5f;
+            } else {
+                perDegV = 0f;
+            }
+            float per = Math.max(perDeg * 0.0f + perDegV, perDeg * 0.45f);
+            if (per <= 0.01f) continue;
+            float rpx = p.rad * breathe * Math.max(per, perDeg * 0.5f);
+            float wpx = rpx * 2.0f * (el > 60f ? 0.9f : 1.15f);
+            float hpx = rpx * 2.0f * p.flat;
+            if (wpx < 6f || wpx > 4200f) continue;
+            if (cp[0] + wpx * 0.5f < 0 || cp[0] - wpx * 0.5f > sw || cp[1] + hpx * 0.5f < 0 || cp[1] - hpx * 0.5f > sh) continue;
+            float a = gain * p.shade;
+            if (land) {
+                float over = el - view.skyline(az);
+                a *= smooth(-0.35f * p.rad, 0.55f * p.rad, over);
+            }
+            // fade the puffs out as they reach the zenith, where a flat layer would end
+            a *= 1f - 0.7f * smooth(60f, 82f, el);
+            if (a < 0.01f) continue;
+            // cool grey-lilac, with a little green on the edges when the lights are strong
+            float tr = lerp(0.60f, 0.46f, auroraGlow);
+            float tg = lerp(0.66f, 0.90f, auroraGlow);
+            float tb = lerp(1.30f, 1.20f, auroraGlow);
+            int tint = argb(a, tr, tg, tb);
+            img.draw(g, Math.round(cp[0] - wpx * 0.5f), Math.round(cp[1] - hpx * 0.5f), Math.round(wpx), Math.round(hpx), tint);
+        }
+    }
+
+    public boolean cloudsReady() {
+        return IMGS[0] != null;
+    }
+
+    public int puffTotal() {
+        return puffs.length;
+    }
+}

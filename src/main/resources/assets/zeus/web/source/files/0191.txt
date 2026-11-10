@@ -1,0 +1,8 @@
+{
+  "intro": {
+    "category": "master",
+    "sounds": [
+      { "name": "zeus:intro", "stream": true }
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+# /etc/nginx/sites-available/zeus.example.com   (then: ln -s to sites-enabled, nginx -t, systemctl reload nginx)
+server {
+    listen 80;
+    server_name zeus.example.com;
+    root /var/www/zeus;
+    index index.html;
+
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+    add_header X-Frame-Options DENY always;
+    add_header Content-Security-Policy "default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self'; connect-src 'self'; manifest-src 'self'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'" always;
+
+    location / { try_files $uri $uri/index.html /404.html; }
+    location /fonts/ { expires 1y; add_header Cache-Control "public, immutable"; }
+    location /img/ { expires 7d; }
+    location ~* \.(css|js)$ { expires 1h; }
+    error_page 404 /404.html;
+}
+# Get HTTPS with:  sudo certbot --nginx -d zeus.example.com

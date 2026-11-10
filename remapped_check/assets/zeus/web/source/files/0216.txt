@@ -1,0 +1,89 @@
+import io
+
+p = "tools/site/timeline_data.py"
+lines = io.open(p, encoding="utf-8").read().splitlines(keepends=True)
+
+# find EXTRA = { line
+start = None
+for i, ln in enumerate(lines):
+    if ln.startswith("EXTRA = {"):
+        start = i
+        break
+assert start is not None, "EXTRA = { not found"
+
+# the block from 'EXTRA = {' to EOF is lines[start:]; keep lines[:start] intact
+head = "".join(lines[:start])
+
+# new EXTRA block, newest first, clean, 0.9.3.0 restored
+block = '''EXTRA = {
+    "0.9.9.0": {
+        "mods": ["Vanilla Spoof", "Fake Lag", "Auction House Tweaks", "Storage ESP", "ESP", "Zoom", "Freecam"],
+        "settings": [
+            "Fake Lag: Mode, Delay, Jitter, Pulse, Spike, Adaptive, What waits, Only while fighting, Release everything when I am hit.",
+            "Fake Lag Monitor: keep the old display card as its own entry.",
+            "Vanilla Spoof: Vanilla client brand, Hide mod channels, Hide other mod payloads.",
+            "AH Sniper: use learned prices, buy below market, reaction time, how to buy, search command, pages to turn, check the item arrived.",
+            "Zoom: Smooth, Mouse sensitivity while zoomed, Works in third person.",
+            "ESP: Tracer from (My body).",
+            "Storage ESP: Discoveries card only after a base is found.",
+            "Chat: /zeus find and /zeus settings.",
+        ],
+    },
+    "0.9.8.0": {
+        "mods": ["Target Strafe", "Auto Farm", "Chest Stealer", "Inventory Cleaner", "Loot Walker", "Entity Speed", "Ore Compass", "Kill Aura", "MultiAura", "Tunnel Miner", "Tree Bot", "Knife"],
+        "settings": [
+            "Kill Aura: Players, Pick the target by (closest or lowest health)",
+            "Knife: Open the knife gallery, and a new Inspect trick for every knife",
+            "MultiAura, Tunnel Miner, Tree Bot, Schematic Builder: no longer limited to single-player worlds",
+            "Schematic Builder: Auto-place (was Auto-place (single-player))",
+        ],
+    },
+    "0.9.7.0": {
+        "mods": ["Performance Guard", "Update Checker", "Death Marker", "Staff Live", "Knife"],
+        "settings": [
+            "UI settings: Show what each costs (a cost next to every module in the panel)",
+            "Interface > Module list: Show what each costs",
+            "Performance Guard: FPS limit, how many to switch off, Only scanners, tell me in chat",
+            "Knife: Knife type now lists eighteen CS2-style knives, and Knife finish picks the paint",
+            "Staff Live: add or remove channels in the menu, YouTube, TikTok or Twitch",
+        ],
+    },
+    "0.9.6.0": {
+        "mods": ["Performance Monitor", "Crystal PvP Bot", "Sword PvP Bot", "Crystal Optimizer", "Spear Swap", "FastXP", "Fast Use", "Click TP", "No Jump Delay", "Anti Ghost Block", "Auto Reconnect", "Skin Change", "Anti Trap", "Staff Live", "Atmosphere", "Discord Rich Presence", "Auction House Tweaks"],
+        "settings": [
+            "Interface: Game mode (Balanced, Light, Minimal) and Auto-lighten",
+            "Performance: Show what costs the most, Switch off the 3 costliest",
+            "Auction House Tweaks: AH Sniper (off by default, with a spending limit)",
+            "Windows layout: smaller category windows, Recently used only in the panel layout",
+        ],
+    },
+    "0.9.5.0": {
+        "mods": ["Boat NoClip", "Boat Fly"],
+        "settings": [
+            "Boat NoClip: Ignore server corrections",
+            "Boat NoClip: works with rafts as well as boats",
+            "Windows layout: Tidy button, smaller windows, scroll inside past eight rows",
+        ],
+    },
+    "0.9.4.0": {
+        "mods": ["Water Walk", "Knife", "Watermark"],
+        "settings": [
+            "Interface: Sort modules (Category order, Most used first, A to Z)",
+            "Profiles: Switch profile per server",
+            "Profiles: Use it on the server I am on",
+            "Profiles: Stop switching on this server",
+            "Knife: new balisong tricks Helicopter, Double toss, Latch flip and Cascade",
+            "Knife: new karambit tricks Wrist orbit, Cross spin, Double toss and Ring storm",
+            "Knife: Stab flurry became Spin stop (no more stabbing without attack)",
+        ],
+    },
+    "0.9.3.0": {
+        "mods": ["Media Base Finder", "Suspicious Chunks", "Advanced Base Finder"],
+        "settings": ["HUD editor: Media Base Finder, Suspicious Chunks and Advanced Base Finder cards can be moved"],
+    },
+}
+'''
+
+io.open(p, "w", encoding="utf-8", newline="").write(head + block)
+print("rewritten EXTRA, oldest kept:", head.count("0.9."), "head lines kept")
+PY

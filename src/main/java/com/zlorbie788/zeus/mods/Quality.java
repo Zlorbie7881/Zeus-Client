@@ -1,0 +1,414 @@
+package com.zlorbie788.zeus.mods;
+
+import com.google.gson.JsonObject;
+import net.fabricmc.loader.api.FabricLoader;
+import com.google.gson.JsonParser;
+import com.zlorbie788.zeus.core.Category;
+import com.zlorbie788.zeus.core.Module;
+import com.zlorbie788.zeus.core.Setting;
+import com.zlorbie788.zeus.core.Zeus;
+import com.zlorbie788.zeus.render.Projector;
+import com.zlorbie788.zeus.render.Wire;
+import com.zlorbie788.zeus.ui.Draw;
+import com.zlorbie788.zeus.ui.KeybindScreen;
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
+
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Locale;
+
+/** Three everyday helpers: the keybind screen, the update checker and the death marker. */
+public final class Quality {
+    private Quality() {}
+
+    private static Component rule() {
+        return Component.literal("                                                    ").withStyle(style -> style.withColor(ChatFormatting.DARK_AQUA).withStrikethrough(true));
+    }
+
+    private static Component button(String label, ChatFormatting colour, ClickEvent click, String hint) {
+        return Component.literal("[ " + label + " ]").withStyle(style -> style.withColor(colour).withBold(true).withClickEvent(click)
+                .withHoverEvent(new HoverEvent.ShowText(Component.literal(hint))));
+    }
+
+    // ================================================================== keybinds
+
+    /** The Keybinds page: opens the screen that lists every module and its key. */
+    public static final class Keybinds extends Module {
+        public Keybinds() {
+            super("keybinds", "Keybinds", "Every module and its key on one screen. Click a box, press a key.", Category.INTERFACE);
+            panelOnly();
+            alias("keys", "bind", "hotkeys", "shortcuts", "binds");
+            add(new Setting.Action("Open the keybind screen", "A list of every module with its key. Click a key box and press the key you want; Backspace clears it.", Keybinds::open));
+            add(new Setting.Info("Bound now", () -> {
+                int n = 0;
+                int total = 0;
+                for (Module m : Zeus.all()) {
+                    if (!m.toggleable() || m.key == null) continue;
+                    total++;
+                    if (!m.key.isUnbound()) n++;
+                }
+                return List.of(n + " of " + total + " modules have a key. The command /zeus keybinds opens the same screen.");
+            }));
+        }
+
+        public static void open() {
+            Minecraft mc = Minecraft.getInstance();
+            mc.setScreen(new KeybindScreen(mc.screen));
+        }
+    }
+
+    // ================================================================== update checker
+
+    /**
+     * Update Checker: reads a small version.json from an address you set (the website build writes one), and when a newer
+     * version exists it tells you in chat and with a pop-up on screen for about five seconds, every time you join a world or a
+     * server. It only ever fetches that one file, never sends anything, and does nothing while the address is empty.
+     */
+    public static final class UpdateCheck extends Module {
+        private static final long POP_MS = 5000L;
+
+        private final Setting.Text address = add(new Setting.Text("Version address", "The web address of the version.json file of the Zeus website, for example https://your-domain/version.json. Empty means Zeus never contacts anything.", "", 200));
+        private final Setting.Bool chat = add(new Setting.Bool("Tell me in chat", "A message with a download button in the chat when you join.", true));
+        private final Setting.Bool pop = add(new Setting.Bool("Pop-up on screen", "A card in the corner that stays about five seconds.", true));
+        private final Setting.Bool everyJoin = add(new Setting.Bool("Every time I join", "Tells you each time you join a world or a server, until you update. Off tells you once per game start.", true));
+        private volatile String note = "Set the version address first.";
+        private final Setting.Action checkNow = addSetting(new Setting.Action("Check now", "Asks the address for the newest version right away.", () -> fetch(true)));
+        private final Setting.Info status = addSetting(new Setting.Info("Status", () -> List.of("This version: " + Zeus.VERSION, note)));
+
+        private volatile String newest = "";
+        private volatile String link = "";
+        private volatile String notes = "";
+        private volatile long fetchedAt;
+        private volatile boolean busy;
+        private boolean inWorld;
+        private long joinAt;
+        private boolean pending;
+        private boolean toldThisRun;
+        private long popStart;
+        private final HttpClient http = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).connectTimeout(Duration.ofSeconds(8)).build();
+
+        public UpdateCheck() {
+            super("updatecheck", "Update Checker", "Tells you in chat and with a pop-up when a newer Zeus exists. Needs the version address of your website.", Category.INTERFACE);
+            anywhere();
+            alias("update", "updates", "new version", "version check");
+        }
+
+        @Override
+        protected void onEnable() {
+            note = address.get().isBlank() ? "Set the version address first." : "Waiting for the next join.";
+        }
+
+        /** True when a is a newer version than b. Versions are numbers separated by dots, like 0.9.7.0. */
+        static boolean newer(String a, String b) {
+            String[] x = a.trim().split("\\.");
+            String[] y = b.trim().split("\\.");
+            for (int i = 0; i < Math.max(x.length, y.length); i++) {
+                int p = i < x.length ? num(x[i]) : 0;
+                int q = i < y.length ? num(y[i]) : 0;
+                if (p != q) return p > q;
+            }
+            return false;
+        }
+
+        private static int num(String s) {
+            try {
+                return Integer.parseInt(s.replaceAll("[^0-9]", ""));
+            } catch (NumberFormatException e) {
+                return 0;
+            }
+        }
+
+        private boolean available() {
+            return !newest.isBlank() && newer(newest, Zeus.VERSION);
+        }
+
+        private void fetch(boolean manual) {
+            String url = address.get().trim();
+            if (url.isEmpty()) {
+                note = "Set the version address first.";
+                if (manual) Zeus.toast("Update Checker: set the version address first", false);
+                return;
+            }
+            if (!(url.startsWith("https://") || url.startsWith("http://"))) {
+                note = "The address must start with https://";
+                if (manual) Zeus.toast("Update Checker: the address must start with https://", false);
+                return;
+            }
+            if (busy) return;
+            busy = true;
+            note = "Checking...";
+            Thread t = new Thread(() -> {
+                try {
+                    HttpRequest req = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(12)).header("Accept", "application/json").header("User-Agent", "Zeus/" + Zeus.VERSION).GET().build();
+                    HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
+                    if (res.statusCode() != 200 || res.body().length() > 20_000) throw new java.io.IOException("HTTP " + res.statusCode());
+                    JsonObject o = JsonParser.parseString(res.body()).getAsJsonObject();
+                    String v = o.has("version") ? o.get("version").getAsString() : "";
+                    if (v.isBlank() || v.length() > 24) throw new java.io.IOException("no version in the file");
+                    newest = v;
+                    String l = o.has("url") ? o.get("url").getAsString() : "";
+                    link = l.startsWith("https://") || l.startsWith("http://") ? l : "";
+                    String n = o.has("notes") ? o.get("notes").getAsString() : "";
+                    notes = n.length() > 90 ? n.substring(0, 90) : n;
+                    fetchedAt = System.currentTimeMillis();
+                    note = available() ? "Version " + newest + " is available." : "You have the newest version.";
+                    if (manual) {
+                        Minecraft mc = Minecraft.getInstance();
+                        mc.execute(() -> {
+                            if (available()) announce(mc);
+                            else Zeus.toast("Zeus " + Zeus.VERSION + " is the newest version", true);
+                        });
+                    } else if (pending) {
+                        Minecraft mc = Minecraft.getInstance();
+                        mc.execute(this::announceIfPending);
+                    }
+                } catch (Exception e) {
+                    note = "Could not check (" + e.getClass().getSimpleName() + "). Trying again on the next join.";
+                } finally {
+                    busy = false;
+                }
+            }, "Zeus-Update");
+            t.setDaemon(true);
+            t.start();
+        }
+
+        @Override
+        protected void onTick(Minecraft mc) {
+            boolean now = mc.level != null && mc.player != null;
+            if (now && !inWorld) {
+                joinAt = System.currentTimeMillis();
+                pending = everyJoin.on() || !toldThisRun;
+                if (pending && System.currentTimeMillis() - fetchedAt > 600_000L) fetch(false);
+            }
+            inWorld = now;
+            if (pending && now && System.currentTimeMillis() - joinAt > 3000L) announceIfPending();
+        }
+
+        private void announceIfPending() {
+            Minecraft mc = Minecraft.getInstance();
+            if (!pending || mc.level == null || System.currentTimeMillis() - joinAt < 3000L) return;
+            if (busy && fetchedAt == 0) return; // the answer is still on its way
+            pending = false;
+            if (available()) {
+                toldThisRun = true;
+                announce(mc);
+            }
+        }
+
+        private void announce(Minecraft mc) {
+            if (chat.on() && mc.gui != null) {
+                var c = mc.gui.getChat();
+                c.addMessage(rule());
+                c.addMessage(Component.literal(" ZEUS ").withStyle(style -> style.withColor(ChatFormatting.AQUA).withBold(true))
+                        .append(Component.literal("UPDATE AVAILABLE").withStyle(style -> style.withColor(ChatFormatting.WHITE).withBold(true))));
+                c.addMessage(Component.literal(" " + Zeus.VERSION).withStyle(ChatFormatting.GRAY)
+                        .append(Component.literal("  →  ").withStyle(ChatFormatting.DARK_GRAY))
+                        .append(Component.literal(newest).withStyle(style -> style.withColor(ChatFormatting.GREEN).withBold(true))));
+                if (!notes.isBlank()) c.addMessage(Component.literal(" " + notes).withStyle(ChatFormatting.GRAY));
+                if (!link.isBlank()) {
+                    try {
+                        c.addMessage(Component.literal(" ")
+                                .append(button("Download", ChatFormatting.GREEN, new ClickEvent.OpenUrl(URI.create(link)), "Open the download page"))
+                                .append(Component.literal("  "))
+                                .append(button("Copy link", ChatFormatting.AQUA, new ClickEvent.CopyToClipboard(link), "Copy the download address")));
+                    } catch (IllegalArgumentException ignored) {
+                        // a link that is not a valid address is left out
+                    }
+                }
+                c.addMessage(rule());
+            }
+            if (pop.on()) popStart = System.currentTimeMillis();
+        }
+
+        @Override
+        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            if (popStart == 0) return;
+            long age = System.currentTimeMillis() - popStart;
+            if (age > POP_MS) {
+                popStart = 0;
+                return;
+            }
+            String title = "Zeus update available";
+            String versions = Zeus.VERSION + "  →  " + newest;
+            int cw = Math.max(150, Math.max(Draw.width(title), Draw.width(versions)) + 44);
+            int ch = notes.isBlank() ? 36 : 48;
+            // slides in from the right in the first third of a second and fades in the last half second
+            float in = Math.min(1f, age / 320f);
+            float out = age > POP_MS - 500 ? (POP_MS - age) / 500f : 1f;
+            float ease = 1f - (1f - in) * (1f - in) * (1f - in);
+            int x = Math.round(w - 10 - cw + (1f - ease) * (cw + 20));
+            int y = h - ch - 46;
+            float a = Math.max(0f, Math.min(1f, out));
+            int accent = Hud.accent();
+            Draw.glow(g, x, y, cw, ch, 6, accent, 4, 0.16f * a);
+            Hud.panelFade(g, x, y, cw, ch, a);
+            Draw.rrectLine(g, x, y, cw, ch, Hud.round(4), Draw.rgba(accent, 0.9f * a));
+            // a small lightning bolt
+            int bx = x + 14;
+            int by = y + 9;
+            int bc = Draw.rgba(0xFFFFD84D, a);
+            Draw.line(g, bx + 5, by, bx, by + 9, 1.8f, bc);
+            Draw.line(g, bx, by + 9, bx + 6, by + 9, 1.8f, bc);
+            Draw.line(g, bx + 6, by + 9, bx + 1, by + 19, 1.8f, bc);
+            Draw.text(g, title, x + 28, y + 7, Draw.rgba(0xFFFFFFFF, a));
+            Draw.text(g, versions, x + 28, y + 19, Draw.rgba(0xFF5EE6A0, a));
+            if (!notes.isBlank()) Draw.text(g, Draw.fit(notes, cw - 36), x + 28, y + 31, Draw.rgba(0xFF9FB2D6, a));
+            // the time left, as a thin line along the bottom
+            int barW = Math.round((cw - 16) * (1f - age / (float) POP_MS));
+            g.fill(x + 8, y + ch - 4, x + 8 + barW, y + ch - 3, Draw.rgba(accent, 0.85f * a));
+        }
+    }
+
+    // ================================================================== death marker
+
+    /**
+     * Death Marker: when you die, a tall beam and a label stay where it happened, with an arrow at the edge of the screen when
+     * it is out of view and a chat message with the coordinates you can copy. It clears when you walk back to the spot (to
+     * pick up your things), after a time you choose, or when a newer death replaces the oldest one.
+     */
+    public static final class DeathMarker extends Module {
+        private record Death(String dim, double x, double y, double z, long at) {}
+
+        private final Setting.Bool say = add(new Setting.Bool("Tell me in chat", "A message with the coordinates and a Copy button when you die.", true));
+        private final Setting.Bool beam = add(new Setting.Bool("Beam", "A tall line above the spot so you can see it from far away.", true));
+        private final Setting.Bool arrow = add(new Setting.Bool("Arrow at the screen edge", "When the spot is out of view, an arrow at the edge points towards it.", true));
+        private final Setting.Num keep = add(new Setting.Num("Deaths remembered", "How many death spots are kept at once.", 2, 1, 5, 1, ""));
+        private final Setting.Num clearNear = add(new Setting.Num("Clear when I am within", "Walking this close to the spot removes it.", 3, 1, 12, 1, " blocks"));
+        private final Setting.Num clearAfter = add(new Setting.Num("Clear after", "Minutes before a spot removes itself. 0 keeps it until you reach it.", 20, 0, 120, 5, " min"));
+        private final Setting.Action clear = addSetting(new Setting.Action("Clear all", "Removes every death marker.", this::clearAll));
+        private final Setting.Info list = addSetting(new Setting.Info("Death spots", this::lines));
+
+        private final List<Death> deaths = new ArrayList<>();
+        private boolean wasDead;
+        private final float[] p = new float[2];
+
+        public DeathMarker() {
+            super("deathmarker", "Death Marker", "A beam, a label and an arrow at the place you died, plus the coordinates in chat.", Category.WORLD);
+            anywhere().onByDefault();
+            alias("death point", "death location", "grave", "where did i die", "death waypoint");
+        }
+
+        private void clearAll() {
+            deaths.clear();
+            Zeus.toast("Death markers cleared", true);
+        }
+
+        private static String dim(Minecraft mc) {
+            return mc.level == null ? "" : mc.level.dimension().toString();
+        }
+        private static Path deathFile() {
+            String s = Brain.ctx().server;
+            return FabricLoader.getInstance().getConfigDir().resolve(s.isEmpty() || s.equals("singleplayer") ? "zeus-deaths.json" : "zeus-deaths-" + s.replaceAll("[^a-z0-9_-]+", "-") + ".json");
+        }
+
+        private static String dimName(String d) {
+            String s = d.toLowerCase(Locale.ROOT);
+            return s.contains("nether") ? "The Nether" : s.contains("the_end") ? "The End" : "Overworld";
+        }
+
+        private List<String> lines() {
+            Minecraft mc = Minecraft.getInstance();
+            List<String> out = new ArrayList<>();
+            for (Death d : deaths) {
+                String dist = mc.player != null && d.dim().equals(dim(mc)) ? "  " + Math.round(Math.sqrt(mc.player.distanceToSqr(d.x(), d.y(), d.z()))) + " m" : "";
+                out.add(dimName(d.dim()) + "  " + Math.round(d.x()) + " " + Math.round(d.y()) + " " + Math.round(d.z()) + dist);
+            }
+            if (out.isEmpty()) out.add("None yet");
+            return out;
+        }
+
+        @Override
+        protected void onTick(Minecraft mc) {
+            if (mc.player == null || mc.level == null) {
+                wasDead = false;
+                return;
+            }
+            boolean dead = mc.player.isDeadOrDying();
+            if (dead && !wasDead) {
+                Death d = new Death(dim(mc), mc.player.getX(), mc.player.getY(), mc.player.getZ(), System.currentTimeMillis());
+                deaths.add(d);
+                while (deaths.size() > keep.i()) deaths.remove(0);
+                if (say.on() && mc.gui != null) {
+                    String xyz = Math.round(d.x()) + " " + Math.round(d.y()) + " " + Math.round(d.z());
+                    var c = mc.gui.getChat();
+                    c.addMessage(rule());
+                    c.addMessage(Component.literal(" ZEUS ").withStyle(style -> style.withColor(ChatFormatting.AQUA).withBold(true))
+                            .append(Component.literal("YOU DIED").withStyle(style -> style.withColor(ChatFormatting.RED).withBold(true))));
+                    c.addMessage(Component.literal(" " + dimName(d.dim()) + "   ").withStyle(ChatFormatting.GRAY)
+                            .append(Component.literal(xyz).withStyle(style -> style.withColor(ChatFormatting.WHITE).withBold(true))));
+                    c.addMessage(Component.literal(" ")
+                            .append(button("Copy coordinates", ChatFormatting.GOLD, new ClickEvent.CopyToClipboard(xyz), "Copy X Y Z to the clipboard"))
+                            .append(Component.literal("  marked in the world until you get back").withStyle(ChatFormatting.DARK_GRAY)));
+                    c.addMessage(rule());
+                }
+            }
+            wasDead = dead;
+            if (dead || deaths.isEmpty()) return;
+            long now = System.currentTimeMillis();
+            String here = dim(mc);
+            deaths.removeIf(d -> {
+                if (clearAfter.i() > 0 && now - d.at() > clearAfter.i() * 60_000L) return true;
+                return d.dim().equals(here) && now - d.at() > 4000L && mc.player.distanceToSqr(d.x(), d.y(), d.z()) < clearNear.get() * clearNear.get();
+            });
+        }
+
+        @Override
+        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            if (deaths.isEmpty() || mc.player == null || mc.level == null || !Projector.prepare(mc, partial, w, h)) return;
+            String here = dim(mc);
+            for (Death d : deaths) {
+                if (!d.dim().equals(here)) continue;
+                double dx = d.x() - Projector.eyeX();
+                double dy = d.y() + 1 - Projector.eyeY();
+                double dz = d.z() - Projector.eyeZ();
+                double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                int red = 0xFFFF5C6C;
+                if (beam.on()) {
+                    Wire.line(g, d.x(), d.y(), d.z(), d.x(), d.y() + 48, d.z(), 1.6f, red, false);
+                    Wire.box(g, d.x() - 0.3, d.y(), d.z() - 0.3, d.x() + 0.3, d.y() + 1.8, d.z() + 0.3, 1.2f, red, false);
+                }
+                String text = "Death  " + Math.round(dist) + " m";
+                int side = Projector.screenPoint(d.x(), d.y() + 1, d.z(), 22f, p);
+                if (side == 0) {
+                    int x = Math.round(p[0]);
+                    int y = Math.round(p[1]);
+                    int tw = Draw.width(text);
+                    Draw.rrect(g, x - tw / 2 - 3, y - 18, tw + 6, 12, 4, 0xB00B0E16);
+                    Draw.text(g, text, x - tw / 2, y - 16, red);
+                } else if (side == 1 && arrow.on()) {
+                    // an arrow on the edge of the screen, pointing out of it towards the spot
+                    float cx = w / 2f;
+                    float cy = h / 2f;
+                    float vx = p[0] - cx;
+                    float vy = p[1] - cy;
+                    float len = (float) Math.max(1e-3, Math.sqrt(vx * vx + vy * vy));
+                    vx /= len;
+                    vy /= len;
+                    float tx = p[0] + vx * 4;
+                    float ty = p[1] + vy * 4;
+                    float nx = -vy;
+                    float ny = vx;
+                    Draw.line(g, tx, ty, p[0] - vx * 8 + nx * 6, p[1] - vy * 8 + ny * 6, 1.8f, red);
+                    Draw.line(g, tx, ty, p[0] - vx * 8 - nx * 6, p[1] - vy * 8 - ny * 6, 1.8f, red);
+                    Draw.line(g, p[0] - vx * 8 + nx * 6, p[1] - vy * 8 + ny * 6, p[0] - vx * 8 - nx * 6, p[1] - vy * 8 - ny * 6, 1.8f, red);
+                    int tw = Draw.width(text);
+                    int lx = Math.max(2, Math.min(w - tw - 6, Math.round(p[0] - vx * 20 - tw / 2f)));
+                    int ly = Math.max(2, Math.min(h - 14, Math.round(p[1] - vy * 20 - 5)));
+                    Draw.rrect(g, lx - 2, ly - 2, tw + 4, 12, 4, 0xB00B0E16);
+                    Draw.text(g, text, lx, ly, red);
+                }
+            }
+        }
+    }
+}

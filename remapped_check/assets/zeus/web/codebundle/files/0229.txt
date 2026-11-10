@@ -1,0 +1,30 @@
+{
+  "intro": {
+    "category": "master",
+    "sounds": [
+      { "name": "zeus:intro", "stream": true }
+    ]
+  },
+  "panel_intro": {
+    "category": "master",
+    "sounds": [
+      { "name": "zeus:panel_intro", "stream": true }
+    ]
+  },
+  "menu_rumble": {
+    "category": "master",
+    "sounds": [ "zeus:menu_rumble" ]
+  },
+  "menu_crack": {
+    "category": "master",
+    "sounds": [ "zeus:menu_crack" ]
+  },
+  "menu_wind": {
+    "category": "ambient",
+    "sounds": [ "zeus:menu_wind" ]
+  },
+  "menu_rain": {
+    "category": "ambient",
+    "sounds": [ "zeus:menu_rain" ]
+  }
+}

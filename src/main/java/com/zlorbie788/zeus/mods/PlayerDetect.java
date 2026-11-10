@@ -1,0 +1,102 @@
+package com.zlorbie788.zeus.mods;
+
+import com.zlorbie788.zeus.core.Category;
+import com.zlorbie788.zeus.core.Module;
+import com.zlorbie788.zeus.core.Setting;
+import com.zlorbie788.zeus.core.Zeus;
+import com.zlorbie788.zeus.render.EspKit;
+import com.zlorbie788.zeus.render.Projector;
+import com.zlorbie788.zeus.ui.Accent;
+import com.zlorbie788.zeus.ui.Draw;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.PlayerFaceRenderer;
+import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.client.player.AbstractClientPlayer;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.level.GameType;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.scores.PlayerTeam;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+
+/** Finding players the game does not show you plainly: invisible ones, and staff. */
+public final class PlayerDetect {
+    private PlayerDetect() {}
+
+    // ------------------------------------------------------------------ Invis ESP
+
+    /**
+     * Invis ESP: marks players who are invisible (the potion, or a plugin). The server still sends an invisible player to
+     * you, your game just does not draw the body, so the box and name come from the player's real position. Armor and held
+     * items that you can see are a good hint too, they are drawn even when the body is not.
+     */
+    public static final class InvisEsp extends Module {
+        private final Setting.Num range = add(new Setting.Num("Range", "How far it looks.", 96, 16, 256, 8, " blocks"));
+        private final Setting.Bool spectators = add(new Setting.Bool("Spectators too", "Also mark players in spectator mode.", true));
+        private final Setting.Bool labels = add(new Setting.Bool("Names", "Name, what they are and the distance.", true));
+        private final Setting.Bool alert = add(new Setting.Bool("Tell me when one shows up", "A short message the first time an invisible player comes into range.", true));
+        private final EspKit kit;
+        private final Set<UUID> told = new HashSet<>();
+        private int shown;
+
+        public InvisEsp() {
+            super("invisesp", "Invis ESP", "Marks invisible players so you can see where they are.", Category.RENDER);
+            light();
+            kit = new EspKit(this, 0, true);
+        }
+
+        @Override
+        protected void onDisable() {
+            told.clear();
+        }
+
+        @Override
+        public String info() {
+            return shown > 0 ? Integer.toString(shown) : null;
+        }
+
+        @Override
+        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            shown = 0;
+            if (mc.level == null || mc.player == null || !Projector.prepare(mc, partial, w, h)) return;
+            double r = range.get();
+            float[] t = new float[2];
+            Set<UUID> now = new HashSet<>();
+            for (AbstractClientPlayer p : mc.level.players()) {
+                if (p == mc.player) continue;
+                boolean spec = p.isSpectator();
+                if (!(p.isInvisible() || (spec && spectators.on()))) continue;
+                double dist = Math.sqrt(mc.player.distanceToSqr(p));
+                if (dist > r) continue;
+                now.add(p.getUUID());
+                int color = spec ? 0xFF9AA7C7 : 0xFFB06BFF;
+                float a = kit.alphaFor(dist, r);
+                AABB bb = p.getBoundingBox();
+                double cx = (bb.minX + bb.maxX) / 2;
+                double cz = (bb.minZ + bb.maxZ) / 2;
+                kit.tracer(g, w, h, cx, (bb.minY + bb.maxY) / 2, cz, color, a);
+                if (Projector.depth(cx, (bb.minY + bb.maxY) / 2, cz) < -1.5) continue;
+                if (!Projector.project(cx, bb.maxY + 0.2, cz, t) || t[0] < -80 || t[0] > w + 80 || t[1] < -80 || t[1] > h + 80) continue;
+                shown++;
+                kit.box(g, bb, color, a, true);
+                if (labels.on()) {
+                    kit.tag(g, p.getName().getString() + (spec ? " (spectator)" : " (invisible)"), Math.round(dist) + "m", Math.round(t[0]), Math.round(t[1]) - 16, color, a, w, h);
+                }
+                if (alert.on() && told.add(p.getUUID())) {
+                    Zeus.toast((spec ? "Spectator nearby: " : "Invisible player nearby: ") + p.getName().getString(), false);
+                }
+            }
+            told.retainAll(now);
+        }
+    }
+
+}

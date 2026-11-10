@@ -1,0 +1,540 @@
+package com.zlorbie788.zeus.ui;
+
+import com.zlorbie788.zeus.core.Category;
+import net.minecraft.client.gui.GuiGraphics;
+
+import java.awt.BasicStroke;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.geom.Arc2D;
+import java.awt.geom.Ellipse2D;
+import java.awt.geom.Path2D;
+import java.awt.geom.RoundRectangle2D;
+import java.awt.image.BufferedImage;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.function.Consumer;
+
+/**
+ * The picture icons of the panel. Each one is a small vector drawing (lines, arcs, a few filled shapes) painted with Java2D
+ * at the exact size it is shown, white with a soft halo, and kept in one texture per size. The icon is then tinted by the
+ * colour passed when drawing, so one drawing serves every colour and every state.
+ */
+public final class Glyphs {
+    private Glyphs() {}
+
+    private static final Map<String, Consumer<Graphics2D>> PAINT = new LinkedHashMap<>();
+    private static final String[] NAMES;
+    private static final Map<String, Integer> INDEX = new HashMap<>();
+    private static final Map<Integer, Tex.Img> ATLAS = new HashMap<>();
+    private static final int COLS = 8;
+
+    // ------------------------------------------------------------------ small drawing helpers (unit space 0..100)
+
+    private static void ln(Graphics2D g, double x1, double y1, double x2, double y2) {
+        Path2D.Double p = new Path2D.Double();
+        p.moveTo(x1, y1);
+        p.lineTo(x2, y2);
+        g.draw(p);
+    }
+
+    private static Path2D.Double path(double... pts) {
+        Path2D.Double p = new Path2D.Double();
+        p.moveTo(pts[0], pts[1]);
+        for (int i = 2; i < pts.length; i += 2) p.lineTo(pts[i], pts[i + 1]);
+        return p;
+    }
+
+    private static void poly(Graphics2D g, boolean close, double... pts) {
+        Path2D.Double p = path(pts);
+        if (close) p.closePath();
+        g.draw(p);
+    }
+
+    private static void fillPoly(Graphics2D g, double... pts) {
+        Path2D.Double p = path(pts);
+        p.closePath();
+        g.fill(p);
+    }
+
+    /** The ten corners of a five pointed star, as x, y pairs. */
+    private static double[] starPoints(double cx, double cy, double outer, double inner) {
+        double[] p = new double[20];
+        for (int i = 0; i < 10; i++) {
+            double a = -Math.PI / 2 + i * Math.PI / 5;
+            double r = i % 2 == 0 ? outer : inner;
+            p[i * 2] = cx + Math.cos(a) * r;
+            p[i * 2 + 1] = cy + Math.sin(a) * r;
+        }
+        return p;
+    }
+
+    private static void ring(Graphics2D g, double cx, double cy, double r) {
+        g.draw(new Ellipse2D.Double(cx - r, cy - r, 2 * r, 2 * r));
+    }
+
+    private static void disc(Graphics2D g, double cx, double cy, double r) {
+        g.fill(new Ellipse2D.Double(cx - r, cy - r, 2 * r, 2 * r));
+    }
+
+    private static void arc(Graphics2D g, double cx, double cy, double r, double start, double extent) {
+        g.draw(new Arc2D.Double(cx - r, cy - r, 2 * r, 2 * r, start, extent, Arc2D.OPEN));
+    }
+
+    private static void box(Graphics2D g, double x, double y, double w, double h, double r) {
+        g.draw(new RoundRectangle2D.Double(x, y, w, h, r, r));
+    }
+
+    private static void sword(Graphics2D g, double ax, double ay, double bx, double by) {
+        // a blade from the hilt (a) to the tip (b), a cross guard and a pommel
+        double dx = bx - ax, dy = by - ay;
+        double len = Math.hypot(dx, dy);
+        double ux = dx / len, uy = dy / len, nx = -uy, ny = ux;
+        double gx = ax + ux * len * 0.28, gy = ay + uy * len * 0.28;
+        ln(g, ax, ay, bx, by);
+        ln(g, gx - nx * 13, gy - ny * 13, gx + nx * 13, gy + ny * 13);
+        disc(g, ax - ux * 4, ay - uy * 4, 4.2);
+    }
+
+    static {
+        PAINT.put("sword", g -> sword(g, 22, 78, 80, 20));
+        PAINT.put("swords", g -> {
+            sword(g, 22, 78, 78, 22);
+            sword(g, 78, 78, 22, 22);
+        });
+        PAINT.put("crystal", g -> {
+            poly(g, true, 50, 10, 80, 38, 50, 90, 20, 38);
+            poly(g, false, 20, 38, 80, 38);
+            poly(g, false, 50, 10, 38, 38, 50, 90);
+            poly(g, false, 50, 10, 62, 38, 50, 90);
+        });
+        PAINT.put("anchor", g -> {
+            ring(g, 50, 20, 7);
+            ln(g, 50, 27, 50, 84);
+            ln(g, 36, 40, 64, 40);
+            arc(g, 50, 60, 31, 200, 140);
+            fillPoly(g, 17, 58, 27, 56, 22, 68);
+            fillPoly(g, 83, 58, 73, 56, 78, 68);
+        });
+        PAINT.put("cursor", g -> poly(g, true, 28, 16, 28, 78, 44, 63, 56, 88, 68, 82, 56, 58, 78, 58));
+        PAINT.put("target", g -> {
+            ring(g, 50, 50, 34);
+            ring(g, 50, 50, 19);
+            disc(g, 50, 50, 5);
+            ln(g, 50, 8, 50, 22);
+            ln(g, 50, 78, 50, 92);
+            ln(g, 8, 50, 22, 50);
+            ln(g, 78, 50, 92, 50);
+        });
+        PAINT.put("shield", g -> {
+            Path2D.Double p = new Path2D.Double();
+            p.moveTo(50, 12);
+            p.lineTo(80, 24);
+            p.lineTo(78, 52);
+            p.curveTo(76, 72, 62, 82, 50, 90);
+            p.curveTo(38, 82, 24, 72, 22, 52);
+            p.lineTo(20, 24);
+            p.closePath();
+            g.draw(p);
+            ln(g, 50, 30, 50, 70);
+            ln(g, 36, 44, 64, 44);
+        });
+        PAINT.put("burst", g -> {
+            for (int i = 0; i < 8; i++) {
+                double a = i * Math.PI / 4;
+                double r1 = 14, r2 = i % 2 == 0 ? 40 : 28;
+                ln(g, 50 + Math.cos(a) * r1, 50 + Math.sin(a) * r1, 50 + Math.cos(a) * r2, 50 + Math.sin(a) * r2);
+            }
+            ring(g, 50, 50, 8);
+        });
+        PAINT.put("star", g -> poly(g, true, starPoints(50, 54, 42, 18)));
+        PAINT.put("starfill", g -> {
+            double[] p = starPoints(50, 54, 42, 18);
+            fillPoly(g, p);
+            poly(g, true, p);
+        });
+        PAINT.put("clock2", g -> {
+            ring(g, 50, 50, 38);
+            ln(g, 50, 50, 50, 26);
+            ln(g, 50, 50, 68, 58);
+        });
+        PAINT.put("heart", g -> {
+            Path2D.Double p = new Path2D.Double();
+            p.moveTo(50, 84);
+            p.curveTo(10, 56, 14, 22, 36, 22);
+            p.curveTo(44, 22, 50, 28, 50, 34);
+            p.curveTo(50, 28, 56, 22, 64, 22);
+            p.curveTo(86, 22, 90, 56, 50, 84);
+            p.closePath();
+            g.draw(p);
+        });
+        PAINT.put("bow", g -> {
+            arc(g, 26, 50, 40, -62, 124);
+            ln(g, 26 + 40 * Math.cos(Math.toRadians(62)), 50 - 40 * Math.sin(Math.toRadians(62)), 26 + 40 * Math.cos(Math.toRadians(62)), 50 + 40 * Math.sin(Math.toRadians(62)));
+            ln(g, 22, 50, 86, 50);
+            poly(g, false, 74, 40, 86, 50, 74, 60);
+        });
+        PAINT.put("wall", g -> {
+            box(g, 14, 24, 72, 52, 6);
+            ln(g, 14, 41, 86, 41);
+            ln(g, 14, 58, 86, 58);
+            ln(g, 40, 24, 40, 41);
+            ln(g, 62, 41, 62, 58);
+            ln(g, 40, 58, 40, 76);
+        });
+        PAINT.put("web", g -> {
+            for (int i = 0; i < 6; i++) {
+                double a = i * Math.PI / 3;
+                ln(g, 50, 50, 50 + Math.cos(a) * 40, 50 + Math.sin(a) * 40);
+            }
+            for (double r : new double[] {16, 30}) {
+                double[] pts = new double[12];
+                for (int i = 0; i < 6; i++) {
+                    pts[i * 2] = 50 + Math.cos(i * Math.PI / 3) * r;
+                    pts[i * 2 + 1] = 50 + Math.sin(i * Math.PI / 3) * r;
+                }
+                poly(g, true, pts);
+            }
+        });
+        PAINT.put("hole", g -> {
+            box(g, 14, 14, 72, 72, 12);
+            g.fill(new Ellipse2D.Double(30, 30, 40, 40));
+        });
+        PAINT.put("boot", g -> {
+            poly(g, true, 30, 16, 52, 16, 52, 50, 84, 64, 84, 82, 24, 82, 30, 50);
+            ln(g, 30, 34, 52, 34);
+        });
+        PAINT.put("wing", g -> {
+            Path2D.Double p = new Path2D.Double();
+            p.moveTo(14, 70);
+            p.curveTo(18, 40, 44, 20, 86, 22);
+            p.curveTo(70, 34, 66, 42, 62, 52);
+            p.curveTo(70, 50, 76, 50, 82, 52);
+            p.curveTo(68, 62, 56, 66, 44, 74);
+            p.curveTo(50, 74, 54, 74, 58, 76);
+            p.curveTo(46, 84, 28, 84, 14, 70);
+            g.draw(p);
+        });
+        PAINT.put("feather", g -> {
+            Path2D.Double p = new Path2D.Double();
+            p.moveTo(24, 82);
+            p.curveTo(22, 40, 50, 16, 82, 14);
+            p.curveTo(80, 46, 60, 74, 24, 82);
+            g.draw(p);
+            ln(g, 24, 82, 70, 28);
+            ln(g, 46, 56, 62, 60);
+            ln(g, 40, 64, 50, 76);
+        });
+        PAINT.put("eye", g -> {
+            Path2D.Double p = new Path2D.Double();
+            p.moveTo(8, 50);
+            p.curveTo(26, 22, 74, 22, 92, 50);
+            p.curveTo(74, 78, 26, 78, 8, 50);
+            g.draw(p);
+            ring(g, 50, 50, 14);
+            disc(g, 50, 50, 5);
+        });
+        PAINT.put("pick", g -> {
+            ln(g, 30, 84, 66, 38);
+            arc(g, 52, 52, 40, 100, 130);
+            ln(g, 22, 38, 12, 34);
+        });
+        PAINT.put("cube", g -> {
+            poly(g, true, 50, 10, 86, 30, 86, 70, 50, 90, 14, 70, 14, 30);
+            poly(g, false, 14, 30, 50, 50, 86, 30);
+            ln(g, 50, 50, 50, 90);
+        });
+        PAINT.put("sun", g -> {
+            ring(g, 50, 50, 16);
+            for (int i = 0; i < 8; i++) {
+                double a = i * Math.PI / 4;
+                ln(g, 50 + Math.cos(a) * 26, 50 + Math.sin(a) * 26, 50 + Math.cos(a) * 38, 50 + Math.sin(a) * 38);
+            }
+        });
+        PAINT.put("cloud", g -> {
+            Path2D.Double p = new Path2D.Double();
+            p.moveTo(26, 72);
+            p.curveTo(8, 72, 8, 46, 28, 46);
+            p.curveTo(30, 24, 62, 20, 68, 42);
+            p.curveTo(92, 40, 94, 72, 74, 72);
+            p.closePath();
+            g.draw(p);
+        });
+        PAINT.put("clock", g -> {
+            ring(g, 50, 50, 36);
+            ln(g, 50, 50, 50, 28);
+            ln(g, 50, 50, 66, 58);
+        });
+        PAINT.put("pin", g -> {
+            Path2D.Double p = new Path2D.Double();
+            p.moveTo(50, 90);
+            p.curveTo(20, 56, 22, 12, 50, 12);
+            p.curveTo(78, 12, 80, 56, 50, 90);
+            g.draw(p);
+            ring(g, 50, 40, 10);
+        });
+        PAINT.put("magnifier", g -> {
+            ring(g, 42, 42, 26);
+            ln(g, 61, 61, 86, 86);
+        });
+        PAINT.put("compass", g -> {
+            ring(g, 50, 50, 38);
+            fillPoly(g, 50, 22, 58, 50, 50, 78, 42, 50);
+            ln(g, 50, 22, 50, 78);
+        });
+        PAINT.put("radar", g -> {
+            ring(g, 50, 50, 38);
+            ring(g, 50, 50, 20);
+            ln(g, 50, 50, 78, 22);
+            disc(g, 66, 62, 4);
+        });
+        PAINT.put("chest", g -> {
+            box(g, 14, 28, 72, 54, 8);
+            ln(g, 14, 48, 86, 48);
+            box(g, 43, 42, 14, 14, 3);
+        });
+        PAINT.put("fish", g -> {
+            Path2D.Double p = new Path2D.Double();
+            p.moveTo(10, 50);
+            p.curveTo(26, 24, 58, 24, 74, 50);
+            p.curveTo(58, 76, 26, 76, 10, 50);
+            g.draw(p);
+            poly(g, true, 74, 50, 92, 34, 92, 66);
+            disc(g, 28, 46, 3.4);
+        });
+        PAINT.put("creeper", g -> {
+            box(g, 16, 16, 68, 68, 6);
+            g.fill(new RoundRectangle2D.Double(28, 30, 14, 14, 2, 2));
+            g.fill(new RoundRectangle2D.Double(58, 30, 14, 14, 2, 2));
+            fillPoly(g, 42, 48, 58, 48, 58, 58, 66, 58, 66, 74, 56, 74, 56, 66, 44, 66, 44, 74, 34, 74, 34, 58, 42, 58);
+        });
+        PAINT.put("person", g -> {
+            ring(g, 50, 30, 14);
+            Path2D.Double p = new Path2D.Double();
+            p.moveTo(20, 86);
+            p.curveTo(20, 56, 80, 56, 80, 86);
+            g.draw(p);
+        });
+        PAINT.put("resize", g -> {
+            ln(g, 24, 76, 76, 24);
+            poly(g, false, 24, 54, 24, 76, 46, 76);
+            poly(g, false, 54, 24, 76, 24, 76, 46);
+        });
+        PAINT.put("gear", g -> {
+            ring(g, 50, 50, 17);
+            for (int i = 0; i < 8; i++) {
+                double a = i * Math.PI / 4;
+                ln(g, 50 + Math.cos(a) * 28, 50 + Math.sin(a) * 28, 50 + Math.cos(a) * 40, 50 + Math.sin(a) * 40);
+            }
+            ring(g, 50, 50, 30);
+        });
+        PAINT.put("grid", g -> {
+            box(g, 14, 14, 30, 30, 8);
+            box(g, 56, 14, 30, 30, 8);
+            box(g, 14, 56, 30, 30, 8);
+            box(g, 56, 56, 30, 30, 8);
+        });
+        PAINT.put("bolt", g -> fillPoly(g, 58, 8, 22, 54, 46, 54, 38, 92, 78, 42, 54, 42));
+        PAINT.put("sliders", g -> {
+            ln(g, 14, 28, 86, 28);
+            ln(g, 14, 50, 86, 50);
+            ln(g, 14, 72, 86, 72);
+            disc(g, 34, 28, 8);
+            disc(g, 64, 50, 8);
+            disc(g, 44, 72, 8);
+        });
+        PAINT.put("chevrons", g -> {
+            poly(g, false, 22, 24, 48, 50, 22, 76);
+            poly(g, false, 50, 24, 76, 50, 50, 76);
+        });
+        PAINT.put("keys", g -> {
+            box(g, 8, 26, 84, 48, 8);
+            for (int i = 0; i < 4; i++) g.fill(new RoundRectangle2D.Double(18 + i * 17, 36, 10, 10, 2, 2));
+            g.fill(new RoundRectangle2D.Double(26, 54, 48, 8, 2, 2));
+        });
+        PAINT.put("list", g -> {
+            for (int i = 0; i < 3; i++) {
+                disc(g, 20, 28 + i * 22, 4.5);
+                ln(g, 34, 28 + i * 22, 84, 28 + i * 22);
+            }
+        });
+        PAINT.put("up", g -> {
+            ln(g, 50, 84, 50, 20);
+            poly(g, false, 26, 44, 50, 18, 74, 44);
+        });
+        PAINT.put("down", g -> {
+            ln(g, 50, 16, 50, 80);
+            poly(g, false, 26, 56, 50, 82, 74, 56);
+        });
+        PAINT.put("stairs", g -> poly(g, false, 14, 84, 14, 62, 36, 62, 36, 40, 58, 40, 58, 18, 86, 18));
+        PAINT.put("warn", g -> {
+            poly(g, true, 50, 12, 90, 84, 10, 84);
+            ln(g, 50, 38, 50, 60);
+            disc(g, 50, 72, 3.4);
+        });
+        PAINT.put("flask", g -> {
+            poly(g, false, 40, 12, 40, 38, 18, 80, 82, 80, 60, 38, 60, 12);
+            ln(g, 34, 12, 66, 12);
+            ln(g, 30, 62, 70, 62);
+        });
+        NAMES = PAINT.keySet().toArray(new String[0]);
+        for (int i = 0; i < NAMES.length; i++) INDEX.put(NAMES[i], i);
+    }
+
+    // ------------------------------------------------------------------ which picture a module or page uses
+
+    public static String forCategory(Category c) {
+        return switch (c) {
+            case COMBAT -> "swords";
+            case MOVEMENT -> "chevrons";
+            case PLAYER -> "person";
+            case WORLD -> "cube";
+            case RENDER -> "eye";
+            case SCANNER -> "radar";
+            case UTILITY -> "gear";
+            case FRIENDS -> "heart";
+            case PROFILES -> "keys";
+            case PANELS -> "list";
+            case INTERFACE -> "grid";
+        };
+    }
+
+    public static String forModule(String id, Category cat) {
+        return switch (id) {
+            case "killaura", "autoweapon" -> "sword";
+            case "crystalaura" -> "crystal";
+            case "anchoraura" -> "anchor";
+            case "autoclicker" -> "cursor";
+            case "reach", "bowaimbot", "targethud" -> "target";
+            case "antiknockback", "autoarmor", "antivoid", "safewalk", "nostatus", "armorhud", "durabilityalert" -> "shield";
+            case "hitboxes", "expthrower", "nuker" -> "burst";
+            case "autototem", "autoeat", "autorespawn" -> "heart";
+            case "bowspam", "trajectories" -> "bow";
+            case "surround", "selftrap", "autotrap" -> "wall";
+            case "holefiller", "holeesp" -> "hole";
+            case "autoweb", "selfweb", "spider" -> "web";
+            case "flight", "elytraboost", "airjump" -> "wing";
+            case "speed" -> "chevrons";
+            case "highjump", "autojump", "longjump" -> "up";
+            case "step", "fastclimb" -> "stairs";
+            case "reversestep" -> "down";
+            case "nofall" -> "feather";
+            case "lowgravity", "weatherchanger" -> "cloud";
+            case "autosprint", "autowalk" -> "boot";
+            case "jesus", "autofish" -> "fish";
+            case "sneak", "resize" -> id.equals("resize") ? "resize" : "person";
+            case "scaffold", "xray", "fastplace", "blockoutline" -> "cube";
+            case "morph" -> "creeper";
+            case "autotool", "fastbreak" -> "pick";
+            case "chestswap", "autoreplenish", "itemcounter" -> "chest";
+            case "antiafk", "timechanger" -> "clock";
+            case "esp" -> "eye";
+            case "blockesp", "zoom" -> "magnifier";
+            case "lightoverlay", "fullbright" -> "sun";
+            case "breadcrumbs", "waypoints" -> "pin";
+            case "chunkborders" -> "grid";
+            case "suspicious", "radar" -> "radar";
+            case "compass" -> "compass";
+            case "watermark" -> "bolt";
+            case "modulelist", "infohud" -> "list";
+            case "potionhud" -> "flask";
+            case "keystrokes" -> "keys";
+            default -> forCategory(cat);
+        };
+    }
+
+    // ------------------------------------------------------------------ the atlas
+
+    private static Tex.Img atlas(int cell) {
+        Tex.Img have = ATLAS.get(cell);
+        if (have != null) return have;
+        int rows = (NAMES.length + COLS - 1) / COLS;
+        int w = COLS * cell;
+        int h = rows * cell;
+        int[] argb = new int[w * h];
+        for (int i = 0; i < NAMES.length; i++) {
+            int[] px = render(NAMES[i], cell);
+            int ox = (i % COLS) * cell;
+            int oy = (i / COLS) * cell;
+            for (int y = 0; y < cell; y++) System.arraycopy(px, y * cell, argb, (oy + y) * w + ox, cell);
+        }
+        Tex.Img img = Tex.made("glyphs" + cell, argb, w, h);
+        ATLAS.put(cell, img);
+        return img;
+    }
+
+    /** One drawing at {@code cell} pixels square: a crisp white line drawing over a soft white halo. */
+    static int[] render(String name, int cell) {
+        int pad = Math.max(2, cell / 12);
+        BufferedImage line = new BufferedImage(cell, cell, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = line.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
+        double inner = cell - 2.0 * pad;
+        g.translate(pad, pad);
+        g.scale(inner / 100.0, inner / 100.0);
+        g.setColor(java.awt.Color.WHITE);
+        g.setStroke(new BasicStroke(7.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        Consumer<Graphics2D> p = PAINT.get(name);
+        if (p != null) p.accept(g);
+        g.dispose();
+        int[] a = line.getRGB(0, 0, cell, cell, null, 0, cell);
+        float[] alpha = new float[cell * cell];
+        for (int i = 0; i < alpha.length; i++) alpha[i] = (a[i] >>> 24) / 255f;
+        float[] halo = blur(alpha, cell, cell, Math.max(1, cell / 16));
+        int[] out = new int[cell * cell];
+        for (int i = 0; i < out.length; i++) {
+            float core = alpha[i];
+            float soft = Math.min(1f, halo[i] * 1.5f) * 0.45f;
+            float v = core + (1f - core) * soft;
+            out[i] = ((int) (Math.min(1f, v) * 255) << 24) | 0xFFFFFF;
+        }
+        return out;
+    }
+
+    private static float[] blur(float[] src, int w, int h, int r) {
+        float[] cur = src;
+        for (int pass = 0; pass < 2; pass++) {
+            float[] tmp = new float[w * h];
+            for (int y = 0; y < h; y++) {
+                float sum = 0;
+                for (int x = -r; x <= r; x++) sum += cur[y * w + Math.max(0, Math.min(w - 1, x))];
+                for (int x = 0; x < w; x++) {
+                    tmp[y * w + x] = sum / (2 * r + 1);
+                    sum += cur[y * w + Math.min(w - 1, x + r + 1)] - cur[y * w + Math.max(0, x - r)];
+                }
+            }
+            float[] out = new float[w * h];
+            for (int x = 0; x < w; x++) {
+                float sum = 0;
+                for (int y = -r; y <= r; y++) sum += tmp[Math.max(0, Math.min(h - 1, y)) * w + x];
+                for (int y = 0; y < h; y++) {
+                    out[y * w + x] = sum / (2 * r + 1);
+                    sum += tmp[Math.min(h - 1, y + r + 1) * w + x] - tmp[Math.max(0, y - r) * w + x];
+                }
+            }
+            cur = out;
+        }
+        return cur;
+    }
+
+    /** Draws icon {@code name}, centred on (cx, cy), {@code size} interface pixels square, tinted. */
+    public static void draw(GuiGraphics g, String name, float cx, float cy, float size, int tint) {
+        Integer idx = INDEX.get(name);
+        if (idx == null) return;
+        int gs = Tex.guiScale();
+        int cell = Math.max(16, Math.round(size * gs));
+        Tex.Img img = atlas(cell);
+        int sx = (idx % COLS) * cell;
+        int sy = (idx / COLS) * cell;
+        int dw = Math.round(size);
+        int x = Math.round(cx - size / 2f);
+        int y = Math.round(cy - size / 2f);
+        img.drawPart(g, x, y, dw, dw, sx, sy, cell, cell, tint);
+    }
+
+    public static void releaseAll() {
+        ATLAS.clear();
+    }
+}

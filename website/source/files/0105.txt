@@ -1,0 +1,231 @@
+package com.zlorbie788.zeus.mods;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.zlorbie788.zeus.core.Zeus;
+import net.fabricmc.loader.api.FabricLoader;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.LongPredicate;
+
+/**
+ * Remembers the bases it has found, per server, and compares what is there now with what was there before. That is how it
+ * can tell a base that was raided: the chests, beds and valuable blocks it saw last time are gone.
+ */
+public final class Ledger {
+    private Ledger() {}
+
+    public static final class Entry {
+        public double x;
+        public double z;
+        public String type = "Base";
+        public int confidence;
+        public long first;
+        public long last;
+        public long lastIntact;
+        public String status = "Intact";
+        public String detail = "";
+        public Set<Long> keys = new HashSet<>();
+    }
+
+    private static final Gson GSON = new GsonBuilder().create();
+    private static final Map<String, List<Entry>> DATA = new HashMap<>();
+    private static boolean loaded;
+    private static boolean dirty;
+    private static long dirtyAt;
+
+    // key positions are packed into one long: x (26 bits), z (26 bits), y (12 bits)
+    public static long pack(int x, int y, int z) {
+        return ((x & 0x3FFFFFFL) << 38) | ((z & 0x3FFFFFFL) << 12) | ((y + 2048) & 0xFFFL);
+    }
+
+    public static int ux(long v) {
+        return (int) (v >> 38);
+    }
+
+    public static int uz(long v) {
+        return (int) ((v << 26) >> 38);
+    }
+
+    public static int uy(long v) {
+        return (int) (v & 0xFFFL) - 2048;
+    }
+
+    private static Path file() {
+        return FabricLoader.getInstance().getConfigDir().resolve("zeus-bases.json");
+    }
+
+    private static void load() {
+        if (loaded) return;
+        loaded = true;
+        try {
+            if (!Files.isRegularFile(file())) return;
+            JsonElement root = JsonParser.parseString(Files.readString(file(), StandardCharsets.UTF_8));
+            if (!root.isJsonObject()) return;
+            for (Map.Entry<String, JsonElement> s : root.getAsJsonObject().entrySet()) {
+                List<Entry> list = new ArrayList<>();
+                for (JsonElement el : s.getValue().getAsJsonArray()) {
+                    JsonObject o = el.getAsJsonObject();
+                    Entry e = new Entry();
+                    e.x = o.get("x").getAsDouble();
+                    e.z = o.get("z").getAsDouble();
+                    e.type = o.get("type").getAsString();
+                    e.confidence = o.get("conf").getAsInt();
+                    e.first = o.get("first").getAsLong();
+                    e.last = o.get("last").getAsLong();
+                    e.lastIntact = o.get("intact").getAsLong();
+                    e.status = o.get("status").getAsString();
+                    e.detail = o.has("detail") ? o.get("detail").getAsString() : "";
+                    for (JsonElement k : o.getAsJsonArray("keys")) e.keys.add(k.getAsLong());
+                    list.add(e);
+                }
+                DATA.put(s.getKey(), list);
+            }
+        } catch (IOException | RuntimeException e) {
+            Zeus.LOG.warn("Could not read the saved bases", e);
+        }
+    }
+
+    public static void saveIfDue() {
+        if (dirty && System.currentTimeMillis() - dirtyAt > 20000) save();
+    }
+
+    public static void save() {
+        dirty = false;
+        try {
+            JsonObject root = new JsonObject();
+            for (Map.Entry<String, List<Entry>> s : DATA.entrySet()) {
+                JsonArray arr = new JsonArray();
+                for (Entry e : s.getValue()) {
+                    JsonObject o = new JsonObject();
+                    o.addProperty("x", e.x);
+                    o.addProperty("z", e.z);
+                    o.addProperty("type", e.type);
+                    o.addProperty("conf", e.confidence);
+                    o.addProperty("first", e.first);
+                    o.addProperty("last", e.last);
+                    o.addProperty("intact", e.lastIntact);
+                    o.addProperty("status", e.status);
+                    o.addProperty("detail", e.detail);
+                    JsonArray keys = new JsonArray();
+                    for (long k : e.keys) keys.add(k);
+                    o.add("keys", keys);
+                    arr.add(o);
+                }
+                root.add(s.getKey(), arr);
+            }
+            Files.createDirectories(file().getParent());
+            Files.writeString(file(), GSON.toJson(root), StandardCharsets.UTF_8);
+        } catch (IOException | RuntimeException e) {
+            Zeus.LOG.warn("Could not save the bases", e);
+        }
+    }
+
+    public static void forgetAll() {
+        DATA.clear();
+        loaded = true;
+        save();
+    }
+
+    public static List<Entry> list(String server) {
+        load();
+        return DATA.computeIfAbsent(server, k -> new ArrayList<>());
+    }
+
+    /** The result of looking at a base now. */
+    public record Seen(Entry entry, boolean isNew) {}
+
+    /**
+     * Records a base and judges whether it was raided.
+     *
+     * @param keysNow the key blocks (storage, beds, valuables, workstations) found in the base now
+     * @param scanned tells whether the chunk that holds a saved position is loaded and was looked at, because a block in an unloaded chunk is not "gone"
+     * @param weakRaid a single-look hint (fire, scattered dropped items) used only when there is nothing saved to compare with
+     */
+    public static Seen observe(String server, double x, double z, String type, int conf, Set<Long> keysNow, LongPredicate scanned, boolean weakRaid) {
+        List<Entry> list = list(server);
+        long now = System.currentTimeMillis();
+        Entry best = null;
+        double bd = 48 * 48;
+        for (Entry e : list) {
+            double d = (e.x - x) * (e.x - x) + (e.z - z) * (e.z - z);
+            if (d < bd) {
+                bd = d;
+                best = e;
+            }
+        }
+        boolean fresh = best == null;
+        if (fresh) {
+            if (list.size() >= 200) list.remove(0);
+            best = new Entry();
+            best.first = now;
+            best.lastIntact = now;
+            best.x = x;
+            best.z = z;
+            list.add(best);
+        }
+        Entry e = best;
+        e.last = now;
+        e.type = type;
+        e.confidence = Math.max(conf, fresh ? conf : (e.confidence * 3 + conf) / 4);
+        List<Long> comparable = new ArrayList<>();
+        for (long k : e.keys) if (scanned.test(k)) comparable.add(k);
+        int gone = 0;
+        for (long k : comparable) if (!keysNow.contains(k)) gone++;
+        if (!fresh && comparable.size() >= 4) {
+            double frac = gone / (double) comparable.size();
+            if (frac >= 0.5) {
+                e.status = "Raided";
+                e.detail = gone + " of " + comparable.size() + " storage / valuable blocks are gone";
+            } else if (frac >= 0.2) {
+                e.status = "Looted";
+                e.detail = gone + " of " + comparable.size() + " storage / valuable blocks are gone";
+            } else if (!"Raided".equals(e.status) || frac == 0 && comparable.size() >= 4 && keysNow.size() >= comparable.size()) {
+                // everything it saw before is still there (a rebuilt base clears an old raid mark)
+                e.status = "Intact";
+                e.detail = "";
+                e.lastIntact = now;
+            }
+        } else if (fresh) {
+            e.status = weakRaid ? "Possibly raided" : "Intact";
+            e.detail = weakRaid ? "fire or scattered items, nothing saved to compare with" : "";
+        }
+        // remember new key blocks, but never forget the ones that vanished while the base is marked raided
+        if (e.status.equals("Intact")) {
+            Set<Long> merged = new HashSet<>();
+            for (long k : e.keys) if (!scanned.test(k) || keysNow.contains(k)) merged.add(k);
+            merged.addAll(keysNow);
+            e.keys = trim(merged);
+        } else {
+            e.keys.addAll(keysNow);
+            e.keys = trim(e.keys);
+        }
+        if (!dirty) dirtyAt = now;
+        dirty = true;
+        return new Seen(e, fresh);
+    }
+
+    private static Set<Long> trim(Set<Long> keys) {
+        if (keys.size() <= 160) return keys;
+        Set<Long> out = new HashSet<>();
+        int n = 0;
+        for (long k : keys) {
+            out.add(k);
+            if (++n >= 160) break;
+        }
+        return out;
+    }
+}

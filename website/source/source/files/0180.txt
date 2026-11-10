@@ -1,0 +1,98 @@
+package com.zlorbie788.zeus.ui;
+
+import net.minecraft.client.gui.GuiGraphics;
+
+/**
+ * Small thunders used all over the interface: crawling along the edge of a button or card, circling a logo, leaping off a
+ * switch. They are drawn fresh every frame from a time slot, so each one lives a fraction of a second and then jumps elsewhere.
+ */
+public final class Thunder {
+    private Thunder() {}
+
+    private static final int BLUE = 0xFF5C9CFF;
+    private static final int DEEP = 0xFF2A5CFF;
+
+    /** Small jagged bolts that flicker around a circle. */
+    static void ring(GuiGraphics g, float cx, float cy, float r, float t, float alpha, float k) {
+        if (UiSettings.CALM.on() || Perf.fast()) return;
+        for (int j = 0; j < 7; j++) {
+            int slot = (int) Math.floor(t * 8f + j * 0.41f);
+            if (Lightning.hash(slot, j * 13 + 5) < 0.35f) continue;
+            float a0 = Lightning.hash(slot, j * 7 + 1) * 6.2832f;
+            float da = 0.35f + 0.6f * Lightning.hash(slot, j * 7 + 2);
+            float x1 = cx + (float) Math.cos(a0) * r;
+            float y1 = cy + (float) Math.sin(a0) * r;
+            float x2 = cx + (float) Math.cos(a0 + da) * r * 1.18f;
+            float y2 = cy + (float) Math.sin(a0 + da) * r * 1.18f;
+            Lightning.bolt(g, x1, y1, x2, y2, 1f, slot * 31 + j, alpha, BLUE, DEEP, Math.max(0.3f, 0.38f * k), 1, 0.5f, 0f, 3);
+        }
+    }
+
+    /** Where a point {@code p} along the outline of a rectangle is, and which way is outward there. */
+    private static float[] onOutline(float x, float y, float w, float h, float p) {
+        float per = 2f * (w + h);
+        p = ((p % per) + per) % per;
+        if (p < w) return new float[] {x + p, y, 0f, -1f};
+        p -= w;
+        if (p < h) return new float[] {x + w, y + p, 1f, 0f};
+        p -= h;
+        if (p < w) return new float[] {x + w - p, y + h, 0f, 1f};
+        p -= w;
+        return new float[] {x, y + h - p, -1f, 0f};
+    }
+
+    /**
+     * Thunders that crawl along the edge of a rectangle: jagged bolts at random places, each living a fraction of a second,
+     * with little forks leaping outward, a glint where they strike, and a soft blue edge so the shape always reads.
+     * {@code strength} is 0 to 1; {@code density} 1 is the full menu look, a smaller number is lighter (for cards).
+     */
+    static void outline(GuiGraphics g, int x, int y, int w, int h, float t, float strength, float k, float density) {
+        if (strength <= 0.01f) return;
+        int edge = Draw.rgba(0xFF8EB8FF, 0.40f * strength);
+        Draw.outline(g, x - 1, y - 1, x + w + 1, y + h + 1, edge);
+        if (UiSettings.CALM.on()) return;
+        float per = 2f * (w + h);
+        float lw = Math.max(0.3f, 0.36f * k);
+        int n = Math.max(3, Math.round(18 * density * Perf.density()));
+        for (int j = 0; j < n; j++) {
+            float speed = 5f + 4f * Lightning.hash(j, 9);
+            int slot = (int) Math.floor(t * speed + j * 0.37f);
+            float life = (t * speed + j * 0.37f) - slot;
+            if (Lightning.hash(slot, j * 17 + 3) < 0.18f) continue;
+            float alpha = strength * (life < 0.15f ? life / 0.15f : 1f - (life - 0.15f) / 0.85f * 0.7f);
+            float start = Lightning.hash(slot, j * 17 + 4) * per;
+            float len = per * (0.04f + 0.09f * Lightning.hash(slot, j * 17 + 5));
+            int pieces = 5;
+            float[] prev = null;
+            for (int i = 0; i <= pieces; i++) {
+                float[] c = onOutline(x, y, w, h, start + len * i / pieces);
+                float off = (Lightning.hash(slot * 7 + i, j * 5 + 1) - 0.3f) * 6f * k;
+                float px = c[0] + c[2] * off;
+                float py = c[1] + c[3] * off;
+                if (prev != null) Lightning.seg(g, prev[0], prev[1], px, py, alpha, BLUE, DEEP, lw, 3);
+                prev = new float[] {px, py};
+                if ((i == 2 || i == 4) && Lightning.hash(slot, j * 17 + 6 + i) > 0.5f) {
+                    float reach = (8f + 9f * Lightning.hash(slot, j * 17 + 7)) * k;
+                    float fx = px + c[2] * reach + (Lightning.hash(slot, j * 17 + 8) - 0.5f) * 10f * k;
+                    float fy = py + c[3] * reach + (Lightning.hash(slot, j * 17 + 9) - 0.5f) * 10f * k;
+                    Lightning.bolt(g, px, py, fx, fy, 1f, slot * 13 + j + i, alpha * 0.9f, BLUE, DEEP, lw * 0.85f, 1, 0.6f, 0f, 3);
+                }
+            }
+            if (life < 0.35f && strength > 0.4f) Lightning.bloom(g, prev[0], prev[1], 3f * k + 2f, BLUE, 0.35f * alpha);
+        }
+    }
+
+    /** A short burst of bolts from a point, for when something switches on. {@code p} runs 0 to 1 over the burst. */
+    static void burst(GuiGraphics g, float cx, float cy, float reach, float p, float k) {
+        if (p <= 0f || p >= 1f || UiSettings.CALM.on()) return;
+        if (Perf.fast() && p > 0.5f) return;
+        float a = 1f - p;
+        int slot = (int) (p * 9f);
+        for (int i = 0; i < 6; i++) {
+            float ang = Lightning.hash(slot, i * 3 + 1) * 6.2832f;
+            float len = reach * (0.5f + 0.7f * Lightning.hash(slot, i * 3 + 2));
+            Lightning.bolt(g, cx, cy, cx + (float) Math.cos(ang) * len, cy + (float) Math.sin(ang) * len, Math.min(1f, p * 4f), slot * 11 + i, a, BLUE, DEEP, Math.max(0.3f, 0.4f * k), 1, 0.7f, 0f, 3);
+        }
+        Lightning.bloom(g, cx, cy, reach * 0.5f * a + 2f, BLUE, 0.5f * a);
+    }
+}

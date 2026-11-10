@@ -1,0 +1,416 @@
+package com.zlorbie788.zeus.core;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
+
+import java.util.Locale;
+import java.util.function.BooleanSupplier;
+
+/** One option of a module. The panel draws each kind differently. */
+public abstract class Setting {
+    public final String name;
+    public final String desc;
+    private BooleanSupplier visible = () -> true;
+    private Runnable onChange = () -> {};
+    private boolean notSaved;
+
+    protected Setting(String name, String desc) {
+        this.name = name;
+        this.desc = desc;
+    }
+
+    /** A value that is dropped back to its default the next time the client's defaults change, and saved normally after that. */
+    private boolean resetOnRev;
+
+    @SuppressWarnings("unchecked")
+    public <T extends Setting> T resetOnRev() {
+        this.resetOnRev = true;
+        return (T) this;
+    }
+
+    public boolean resetsOnRev() {
+        return resetOnRev;
+    }
+
+    public boolean visible() {
+        return visible.getAsBoolean();
+    }
+
+    @SuppressWarnings("unchecked")
+    public <T extends Setting> T showIf(BooleanSupplier s) {
+        this.visible = s;
+        return (T) this;
+    }
+
+    @SuppressWarnings("unchecked")
+    public <T extends Setting> T onChange(Runnable r) {
+        this.onChange = r;
+        return (T) this;
+    }
+
+    /** This setting is only a window onto something kept elsewhere (for example the friend picked in the Friends list): it is never saved or shared with the module. */
+    @SuppressWarnings("unchecked")
+    public <T extends Setting> T notSaved() {
+        this.notSaved = true;
+        return (T) this;
+    }
+
+    final void persist(JsonObject o) {
+        if (!notSaved) save(o);
+    }
+
+    final void restore(JsonObject o) {
+        if (!notSaved) load(o);
+    }
+
+    protected void changed() {
+        try {
+            onChange.run();
+        } catch (RuntimeException ignored) {
+            // a setting hook must never break the panel
+        }
+        Zeus.markDirty();
+    }
+
+    abstract void save(JsonObject o);
+
+    abstract void load(JsonObject o);
+
+    // ------------------------------------------------------------------ kinds
+
+    public static final class Bool extends Setting {
+        private boolean value;
+        private final boolean def;
+
+        public Bool(String name, String desc, boolean def) {
+            super(name, desc);
+            this.value = def;
+            this.def = def;
+        }
+
+        /** The value the setting starts with. */
+        public boolean initial() {
+            return def;
+        }
+
+        public boolean on() {
+            return value;
+        }
+
+        public void set(boolean v) {
+            if (v != value) {
+                value = v;
+                changed();
+            }
+        }
+
+        public void toggle() {
+            set(!value);
+        }
+
+        void save(JsonObject o) {
+            if (value != def) o.add(name, new JsonPrimitive(value));
+        }
+
+        void load(JsonObject o) {
+            JsonElement e = o.get(name);
+            value = e != null && e.isJsonPrimitive() ? e.getAsBoolean() : def;
+        }
+    }
+
+    public static final class Num extends Setting {
+        public final double min;
+        public final double max;
+        public final double step;
+        public final String unit;
+        private double value;
+        private final double def;
+
+        public Num(String name, String desc, double def, double min, double max, double step, String unit) {
+            super(name, desc);
+            this.def = def;
+            this.value = def;
+            this.min = min;
+            this.max = max;
+            this.step = step;
+            this.unit = unit;
+        }
+
+        /** The value the setting starts with. */
+        public double initial() {
+            return def;
+        }
+
+        public double get() {
+            return value;
+        }
+
+        public float f() {
+            return (float) value;
+        }
+
+        public int i() {
+            return (int) Math.round(value);
+        }
+
+        public void set(double v) {
+            if (!Double.isFinite(v)) return;
+            v = Math.max(min, Math.min(max, v));
+            if (step > 0) v = Math.round((v - min) / step) * step + min;
+            v = Math.max(min, Math.min(max, v));
+            if (v != value) {
+                value = v;
+                changed();
+            }
+        }
+
+        public double fraction() {
+            return max == min ? 0 : (value - min) / (max - min);
+        }
+
+        public String text() {
+            boolean whole = step >= 1 && step == Math.rint(step);
+            String s = whole ? Long.toString(Math.round(value)) : String.format(Locale.ROOT, step >= 0.1 ? "%.1f" : "%.2f", value);
+            return s + unit;
+        }
+
+        void save(JsonObject o) {
+            if (value != def) o.add(name, new JsonPrimitive(value));
+        }
+
+        void load(JsonObject o) {
+            JsonElement e = o.get(name);
+            double loaded = e != null && e.isJsonPrimitive() ? e.getAsDouble() : def;
+            if (!Double.isFinite(loaded)) loaded = def;
+            loaded = Math.max(min, Math.min(max, loaded));
+            if (step > 0) loaded = Math.round((loaded - min) / step) * step + min;
+            value = Math.max(min, Math.min(max, loaded));
+        }
+    }
+
+    public static final class Choice extends Setting {
+        public final String[] options;
+        private int index;
+        private final int def;
+
+        public Choice(String name, String desc, int def, String... options) {
+            super(name, desc);
+            this.options = options;
+            this.def = def;
+            this.index = def;
+        }
+
+        /** The option the setting starts on. */
+        public String initialOption() {
+            return def >= 0 && def < options.length ? options[def] : "";
+        }
+
+        public int index() {
+            return index;
+        }
+
+        public String value() {
+            return options[index];
+        }
+
+        public void set(int i) {
+            i = Math.max(0, Math.min(options.length - 1, i));
+            if (i != index) {
+                index = i;
+                changed();
+            }
+        }
+
+        void save(JsonObject o) {
+            if (index != def) o.add(name, new JsonPrimitive(index));
+        }
+
+        void load(JsonObject o) {
+            JsonElement e = o.get(name);
+            index = e != null && e.isJsonPrimitive() ? Math.max(0, Math.min(options.length - 1, e.getAsInt())) : def;
+        }
+    }
+
+    /**
+     * A long list of choices shown as a grid of small buttons, for picks such as a mob. Saved by id, so the list can grow
+     * or change between versions without the saved pick pointing at the wrong thing.
+     */
+    public static final class Pick extends Setting {
+        public final String[] ids;
+        public final String[] labels;
+        /** How many button rows the panel needed last time it drew this (the panel updates it). */
+        public int rows = 8;
+        private int index;
+        private final int def;
+
+        public Pick(String name, String desc, String defId, String[] ids, String[] labels) {
+            super(name, desc);
+            this.ids = ids;
+            this.labels = labels;
+            int d = 0;
+            for (int i = 0; i < ids.length; i++) if (ids[i].equals(defId)) d = i;
+            this.def = d;
+            this.index = d;
+        }
+
+        public int index() {
+            return index;
+        }
+
+        public String id() {
+            return ids.length == 0 ? "" : ids[index];
+        }
+
+        public String label() {
+            return labels.length == 0 ? "-" : labels[index];
+        }
+
+        public void set(int i) {
+            if (ids.length == 0) return;
+            i = Math.max(0, Math.min(ids.length - 1, i));
+            if (i != index) {
+                index = i;
+                changed();
+            }
+        }
+
+        /** Picks a random entry and returns its index. */
+        public int random(java.util.Random r) {
+            if (ids.length == 0) return 0;
+            int i = r.nextInt(ids.length);
+            set(i);
+            return i;
+        }
+
+        void save(JsonObject o) {
+            if (index != def && ids.length > 0) o.add(name, new JsonPrimitive(ids[index]));
+        }
+
+        void load(JsonObject o) {
+            JsonElement e = o.get(name);
+            index = def;
+            if (e != null && e.isJsonPrimitive()) {
+                String want = e.getAsString();
+                for (int i = 0; i < ids.length; i++) if (ids[i].equals(want)) index = i;
+            }
+        }
+    }
+
+    /** A short piece of text you type into a box in the panel (a name, an amount, a command). */
+    public static final class Text extends Setting {
+        public final int max;
+        private String value;
+        private final String def;
+        private boolean temporary;
+
+        /** A field that is only a way to type something in for a button next to it: it is not saved and not shared. */
+        public Text temporary() {
+            temporary = true;
+            return this;
+        }
+
+        public Text(String name, String desc, String def, int max) {
+            super(name, desc);
+            this.def = def;
+            this.value = def;
+            this.max = max;
+        }
+
+        public String get() {
+            return value;
+        }
+
+        public void set(String v) {
+            v = v == null ? "" : v;
+            if (v.length() > max) v = v.substring(0, max);
+            if (!v.equals(value)) {
+                value = v;
+                changed();
+            }
+        }
+
+        void save(JsonObject o) {
+            if (!temporary && !value.equals(def)) o.add(name, new JsonPrimitive(value));
+        }
+
+        void load(JsonObject o) {
+            if (temporary) return;
+            JsonElement e = o.get(name);
+            String v = e != null && e.isJsonPrimitive() ? e.getAsString() : def;
+            value = v.length() > max ? v.substring(0, max) : v;
+        }
+    }
+
+    /** A button. */
+    public static final class Action extends Setting {
+        private final Runnable run;
+
+        public Action(String name, String desc, Runnable run) {
+            super(name, desc);
+            this.run = run;
+        }
+
+        public void fire() {
+            try {
+                run.run();
+            } catch (Throwable t) {
+                Zeus.LOG.warn("Action '{}' failed", name, t);
+            }
+        }
+
+        void save(JsonObject o) {}
+
+        void load(JsonObject o) {}
+    }
+
+    /** A read-only block of live text, for lists such as the flagged chunks. */
+    public static final class Info extends Setting {
+        private final java.util.function.Supplier<java.util.List<String>> lines;
+
+        public Info(String name, java.util.function.Supplier<java.util.List<String>> lines) {
+            super(name, "");
+            this.lines = lines;
+        }
+
+        public java.util.List<String> lines() {
+            try {
+                return lines.get();
+            } catch (RuntimeException e) {
+                return java.util.List.of();
+            }
+        }
+
+        void save(JsonObject o) {}
+
+        void load(JsonObject o) {}
+    }
+
+    /** A hidden text value that is saved with the module (a webhook address, for example). It is never drawn in the panel. */
+    public static final class Secret extends Setting {
+        private String value = "";
+
+        public Secret(String name) {
+            super(name, "");
+            showIf(() -> false);
+        }
+
+        public String get() {
+            return value;
+        }
+
+        public void set(String v) {
+            value = v == null ? "" : v.trim();
+            changed();
+        }
+
+        void save(JsonObject o) {
+            if (!value.isEmpty()) o.add(name, new JsonPrimitive(value));
+        }
+
+        void load(JsonObject o) {
+            JsonElement e = o.get(name);
+            value = e != null && e.isJsonPrimitive() ? e.getAsString() : "";
+        }
+    }
+}

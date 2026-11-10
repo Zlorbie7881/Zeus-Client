@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "zeus",
+  "version": "0.9.9.0",
+  "name": "Zeus",
+  "description": "Zeus client with an expanded Media Base Finder featuring scoreboard-team discovery, packet-confirmed player metadata, Goliath history and configurable scan controls.",
+  "authors": [
+    "Zlorbie788"
+  ],
+  "license": "GPL-3.0-only",
+  "icon": "assets/zeus/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "com.zlorbie788.zeus.client.ZeusClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.18.0",
+    "minecraft": "1.21.11",
+    "java": ">=21",
+    "fabric-api": "*"
+  },
+  "mixins": [
+    "zeus.mixins.json"
+  ]
+}

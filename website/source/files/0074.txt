@@ -1,0 +1,145 @@
+package com.zlorbie788.zeus.mods;
+
+import com.zlorbie788.zeus.core.Category;
+import com.zlorbie788.zeus.core.Module;
+import com.zlorbie788.zeus.core.Setting;
+import com.zlorbie788.zeus.render.Projector;
+import com.zlorbie788.zeus.ui.Draw;
+import com.zlorbie788.zeus.ui.Perf;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+
+import java.util.Random;
+
+/**
+ * Atmosphere: a night sky with stars and a slow aurora, painted on your screen. Stars are fixed points of the sky, so they
+ * stay put as you turn; the aurora is a row of soft curtains over the horizon. They are drawn on the picture the game
+ * made, only while you stand under open sky in the Overworld, and only the part of the sky that is above the horizon. The
+ * clock can be held at night (or sunset or dawn) so there is a sky to look at. Only your own screen changes.
+ *
+ * <p>It is built to be cheap: a few dozen small pieces a frame, fewer in Light mode and none of the aurora in Minimal mode.</p>
+ */
+public final class Atmosphere extends Module {
+    private static final int STAR_MAX = 140;
+    private static final int[][] THEMES = {
+        {0xFF4DFFA0, 0xFF7B6DFF}, // Borealis: green to violet
+        {0xFFB06BFF, 0xFFFF6BC8}, // Nebula
+        {0xFF4DE0FF, 0xFFA8C8FF}, // Frost
+        {0xFFFF5C6C, 0xFFFFA04D}, // Crimson
+    };
+
+    private final Setting.Choice sky = add(new Setting.Choice("Time of day", "The time you see. Leave: your own clock. The others hold the clock still so the sky stays the same.", 1, "Leave as it is", "Night", "Midnight", "Sunset", "Dawn"));
+    private final Setting.Choice theme = add(new Setting.Choice("Theme", "The colours of the aurora and the glow near the horizon.", 0, "Borealis", "Nebula", "Frost", "Crimson"));
+    private final Setting.Num stars = add(new Setting.Num("Stars", "How many stars are drawn.", 50, 0, STAR_MAX, 10, ""));
+    private final Setting.Bool aurora = add(new Setting.Bool("Aurora", "Soft curtains of light over the horizon.", true));
+    private final Setting.Num brightness = add(new Setting.Num("Brightness", "How strong the stars and the aurora are.", 100, 20, 200, 10, " %"));
+    private final Setting.Bool clear = add(new Setting.Bool("Clear weather", "No rain or storm on your screen, so the sky is open.", true));
+    private final Setting.Bool byDay = add(new Setting.Bool("Also in daylight", "Draw the stars and the aurora even when the sun is up.", false));
+
+    private final float[] dx = new float[STAR_MAX];
+    private final float[] dy = new float[STAR_MAX];
+    private final float[] dz = new float[STAR_MAX];
+    private final float[] phase = new float[STAR_MAX];
+    private final float[] size = new float[STAR_MAX];
+    private final float[] pt = new float[2];
+    private final float[] pb = new float[2];
+
+    public Atmosphere() {
+        super("atmosphere", "Atmosphere", "A night sky with stars and a slow aurora on your screen. Only you see it.", Category.RENDER);
+        alias("sky", "aurora", "stars", "custom sky", "night sky");
+        Random r = new Random(0x5E05L);
+        for (int i = 0; i < STAR_MAX; i++) {
+            // a point on the upper half of a sphere, kept above 8 degrees
+            double az = r.nextDouble() * Math.PI * 2;
+            double up = 0.14 + r.nextDouble() * 0.86;
+            double flat = Math.sqrt(1 - up * up);
+            dx[i] = (float) (Math.cos(az) * flat);
+            dy[i] = (float) up;
+            dz[i] = (float) (Math.sin(az) * flat);
+            phase[i] = r.nextFloat() * 6.28f;
+            size[i] = r.nextFloat() < 0.15f ? 2f : 1f;
+        }
+    }
+
+    @Override
+    protected void onTick(Minecraft mc) {
+        if (mc.level == null) return;
+        if (sky.index() != 0) {
+            long t = switch (sky.index()) {
+                case 1 -> 14500L;
+                case 2 -> 18000L;
+                case 3 -> 12500L;
+                default -> 23000L;
+            };
+            mc.level.setTimeFromServer(mc.level.getGameTime(), t, false);
+        }
+        if (clear.on()) {
+            var weather = (com.zlorbie788.zeus.mixin.LevelWeatherAccessor) (Object) mc.level;
+            weather.zeus$setRain(0f);
+            weather.zeus$setThunder(0f);
+        }
+    }
+
+    private boolean night(Minecraft mc) {
+        long t = ((mc.level.getDayTime() % 24000L) + 24000L) % 24000L;
+        return t >= 12600L && t <= 23400L;
+    }
+
+    @Override
+    protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+        if (mc.player == null || mc.level == null || mc.screen != null) return;
+        if (!"overworld".equals(Brain.ctx().dim)) return;
+        if (!byDay.on() && !night(mc)) return;
+        if (!mc.level.canSeeSky(mc.player.blockPosition())) return;
+        if (!Projector.prepare(mc, partial, w, h)) return;
+        int level = Perf.level();
+        float time = (System.nanoTime() / 1_000_000L % 3_600_000L) / 1000f;
+        float k = brightness.f() / 100f;
+        double ex = Projector.eyeX();
+        double ey = Projector.eyeY();
+        double ez = Projector.eyeZ();
+        int pal = Math.max(0, Math.min(THEMES.length - 1, theme.index()));
+
+        int n = Math.min(stars.i(), level >= 2 ? 20 : STAR_MAX);
+        for (int i = 0; i < n; i++) {
+            if (!Projector.project(ex + dx[i] * 120.0, ey + dy[i] * 120.0, ez + dz[i] * 120.0, pt)) continue;
+            int x = Math.round(pt[0]);
+            int y = Math.round(pt[1]);
+            if (x < 0 || y < 0 || x >= w || y >= h) continue;
+            float twinkle = 0.55f + 0.45f * (float) Math.sin(time * 1.7f + phase[i]);
+            int s = (int) size[i];
+            g.fill(x, y, x + s, y + s, Draw.rgba(0xFFFFFFFF, Math.min(1f, 0.85f * twinkle * k)));
+        }
+
+        if (aurora.on() && level < 2) {
+            int curtains = level == 0 ? 2 : 1;
+            int steps = level == 0 ? 30 : 18;
+            for (int c = 0; c < curtains; c++) {
+                int top = THEMES[pal][c % 2];
+                int bottom = THEMES[pal][(c + 1) % 2];
+                float centre = (c == 0 ? 0.4f : 2.9f) + 0.15f * (float) Math.sin(time * 0.05f + c);
+                float span = 1.9f;
+                for (int i = 0; i <= steps; i++) {
+                    float az = centre - span / 2 + span * i / steps;
+                    float sway = (float) Math.sin(az * 3.1f + time * 0.35f + c * 1.7f);
+                    float lowElev = 0.30f + 0.05f * (float) Math.sin(az * 1.6f + time * 0.12f);
+                    float highElev = lowElev + 0.36f + 0.12f * sway;
+                    double cx = Math.cos(az), cz = Math.sin(az);
+                    double yl = Math.sin(lowElev), yh = Math.sin(highElev);
+                    double fl = Math.cos(lowElev), fh = Math.cos(highElev);
+                    if (!Projector.project(ex + cx * fl * 120.0, ey + yl * 120.0, ez + cz * fl * 120.0, pb)) continue;
+                    if (!Projector.project(ex + cx * fh * 120.0, ey + yh * 120.0, ez + cz * fh * 120.0, pt)) continue;
+                    float edge = 1f - Math.abs(i - steps / 2f) / (steps / 2f);
+                    float a = (0.20f + 0.10f * sway) * edge * k;
+                    if (a <= 0.01f) continue;
+                    int x0 = Math.round(Math.min(pb[0], pt[0]));
+                    int wide = Math.max(3, Math.round(w / (float) steps * 0.9f));
+                    int yTop = Math.round(Math.min(pt[1], pb[1]));
+                    int yBot = Math.round(Math.max(pt[1], pb[1]));
+                    if (yBot - yTop < 4 || x0 + wide < 0 || x0 > w) continue;
+                    g.fillGradient(x0, yTop, x0 + wide, yBot, Draw.rgba(top, 0f), Draw.rgba(Draw.mix(bottom, top, 0.35f), Math.min(0.5f, a)));
+                }
+            }
+        }
+    }
+}

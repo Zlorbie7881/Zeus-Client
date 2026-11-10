@@ -1,0 +1,7 @@
+# Apache: copy to .htaccess in the site folder (needs mod_headers and mod_rewrite)
+DirectoryIndex index.html
+ErrorDocument 404 /404.html
+Header always set X-Content-Type-Options "nosniff"
+Header always set Referrer-Policy "strict-origin-when-cross-origin"
+Header always set X-Frame-Options "DENY"
+Header always set Content-Security-Policy "default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self'; connect-src 'self'; manifest-src 'self'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'"

@@ -1,0 +1,753 @@
+package com.zlorbie788.zeus.mods;
+
+
+
+import com.zlorbie788.zeus.core.Env;
+
+import com.zlorbie788.zeus.core.Category;
+
+import com.zlorbie788.zeus.core.Module;
+
+import com.zlorbie788.zeus.core.Setting;
+
+import com.zlorbie788.zeus.render.EspKit;
+
+import com.zlorbie788.zeus.render.Projector;
+
+import com.zlorbie788.zeus.render.Stroke;
+
+import com.zlorbie788.zeus.render.Wire;
+
+import com.zlorbie788.zeus.ui.Draw;
+
+import net.minecraft.client.Minecraft;
+
+import net.minecraft.client.gui.GuiGraphics;
+
+import net.minecraft.world.entity.Entity;
+
+import net.minecraft.world.entity.LivingEntity;
+
+import net.minecraft.world.entity.item.ItemEntity;
+
+import net.minecraft.world.entity.monster.Enemy;
+
+import net.minecraft.world.entity.player.Player;
+
+import net.minecraft.world.phys.AABB;
+
+
+
+import java.util.ArrayList;
+
+import java.util.HashMap;
+
+import java.util.IdentityHashMap;
+
+import java.util.List;
+
+import java.util.Map;
+
+
+
+/**
+
+ * Marks mobs, players and items so you see them through walls. The main way is the game's own glowing outline: the
+
+ * entity's real shape is traced in a colour (red monsters, green animals, cyan players, gold items), visible through
+
+ * blocks, with nothing drawn over the screen. Boxes, names, health bars, distances and lines are extras that are off by
+
+ * default; when they are on they are kept inside the screen so they never cover it.
+
+ */
+
+public final class Esp extends Module {
+
+    private static final int HOSTILE = 0xFFFF5A5A;
+
+    private static final int PASSIVE = 0xFF6BE38A;
+
+    private static final int PLAYER = 0xFF6FE3FF;
+
+    private static final int ITEM = 0xFFFFD24D;
+
+
+
+    private static volatile Esp self;
+
+
+
+    /** A setting that keeps its default and is not shown. */
+
+    private static <T extends Setting> T quiet(T s) {
+
+        return s;
+
+    }
+
+
+
+    private final Setting.Bool hostiles = add(new Setting.Bool("Monsters", "Mark hostile mobs (red).", true));
+
+    private final Setting.Bool passives = add(new Setting.Bool("Animals and villagers", "Mark passive mobs (green).", true));
+
+    private final Setting.Bool players = add(new Setting.Bool("Players", "Mark other players (cyan).", true));
+
+    private final Setting.Bool items = add(new Setting.Bool("Dropped items", "Mark items on the ground (gold).", false));
+
+    private final Setting.Num range = add(new Setting.Num("Range", "Furthest distance that is marked.", 96, 16, 256, 8, " blocks"));
+
+    private final Setting.Choice shape = add(new Setting.Choice("Shape", "Glow: the game's own outline through walls (no overlay). Box: a 3D box. Fill: a tinted solid box. Both: box and fill. Custom: use the glow and box settings below.", 1, "Custom", "Glow", "Box", "Fill", "Both"));
+
+    private final Setting.Num maxEntities = quiet(new Setting.Num("Max entities", "Most things marked at once. Players come first, then the nearest. Keeps busy servers smooth.", 48, 8, 96, 1, ""));
+
+    private final Setting.Bool ignoreSpectators = add(new Setting.Bool("Ignore spectators", "Do not mark players in spectator mode (staff watching you stay unmarked).", true));
+
+    private final Setting.Bool ignoreSelf = quiet(new Setting.Bool("Ignore self", "Do not mark yourself. Turn off to see your own box in Freecam.", true));
+
+    private final Setting.Bool friends = add(new Setting.Bool("Highlight friends", "Players from the Friends module are drawn in their own colour.", true)).showIf(() -> players.on());
+
+    private final Setting.Choice friendColor = add(new Setting.Choice("Friend colour", "Colour of friends.", 7, EspKit.COLOR_NAMES)).showIf(() -> players.on() && friends.on());
+
+    private final Setting.Num fillAlpha = quiet(new Setting.Num("Fill alpha", "How strongly the solid box is tinted (Fill and Both shapes).", 0.3, 0.05, 1.0, 0.05, "")).showIf(() -> shape.index() == 3 || shape.index() == 4);
+
+    private final Setting.Bool reveal = quiet(new Setting.Bool("Reveal animation", "New things fade in instead of popping up (box, fill and tracers).", false));
+
+    private final Setting.Bool glow = quiet(new Setting.Bool("Glow outline", "Custom shape only: traces the real shape of the mob in a colour, through walls.", true)).showIf(() -> shape.index() == 0);
+
+    private final Setting.Choice style = add(new Setting.Choice("Box style", "Custom shape only: an extra box on top of the outline. None keeps the screen clean.", 3, "3D box", "2D box", "Corners", "None")).showIf(() -> shape.index() == 0);
+
+    private final Setting.Num fill = add(new Setting.Num("Fill", "How strongly the flat box is tinted. 0 is clear.", 0.08, 0, 0.5, 0.02, "")).showIf(() -> shape.index() == 0 && style.index() == 1);
+
+    private final Setting.Num line = add(new Setting.Num("Line width", "Thickness of the box lines.", 1.4, 0.8, 3.0, 0.2, ""));
+
+    private final Setting.Bool names = add(new Setting.Bool("Names", "A label above the mob with its name.", false));
+
+    private final Setting.Bool health = add(new Setting.Bool("Health bar", "Show a vertical health bar beside living entities.", false));
+
+    private final Setting.Bool playerHealthTag = add(new Setting.Bool("Player health next to name", "Append a heart and the player's health to their name tag.", false));
+
+    private final Setting.Choice heartIcon = quiet(new Setting.Choice("Health heart", "Choose the heart glyph used in player labels.", 0, "♥", "❤", "♡", "None")).showIf(() -> playerHealthTag.on());
+
+    private final Setting.Choice healthFormat = quiet(new Setting.Choice("Health format", "How player health is written next to the name.", 0, "Current / max", "Current only", "Percent")).showIf(() -> playerHealthTag.on());
+
+    private final Setting.Bool distance = add(new Setting.Bool("Distance", "Show the distance in the label.", false));
+
+    private final Setting.Bool fade = quiet(new Setting.Bool("Fade with distance", "Far things get softer so the near ones stand out.", true));
+
+    private final Setting.Bool tracers = add(new Setting.Bool("Tracers", "A line that points straight at every marked entity, even when it is behind you.", true));
+
+    private final Setting.Choice tracerFrom = add(new Setting.Choice("Tracer from", "Where the lines start. My body starts them at you, which is what looks right in third person.", 0, "Crosshair", "Bottom", "Top", "My body")).showIf(() -> this.tracers.on());
+
+    private final Setting.Bool target = add(new Setting.Bool("Highlight what you look at", "The one in your crosshair is drawn in white.", true));
+
+    private final Setting.Choice monsterColor = add(new Setting.Choice("Monster colour", "Colour of hostile mobs.", 0, EspKit.COLOR_NAMES));
+
+    private final Setting.Choice animalColor = add(new Setting.Choice("Animal colour", "Colour of passive mobs and villagers.", 0, EspKit.COLOR_NAMES));
+
+    private final Setting.Choice playerColor = add(new Setting.Choice("Player colour", "Colour of other players.", 0, EspKit.COLOR_NAMES));
+
+    private final Setting.Choice itemColor = add(new Setting.Choice("Item colour", "Colour of dropped items.", 0, EspKit.COLOR_NAMES));
+
+    private final Setting.Num opacity = add(new Setting.Num("Opacity", "How strong the boxes, lines and tags are.", 100, 20, 100, 5, " %"));
+
+    private final Setting.Num labelSize = quiet(new Setting.Num("Label size", "Size of the name tags.", 100, 60, 200, 10, " %")).showIf(() -> this.names.on() || this.distance.on());
+
+    private final Setting.Num tracerWidth = quiet(new Setting.Num("Tracer width", "Thickness of the tracer lines.", 1.05, 0.6, 4.0, 0.2, "")).showIf(() -> this.tracers.on());
+
+    private final Setting.Bool customTracer = add(new Setting.Bool("Custom tracer colour", "Draw all tracers in one colour instead of the colour of what they point at.", false)).showIf(() -> tracers.on());
+
+    private final Setting.Choice tracerColor = add(new Setting.Choice("Tracer colour", "The colour of every tracer.", 1, EspKit.COLOR_NAMES)).showIf(() -> tracers.on() && customTracer.on());
+
+    private final Setting.Bool tracerPulse = quiet(new Setting.Bool("Tracer pulse", "Subtle animated breathing effect on tracer brightness and width.", true)).showIf(() -> this.tracers.on());
+
+    private final Setting.Num minRange = add(new Setting.Num("Hide closer than", "Do not mark things closer than this, so your screen stays clear when someone stands next to you.", 0, 0, 20, 1, " blocks"));
+
+    private final Setting.Choice tracerStyle = add(new Setting.Choice("Tracer style", "Modern: a thin tail that swells into a bright head, a glint running along it and a diamond on the target. Beam: a soft glow around a steady line. Classic: one clean stroke.", 0, EspKit.TRACER_STYLES)).showIf(() -> this.tracers.on());
+
+    private final Setting.Bool stem = add(new Setting.Bool("Stem", "A line from the feet to the head of everything that has a tracer (Anubis tracer style).", true)).showIf(() -> this.tracers.on() && this.tracerStyle.index() == 0);
+
+    private final Setting.Bool distanceColors = add(new Setting.Bool("Distance colours", "Tracers go from red (close) through yellow to green (60 blocks or more) instead of using the colour of what they point at.", false)).showIf(() -> this.tracers.on() && !this.customTracer.on());
+
+    private final Setting.Bool tracerLabels = quiet(new Setting.Bool("Tracer distance", "A small pill with the distance at the end of every tracer.", false)).showIf(() -> this.tracers.on());
+
+    private final Setting.Bool invisibles = add(new Setting.Bool("Reveal invisible", "Also mark entities you should not be able to see: invisibility potions, hidden players, entities the renderer skips.", true));
+
+    private final Setting.Bool edge = add(new Setting.Bool("Edge markers", "An arrow at the edge of the screen with the distance for anything marked that is off screen, instead of losing it.", false));
+
+    private final Setting.Bool ghosts = add(new Setting.Bool("Ghost markers", "When a marked entity disappears (vanish, teleport, despawn, out of range) its last spot stays marked for a few seconds, so nobody simply stops existing on your screen.", true));
+
+    private final Setting.Num ghostTime = add(new Setting.Num("Ghost time", "How long the last known spot of a disappeared entity keeps its marker.", 12, 2, 60, 1, " s")).showIf(ghosts::on);
+
+
+
+    private int marked;
+
+    private List<Entity> targets = List.of();
+
+    private final Map<Entity, Integer> colors = new IdentityHashMap<>();
+
+    private final Map<Integer, Long> firstSeen = new HashMap<>();
+
+
+
+    /** Where something was the last time it was on your screen. */
+
+    private record Ghost(double x, double y, double z, double height, int color, String name, long at) {}
+
+
+
+    private final Map<Integer, Ghost> ghostsById = new HashMap<>();
+
+
+
+    public Esp() {
+
+        super("esp", "ESP", "See mobs, players and items through walls.", Category.RENDER);
+
+        self = this;
+
+    }
+
+
+
+    /** Which of the shapes draws what, so the glow/box/fill shapes and the older custom settings share one path. */
+
+    private boolean glowOn() {
+
+        return shape.index() == 0 ? glow.on() : shape.index() == 1;
+
+    }
+
+
+
+    /** 0 3D box, 1 2D box, 2 corners, 3 nothing, 4 solid 3D box, 5 3D box and solid. */
+
+    private int boxMode() {
+
+        return switch (shape.index()) {
+
+            case 0 -> style.index();
+
+            case 2 -> 0;
+
+            case 3 -> 4;
+
+            case 4 -> 5;
+
+            default -> 3;
+
+        };
+
+    }
+
+
+
+    // --------------------------------------------------------------- the glow hooks (called by the mixin)
+
+
+
+    public static boolean outlines(Entity e) {
+
+        Esp s = self;
+
+        if (s != null && s.enabled() && s.glowOn() && s.colors.containsKey(e)) return true;
+
+        return ItemEsp.outlines(e) || VillagerEsp.outlines(e);
+
+    }
+
+
+
+    public static int outlineColor(Entity e) {
+
+        Esp s = self;
+
+        Integer c = s != null && s.enabled() && s.glowOn() ? s.colors.get(e) : null;
+
+        if (c != null && c != 0) return c;
+
+        int item = ItemEsp.outlineColor(e);
+
+        return item != 0 ? item : VillagerEsp.outlineColor(e);
+
+    }
+
+
+
+    /** The colour this entity is marked in, or 0 when it is not marked at all (wrong kind, out of range, dead, a spectator). */
+
+    private int colorOf(Entity e) {
+
+        Minecraft mc = Minecraft.getInstance();
+
+        if (mc.player == null) return 0;
+
+        if (!invisibles.on() && e != mc.player && e.isInvisible()) return 0;
+
+        if (e == mc.player && ignoreSelf.on()) return 0;
+
+        if (e instanceof LivingEntity le && (!le.isAlive() || le.isDeadOrDying())) return 0;
+
+        if (e.isRemoved()) return 0;
+
+        int c;
+
+        if (e instanceof Player p) {
+
+            if (ignoreSpectators.on() && p.isSpectator()) return 0;
+
+            c = players.on() ? (friends.on() && Friends.isFriend(e) ? EspKit.pick(friendColor, 0xFF64B5FF) : EspKit.pick(playerColor, PLAYER)) : 0;
+
+        } else if (e instanceof Enemy) c = hostiles.on() ? EspKit.pick(monsterColor, HOSTILE) : 0;
+
+        else if (e instanceof ItemEntity) c = items.on() ? EspKit.pick(itemColor, ITEM) : 0;
+
+        else if (e instanceof LivingEntity) c = passives.on() ? EspKit.pick(animalColor, PASSIVE) : 0;
+
+        else c = 0;
+
+        if (c == 0) return 0;
+
+        double r = range.get();
+
+        double d2 = mc.player.distanceToSqr(e);
+
+        double lo = minRange.get();
+
+        return d2 <= r * r && (e == mc.player || d2 >= lo * lo) ? c : 0;
+
+    }
+
+
+
+    /** Picks what to mark once per tick: players first, then the nearest, at most "Max entities". */
+
+    @Override
+
+    protected void onTick(Minecraft mc) {
+
+        colors.clear();
+
+        if (mc.level == null || mc.player == null) {
+
+            targets = List.of();
+
+            return;
+
+        }
+
+        List<Entity> list = new ArrayList<>();
+
+        for (Entity e : Env.entities(mc, range.get())) {
+
+            if (colorOf(e) != 0) list.add(e);
+
+        }
+
+        if (!ignoreSelf.on() && colorOf(mc.player) != 0 && !list.contains(mc.player)) list.add(mc.player);
+
+        int max = maxEntities.i();
+
+        if (list.size() > max) {
+
+            list.sort((a, b) -> {
+
+                boolean pa = a instanceof Player;
+
+                boolean pb = b instanceof Player;
+
+                if (pa != pb) return pa ? -1 : 1;
+
+                return Double.compare(mc.player.distanceToSqr(a), mc.player.distanceToSqr(b));
+
+            });
+
+            list = new ArrayList<>(list.subList(0, max));
+
+        }
+
+        for (Entity e : list) colors.put(e, colorOf(e));
+
+        targets = list;
+
+        if (firstSeen.size() > 512) firstSeen.clear();
+
+        // keep the last known spot of everything marked, so a vanish or a teleport cannot simply delete it from the screen
+
+        long now = System.currentTimeMillis();
+
+        if (ghosts.on()) {
+
+            for (Entity e : list) {
+
+                Integer c = colors.get(e);
+
+                ghostsById.put(e.getId(), new Ghost(e.getX(), e.getY(), e.getZ(), e.getBbHeight(), c == null ? 0xFFFFFFFF : c, e.getName().getString(), now));
+
+            }
+
+            long keep = (long) (ghostTime.get() * 1000.0);
+
+            ghostsById.values().removeIf(gh -> now - gh.at > keep);
+
+        } else if (!ghostsById.isEmpty()) {
+
+            ghostsById.clear();
+
+        }
+
+    }
+
+
+
+    @Override
+
+    public String info() {
+
+        return marked > 0 ? Integer.toString(marked) : null;
+
+    }
+
+
+
+    // --------------------------------------------------------------- the screen overlay
+
+
+
+    @Override
+
+    protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+
+        marked = targets.size();
+
+        if (mc.level == null || mc.player == null || targets.isEmpty() || !Projector.prepare(mc, partial, w, h)) return;
+
+        int mode = boxMode();
+
+        boolean any = mode != 3 || names.on() || tracers.on() || health.on() || playerHealthTag.on() || distance.on();
+
+        if (!any) return;
+
+        Entity aimed = target.on() ? mc.crosshairPickEntity : null;
+
+        long nowMs = System.currentTimeMillis();
+
+        for (Entity e : targets) {
+
+            Integer cc = colors.get(e);
+
+            if (cc == null || e.isRemoved()) continue;
+
+            int base = cc;
+
+            double dist = Math.sqrt(mc.player.distanceToSqr(e));
+
+            float born = 1f;
+
+            if (reveal.on()) {
+
+                long first = firstSeen.computeIfAbsent(e.getId(), k -> nowMs);
+
+                float t = (nowMs - first) / 450f;
+
+                born = t >= 1f ? 1f : t * t * (3f - 2f * t);
+
+            }
+
+            float alpha = (fade.on() ? (float) Math.max(0.45, 1.0 - dist / (range.get() * 1.4)) : 1f) * opacity.f() / 100f * born;
+
+            int color = e == aimed ? 0xFFFFFFFF : base;
+
+            AABB bb = e.getBoundingBox();
+
+            if (tracers.on()) {
+                double tx = lerp(partial, e.xo, e.getX());
+                double ty = lerp(partial, e.yo, e.getY()) + e.getBbHeight() * 0.5;
+                double tz = lerp(partial, e.zo, e.getZ());
+                EspKit.tracerLine(g, w, h, tracerFrom.index(), tx, ty, tz, color, Math.max(alpha, 0.6f));
+            }
+
+            double sx = lerp(partial, e.xo, e.getX()) - e.getX();
+
+            double sy = lerp(partial, e.yo, e.getY()) - e.getY();
+
+            double sz = lerp(partial, e.zo, e.getZ()) - e.getZ();
+
+            double x1 = bb.minX + sx, y1 = bb.minY + sy, z1 = bb.minZ + sz, x2 = bb.maxX + sx, y2 = bb.maxY + sy, z2 = bb.maxZ + sz;
+
+            float[] r = Wire.bounds(x1, y1, z1, x2, y2, z2);
+
+            // partly behind you or off the screen: instead of losing it, point at it from the edge
+
+            boolean lost = r == null;
+
+            if (!lost && (r[2] < -30 || r[0] > w + 30 || r[3] < -30 || r[1] > h + 30 || r[2] - r[0] > w * 1.2 || r[3] - r[1] > h * 1.2)) lost = true;
+
+            if (lost) {
+
+                if (edge.on()) {
+
+                    EspKit.edgeMarker(g, w, h, (x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2, color,
+
+                            Math.max(0.5f, alpha), 1.6f, Math.round(dist) + "m");
+
+                }
+
+                continue;
+
+            }
+
+            int bx1 = Math.round(r[0]);
+
+            int by1 = Math.round(r[1]);
+
+            int bx2 = Math.max(Math.round(r[2]), bx1 + 3);
+
+            int by2 = Math.max(Math.round(r[3]), by1 + 3);
+
+            int edge = Draw.rgba(color, 0.95f * alpha);
+
+            switch (mode) {
+
+                case 0 -> Wire.box(g, x1, y1, z1, x2, y2, z2, line.f() + 0.6f, Draw.rgba(color, alpha), true);
+
+                case 1 -> {
+
+                    if (fill.get() > 0.01) g.fill(bx1, by1, bx2, by2, Draw.rgba(color, fill.f() * alpha));
+
+                    frame2d(g, bx1, by1, bx2, by2, line.f() + 0.6f, color, alpha);
+
+                }
+
+                case 2 -> corners(g, bx1, by1, bx2, by2, line.f(), color, alpha);
+
+                case 4 -> EspKit.fillBox(g, x1, y1, z1, x2, y2, z2, color, fillAlpha.f() * alpha);
+
+                case 5 -> {
+
+                    EspKit.fillBox(g, x1, y1, z1, x2, y2, z2, color, fillAlpha.f() * alpha);
+
+                    Wire.box(g, x1, y1, z1, x2, y2, z2, line.f(), Draw.rgba(color, alpha), true);
+
+                }
+
+                default -> { }
+
+            }
+
+            if (health.on() && e instanceof LivingEntity le) {
+
+                float frac = Math.max(0f, Math.min(1f, le.getHealth() / Math.max(1f, le.getMaxHealth())));
+
+                float hx = bx1 - 4.5f;
+
+                float hc0 = by2 + 1.5f;
+
+                float hc1 = by1 - 1.5f;
+
+                int hc = Draw.mix(0xFFFF4D4D, 0xFF5EE67A, frac);
+
+                Stroke.soft(g, hx, hc0, hx, hc1, 3.0f, Draw.rgba(0xFF05070C, 0.62f * alpha));
+
+                Stroke.soft(g, hx, by2, hx, by2 + (by1 - by2) * frac, 1.7f, Draw.rgba(Draw.lighten(hc, 0.12f), alpha));
+
+            }
+
+            if (names.on() || distance.on() || (playerHealthTag.on() && e instanceof Player)) {
+
+                String name = e instanceof ItemEntity ie ? ie.getItem().getHoverName().getString() + (ie.getItem().getCount() > 1 ? " x" + ie.getItem().getCount() : "") : e.getName().getString();
+
+                String hp = health.on() && e instanceof LivingEntity le ? " " + Math.round(le.getHealth() + le.getAbsorptionAmount()) + "hp" : "";
+
+                if (playerHealthTag.on() && e instanceof Player player) {
+
+                    float current = Math.max(0f, player.getHealth() + player.getAbsorptionAmount());
+
+                    float maximum = Math.max(1f, player.getMaxHealth());
+
+                    String heart = switch (heartIcon.index()) { case 1 -> "\u2764"; case 2 -> "\u2661"; case 3 -> ""; default -> "\u2665"; };
+
+                    String value = switch (healthFormat.index()) {
+
+                        case 1 -> Integer.toString(Math.round(current));
+
+                        case 2 -> Math.round(100f * current / maximum) + "%";
+
+                        default -> Math.round(current) + "/" + Math.round(maximum);
+
+                    };
+
+                    hp = (heart.isEmpty() ? " " : " " + heart + " ") + value;
+
+                }
+
+                String label = (names.on() ? name + (e.isInvisible() ? " (invis)" : "") : "") + hp;
+
+                String dText = distance.on() ? Math.round(dist) + "m" : "";
+
+                if (label.isEmpty()) {
+
+                    label = dText;
+
+                    dText = "";
+
+                }
+
+                EspKit.label(g, label, dText, (bx1 + bx2) / 2, by1 - Math.round(15 * labelSize.f() / 100f), color, alpha, w, h, labelSize.f() / 100f);
+
+            }
+
+        }
+
+        if (ghosts.on() && !ghostsById.isEmpty()) drawGhosts(g, w, h, nowMs);
+
+    }
+
+
+
+    /**
+
+     * The last known spot of everything that disappeared while it was marked. A vanished player, a teleport, a mob that left
+
+     * the loaded area: the box, the name and the edge arrow stay and fade for as long as the setting says.
+
+     */
+
+    private void drawGhosts(GuiGraphics g, int w, int h, long nowMs) {
+
+        long keep = (long) (ghostTime.get() * 1000.0);
+
+        for (Map.Entry<Integer, Ghost> en : new ArrayList<>(ghostsById.entrySet())) {
+
+            Ghost gh = en.getValue();
+
+            if (nowMs - gh.at() < 120L) continue; // refreshed this tick: still there, drawn normally
+
+            float life = 1f - (nowMs - gh.at()) / (float) keep;
+
+            if (life <= 0f) continue;
+
+            float a = life * 0.9f * opacity.f() / 100f;
+
+            double half = 0.35;
+
+            double height = Math.max(0.9, gh.height());
+
+            double x1 = gh.x() - half, y1 = gh.y(), z1 = gh.z() - half;
+
+            double x2 = gh.x() + half, y2 = gh.y() + height, z2 = gh.z() + half;
+
+            Wire.box(g, x1, y1, z1, x2, y2, z2, 1.2f, Draw.rgba(gh.color(), a), true);
+
+            float[] r = Wire.bounds(x1, y1, z1, x2, y2, z2);
+
+            if (r == null) {
+
+                if (edge.on()) EspKit.edgeMarker(g, w, h, gh.x(), gh.y() + height * 0.5, gh.z(), gh.color(), a, 1.4f, "last seen");
+
+                continue;
+
+            }
+
+            EspKit.label(g, gh.name() + " (last seen)", Math.round(life * 100f) + "%", Math.round((r[0] + r[2]) / 2f),
+
+                    Math.round(r[1]) - 14, gh.color(), a, w, h, labelSize.f() / 100f);
+
+        }
+
+    }
+
+
+
+    /** A plain 2D box: four smooth sides. */
+
+    private static void frame2d(GuiGraphics g, float x1, float y1, float x2, float y2, float thick, int color, float alpha) {
+
+        int core = Draw.rgba(color, 0.95f * alpha);
+
+        float t = Math.max(1.1f, thick * 0.9f);
+
+        float[][] pts = {{x1, y1, x2, y1}, {x2, y1, x2, y2}, {x2, y2, x1, y2}, {x1, y2, x1, y1}};
+
+        for (float[] p : pts) Stroke.keyline(g, p[0], p[1], p[2], p[3], t, 0.5f * alpha);
+
+        for (float[] p : pts) Stroke.soft(g, p[0] - (p[0] == p[2] ? 0 : Math.signum(p[2] - p[0]) * t * 0.5f), p[1], p[2] + (p[0] == p[2] ? 0 : Math.signum(p[2] - p[0]) * t * 0.5f), p[3], t, core);
+
+    }
+
+
+
+    /** The corners of a 2D box: a bright bracket on each, with a faint line between them. */
+
+    private static void corners(GuiGraphics g, float x1, float y1, float x2, float y2, float thick, int color, float alpha) {
+
+        float t = Math.max(1.2f, thick * 1.0f);
+
+        float lw = Math.max(5f, Math.min((x2 - x1) * 0.28f, 40f));
+
+        float lh = Math.max(5f, Math.min((y2 - y1) * 0.28f, 48f));
+
+        int core = Draw.rgba(color, 0.97f * alpha);
+
+        int faint = Draw.rgba(color, 0.20f * alpha);
+
+        float[][] arms = {
+
+                {x1, y1, x1 + lw, y1}, {x1, y1, x1, y1 + lh}, {x2, y1, x2 - lw, y1}, {x2, y1, x2, y1 + lh},
+
+                {x1, y2, x1 + lw, y2}, {x1, y2, x1, y2 - lh}, {x2, y2, x2 - lw, y2}, {x2, y2, x2, y2 - lh}};
+
+        for (float[] a : arms) Stroke.keyline(g, a[0], a[1], a[2], a[3], t, 0.5f * alpha);
+
+        for (float[] a : arms) Stroke.soft(g, a[0], a[1], a[2], a[3], t, core);
+
+        // hairline between the brackets
+
+        Stroke.soft(g, x1 + lw, y1, x2 - lw, y1, 0.5f, faint);
+
+        Stroke.soft(g, x1 + lw, y2, x2 - lw, y2, 0.5f, faint);
+
+        Stroke.soft(g, x1, y1 + lh, x1, y2 - lh, 0.5f, faint);
+
+        Stroke.soft(g, x2, y1 + lh, x2, y2 - lh, 0.5f, faint);
+
+    }
+
+
+
+    /** 0 player, 1 animal, 2 water animal, 3 monster, 4 ambient, 5 anything else, 6 a friend (the Anubis tracer colours). */
+
+    private static int kindOf(Entity e) {
+
+        if (e instanceof Player) return Friends.isFriend(e) ? 6 : 0;
+
+        if (e instanceof Enemy) return 3;
+
+        return switch (e.getType().getCategory()) {
+
+            case CREATURE -> 1;
+
+            case WATER_CREATURE, UNDERGROUND_WATER_CREATURE, WATER_AMBIENT, AXOLOTLS -> 2;
+
+            case MONSTER -> 3;
+
+            case AMBIENT -> 4;
+
+            default -> 5;
+
+        };
+
+    }
+
+
+
+    private static double lerp(float t, double a, double b) {
+
+        return a + (b - a) * t;
+
+    }
+
+}
+

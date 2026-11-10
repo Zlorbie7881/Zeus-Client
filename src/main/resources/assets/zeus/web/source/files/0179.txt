@@ -1,0 +1,272 @@
+package com.zlorbie788.zeus.ui;
+
+import com.mojang.blaze3d.platform.NativeImage;
+import com.zlorbie788.zeus.core.Zeus;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.texture.DynamicTexture;
+import net.minecraft.resources.Identifier;
+
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * Pictures for the interface: the main menu art, the intro frames and the icons. Everything goes through one dynamic
+ * texture per picture, so the same code path loads a file from the jar and shows a picture made in code. Pictures are
+ * drawn with the same blit call the rest of the interface mods use.
+ */
+public final class Tex {
+    private Tex() {
+    }
+
+    static {
+        javax.imageio.ImageIO.setUseCache(false);
+    }
+
+    /** One picture on the graphics card. */
+    public static final class Img {
+        public final Identifier id;
+        public final int w;
+        public final int h;
+        private final DynamicTexture tex;
+
+        Img(Identifier id, DynamicTexture tex, int w, int h) {
+            this.id = id;
+            this.tex = tex;
+            this.w = w;
+            this.h = h;
+        }
+
+        /** Draws the whole picture stretched into the box. */
+        public void draw(GuiGraphics g, int x, int y, int dw, int dh, int tint) {
+            g.blit(RenderPipelines.GUI_TEXTURED, id, x, y, 0f, 0f, dw, dh, w, h, w, h, tint);
+        }
+
+        /** Draws a part of the picture (in picture pixels) into the box. */
+        public void drawPart(GuiGraphics g, int x, int y, int dw, int dh, int sx, int sy, int sw, int sh, int tint) {
+            g.blit(RenderPipelines.GUI_TEXTURED, id, x, y, (float) sx, (float) sy, dw, dh, sw, sh, w, h, tint);
+        }
+
+        /** Replaces every pixel (plain ARGB, w * h of them) and sends the picture to the graphics card. */
+        public void put(int[] argb) {
+            writePixels(tex.getPixels(), argb, w, h);
+            tex.upload();
+        }
+
+        /**
+         * Gives the picture back to the graphics card, but not at once: the game draws the interface in two steps (it notes
+         * what to draw, then draws it), so a picture freed in the middle of a frame could still be used by that frame, and the
+         * graphics card may already have given its memory to something else, such as an item icon. The picture is freed a
+         * little later instead.
+         */
+        public void release() {
+            PENDING.add(new Object[] {this, System.nanoTime()});
+        }
+
+        void free() {
+            boolean managed = false;
+            try {
+                Minecraft.getInstance().getTextureManager().release(id);
+                managed = true;
+            } catch (RuntimeException ignored) {
+                // already gone
+            }
+            if (!managed) {
+                try {
+                    tex.close();
+                } catch (RuntimeException ignored) {
+                    // nothing to free
+                }
+            }
+        }
+    }
+
+    private static final Map<String, Img> CACHE = new HashMap<>();
+    private static final java.util.List<Object[]> PENDING = new java.util.ArrayList<>();
+
+    /** Frees the pictures that were given up at least a second ago. */
+    private static void flush(boolean all) {
+        if (PENDING.isEmpty()) return;
+        long now = System.nanoTime();
+        java.util.Iterator<Object[]> it = PENDING.iterator();
+        while (it.hasNext()) {
+            Object[] p = it.next();
+            if (all || now - (Long) p[1] > 1_000_000_000L) {
+                ((Img) p[0]).free();
+                it.remove();
+            }
+        }
+    }
+    private static int counter;
+    private static int order = -1; // 0: NativeImage.setPixel takes ARGB, 1: it takes ABGR
+
+    /** True when the game's picture class wants ABGR. Measured once with a one-pixel PNG, so no version is assumed. */
+    private static boolean abgr() {
+        if (order < 0) {
+            order = 0;
+            try {
+                BufferedImage probe = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+                probe.setRGB(0, 0, 0xFFFF0000);
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                javax.imageio.ImageIO.write(probe, "png", out);
+                try (NativeImage img = NativeImage.read(NativeImage.Format.RGBA, new ByteArrayInputStream(out.toByteArray()))) {
+                    int v = img.getPixel(0, 0);
+                    if ((v & 255) > ((v >> 16) & 255)) order = 1; // the red came back in the low byte
+                }
+            } catch (IOException | RuntimeException ignored) {
+                // keep ARGB
+            }
+        }
+        return order == 1;
+    }
+
+    static void writePixels(NativeImage img, int[] argb, int w, int h) {
+        boolean swap = abgr();
+        int ww = Math.min(w, img.getWidth());
+        int hh = Math.min(h, img.getHeight());
+        for (int y = 0; y < hh; y++) {
+            int row = y * w;
+            for (int x = 0; x < ww; x++) {
+                int c = argb[row + x];
+                if (swap) c = (c & 0xFF00FF00) | ((c >> 16) & 0xFF) | ((c & 0xFF) << 16);
+                img.setPixel(x, y, c);
+            }
+        }
+    }
+
+    private static Img register(String key, NativeImage image) {
+        flush(false);
+        int n = ++counter;
+        Identifier id = Identifier.fromNamespaceAndPath("zeus", "dyn/" + n);
+        DynamicTexture tex = new DynamicTexture(() -> "zeus_" + n, image);
+        Minecraft.getInstance().getTextureManager().register(id, tex);
+        return new Img(id, tex, image.getWidth(), image.getHeight());
+    }
+
+    /** A picture from the jar, for example {@code textures/gui/menu/tablet.png}. Null when it cannot be read. */
+    public static Img resource(String path) {
+        Img have = CACHE.get(path);
+        if (have != null) return have;
+        try (InputStream in = Tex.class.getResourceAsStream("/assets/zeus/" + path)) {
+            if (in == null) return null;
+            NativeImage image = NativeImage.read(NativeImage.Format.RGBA, in);
+            Img img = register(path, image);
+            CACHE.put(path, img);
+            return img;
+        } catch (IOException | RuntimeException e) {
+            Zeus.LOG.warn("Could not load picture {}", path, e);
+            return null;
+        }
+    }
+
+    /** Reads a picture from the jar into a normal Java image, or null. */
+    public static BufferedImage image(String path) {
+        try (InputStream in = Tex.class.getResourceAsStream("/assets/zeus/" + path)) {
+            if (in == null) return null;
+            return javax.imageio.ImageIO.read(in);
+        } catch (IOException | RuntimeException e) {
+            Zeus.LOG.warn("Could not read picture {}", path, e);
+            return null;
+        }
+    }
+
+    /**
+     * A picture from the jar made exactly {@code w} x {@code h} device pixels, so it is drawn one pixel to one pixel and
+     * stays sharp whatever the window size. With {@code cover} the picture fills the box and the overflow is cropped
+     * (centred, shifted by {@code anchorX} / {@code anchorY} from 0 to 1), otherwise it is stretched to the box.
+     */
+    public static Img fitted(String key, String path, int w, int h, boolean cover, float anchorX, float anchorY) {
+        w = Math.max(1, w);
+        h = Math.max(1, h);
+        Img have = CACHE.get(key);
+        if (have != null && have.w == w && have.h == h) return have;
+        BufferedImage src = image(path);
+        if (src == null) return null;
+        BufferedImage out = scale(src, w, h, cover, anchorX, anchorY);
+        return made(key, out.getRGB(0, 0, w, h, null, 0, w), w, h);
+    }
+
+    static BufferedImage scale(BufferedImage src, int w, int h, boolean cover, float ax, float ay) {
+        double sx = w / (double) src.getWidth();
+        double sy = h / (double) src.getHeight();
+        int tw = w;
+        int th = h;
+        if (cover) {
+            double s = Math.max(sx, sy);
+            tw = (int) Math.ceil(src.getWidth() * s);
+            th = (int) Math.ceil(src.getHeight() * s);
+        }
+        BufferedImage cur = new BufferedImage(src.getWidth(), src.getHeight(), BufferedImage.TYPE_INT_ARGB);
+        java.awt.Graphics2D g0 = cur.createGraphics();
+        g0.drawImage(src, 0, 0, null);
+        g0.dispose();
+        // halve while the picture is more than twice too big, so the shrinking averages pixels instead of skipping them
+        while (cur.getWidth() >= tw * 2 || cur.getHeight() >= th * 2) {
+            int nw = Math.max(tw, cur.getWidth() >= tw * 2 ? cur.getWidth() / 2 : cur.getWidth());
+            int nh = Math.max(th, cur.getHeight() >= th * 2 ? cur.getHeight() / 2 : cur.getHeight());
+            BufferedImage next = new BufferedImage(nw, nh, BufferedImage.TYPE_INT_ARGB);
+            java.awt.Graphics2D g1 = next.createGraphics();
+            g1.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g1.drawImage(cur, 0, 0, nw, nh, null);
+            g1.dispose();
+            cur = next;
+        }
+        BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        java.awt.Graphics2D g2 = out.createGraphics();
+        g2.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+        g2.setRenderingHint(java.awt.RenderingHints.KEY_RENDERING, java.awt.RenderingHints.VALUE_RENDER_QUALITY);
+        int ox = Math.round((w - tw) * Math.max(0f, Math.min(1f, ax)));
+        int oy = Math.round((h - th) * Math.max(0f, Math.min(1f, ay)));
+        g2.drawImage(cur, ox, oy, tw, th, null);
+        g2.dispose();
+        return out;
+    }
+
+    /** A blank picture to draw into with {@link Img#put}. */
+    public static Img blank(int w, int h) {
+        return register("blank", new NativeImage(w, h, true));
+    }
+
+    /** A picture made from plain ARGB pixels, kept under {@code key} so it is only built once. */
+    public static Img made(String key, int[] argb, int w, int h) {
+        Img have = CACHE.get(key);
+        if (have != null && have.w == w && have.h == h) return have;
+        if (have != null) have.release();
+        Img img = blank(w, h);
+        img.put(argb);
+        CACHE.put(key, img);
+        return img;
+    }
+
+    public static Img cached(String key) {
+        return CACHE.get(key);
+    }
+
+    /** Reads the bytes of a file in the jar, or null. */
+    public static byte[] bytes(String path) {
+        try (InputStream in = Tex.class.getResourceAsStream("/assets/zeus/" + path)) {
+            return in == null ? null : in.readAllBytes();
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    public static int guiScale() {
+        try {
+            return Math.max(1, (int) Minecraft.getInstance().getWindow().getGuiScale());
+        } catch (RuntimeException e) {
+            return 2;
+        }
+    }
+
+    public static void releaseAll() {
+        for (Img i : CACHE.values()) i.release();
+        CACHE.clear();
+    }
+}

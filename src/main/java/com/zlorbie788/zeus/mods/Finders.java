@@ -1,0 +1,698 @@
+package com.zlorbie788.zeus.mods;
+
+import com.zlorbie788.zeus.core.Category;
+import com.zlorbie788.zeus.core.Env;
+import com.zlorbie788.zeus.core.Module;
+import com.zlorbie788.zeus.core.Setting;
+import com.zlorbie788.zeus.core.Zeus;
+import com.zlorbie788.zeus.render.Projector;
+import com.zlorbie788.zeus.render.Wire;
+import com.zlorbie788.zeus.ui.Draw;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.IntegerProperty;
+import net.minecraft.world.level.block.state.properties.Property;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.chunk.LevelChunkSection;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiFunction;
+import java.util.function.Predicate;
+
+/**
+ * The finders: modules that look through the loaded chunks around you for one kind of thing and mark it with a box you can
+ * see through walls. They only read blocks your game already has, so they send nothing and touch nothing. Each finder lists
+ * what it can find, with a switch and a colour per kind. They share one scanner: a little work every tick (sections whose
+ * block palette cannot hold the thing are skipped at once), nearest chunks first, results kept per chunk and refreshed every
+ * few seconds, and a "new find" call the first time each block is seen (used for the alert and the Discord webhook).
+ */
+public final class Finders {
+    private Finders() {}
+
+    /** The path of a block's name without the namespace, for example {@code amethyst_cluster}. */
+    static String pathOf(Block b) {
+        try {
+            String id = BuiltInRegistries.BLOCK.getKey(b).toString();
+            return id.substring(id.indexOf(':') + 1);
+        } catch (RuntimeException e) {
+            return "";
+        }
+    }
+
+    /** {age, highest age} of a block that grows, or null when it has no age. */
+    static int[] age(BlockState st) {
+        try {
+            for (Property<?> p : st.getProperties()) {
+                if (p.getName().equals("age") && p instanceof IntegerProperty ip) {
+                    int max = Collections.max(ip.getPossibleValues());
+                    return new int[] {st.getValue(ip), max};
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // no age
+        }
+        return null;
+    }
+
+    // ------------------------------------------------------------------ the shared scanner
+
+    public abstract static class BlockFinder extends Module {
+        private final String[] labels;
+        private final int[] colors;
+        private final Setting.Bool[] kinds;
+        private final Setting.Num radius = add(new Setting.Num("Range", "How far around you it looks.", 64, 16, 128, 8, " blocks"));
+        private final Setting.Num maxBoxes = add(new Setting.Num("Most boxes shown", "The nearest ones are kept when there are more.", 120, 20, 400, 10, ""));
+        private final Setting.Bool names = add(new Setting.Bool("Labels", "Name and distance on the nearest finds.", true));
+        protected final com.zlorbie788.zeus.render.EspKit kit;
+        private final Setting.Bool alert = add(new Setting.Bool("Alert", "A message when something new shows up.", true));
+        private final Setting.Choice place = add(new Setting.Choice("Where", "Everything, or only what is at the surface, below it, deep down or up high. Uses the real ground height at each spot. In the Nether and the End there is no ground, so everything counts.", 0,
+                "Everything", "Surface", "Below the surface", "Deep (20+ below)", "Above the surface"));
+        private final Setting.Num band = add(new Setting.Num("Surface band", "How far below the ground still counts as surface.", 6, 1, 20, 1, " blocks")).showIf(() -> this.place.index() == 1 || this.place.index() == 2 || this.place.index() == 4);
+        private final Setting.Num lowY = add(new Setting.Num("Lowest height", "Ignore finds lower than this height (Y).", -64, -64, 320, 8, ""));
+        private final Setting.Num highY = add(new Setting.Num("Highest height", "Ignore finds higher than this height (Y).", 320, -64, 320, 8, ""));
+
+        private final Map<Long, int[][]> found = new HashMap<>();
+        private final Map<Long, Long> scannedAt = new HashMap<>();
+        private final Set<Long> seen = new HashSet<>();
+        private final ConcurrentHashMap<Block, Boolean> cares = new ConcurrentHashMap<>();
+        private final ConcurrentHashMap<Block, String> paths = new ConcurrentHashMap<>();
+        private List<long[]> queue = new ArrayList<>();
+        private int tick;
+        private int shown;
+        private int total;
+        private long lastToast;
+
+        protected BlockFinder(String id, String name, String desc, String[] labels, int[] colors, boolean[] defaults, String[] details) {
+            super(id, name, desc, Category.SCANNER);
+            light();
+            this.labels = labels;
+            this.colors = colors;
+            this.kinds = new Setting.Bool[labels.length];
+            for (int i = 0; i < labels.length; i++) {
+                kinds[i] = add(new Setting.Bool(labels[i], details[i], defaults[i]));
+                kinds[i].onChange(this::reset);
+            }
+            this.kit = new com.zlorbie788.zeus.render.EspKit(this, 0, false);
+            radius.onChange(this::reset);
+            place.onChange(this::reset);
+            band.onChange(this::reset);
+            lowY.onChange(this::reset);
+            highY.onChange(this::reset);
+        }
+
+        /** Does this kind of block matter to the finder at all (decided once per block type, from its name)? */
+        protected abstract boolean cares(String path);
+
+        /** Which kind (index into the labels) this exact block state is, or -1. */
+        protected abstract int kind(BlockState st, String path);
+
+        /** The first time a block is found. */
+        protected void newHit(Minecraft mc, int x, int y, int z, int kind) {}
+
+        /** A last check on a block of the right kind (a finder can ask for "only underground", for example). */
+        protected boolean keep(LevelChunk chunk, int x, int y, int z, int kind) {
+            return true;
+        }
+
+        /** All finds of the kinds that are switched on within {@code r} blocks of a point. */
+        protected List<int[]> hitsNear(double x, double y, double z, double r) {
+            List<int[]> out = new ArrayList<>();
+            double r2 = r * r;
+            for (int[][] list : found.values()) {
+                for (int[] h : list) {
+                    if (h[3] >= kinds.length || !kinds[h[3]].on()) continue;
+                    double dx = h[0] + 0.5 - x;
+                    double dy = h[1] + 0.5 - y;
+                    double dz = h[2] + 0.5 - z;
+                    if (dx * dx + dy * dy + dz * dz <= r2) out.add(h);
+                }
+            }
+            return out;
+        }
+
+        protected double scanRange() {
+            return radius.get();
+        }
+
+        /** The "Where" and height settings of this finder. */
+        private boolean placeOk(Minecraft mc, int x, int y, int z) {
+            if (y < lowY.get() || y > highY.get()) return false;
+            int mode = place.index();
+            if (mode == 0) return true;
+            int surf = Brain.surface(mc, x, z);
+            if (surf == Integer.MIN_VALUE) return true; // no ground in this dimension
+            int depth = surf - y;
+            return switch (mode) {
+                case 1 -> depth <= band.i() && depth >= -64;
+                case 2 -> depth > band.i();
+                case 3 -> depth > 20;
+                default -> depth < -band.i();
+            };
+        }
+
+        /** A chunk has just been scanned. */
+        protected void chunkDone(Minecraft mc, int cx, int cz, List<int[]> hits) {}
+
+        private void reset() {
+            found.clear();
+            scannedAt.clear();
+            cares.clear();
+        }
+
+        @Override
+        protected void onEnable() {
+            reset();
+            seen.clear();
+            tick = 0;
+        }
+
+        @Override
+        protected void onDisable() {
+            reset();
+            seen.clear();
+        }
+
+        private boolean careBlock(Block b) {
+            Boolean c = cares.get(b);
+            if (c == null) {
+                String p = paths.computeIfAbsent(b, Finders::pathOf);
+                c = cares(p);
+                cares.put(b, c);
+            }
+            return c;
+        }
+
+        private static long key(int cx, int cz) {
+            return ((long) cx << 32) | (cz & 0xFFFFFFFFL);
+        }
+
+        @Override
+        protected void onTick(Minecraft mc) {
+            if (mc.level == null || mc.player == null) return;
+            tick++;
+            int pcx = mc.player.getBlockX() >> 4;
+            int pcz = mc.player.getBlockZ() >> 4;
+            int rc = (int) Math.ceil(radius.get() / 16.0);
+            long now = System.currentTimeMillis();
+            if (tick % 20 == 1) {
+                queue = new ArrayList<>();
+                for (int dx = -rc; dx <= rc; dx++) {
+                    for (int dz = -rc; dz <= rc; dz++) {
+                        long k = key(pcx + dx, pcz + dz);
+                        Long at = scannedAt.get(k);
+                        long max = Math.abs(dx) <= 2 && Math.abs(dz) <= 2 ? 4000 : 12000;
+                        if (at == null || now - at > max) queue.add(new long[] {dx * dx + dz * dz, pcx + dx, pcz + dz});
+                    }
+                }
+                queue.sort((a, b) -> Long.compare(a[0], b[0]));
+                found.keySet().removeIf(k -> Math.abs((int) (k >> 32) - pcx) > rc + 2 || Math.abs((int) (long) k - pcz) > rc + 2);
+                scannedAt.keySet().removeIf(k -> !found.containsKey(k) && now - scannedAt.get(k) > 60000);
+                if (seen.size() > 20000) seen.clear();
+                int t = 0;
+                for (int[][] l : found.values()) t += l.length;
+                total = t;
+            }
+            long deadline = System.nanoTime() + Brain.budget(1_600_000L);
+            while (!queue.isEmpty() && System.nanoTime() < deadline) {
+                long[] c = queue.remove(0);
+                scan(mc, (int) c[1], (int) c[2], now);
+            }
+        }
+
+        private void scan(Minecraft mc, int cx, int cz, long now) {
+            LevelChunk chunk = Env.chunk(mc, cx, cz);
+            if (chunk == null) return;
+            scannedAt.put(key(cx, cz), now);
+            List<int[]> hits = new ArrayList<>();
+            LevelChunkSection[] sections = chunk.getSections();
+            int minY = chunk.getMinSectionY() << 4;
+            for (int i = 0; i < sections.length && hits.size() < 300; i++) {
+                LevelChunkSection sec = sections[i];
+                if (sec == null || sec.hasOnlyAir() || !sec.maybeHas(st -> careBlock(st.getBlock()))) continue;
+                int by = minY + i * 16;
+                for (int y = 0; y < 16; y++) {
+                    for (int z = 0; z < 16; z++) {
+                        for (int x = 0; x < 16; x++) {
+                            BlockState st = sec.getBlockState(x, y, z);
+                            Block b = st.getBlock();
+                            if (!careBlock(b)) continue;
+                            int k = kind(st, paths.get(b));
+                            if (k < 0 || k >= kinds.length || !kinds[k].on()) continue;
+                            int[] hit = {(cx << 4) + x, by + y, (cz << 4) + z, k};
+                            if (!keep(chunk, hit[0], hit[1], hit[2], k) || !placeOk(mc, hit[0], hit[1], hit[2])) continue;
+                            hits.add(hit);
+                            if (seen.add(BlockPos.asLong(hit[0], hit[1], hit[2]))) {
+                                newHit(mc, hit[0], hit[1], hit[2], k);
+                                if (alert.on() && tick > 100 && System.currentTimeMillis() - lastToast > 2500) {
+                                    lastToast = System.currentTimeMillis();
+                                    double d = Math.sqrt(mc.player.distanceToSqr(hit[0] + 0.5, hit[1], hit[2] + 0.5));
+                                    Zeus.toast(labels[k] + " found " + Math.round(d) + " blocks away", true);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            found.put(key(cx, cz), hits.toArray(new int[0][]));
+            chunkDone(mc, cx, cz, hits);
+        }
+
+        @Override
+        public String info() {
+            return shown > 0 ? Integer.toString(shown) : total > 0 ? Integer.toString(total) : null;
+        }
+
+        @Override
+        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            shown = 0;
+            if (mc.player == null || !Projector.prepare(mc, partial, w, h)) return;
+            double ex = Projector.eyeX();
+            double ey = Projector.eyeY();
+            double ez = Projector.eyeZ();
+            double r = radius.get();
+            double r2 = r * r;
+            List<double[]> near = new ArrayList<>();
+            for (int[][] list : found.values()) {
+                for (int[] hit : list) {
+                    if (hit[3] >= kinds.length || !kinds[hit[3]].on()) continue;
+                    double dx = hit[0] + 0.5 - ex;
+                    double dy = hit[1] + 0.5 - ey;
+                    double dz = hit[2] + 0.5 - ez;
+                    double d2 = dx * dx + dy * dy + dz * dz;
+                    if (d2 <= r2) near.add(new double[] {d2, hit[0], hit[1], hit[2], hit[3]});
+                }
+            }
+            near.sort((a, b) -> Double.compare(a[0], b[0]));
+            int cap = Math.min(near.size(), maxBoxes.i());
+            float[] tmp = new float[2];
+            int filled = 0;
+            int lines = 0;
+            for (int n = 0; n < cap; n++) {
+                double[] hit = near.get(n);
+                int color = colors[(int) hit[4]];
+                double dist = Math.sqrt(hit[0]);
+                float alpha = kit.alphaFor(dist, r);
+                net.minecraft.world.phys.AABB box = com.zlorbie788.zeus.render.EspKit.shape(mc, (int) hit[1], (int) hit[2], (int) hit[3]);
+                double cx = (box.minX + box.maxX) / 2;
+                double cy = (box.minY + box.maxY) / 2;
+                double cz = (box.minZ + box.maxZ) / 2;
+                if (lines++ < 28) kit.tracer(g, w, h, cx, cy, cz, color, alpha);
+                if (Projector.depth(cx, cy, cz) < -1.5) continue;
+                if (!Projector.project(cx, cy, cz, tmp) || tmp[0] < -80 || tmp[0] > w + 80 || tmp[1] < -80 || tmp[1] > h + 80) continue;
+                shown++;
+                kit.box(g, box, color, alpha, filled++ < 36);
+                if (names.on() && n < 8 && Projector.project(cx, box.maxY + 0.15, cz, tmp)) {
+                    kit.tag(g, labels[(int) hit[4]], Math.round(dist) + "m", Math.round(tmp[0]), Math.round(tmp[1]) - 14, color, alpha, w, h);
+                }
+            }
+            drawExtra(g, mc, partial, w, h);
+        }
+
+        /** Anything a finder draws besides its boxes (a card, extra marks). */
+        protected void drawExtra(GuiGraphics g, Minecraft mc, float partial, int w, int h) {}
+    }
+
+    private static boolean has(String p, String... names) {
+        for (String n : names) if (p.equals(n)) return true;
+        return false;
+    }
+
+    // ------------------------------------------------------------------ the finders
+
+    /** Grown kelp: the kelp that has stopped growing and can be harvested. */
+    public static final class KelpFinder extends BlockFinder {
+        public KelpFinder() {
+            super("kelpesp", "Kelp ESP", "Finds fully grown kelp and marks it, for kelp farms and for smelting fuel.",
+                    new String[] {"Fully grown kelp", "Growing kelp"},
+                    new int[] {0xFF3DDC84, 0xFF8FBF8F},
+                    new boolean[] {true, false},
+                    new String[] {"The kelp that reached its full height.", "Kelp that is still growing."});
+        }
+
+        @Override
+        protected boolean cares(String p) {
+            return p.equals("kelp");
+        }
+
+        @Override
+        protected int kind(BlockState st, String p) {
+            int[] a = age(st);
+            return a != null && a[0] >= a[1] ? 0 : 1;
+        }
+    }
+
+    /** Spawners and trial spawners, with an optional Discord message. */
+    public static final class SpawnerEsp extends BlockFinder {
+        public SpawnerEsp() {
+            super("spawneresp", "Spawner ESP", "Finds monster spawners and trial spawners through the rock, and can tell your Discord.",
+                    new String[] {"Spawners", "Trial spawners"},
+                    new int[] {0xFFFF7A1F, 0xFF35E0D0},
+                    new boolean[] {true, true},
+                    new String[] {"Monster spawners (dungeons, mineshafts, fortresses).", "Trial spawners in trial chambers."});
+        }
+
+        @Override
+        protected boolean cares(String p) {
+            return p.equals("spawner") || p.equals("trial_spawner");
+        }
+
+        @Override
+        protected int kind(BlockState st, String p) {
+            return p.equals("spawner") ? 0 : 1;
+        }
+
+        @Override
+        protected void newHit(Minecraft mc, int x, int y, int z, int kind) {
+            DiscordWebhook.spawner(mc, x, y, z, kind == 1);
+        }
+    }
+
+    /** Every container: chests, barrels, shulker boxes and so on. Storage rooms can be sent to Discord. */
+    public static final class StorageEsp extends BlockFinder {
+        public StorageEsp() {
+            super("storageesp", "Storage ESP", "Marks storage blocks in chunks and block states currently available to your client. It cannot reveal hidden or unloaded server data.",
+                    new String[] {"Chests", "Trapped chests", "Barrels", "Ender chests", "Shulker boxes", "Hoppers, droppers, dispensers", "Furnaces", "Pots, crafters, bookshelves"},
+                    new int[] {0xFFFFA43B, 0xFFFF4D4D, 0xFFC98A52, 0xFFB05CFF, 0xFFFF6FE0, 0xFF9FB4D8, 0xFFD6D6D6, 0xFF7ED6A8},
+                    new boolean[] {true, true, true, true, true, true, false, false},
+                    new String[] {"Normal chests (a double chest shows as two boxes).", "Trapped chests: they can set off redstone.", "Barrels.", "Ender chests.", "Shulker boxes of every colour.", "Hoppers, droppers and dispensers.", "Furnaces, blast furnaces and smokers.", "Decorated pots, crafters and chiseled bookshelves."});
+        }
+
+        @Override
+        protected boolean cares(String p) {
+            return p.equals("chest") || p.equals("trapped_chest") || p.equals("barrel") || p.equals("ender_chest") || p.endsWith("shulker_box")
+                    || has(p, "hopper", "dropper", "dispenser", "furnace", "blast_furnace", "smoker", "decorated_pot", "crafter", "chiseled_bookshelf");
+        }
+
+        @Override
+        protected int kind(BlockState st, String p) {
+            return switch (p) {
+                case "chest" -> 0;
+                case "trapped_chest" -> 1;
+                case "barrel" -> 2;
+                case "ender_chest" -> 3;
+                case "hopper", "dropper", "dispenser" -> 5;
+                case "furnace", "blast_furnace", "smoker" -> 6;
+                case "decorated_pot", "crafter", "chiseled_bookshelf" -> 7;
+                default -> p.endsWith("shulker_box") ? 4 : -1;
+            };
+        }
+
+        private final Setting.Bool card = add(new Setting.Bool("Discoveries card", "A report of what is around the nearest storage: how many chests, machines and displays, the items in frames and on stands, and what was in the chests you opened yourself.", true));
+        private final Setting.Choice cardAt = add(new Setting.Choice("Card corner", "Where the card sits.", 1, "Top left", "Top right", "Bottom left", "Bottom right")).showIf(() -> this.card.on());
+        private final java.util.Map<Long, Long> firstSeen = new java.util.HashMap<>();
+        private static final net.minecraft.world.item.Item[] KIND_ITEM = {
+            net.minecraft.world.item.Items.CHEST, net.minecraft.world.item.Items.TRAPPED_CHEST, net.minecraft.world.item.Items.BARREL,
+            net.minecraft.world.item.Items.ENDER_CHEST, net.minecraft.world.item.Items.SHULKER_BOX, net.minecraft.world.item.Items.HOPPER,
+            net.minecraft.world.item.Items.FURNACE, net.minecraft.world.item.Items.DECORATED_POT};
+
+        @Override
+        protected void onTick(Minecraft mc) {
+            super.onTick(mc);
+            Discoveries.tick(mc);
+        }
+
+        /** What the last build saw, so the card can be held back until the spot really looks like somebody's base. */
+        private int lastStorage, lastMachines, lastDisplays;
+        private double lastX, lastZ;
+
+        @Override
+        protected void drawExtra(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            if (!card.on() || mc.player == null || mc.screen != null) return;
+            Discoveries.Card c = build(mc);
+            if (c == null) return;
+            // A card is a report of a base, not of any chest you walk past: a dungeon's two chests or a lone barrel must not
+            // pull it up. It appears when a finder has already recorded a base here, or when the spot itself shows a base
+            // (several containers together with machines or displays, or a storage room's worth of containers).
+            String server = Brain.ctx().server + "|" + Brain.ctx().dim;
+            Ledger.Entry found = Ledger.near(server, lastX, lastZ, 96);
+            boolean solid = lastStorage >= 4 || (lastStorage >= 2 && lastMachines + lastDisplays > 0);
+            if (found == null && !solid) return;
+            c.foot = found != null
+                    ? "Base found: " + found.type.toLowerCase(java.util.Locale.ROOT) + " " + found.confidence + " % · " + found.status.toLowerCase(java.util.Locale.ROOT)
+                    : "Base found: storage, machines and displays together";
+            int[] at = Hud.place(cardAt.index(), Discoveries.width(), Discoveries.height(c), w, h);
+            Discoveries.draw(g, at[0], at[1], c, 1f);
+        }
+
+        private Discoveries.Card build(Minecraft mc) {
+            List<int[]> near = hitsNear(mc.player.getX(), mc.player.getY(), mc.player.getZ(), 40);
+            if (near.isEmpty()) return null;
+            int[] first = near.get(0);
+            double best = Double.MAX_VALUE;
+            for (int[] n : near) {
+                double d = mc.player.distanceToSqr(n[0] + 0.5, n[1] + 0.5, n[2] + 0.5);
+                if (d < best) {
+                    best = d;
+                    first = n;
+                }
+            }
+            List<int[]> cluster = hitsNear(first[0] + 0.5, first[1] + 0.5, first[2] + 0.5, 14);
+            int[] count = new int[KIND_ITEM.length];
+            for (int[] n : cluster) if (n[3] < count.length) count[n[3]]++;
+            int storage = count[0] + count[1] + count[2] + count[3] + count[4];
+            int machines = count[5] + count[6];
+            lastStorage = storage;
+            lastMachines = machines;
+            lastX = first[0] + 0.5;
+            lastZ = first[2] + 0.5;
+            Discoveries.Card c = new Discoveries.Card();
+            int[] amber = {0xFFFFB347, 0xFFFF6B6B, 0xFFC98A52, 0xFFB05CFF, 0xFFFF6FE0, 0xFFFF8A3D, 0xFFFF8A3D, 0xFF7ED6A8};
+            for (int i = 0; i < KIND_ITEM.length; i++) if (count[i] > 0) c.slots.add(new Discoveries.Slot(KIND_ITEM[i], count[i], amber[i]));
+            // item frames and armor stands around the same spot
+            int displays = 0;
+            java.util.Map<net.minecraft.world.item.Item, Integer> shown = new java.util.LinkedHashMap<>();
+            for (net.minecraft.world.entity.Entity e : Env.entities(mc, 60)) {
+                if (e.distanceToSqr(first[0] + 0.5, first[1] + 0.5, first[2] + 0.5) > 16 * 16) continue;
+                if (e instanceof net.minecraft.world.entity.decoration.ItemFrame fr) {
+                    displays++;
+                    net.minecraft.world.item.ItemStack st = fr.getItem();
+                    if (st != null && !st.isEmpty()) shown.merge(st.getItem(), 1, Integer::sum);
+                } else if (e instanceof net.minecraft.world.entity.decoration.ArmorStand as) {
+                    displays++;
+                    for (net.minecraft.world.entity.EquipmentSlot sl : new net.minecraft.world.entity.EquipmentSlot[] {
+                        net.minecraft.world.entity.EquipmentSlot.HEAD, net.minecraft.world.entity.EquipmentSlot.CHEST,
+                        net.minecraft.world.entity.EquipmentSlot.LEGS, net.minecraft.world.entity.EquipmentSlot.FEET}) {
+                        net.minecraft.world.item.ItemStack st = as.getItemBySlot(sl);
+                        if (st != null && !st.isEmpty()) shown.merge(st.getItem(), 1, Integer::sum);
+                    }
+                }
+            }
+            for (java.util.Map.Entry<net.minecraft.world.item.Item, Integer> en : shown.entrySet()) {
+                if (c.slots.size() >= 12) break;
+                c.slots.add(new Discoveries.Slot(en.getKey(), en.getValue(), 0xFF6AA6FF));
+            }
+            // what was in the chests you opened yourself
+            java.util.Map<net.minecraft.world.item.Item, Integer> loot = new java.util.HashMap<>();
+            int seenContainers = 0;
+            for (int[] n : cluster) {
+                java.util.Map<net.minecraft.world.item.Item, Integer> m = Discoveries.opened(net.minecraft.core.BlockPos.asLong(n[0], n[1], n[2]));
+                if (m == null) continue;
+                seenContainers++;
+                for (java.util.Map.Entry<net.minecraft.world.item.Item, Integer> en : m.entrySet()) loot.merge(en.getKey(), en.getValue(), Integer::sum);
+            }
+            int lootTotal = 0;
+            java.util.List<java.util.Map.Entry<net.minecraft.world.item.Item, Integer>> top = new java.util.ArrayList<>(loot.entrySet());
+            top.sort((a, b) -> Integer.compare(b.getValue(), a.getValue()));
+            for (java.util.Map.Entry<net.minecraft.world.item.Item, Integer> en : loot.entrySet()) lootTotal += en.getValue();
+            for (int i = 0; i < Math.min(4, top.size()) && c.slots.size() < 12; i++) c.slots.add(new Discoveries.Slot(top.get(i).getKey(), top.get(i).getValue(), 0xFF5EE6A0));
+            if (storage > 0) c.cats.add(new Discoveries.Cat(storage == 1 ? "Container" : "Containers", storage, 0xFFFFB347));
+            if (machines > 0) c.cats.add(new Discoveries.Cat(machines == 1 ? "Machine" : "Machines", machines, 0xFFFF8A3D));
+            if (displays > 0) c.cats.add(new Discoveries.Cat("Armor / displays", displays, 0xFF6AA6FF));
+            if (lootTotal > 0) c.cats.add(new Discoveries.Cat("Items seen (opened)", lootTotal, 0xFF5EE6A0));
+            lastDisplays = displays;
+            int total = cluster.size();
+            c.kind = total >= 12 ? "Storage room" : total >= 4 ? "Storage area" : total >= 2 ? "Storage" : "Single container";
+            if (displays > 0) c.kind += " + displays";
+            int types = (storage > 0 ? 1 : 0) + (machines > 0 ? 1 : 0) + (displays > 0 ? 1 : 0) + (lootTotal > 0 ? 1 : 0);
+            c.line = types + (types == 1 ? " clue type" : " clue types together") + " / nearby objects";
+            if (seenContainers == 0 && storage > 0) c.line += ", none opened yet";
+            long key = ((long) (first[0] >> 4) * 73856093L) ^ ((long) (first[1] >> 4) * 19349663L) ^ ((long) (first[2] >> 4) * 83492791L);
+            if (firstSeen.size() > 300) firstSeen.clear();
+            long since = firstSeen.computeIfAbsent(key, k -> System.currentTimeMillis());
+            c.age = Discoveries.age(System.currentTimeMillis() - since);
+            return c;
+        }
+
+        @Override
+        protected void chunkDone(Minecraft mc, int cx, int cz, List<int[]> hits) {
+            int need = DiscordWebhook.storageMinimum();
+            if (hits.size() < need) return;
+            long sx = 0;
+            long sy = 0;
+            long sz = 0;
+            for (int[] h : hits) {
+                sx += h[0];
+                sy += h[1];
+                sz += h[2];
+            }
+            DiscordWebhook.storageRoom(mc, (int) (sx / hits.size()), (int) (sy / hits.size()), (int) (sz / hits.size()), hits.size());
+        }
+    }
+
+    /** Crops that are ready to harvest. */
+    public static final class CropFinder extends BlockFinder {
+        private static final Set<String> CROPS = Set.of("wheat", "carrots", "potatoes", "beetroots", "nether_wart", "cocoa", "sweet_berry_bush", "pitcher_crop", "torchflower_crop");
+
+        public CropFinder() {
+            super("cropfinder", "Crop ESP", "Marks crops that are fully grown and ready to harvest.",
+                    new String[] {"Ripe crops", "Growing crops"},
+                    new int[] {0xFFFFD84D, 0xFF8FA06A},
+                    new boolean[] {true, false},
+                    new String[] {"Wheat, carrots, potatoes, beetroot, nether wart, cocoa, berries.", "The same crops while they are still growing."});
+        }
+
+        @Override
+        protected boolean cares(String p) {
+            return CROPS.contains(p);
+        }
+
+        @Override
+        protected int kind(BlockState st, String p) {
+            int[] a = age(st);
+            return a != null && a[0] >= a[1] ? 0 : 1;
+        }
+    }
+
+    /** The rare blocks that only an ancient city has. */
+    public static final class AncientCityFinder extends BlockFinder {
+        public AncientCityFinder() {
+            super("ancientcityfinder", "Ancient City ESP", "Finds the deep dark: ancient cities, sculk shriekers and their reinforced deepslate.",
+                    new String[] {"Reinforced deepslate", "Sculk shriekers", "Sculk catalysts"},
+                    new int[] {0xFF2DD4BF, 0xFFFF5C6C, 0xFF6FA8FF},
+                    new boolean[] {true, true, false},
+                    new String[] {"Only ancient cities have it (the portal frame and its walls).", "Shriekers: stepping near them calls a warden.", "Catalysts spread sculk when a mob dies."});
+        }
+
+        @Override
+        protected boolean cares(String p) {
+            return has(p, "reinforced_deepslate", "sculk_shrieker", "sculk_catalyst");
+        }
+
+        @Override
+        protected int kind(BlockState st, String p) {
+            return p.equals("reinforced_deepslate") ? 0 : p.equals("sculk_shrieker") ? 1 : 2;
+        }
+    }
+
+    /** Trial chambers and their vaults. */
+    public static final class TrialFinder extends BlockFinder {
+        public TrialFinder() {
+            super("trialfinder", "Trial Chamber ESP", "Finds trial chambers by their vaults and spawners.",
+                    new String[] {"Vaults", "Trial spawners", "Heavy cores"},
+                    new int[] {0xFFFFC857, 0xFF35E0D0, 0xFFFF5C6C},
+                    new boolean[] {true, true, true},
+                    new String[] {"Vaults hold the key rewards.", "Trial spawners spawn the waves.", "A heavy core is the rare prize."});
+        }
+
+        @Override
+        protected boolean cares(String p) {
+            return has(p, "vault", "trial_spawner", "heavy_core");
+        }
+
+        @Override
+        protected int kind(BlockState st, String p) {
+            return p.equals("vault") ? 0 : p.equals("trial_spawner") ? 1 : 2;
+        }
+    }
+
+    /** Portals of every kind. */
+    public static final class PortalFinder extends BlockFinder {
+        public PortalFinder() {
+            super("portalfinder", "Portal ESP", "Finds nether portals, end portals and end portal frames.",
+                    new String[] {"Nether portals", "End portal frames", "End portals"},
+                    new int[] {0xFFB05CFF, 0xFF6FE0A8, 0xFF1F1F3A},
+                    new boolean[] {true, true, true},
+                    new String[] {"Lit nether portals.", "The frames of a stronghold's portal.", "An open end portal."});
+        }
+
+        @Override
+        protected boolean cares(String p) {
+            return has(p, "nether_portal", "end_portal_frame", "end_portal");
+        }
+
+        @Override
+        protected int kind(BlockState st, String p) {
+            return p.equals("nether_portal") ? 0 : p.equals("end_portal_frame") ? 1 : 2;
+        }
+    }
+
+    /** Bee nests and hives. */
+    public static final class BeeFinder extends BlockFinder {
+        public BeeFinder() {
+            super("beefinder", "Bee ESP", "Finds bee nests and beehives.",
+                    new String[] {"Bee nests", "Beehives"},
+                    new int[] {0xFFFFD21F, 0xFFE0A030},
+                    new boolean[] {true, true},
+                    new String[] {"Natural nests in trees.", "Hives that someone placed."});
+        }
+
+        @Override
+        protected boolean cares(String p) {
+            return p.equals("bee_nest") || p.equals("beehive");
+        }
+
+        @Override
+        protected int kind(BlockState st, String p) {
+            return p.equals("bee_nest") ? 0 : 1;
+        }
+    }
+
+    /** Hoppers, observers, pistons and the like: where a farm or a machine is. */
+    public static final class RedstoneFinder extends BlockFinder {
+        public RedstoneFinder() {
+            super("redstonefinder", "Farm ESP", "Finds machines and farms by their redstone parts: hoppers, observers, pistons, comparators.",
+                    new String[] {"Hoppers", "Observers", "Pistons", "Comparators and repeaters", "Dispensers and droppers"},
+                    new int[] {0xFF9FB4D8, 0xFFFF7A7A, 0xFFE0C080, 0xFFFF4D4D, 0xFF7ED6A8},
+                    new boolean[] {true, true, true, true, false},
+                    new String[] {"Hoppers.", "Observers.", "Pistons and sticky pistons.", "Comparators and repeaters.", "Dispensers and droppers."});
+        }
+
+        @Override
+        protected boolean cares(String p) {
+            return has(p, "hopper", "observer", "piston", "sticky_piston", "comparator", "repeater", "dispenser", "dropper");
+        }
+
+        @Override
+        protected int kind(BlockState st, String p) {
+            return switch (p) {
+                case "hopper" -> 0;
+                case "observer" -> 1;
+                case "piston", "sticky_piston" -> 2;
+                case "comparator", "repeater" -> 3;
+                default -> 4;
+            };
+        }
+    }
+
+    /** Beds and respawn anchors: where someone sleeps. */
+    public static final class BedFinder extends BlockFinder {
+        public BedFinder() {
+            super("bedfinder", "Bed ESP", "Finds beds and respawn anchors: places where someone lives.",
+                    new String[] {"Beds", "Respawn anchors"},
+                    new int[] {0xFFFF6B6B, 0xFFB05CFF},
+                    new boolean[] {true, true},
+                    new String[] {"Beds of every colour.", "Respawn anchors (Nether)."});
+        }
+
+        @Override
+        protected boolean cares(String p) {
+            return p.endsWith("_bed") || p.equals("respawn_anchor");
+        }
+
+        @Override
+        protected int kind(BlockState st, String p) {
+            return p.equals("respawn_anchor") ? 1 : 0;
+        }
+    }
+}

@@ -1,0 +1,17 @@
+zeus.example.com {
+    root * /var/www/zeus
+    encode zstd gzip
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        X-Frame-Options DENY
+        Content-Security-Policy "default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self'; connect-src 'self'; manifest-src 'self'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'"
+        Strict-Transport-Security "max-age=31536000"
+    }
+    handle_errors {
+        rewrite * /404.html
+        file_server
+    }
+    file_server
+}
+# Caddy gets and renews the HTTPS certificate for you.

@@ -1,0 +1,457 @@
+"""Makes the three pictures of the news scroll in the menu: the top (a wooden rod and the title), the body (aged parchment with
+the news written on it in Greek-style lettering) and the bottom (a wooden rod). The body is taller than the screen and the menu
+moves a window over it, so the scrolling is as smooth as the screen itself.
+
+Run:  python3 tools/make_news_scroll.py <font folder> <output folder> <version>
+The font folder is the Google Fonts "ofl" folder (Cinzel Decorative and GFS Didot are used, both under the SIL Open Font License).
+Prints the sizes of the three pictures; the same numbers are in MenuNews.java.
+"""
+import sys
+
+import cv2
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
+
+FONTS, OUT, VERSION = sys.argv[1], sys.argv[2], sys.argv[3]
+PW = 520                    # width of the paper
+CAP = 30                    # how far the rod sticks out on each side
+RW = PW + 2 * CAP           # width of the rod and of the head and foot pictures
+ROD_H = 58
+HEAD_BAND = 46              # paper under the rod in the head picture (holds the title)
+FOOT_BAND = 22
+MARGIN = 66                 # text margin inside the paper
+SS = 3                      # supersampling for drawn shapes
+rng = np.random.default_rng(11)
+
+PAPER = np.array([226, 204, 156], np.float32)
+BURN = np.array([92, 58, 26], np.float32)
+INK = (40, 27, 15)
+RED = (118, 30, 22)
+GOLD = (150, 104, 36)
+
+
+def font(name, size):
+    return ImageFont.truetype(FONTS + "/" + name, size)
+
+
+def fbm(h, w, base, octaves=5, persist=0.55, seed=0):
+    r = np.random.default_rng(seed)
+    out = np.zeros((h, w), np.float32)
+    amp, tot = 1.0, 0.0
+    for o in range(octaves):
+        gh, gw = max(2, int(base * (2 ** o) * h / max(w, h))), max(2, int(base * (2 ** o) * w / max(w, h)))
+        g = r.random((gh, gw)).astype(np.float32)
+        out += amp * cv2.resize(g, (w, h), interpolation=cv2.INTER_CUBIC)
+        tot += amp
+        amp *= persist
+    out /= tot
+    return (out - out.min()) / (out.max() - out.min() + 1e-6)
+
+
+def smooth1d(n, sigma, seed):
+    r = np.random.default_rng(seed)
+    v = r.normal(0, 1, n + 8 * int(sigma)).astype(np.float32)
+    k = np.exp(-0.5 * (np.arange(-4 * int(sigma), 4 * int(sigma) + 1) / sigma) ** 2)
+    k /= k.sum()
+    v = np.convolve(v, k, mode="same")[4 * int(sigma):4 * int(sigma) + n]
+    return v / (np.abs(v).max() + 1e-6)
+
+
+def parchment(h, seed, top_fade=0, bottom_fade=0, wide=RW):
+    """RGBA float picture of aged paper, PW wide, centred in a `wide` canvas."""
+    ox = (wide - PW) // 2
+    base = np.zeros((h, wide, 3), np.float32)
+    base[:] = PAPER
+    blot = fbm(h, wide, 3, 5, 0.6, seed)
+    base *= (0.80 + 0.30 * blot)[..., None]
+    base[..., 2] *= (0.90 + 0.10 * blot)           # stains lean brown
+    fiber = cv2.GaussianBlur(rng.normal(0, 1, (h, wide)).astype(np.float32), (0, 0), 0.9)
+    base += fiber[..., None] * 5.0
+    streak = cv2.GaussianBlur(rng.normal(0, 1, (h, wide)).astype(np.float32), (0, 0), sigmaX=14, sigmaY=0.7)
+    base += streak[..., None] * 9.0
+    # water rings and a few spots
+    stain = np.zeros((h, wide), np.float32)
+    for i in range(max(3, h // 260)):
+        cx, cy = rng.integers(PW // 5, PW * 4 // 5) + ox, rng.integers(0, h)
+        rr = int(rng.integers(26, 70))
+        cv2.circle(stain, (int(cx), int(cy)), rr, 1.0, 2)
+        cv2.circle(stain, (int(cx), int(cy)), max(2, rr - 5), 0.35, 1)
+    stain = cv2.GaussianBlur(stain, (0, 0), 2.2)
+    base *= (1 - 0.22 * stain)[..., None]
+    for i in range(max(10, h // 70)):
+        cx, cy = int(rng.integers(ox + 20, ox + PW - 20)), int(rng.integers(0, h))
+        spot = np.zeros((h, wide), np.float32)
+        cv2.circle(spot, (cx, cy), int(rng.integers(1, 3)), 1.0, -1)
+        base *= (1 - 0.35 * cv2.GaussianBlur(spot, (0, 0), 1.2))[..., None]
+    # ragged left and right edges, burnt dark just inside them
+    ys = np.arange(h)
+    left = ox + 7 + 5 * smooth1d(h, 7, seed + 1) + 2 * smooth1d(h, 2, seed + 2)
+    right = ox + PW - 7 + 5 * smooth1d(h, 7, seed + 3) + 2 * smooth1d(h, 2, seed + 4)
+    xs = np.arange(wide, dtype=np.float32)[None, :]
+    dl = xs - left[:, None]
+    dr = right[:, None] - xs
+    d = np.minimum(dl, dr)
+    alpha = np.clip(d / 2.5 + 0.5, 0, 1)
+    burn = np.clip(1 - d / 26.0, 0, 1) ** 2 * (0.55 + 0.45 * fbm(h, wide, 9, 3, 0.5, seed + 5))
+    base = base * (1 - 0.8 * burn[..., None]) + BURN * (0.8 * burn[..., None]) * 0.5
+    # soft shadow of a roll at the very top and bottom
+    a = alpha.copy()
+    if top_fade:
+        a *= np.clip(ys / top_fade, 0, 1)[:, None] ** 1.3
+    if bottom_fade:
+        a *= np.clip((h - 1 - ys) / bottom_fade, 0, 1)[:, None] ** 1.3
+    return base, a
+
+
+def meander(img, x_center, y0, y1, flip=False):
+    """Draws a vertical Greek key band into an RGB float picture."""
+    cell = 22
+    scale = 4
+    hh = (y1 - y0) * scale
+    ww = 18 * scale
+    layer = Image.new("L", (ww, hh), 0)
+    d = ImageDraw.Draw(layer)
+    lw = 3 * scale
+    n = (y1 - y0) // cell + 2
+    for i in range(n):
+        yy = i * cell * scale
+        # one key, drawn turned on its side (a vertical band)
+        pts = [(0, yy), (16 * scale, yy), (16 * scale, yy + 12 * scale), (6 * scale, yy + 12 * scale), (6 * scale, yy + 6 * scale), (11 * scale, yy + 6 * scale)]
+        d.line(pts, fill=255, width=lw, joint="curve")
+        d.line([(0, yy), (0, yy + cell * scale)], fill=255, width=lw)
+    layer = layer.resize((18, y1 - y0), Image.LANCZOS)
+    m = np.asarray(layer).astype(np.float32) / 255.0
+    if flip:
+        m = m[:, ::-1]
+    x0 = int(x_center - 9)
+    region = img[y0:y1, x0:x0 + 18]
+    region[:] = region * (1 - 0.55 * m[..., None]) + np.array(GOLD, np.float32) * 0.55 * m[..., None] * 0.55 + region * 0.0
+    return img
+
+
+def rules(img, y):
+    pass
+
+
+def paint_text(img, lines, y_start):
+    """lines: list of (kind, text). Draws with ink-like softness. Returns the total height."""
+    pil = Image.new("L", (img.shape[1], img.shape[0]), 0)
+    d = ImageDraw.Draw(pil)
+    head = font("cinzeldecorative/CinzelDecorative-Bold.ttf", 25)
+    bodyf = font("gfsdidot/GFSDidot-Regular.ttf", 23)
+    inner = PW - 2 * MARGIN
+    ox = (img.shape[1] - PW) // 2
+    y = y_start
+    reds = Image.new("L", pil.size, 0)
+    dr = ImageDraw.Draw(reds)
+
+    def wrap(text, fnt, width):
+        words, out, cur = text.split(" "), [], ""
+        for w_ in words:
+            t = (cur + " " + w_).strip()
+            if d.textlength(t, font=fnt) > width and cur:
+                out.append(cur)
+                cur = w_
+            else:
+                cur = t
+        if cur:
+            out.append(cur)
+        return out
+
+    for kind, text in lines:
+        if kind == "gap":
+            y += int(text)
+        elif kind == "head":
+            for ln in wrap(text, head, inner):
+                dr.text((ox + MARGIN, y), ln, font=head, fill=255)
+                y += 32
+            # a thin gold-red rule under the heading
+            dr.line([(ox + MARGIN, y + 1), (ox + MARGIN + inner, y + 1)], fill=150, width=1)
+            y += 9
+        elif kind == "body":
+            for ln in wrap(text, bodyf, inner - 14):
+                d.text((ox + MARGIN + 14, y), ln, font=bodyf, fill=255)
+                y += 29
+            y += 4
+        elif kind == "tip":
+            for ln in wrap(text, bodyf, inner):
+                w_ = d.textlength(ln, font=bodyf)
+                d.text((ox + MARGIN + (inner - w_) / 2, y), ln, font=bodyf, fill=255)
+                y += 29
+    return pil, reds, y
+
+
+NEWS = [
+    ("head", "Zeus " + VERSION + " - seven new modules and a knife gallery"),
+    ("body", "New: Target Strafe circles the player you fight, Auto Farm harvests and replants, Chest Stealer empties chests, Inventory Cleaner throws junk away, Loot Walker collects drops, Entity Speed speeds up your mount and Ore Compass lists the nearest ores. Kill Aura can attack players and pick the weakest target."),
+    ("body", "MultiAura, Tunnel Miner, Tree Bot and the schematic builder no longer refuse to run on a server. Every knife has its own Inspect trick, and the knife gallery shows each knife and finish exactly as the game draws it."),
+    ("gap", 12),
+    ("head", "0.9.7.0 - see what costs you frames, and more knives"),
+    ("body", "Every module row now shows what it costs, so you can see what eats your frame rate. A new Performance Guard switches the costliest ESPs off by itself when FPS falls under your limit and back on once it recovers."),
+    ("body", "New: a Keybinds screen to bind any module to any key, an update checker with a pop-up, a death marker, and a better Staff Live with an editable channel list and Twitch. The website command is now just /zeus website, and its chat message was redesigned."),
+    ("body", "The knife tricks flow into each other more smoothly, and eighteen new knives from the CS2 line-up were added: Bayonet, M9 Bayonet, Huntsman, Flip, Gut, Falchion, Bowie, Navaja, Stiletto, Talon, Ursus, Classic, Paracord, Survival, Nomad, Skeleton, Kukri and the Shadow Daggers, in twelve finishes."),
+    ("gap", 12),
+    ("head", "0.9.6.0 - a lighter client and two fighting bots"),
+    ("body", "Zeus idles the modules you do not use, caches its lists and draws its overlays more cheaply. Light mode is the default and a Performance page shows which modules cost the most."),
+    ("body", "New: Crystal PvP Bot, Sword PvP Bot, Crystal Optimizer, Spear Swap, Fast XP, Fast Use, Click TP, No Jump Delay, Anti Ghost Block, Auto Reconnect, Skin Change, Anti Trap, Staff Live, Atmosphere, Discord Rich Presence and an AH Sniper. Every version number now starts with 0."),
+    ("gap", 12),
+    ("head", "0.9.5.0 - a real website and a tidy module list"),
+    ("body", "The website reads like a published site, the helper is smarter, and Boat NoClip and Boat Fly were rewritten."),
+    ("gap", 12),
+    ("head", "0.9.4.0 - favourites and a new knife"),
+    ("body", "Star the modules you use and find them on a Favourites page next to a Recently used row. Sort the list by most used, and let a profile switch on by itself when you join a server."),
+    ("body", "Jesus is now Water Walk (the old name still works). The knife was rebuilt: spins wind up, flick and settle, new tricks blend into each other, and it only slashes when you press attack."),
+    ("body", "The Windows layout is tidier, the watermark shows the real Zeus logo, and the website gained a Source code page, a profile page, a config builder and a troubleshooter."),
+    ("gap", 12),
+    ("head", "0.9.3.0 - smarter helper, tidier features"),
+    ("body", "The HUD editor now moves more of your panels: Media Base Finder, Suspicious Chunks, Advanced Base Finder, Tunnel Base Finder, Zeus Sense, Friends Panel and the Fake Scoreboard each have a card you can place and scale."),
+    ("body", "The website helper answers far more questions. It knows every module and every setting with its range and default, and it thinks and types its answer out. Press Ctrl+K on the site to search everything."),
+    ("body", "The Features page was redesigned: a category rail, a detail drawer with every setting, search that finds settings, and links you can share."),
+    ("body", "Credits were expanded: modules and feature ideas by mitko_pandata, animations by NikiTheFacter, and the code, website and images by Zlorbie788, plus the projects Zeus used as references."),
+    ("gap", 12),
+    ("head", "0.9.2.0 - the polish update"),
+    ("body", "A redesigned website with an animated emblem, a Help page with an offline helper, an update timeline and a build you can publish on your own domain. The HUD editor was rebuilt with outlines, snapping, a grid, undo and a floating inspector."),
+    ("gap", 12),
+    ("head", "0.9.1.0 - the website and a lighter client"),
+    ("body", "The optional Web Dashboard module and its live control center arrived. Module search no longer re-scores every module on every frame, so the menu is much lighter. Media Base Finder is strict by default."),
+    ("gap", 12),
+    ("head", "0.9.0.0 - the big merge"),
+    ("body", "An estimated base area for Media Base Finder, a rebuilt Staff HUD, richer ESPs, nineteen new modules, a Region Map for the Goliath grid and a crosshair hider."),
+    ("gap", 12),
+    ("head", "0.8.3.17 - 0.8.3.18 - sharper finders"),
+    ("body", "Boat NoClip is its own module. Anti Vanish notices when a player is removed from the tab list. Staff gets a marker above the head. The dashboard has a scheduler. Media Base Finder gained a camera-sign check and a better upgrade path."),
+    ("gap", 12),
+    ("head", "0.8.3.14 - 0.8.3.16 - miners and markets"),
+    ("body", "Tunnel Miner digs straight tunnels. Market Hunter reports open bargains. Media Base Finder shows Goliath context. KnifeSwing works with any sword. Streamer Privacy hides your coordinates and name."),
+    ("gap", 12),
+    ("head", "0.8.3.9 - 0.8.3.13 - tunnels and a dashboard"),
+    ("body", "Coordinate waypoints, Aim Assist, Zeus Brain and Area Clearer arrived, with big performance gains. Tunnel Base Finder reads tunnel and shaft geometry. Boat no-clip. A local web dashboard opens with /zeus website."),
+    ("gap", 12),
+    ("head", "0.8.3.4 - 0.8.3.8 - tools and builders"),
+    ("body", "Item ESP, Auction House Tweaks and Cave Finder. A HUD editor and remembered modules. MultiAura, Goliath RTP, the first Media Base Finder, a schematic library with a builder, and Fake Lag Monitor."),
+    ("gap", 12),
+    ("head", "0.8.3.1 - 0.8.3.3 - movement"),
+    ("body", "Crop evidence for base finding and elytra steering. Search ranks results better and Everything persistence keeps every module. Boat Fly, Advanced Elytra and geode clues."),
+    ("gap", 12),
+    ("head", "0.8.2.0 - a tour of the client"),
+    ("body", "The first time you enter a world, a short animated tour shows every category. Replay it any time with /zeus tutorial."),
+    ("gap", 12),
+    ("head", "0.8.1.0 - three new helpers"),
+    ("body", "Sword PvP Coach shows your attack cooldown and sprint reset. Tree Bot harvests logs in your own singleplayer world. Elytra Waypoint shows distance, bearing and height to a goal."),
+    ("gap", 12),
+    ("head", "0.8.0.x - the core overhaul"),
+    ("body", "Settings load before modules start, save safely and survive a bad entry. The registry is faster."),
+    ("body", "Windows animate in, rows slide, menus ease. Categories are now Visuals, Base Finding, HUD and Info, and Tools."),
+    ("body", "Server Switch Persistence picks which modules come back after you change server. Attribute Swap alternates sword and mace. Crystal Aura and Anchor Aura take turns instead of colliding."),
+    ("body", "Health labels on ESPs, a breathing tracer, and a clearer tracer outline."),
+    ("body", "Suspicious Chunks has an activity memory and a scan pace."),
+    ("gap", 12),
+    ("head", "7.x - search and polish"),
+    ("body", "Search matches ids, settings and help text, and Ctrl+K jumps to it. X-Ray at 100% opacity is now fully solid. Suspicious Chunks scans faster with a pace choice. KnifeSwing gets trail, ghost and flash controls."),
+    ("gap", 12),
+    ("head", "0.6.6.0 - the panel"),
+    ("body", "The panel fills the screen: a big Z, a stone Zeus and ruins in the sky, a glass card for pages and one for modules, and a status pill with Panic. Scanners that look at builds run only in singleplayer."),
+    ("body", "Auction Bot replaces Auction Helper. Pick an item from a menu with a search bar, set the price, and it lists it again and again."),
+    ("gap", 12),
+    ("head", "0.6.1.0 - friends and a solid karambit"),
+    ("body", "Suspicious Chunks ignores leaves, water, doors and crops. A Friends page gives each friend a glow, a box and a tag. Every profile has its own ID. The karambit is built from slices with real thickness."),
+    ("gap", 12),
+    ("head", "5.x - knives, thunder, profiles"),
+    ("body", "Fake Scoreboard copies the DonutSMP board. Screenshot Tweaks adds Open, Copy and Delete. Smooth Aim Assist eases toward a target. The karambit and the balisong spin, flip and are tossed with many tricks."),
+    ("body", "Profiles give twenty slots with share codes. Chest Memory remembers what is in every chest. Pop Counter, Villager ESP, Auto Sell, Crystal Macro and Anchor Macro arrived. Effects quality fits slow computers."),
+    ("gap", 12),
+    ("head", "4.x - base hunting"),
+    ("body", "Bases are judged by the whole situation, small huts are judged alone, and natural structures no longer pass as bases. Teach it with This is a base and Not a base. Freecam is safer. Bases, raids and auction prices are remembered."),
+    ("gap", 18),
+    ("tip", "Open Zeus Customs to turn every module on or off and change each setting."),
+    ("gap", 40),
+]
+
+
+def build_body():
+    # measure first
+    probe = np.zeros((4000, RW, 3), np.float32)
+    _, _, end = paint_text(probe, NEWS, 12)
+    h = end + 30
+    base, alpha = parchment(h, 3, wide=RW)
+    pil, reds, _ = paint_text(base, NEWS, 12)
+    ink = cv2.GaussianBlur(np.asarray(pil).astype(np.float32) / 255.0, (0, 0), 0.55)
+    red = cv2.GaussianBlur(np.asarray(reds).astype(np.float32) / 255.0, (0, 0), 0.55)
+    # ink is not even: it soaks in unevenly
+    soak = 0.80 + 0.2 * fbm(h, RW, 40, 3, 0.6, 21)
+    ink *= soak
+    red *= soak
+    base = base * (1 - 0.92 * ink[..., None]) + np.array(INK, np.float32) * 0.92 * ink[..., None]
+    base = base * (1 - 0.88 * red[..., None]) + np.array(RED, np.float32) * 0.88 * red[..., None]
+    ox = (RW - PW) // 2
+    for xc in (ox + 34, ox + PW - 34):
+        meander(base, xc, 0, h, flip=(xc > RW // 2))
+    # the two thin lines beside the meander
+    for xl in (ox + 52, ox + PW - 52):
+        cv2.line(base, (xl, 0), (xl, h), tuple(float(c) * 0.9 for c in GOLD), 1, cv2.LINE_AA)
+    return np.dstack([np.clip(base, 0, 255), alpha * 255]).astype(np.uint8)
+
+
+def rod_picture(height, band_top, flip=False):
+    """RGBA float picture RW x ROD_H of a wooden rod with turned ends, drawn supersampled."""
+    W, H = RW * SS, ROD_H * SS
+    img = np.zeros((H, W, 4), np.float32)
+    cy = H / 2
+    body_r = 17 * SS
+    ys, xs = np.mgrid[0:H, 0:W].astype(np.float32)
+    # radius profile along the rod: the turned ends
+    u = xs[0] / SS
+    prof = np.full(W, body_r, np.float32)
+    # knobs: rings and a bulb on each side
+    def knob(x):
+        # distance from outer end, in pixels
+        t = np.clip(x / (CAP + 6), 0, 1)
+        r = 12 + 14 * np.abs(np.sin(np.pi * np.clip(t, 0, 1))) ** 0.7
+        r = np.where(t < 0.12, 8 + 90 * t * 0.9, r)
+        ring = (np.abs(t - 0.62) < 0.07) | (np.abs(t - 0.36) < 0.05)
+        r = np.where(ring, r + 2.6, r)
+        return np.where(x < CAP + 6, r, 0) * SS
+    prof = np.maximum(prof, 0)
+    rl = knob(u)
+    rr = knob(RW - 1 - u)
+    prof = np.where(u < CAP + 6, rl, np.where(u > RW - CAP - 7, rr, prof))
+    inside = np.abs(ys - cy) < prof[None, :]
+    # cylinder shading: normal from vertical position within the local radius
+    n = (ys - cy) / np.maximum(prof[None, :], 1)
+    n = np.clip(n, -1, 1)
+    light = 0.38 + 0.62 * np.sqrt(np.clip(1 - n * n, 0, 1)) * (0.72 - 0.30 * n)  # lit from above
+    spec = np.exp(-((n + 0.42) / 0.16) ** 2) * 0.35
+    wood = np.array([118, 76, 40], np.float32)
+    grain = cv2.GaussianBlur(rng.normal(0, 1, (H, W)).astype(np.float32), (0, 0), sigmaX=22, sigmaY=1.6 * SS)
+    grain2 = fbm(H, W, 6, 4, 0.6, 99)
+    col = wood[None, None, :] * (light[..., None] * (0.85 + 0.15 * grain2[..., None])) + grain[..., None] * 9.0
+    col += spec[..., None] * 150.0
+    # bronze rings at the ends
+    bronze = np.array([176, 132, 58], np.float32)
+    ring_mask = np.zeros((H, W), bool)
+    for x0 in (CAP * 0.62, RW - CAP * 0.62 - 1):
+        pass
+    t_l = np.clip(u / (CAP + 6), 0, 1)
+    t_r = np.clip((RW - 1 - u) / (CAP + 6), 0, 1)
+    ringx = ((np.abs(t_l - 0.62) < 0.07) & (u < CAP + 6)) | ((np.abs(t_r - 0.62) < 0.07) & (u > RW - CAP - 7))
+    ringx = ringx[None, :] & inside
+    col = np.where(ringx[..., None], bronze[None, None, :] * (0.55 + 0.6 * light[..., None]) + spec[..., None] * 140, col)
+    img[..., :3] = np.clip(col, 0, 255)
+    a = inside.astype(np.float32)
+    img[..., 3] = cv2.GaussianBlur(a, (0, 0), 0.8 * SS / 2)
+    out = cv2.resize(img, (RW, ROD_H), interpolation=cv2.INTER_AREA)
+    # premultiplied resize fix: re-colour where alpha is low
+    return out
+
+
+def build_head():
+    H = ROD_H + HEAD_BAND
+    base, alpha = parchment(H, 7, wide=RW)
+    # paper starts under the rod's middle and fades at the bottom
+    ys = np.arange(H)
+    alpha = alpha * np.clip((ys - ROD_H * 0.5) / 4.0, 0, 1)[:, None] * np.clip((H - 1 - ys) / 16.0, 0, 1)[:, None]
+    rod = rod_picture(H, 0)
+    rgb = base.copy()
+    a = alpha.copy()
+    # soft shadow the rod throws on the paper
+    sh = np.zeros((H, RW), np.float32)
+    sh[ROD_H - 4:ROD_H + 10, :] = np.linspace(0.45, 0, 14)[:, None]
+    rgb *= (1 - sh[..., None] * (a[..., None] > 0))
+    ra = np.zeros((H, RW), np.float32)
+    ra[:ROD_H] = rod[..., 3]
+    rr = np.zeros((H, RW, 3), np.float32)
+    rr[:ROD_H] = rod[..., :3]
+    out_a = ra + a * (1 - ra)
+    out_rgb = (rr * ra[..., None] + rgb * (a * (1 - ra))[..., None]) / np.maximum(out_a, 1e-4)[..., None]
+    img = Image.fromarray(np.dstack([np.clip(out_rgb, 0, 255), out_a * 255]).astype(np.uint8), "RGBA")
+    d = ImageDraw.Draw(img)
+    tf = font("gfsdidot/GFSDidot-Regular.ttf", 30)
+    t2 = font("cinzeldecorative/CinzelDecorative-Bold.ttf", 17)
+    title = "ΝΕΑ"
+    tw = d.textlength(title, font=tf)
+    cx = RW / 2
+    ty = ROD_H + 1
+    layer = Image.new("L", img.size, 0)
+    ld = ImageDraw.Draw(layer)
+    ld.text((cx - tw / 2, ty - 2), title, font=tf, fill=255)
+    left, right = "NEWS", "OF ZEUS"
+    ld.text((cx - tw / 2 - 22 - ld.textlength(left, font=t2), ty + 8), left, font=t2, fill=255)
+    ld.text((cx + tw / 2 + 22, ty + 8), right, font=t2, fill=255)
+    # little diamonds beside the title
+    for sx in (-1, 1):
+        x = cx + sx * (tw / 2 + 11)
+        ld.polygon([(x, ty + 17), (x + 4, ty + 21), (x, ty + 25), (x - 4, ty + 21)], fill=255)
+    m = cv2.GaussianBlur(np.asarray(layer).astype(np.float32) / 255.0, (0, 0), 0.5)
+    arr = np.asarray(img).astype(np.float32)
+    arr[..., :3] = arr[..., :3] * (1 - 0.9 * m[..., None]) + np.array(RED, np.float32) * 0.9 * m[..., None]
+    return Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGBA")
+
+
+def build_foot():
+    H = FOOT_BAND + ROD_H
+    base, alpha = parchment(H, 13, wide=RW)
+    ys = np.arange(H)
+    alpha = alpha * np.clip(ys / 16.0, 0, 1)[:, None] * np.clip((H - ROD_H * 0.5 - ys) / 4.0 + 1, 0, 1)[:, None]
+    rod = rod_picture(H, 0)
+    ra = np.zeros((H, RW), np.float32)
+    ra[FOOT_BAND:] = rod[..., 3]
+    rr = np.zeros((H, RW, 3), np.float32)
+    rr[FOOT_BAND:] = rod[..., :3]
+    sh = np.zeros((H, RW), np.float32)
+    sh[max(0, FOOT_BAND - 10):FOOT_BAND + 3, :] = np.linspace(0, 0.4, FOOT_BAND + 3 - max(0, FOOT_BAND - 10))[:, None]
+    base *= (1 - sh[..., None])
+    out_a = ra + alpha * (1 - ra)
+    out_rgb = (rr * ra[..., None] + base * (alpha * (1 - ra))[..., None]) / np.maximum(out_a, 1e-4)[..., None]
+    return Image.fromarray(np.dstack([np.clip(out_rgb, 0, 255), out_a * 255]).astype(np.uint8), "RGBA")
+
+
+def build_roll():
+    """The scroll rolled up: one picture, rod, title band, a little paper, rod, with no see-through seam anywhere."""
+    H = ROD_H + HEAD_BAND + FOOT_BAND + ROD_H
+    base, alpha = parchment(H, 7, wide=RW)
+    ys = np.arange(H)
+    alpha = alpha * np.clip((ys - ROD_H * 0.5) / 4.0, 0, 1)[:, None] * np.clip((H - ROD_H * 0.5 - ys) / 4.0 + 1, 0, 1)[:, None]
+    rod = rod_picture(H, 0)
+    ra = np.zeros((H, RW), np.float32)
+    rr = np.zeros((H, RW, 3), np.float32)
+    ra[:ROD_H] = rod[..., 3]
+    rr[:ROD_H] = rod[..., :3]
+    ra[H - ROD_H:] = rod[..., 3]
+    rr[H - ROD_H:] = rod[..., :3]
+    sh = np.zeros((H, RW), np.float32)
+    sh[ROD_H - 4:ROD_H + 10, :] = np.linspace(0.45, 0, 14)[:, None]
+    sh[H - ROD_H - 10:H - ROD_H + 3, :] = np.linspace(0, 0.4, 13)[:, None]
+    base *= (1 - sh[..., None])
+    out_a = ra + alpha * (1 - ra)
+    out_rgb = (rr * ra[..., None] + base * (alpha * (1 - ra))[..., None]) / np.maximum(out_a, 1e-4)[..., None]
+    img = Image.fromarray(np.dstack([np.clip(out_rgb, 0, 255), out_a * 255]).astype(np.uint8), "RGBA")
+    d = ImageDraw.Draw(img)
+    tf = font("gfsdidot/GFSDidot-Regular.ttf", 30)
+    t2 = font("cinzeldecorative/CinzelDecorative-Bold.ttf", 17)
+    tw = d.textlength("ΝΕΑ", font=tf)
+    cx = RW / 2
+    ty = ROD_H + 1
+    layer = Image.new("L", img.size, 0)
+    ld = ImageDraw.Draw(layer)
+    ld.text((cx - tw / 2, ty - 2), "ΝΕΑ", font=tf, fill=255)
+    ld.text((cx - tw / 2 - 22 - ld.textlength("NEWS", font=t2), ty + 8), "NEWS", font=t2, fill=255)
+    ld.text((cx + tw / 2 + 22, ty + 8), "OF ZEUS", font=t2, fill=255)
+    for sx in (-1, 1):
+        x = cx + sx * (tw / 2 + 11)
+        ld.polygon([(x, ty + 17), (x + 4, ty + 21), (x, ty + 25), (x - 4, ty + 21)], fill=255)
+    m = cv2.GaussianBlur(np.asarray(layer).astype(np.float32) / 255.0, (0, 0), 0.5)
+    arr = np.asarray(img).astype(np.float32)
+    arr[..., :3] = arr[..., :3] * (1 - 0.9 * m[..., None]) + np.array(RED, np.float32) * 0.9 * m[..., None]
+    return Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGBA")
+
+
+roll = build_roll()
+roll.save(OUT + "/scroll_roll.png", optimize=True)
+body = build_body()
+# 256 colours (with alpha) look the same on parchment and cut this file from about 5 MB to under 1 MB
+Image.fromarray(body, "RGBA").quantize(colors=256, method=Image.FASTOCTREE, dither=Image.Dither.NONE).save(OUT + "/scroll_body.png", optimize=True)
+head = build_head()
+head.save(OUT + "/scroll_head.png", optimize=True)
+foot = build_foot()
+foot.save(OUT + "/scroll_foot.png", optimize=True)
+print("roll", roll.size, "RW", RW, "PW", PW, "head", head.size, "body", body.shape[1], body.shape[0], "foot", foot.size)

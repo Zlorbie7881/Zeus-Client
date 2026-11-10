@@ -1,0 +1,257 @@
+package com.zlorbie788.zeus.mods;
+
+import com.zlorbie788.zeus.core.Category;
+import com.zlorbie788.zeus.core.Module;
+import com.zlorbie788.zeus.core.Prof;
+import com.zlorbie788.zeus.core.Setting;
+import com.zlorbie788.zeus.core.Zeus;
+import com.zlorbie788.zeus.ui.Accent;
+import com.zlorbie788.zeus.ui.Draw;
+import com.zlorbie788.zeus.ui.Perf;
+import com.zlorbie788.zeus.ui.UiSettings;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+
+/**
+ * Zeus keeps itself light: this page sets how light, and the monitor shows what is costing frame rate, module by module,
+ * so a heavy module can be switched off or turned down instead of guessed at.
+ */
+public final class Performance {
+    private Performance() {}
+
+    /** The Performance page: the mode buttons, what is in effect, and a one-click way to find the costly modules. */
+    public static final class Page extends Module {
+        public Page() {
+            super("performance", "Performance", "How much of your frame rate Zeus may use: Balanced, Light or Minimal, and automatic lightening when the game lags.", Category.INTERFACE);
+            panelOnly();
+            alias("lag", "fps", "optimize", "optimise", "lightweight", "low end");
+            add(new Setting.Info("Right now", Page::lines));
+            add(new Setting.Action("Balanced", "Everything as designed. Scanners tick every tick.", () -> choose(0)));
+            add(new Setting.Action("Light (recommended)", "Scanners tick every other tick, ESP boxes and lines are drawn with fewer pieces and no halos, HUD boxes are flat.", () -> choose(1)));
+            add(new Setting.Action("Minimal", "Scanners tick every fourth tick, nothing but plain lines and flat boxes. For weak computers.", () -> choose(2)));
+            add(new Setting.Action("Show what costs the most", "Switches the Performance Monitor on. It lists the modules that use the most of your frame time.", () -> {
+                Module m = Zeus.get("perfmonitor");
+                if (m != null && !m.enabled()) m.setEnabled(true);
+            }));
+            add(new Setting.Action("Switch off the 3 costliest", "Reads the Performance Monitor and switches off the three modules that use the most. Switch the monitor on and play for a few seconds first.", Page::killTop));
+        }
+
+        private static void choose(int mode) {
+            UiSettings.GAME_MODE.set(mode);
+            Perf.refresh();
+            Zeus.toast("Performance mode: " + UiSettings.GAME_MODE.value(), true);
+        }
+
+        private static void killTop() {
+            int n = 0;
+            for (Prof.Row r : Prof.report()) {
+                if (n >= 3) break;
+                Module m = r.module();
+                if (m.category == Category.INTERFACE || m.category == Category.PANELS || !m.enabled() || !m.toggleable()) continue;
+                m.setEnabled(false);
+                n++;
+            }
+            Zeus.toast(n == 0 ? "Nothing to switch off yet. Switch the Performance Monitor on and play a few seconds first." : "Switched off " + n + " costly module" + (n == 1 ? "" : "s"), n > 0);
+        }
+
+        private static List<String> lines() {
+            List<String> out = new ArrayList<>();
+            String[] names = {"Balanced", "Light", "Minimal"};
+            out.add("Chosen: " + UiSettings.GAME_MODE.value() + (UiSettings.AUTO_LIGHTEN.on() ? " (lightens by itself when the game lags)" : ""));
+            out.add("In effect: " + names[Math.max(0, Math.min(2, Perf.level()))] + ", scanners tick every " + Perf.stride() + (Perf.stride() == 1 ? " tick" : " ticks"));
+            out.add("Frame rate: " + Brain.ctx().fps);
+            int on = 0;
+            for (Module m : Zeus.all()) if (m.enabled() && m.toggleable()) on++;
+            out.add(on + " modules are on");
+            return out;
+        }
+    }
+
+    /** A small box that lists the modules that use the most frame time. */
+    public static final class Monitor extends Module {
+        private final Setting.Choice corner = Hud.corner(this, 1);
+        private final Setting.Num rows = add(new Setting.Num("Modules listed", "How many of the costliest modules are listed.", 6, 3, 12, 1, ""));
+        private final Setting.Bool hideZeus = add(new Setting.Bool("Hide the small ones", "Leaves out modules that use less than a tenth of a percent.", true));
+
+        public Monitor() {
+            super("perfmonitor", "Performance Monitor", "Shows how much of your frame time each Zeus module uses. Off means no measuring at all.", Category.PANELS);
+            anywhere();
+            alias("profiler", "fps cost", "lag monitor");
+        }
+
+        @Override
+        protected void onEnable() {
+            Prof.hold("monitor", true);
+        }
+
+        @Override
+        protected void onDisable() {
+            Prof.hold("monitor", false);
+        }
+
+        @Override
+        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            List<Prof.Row> report = Prof.report();
+            int shown = 0;
+            List<Prof.Row> pick = new ArrayList<>(rows.i());
+            for (Prof.Row r : report) {
+                if (shown >= rows.i()) break;
+                if (hideZeus.on() && r.percent() < 0.1) break;
+                pick.add(r);
+                shown++;
+            }
+            int bw = Draw.width("Zeus total 00.0%") + 30;
+            for (Prof.Row r : pick) bw = Math.max(bw, Draw.width(r.module().name) + Draw.width(String.format(Locale.ROOT, "%.1f%%", r.percent())) + 24);
+            int bh = (pick.size() + 1) * 11 + 6;
+            int[] at = Hud.place(corner.index(), bw, bh, w, h);
+            Hud.panel(g, at[0], at[1], bw, bh);
+            double total = Prof.total();
+            int tc = total < 3 ? 0xFF5EE6A0 : total < 8 ? 0xFFFFC857 : 0xFFFF5C6C;
+            Draw.text(g, "Zeus total", at[0] + 7, at[1] + 4, Accent.DIM);
+            Draw.textRight(g, String.format(Locale.ROOT, "%.1f%%", total), at[0] + bw - 5, at[1] + 4, tc);
+            for (int i = 0; i < pick.size(); i++) {
+                Prof.Row r = pick.get(i);
+                int y = at[1] + 4 + (i + 1) * 11;
+                int c = r.percent() < 1 ? Accent.TEXT : r.percent() < 4 ? 0xFFFFC857 : 0xFFFF5C6C;
+                Draw.text(g, r.module().name, at[0] + 7, y, Accent.TEXT);
+                Draw.textRight(g, String.format(Locale.ROOT, "%.1f%%", r.percent()), at[0] + bw - 5, y, c);
+            }
+        }
+    }
+
+    /**
+     * Performance Guard: when your frame rate stays under the limit it switches off the costliest heavy modules (ESPs and
+     * scanners), a few at a time, and when the frame rate has been healthy for a while it switches them back on. It never
+     * touches a module you switched on after it acted, and it gives up restoring a module that pulls the frame rate down
+     * three times, so it cannot flicker for ever.
+     */
+    public static final class Guard extends Module {
+        private final Setting.Num below = add(new Setting.Num("Switch off below", "The frame rate under which the guard acts. It needs to stay under for three seconds.", 40, 15, 200, 5, " fps"));
+        private final Setting.Num above = add(new Setting.Num("Switch back on above", "The frame rate that has to hold for ten seconds before the modules it switched off come back.", 70, 20, 300, 5, " fps"));
+        private final Setting.Num batch = add(new Setting.Num("Switch off at a time", "How many modules go off each time the frame rate is still too low.", 2, 1, 5, 1, ""));
+        private final Setting.Num most = add(new Setting.Num("Switch off at most", "The most modules the guard keeps off at once.", 5, 1, 12, 1, ""));
+        private final Setting.Num retry = add(new Setting.Num("Wait before trying again", "Seconds it waits after bringing modules back before it may switch anything off again.", 30, 10, 300, 5, " s"));
+        private final Setting.Choice scope = add(new Setting.Choice("Which modules", "Heavy only: ESPs, finders and scanners. Any: every module except the ones in your keep list (the guard itself, the menu and the HUD pages are never touched).", 0, "Heavy only", "Any"));
+        private final Setting.Text keep = add(new Setting.Text("Never switch off", "Module names or ids, separated by commas, that the guard must leave alone.", "", 120));
+        private final Setting.Bool tell = add(new Setting.Bool("Tell me", "Shows a message when it switches modules off or back on.", true));
+        private volatile String status = "Watching your frame rate.";
+        private final Setting.Info state = addSetting(new Setting.Info("Now", () -> List.of(status)));
+
+        private final List<Module> off = new ArrayList<>();
+        private int low;
+        private int good;
+        private int sinceOff;
+        private int cooldown;
+        private int bounces;
+        private boolean giveUp;
+        private long lastAt;
+
+        public Guard() {
+            super("perfguard", "Performance Guard", "Switches the costliest heavy modules off when your frame rate drops, and back on when it recovers.", Category.INTERFACE);
+            anywhere();
+            alias("auto disable", "auto off", "fps guard", "lag guard", "heavy modules");
+        }
+
+        @Override
+        protected void onEnable() {
+            Prof.hold("guard", true);
+            off.clear();
+            low = good = sinceOff = cooldown = bounces = 0;
+            giveUp = false;
+            status = "Watching your frame rate.";
+        }
+
+        @Override
+        protected void onDisable() {
+            Prof.hold("guard", false);
+            restore(false);
+        }
+
+        private boolean kept(Module m) {
+            if (m == this || !m.enabled() || !m.toggleable() || m.category == Category.INTERFACE || m.category == Category.PANELS) return true;
+            if (scope.index() == 0 && !m.isLight()) return true;
+            String list = keep.get().toLowerCase(Locale.ROOT);
+            if (list.isBlank()) return false;
+            for (String part : list.split(",")) {
+                String p = part.trim();
+                if (!p.isEmpty() && (p.equals(m.id.toLowerCase(Locale.ROOT)) || p.equals(m.name.toLowerCase(Locale.ROOT)))) return true;
+            }
+            return false;
+        }
+
+        private void restore(boolean say) {
+            int n = 0;
+            for (Module m : off) {
+                if (!m.enabled()) {
+                    m.setEnabledQuiet(true);
+                    n++;
+                }
+            }
+            off.clear();
+            if (say && n > 0 && tell.on()) Zeus.toast("Performance Guard: " + n + " module" + (n == 1 ? "" : "s") + " back on", true);
+        }
+
+        @Override
+        protected void onTick(Minecraft mc) {
+            if (mc.level == null || mc.player == null || mc.screen != null) return;
+            if (++sinceOff < 20) return;
+            sinceOff = 0; // once a second
+            int fps = Brain.ctx().fps;
+            if (fps <= 0) return;
+            if (cooldown > 0) cooldown--;
+            // forget what the user switched back on by hand
+            off.removeIf(Module::enabled);
+            if (fps < below.i()) {
+                good = 0;
+                if (++low >= 3 && cooldown == 0 && off.size() < most.i()) {
+                    low = 0;
+                    switchOff(fps);
+                }
+            } else {
+                low = 0;
+                if (!off.isEmpty() && fps >= above.i()) {
+                    if (++good >= 10 && !giveUp) {
+                        good = 0;
+                        bounces++;
+                        if (bounces >= 3) {
+                            giveUp = true;
+                            status = "These keep pulling the frame rate down, so they stay off. Switch them on yourself if you want them.";
+                            if (tell.on()) Zeus.toast("Performance Guard: the modules stay off (they keep lowering your frame rate)", false);
+                            off.clear();
+                        } else {
+                            restore(true);
+                            cooldown = retry.i();
+                            status = "Modules are back on. Watching.";
+                        }
+                    }
+                } else good = 0;
+            }
+            if (off.isEmpty() && !giveUp && status.startsWith("Switched off")) status = "Watching your frame rate.";
+        }
+
+        private void switchOff(int fps) {
+            List<Module> candidates = new ArrayList<>();
+            for (Module m : Zeus.all()) if (!kept(m)) candidates.add(m);
+            if (candidates.isEmpty()) {
+                status = "Frame rate " + fps + ", but nothing is left that the guard may switch off.";
+                return;
+            }
+            candidates.sort((a, b) -> Float.compare(b.costPct, a.costPct));
+            int n = 0;
+            StringBuilder names = new StringBuilder();
+            for (Module m : candidates) {
+                if (n >= batch.i() || off.size() >= most.i()) break;
+                m.setEnabledQuiet(false);
+                off.add(m);
+                names.append(n == 0 ? "" : ", ").append(m.name);
+                n++;
+            }
+            status = "Switched off " + names + " at " + fps + " fps.";
+            if (tell.on()) Zeus.toast("Performance Guard: " + names + " off (" + fps + " fps)", false);
+        }
+    }
+}

@@ -1,0 +1,375 @@
+package com.zlorbie788.zeus.ui;
+
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
+
+/** Drawing helpers: rounded boxes, glow, lines at any angle and text. Colours are ARGB ints. */
+public final class Draw {
+    private Draw() {}
+
+    /**
+     * True while the in-game HUD is drawn in Light or Minimal mode: rounded boxes lose their curve and gradient and shadows
+     * and glows are skipped, so each box is one or two pieces instead of a dozen.
+     */
+    public static boolean cheap;
+
+    // ------------------------------------------------------------------ colour
+
+    public static int a(int argb) {
+        return argb >>> 24;
+    }
+
+    public static int rgba(int argb, float alpha) {
+        int na = Math.max(0, Math.min(255, Math.round(a(argb) * alpha)));
+        return (na << 24) | (argb & 0xFFFFFF);
+    }
+
+    public static int mix(int c1, int c2, float t) {
+        t = Math.max(0f, Math.min(1f, t));
+        int aa = Math.round(((c1 >>> 24) & 255) * (1 - t) + ((c2 >>> 24) & 255) * t);
+        int r = Math.round(((c1 >> 16) & 255) * (1 - t) + ((c2 >> 16) & 255) * t);
+        int g = Math.round(((c1 >> 8) & 255) * (1 - t) + ((c2 >> 8) & 255) * t);
+        int b = Math.round((c1 & 255) * (1 - t) + (c2 & 255) * t);
+        return (aa << 24) | (r << 16) | (g << 8) | b;
+    }
+
+    public static int lighten(int c, float t) {
+        return mix(c, (c & 0xFF000000) | 0xFFFFFF, t);
+    }
+
+    public static int darken(int c, float t) {
+        return mix(c, (c & 0xFF000000), t);
+    }
+
+    // ------------------------------------------------------------------ shapes
+
+    /** A filled rounded rectangle. */
+    public static void rrect(GuiGraphics g, int x, int y, int w, int h, int r, int color) {
+        rrect(g, x, y, w, h, r, color, color);
+    }
+
+    /** A rounded rectangle with a vertical gradient from {@code top} to {@code bottom}. */
+    public static void rrect(GuiGraphics g, int x, int y, int w, int h, int r, int top, int bottom) {
+        if (w <= 0 || h <= 0) return;
+        r = Math.max(0, Math.min(r, Math.min(w, h) / 2));
+        if (cheap) {
+            r = Math.min(r, 1);
+            if (top != bottom) top = bottom = mix(top, bottom, 0.5f);
+        }
+        if (r == 0 && top == bottom) {
+            g.fill(x, y, x + w, y + h, top);
+            return;
+        }
+        if (top == bottom) {
+            // one box for the middle, strips for the corners
+            g.fill(x, y + r, x + w, y + h - r, top);
+            for (int i = 0; i < r; i++) {
+                int inset = r - inset(r, i);
+                g.fill(x + inset, y + i, x + w - inset, y + i + 1, top);
+                g.fill(x + inset, y + h - 1 - i, x + w - inset, y + h - i, top);
+            }
+            return;
+        }
+        // the gradient is drawn in bands (two or three rows each on tall boxes): the eye cannot tell, and it is a third of the work
+        int band = h > 36 ? 3 : h > 16 ? 2 : 1;
+        for (int i = 0; i < h; ) {
+            int rows = Math.min(band, h - i);
+            if (i < r || i + rows > h - r) rows = 1;
+            int inset = 0;
+            if (i < r) inset = r - inset(r, i);
+            else if (i >= h - r) inset = r - inset(r, h - 1 - i);
+            g.fill(x + inset, y + i, x + w - inset, y + i + rows, mix(top, bottom, h <= 1 ? 0 : (i + rows / 2f) / (float) (h - 1)));
+            i += rows;
+        }
+    }
+
+    private static final int[][] INSETS = new int[40][];
+
+    private static int inset(int r, int row) {
+        // how many pixels of the row (0 = outermost) are inside the quarter circle
+        if (r < INSETS.length) {
+            int[] t = INSETS[r];
+            if (t == null) {
+                t = new int[r + 1];
+                for (int i = 0; i <= r; i++) {
+                    double dy = r - i - 0.5;
+                    t[i] = (int) Math.round(Math.sqrt(Math.max(0, r * r - dy * dy)));
+                }
+                INSETS[r] = t;
+            }
+            return t[Math.min(row, r)];
+        }
+        double dy = r - row - 0.5;
+        return (int) Math.round(Math.sqrt(Math.max(0, r * r - dy * dy)));
+    }
+
+    /** A cheap outline for a rounded box: four straight edges and a two-pixel notch at every corner. */
+    public static void rrectLineFast(GuiGraphics g, int x, int y, int w, int h, int r, int color) {
+        if (w < 4 || h < 4) return;
+        r = Math.max(1, Math.min(r, Math.min(w, h) / 2));
+        int c = Math.max(1, r / 2);
+        g.fill(x + r, y, x + w - r, y + 1, color);
+        g.fill(x + r, y + h - 1, x + w - r, y + h, color);
+        g.fill(x, y + r, x + 1, y + h - r, color);
+        g.fill(x + w - 1, y + r, x + w, y + h - r, color);
+        // corners: one short step in each direction
+        g.fill(x + c, y + c, x + r, y + c + 1, color);
+        g.fill(x + w - r, y + c, x + w - c, y + c + 1, color);
+        g.fill(x + c, y + h - c - 1, x + r, y + h - c, color);
+        g.fill(x + w - r, y + h - c - 1, x + w - c, y + h - c, color);
+        g.fill(x + c, y + c, x + c + 1, y + r, color);
+        g.fill(x + w - c - 1, y + c, x + w - c, y + r, color);
+        g.fill(x + c, y + h - r, x + c + 1, y + h - c, color);
+        g.fill(x + w - c - 1, y + h - r, x + w - c, y + h - c, color);
+    }
+
+    /** A one-pixel outline that follows a rounded rectangle. */
+    public static void rrectLine(GuiGraphics g, int x, int y, int w, int h, int r, int color) {
+        if (w < 2 || h < 2) return;
+        r = Math.max(0, Math.min(r, Math.min(w, h) / 2));
+        if (cheap) r = Math.min(r, 1);
+        g.fill(x + r, y, x + w - r, y + 1, color);
+        g.fill(x + r, y + h - 1, x + w - r, y + h, color);
+        g.fill(x, y + r, x + 1, y + h - r, color);
+        g.fill(x + w - 1, y + r, x + w, y + h - r, color);
+        for (int i = 0; i < r; i++) {
+            int in = r - inset(r, i);
+            int in2 = i == 0 ? r : r - inset(r, i - 1);
+            // each row runs from its own point on the arc to the point of the row before it, so the curve has no gaps
+            g.fill(x + in, y + i, x + Math.max(in + 1, in2), y + i + 1, color);
+            g.fill(x + w - Math.max(in + 1, in2), y + i, x + w - in, y + i + 1, color);
+            g.fill(x + in, y + h - 1 - i, x + Math.max(in + 1, in2), y + h - i, color);
+            g.fill(x + w - Math.max(in + 1, in2), y + h - 1 - i, x + w - in, y + h - i, color);
+        }
+    }
+
+    /** A soft coloured halo around a box. */
+    public static void glow(GuiGraphics g, int x, int y, int w, int h, int r, int color, int spread, float strength) {
+        if (cheap) return;
+        for (int i = spread; i >= 1; i--) {
+            float k = (1f - i / (float) (spread + 1));
+            rrect(g, x - i, y - i, w + 2 * i, h + 2 * i, r + i, rgba(color, strength * k * k));
+        }
+    }
+
+    /**
+     * A soft drop shadow made of a few thin strips around the box (never a big shape under it, so the game has little to
+     * sort and draw). {@code spread} is the reach in pixels.
+     */
+    public static void shadow(GuiGraphics g, int x, int y, int w, int h, int r, int spread, float strength) {
+        if (cheap) return;
+        int steps = Math.max(2, Math.min(4, spread / 2));
+        int step = Math.max(1, Math.round(spread / (float) steps));
+        for (int i = 0; i < steps; i++) {
+            float k = 1f - i / (float) steps;
+            int col = rgba(0xFF000000, strength * 0.20f * k * k);
+            int o = (i + 1) * step;
+            int in = Math.max(0, r - o);
+            // top, bottom, left and right bands, one band per step
+            g.fill(x + in, y - o + 2, x + w - in, y - o + 2 + step, col);
+            g.fill(x + in, y + h + o - step + 2, x + w - in, y + h + o + 2, col);
+            g.fill(x - o, y + r, x - o + step, y + h - r + 2, col);
+            g.fill(x + w + o - step, y + r, x + w + o, y + h - r + 2, col);
+        }
+    }
+
+    /** A straight line of the given thickness, at any angle. */
+    public static void line(GuiGraphics g, float x1, float y1, float x2, float y2, float thick, int color) {
+        float dx = x2 - x1;
+        float dy = y2 - y1;
+        float len = (float) Math.sqrt(dx * dx + dy * dy);
+        if (len < 0.5f) {
+            int s = Math.max(1, Math.round(thick));
+            g.fill(Math.round(x1 - s / 2f), Math.round(y1 - s / 2f), Math.round(x1 - s / 2f) + s, Math.round(y1 - s / 2f) + s, color);
+            return;
+        }
+        if (dy == 0 || dx == 0) {
+            float h = thick / 2f;
+            g.fill(Math.round(Math.min(x1, x2) - (dy == 0 ? 0 : h)), Math.round(Math.min(y1, y2) - (dx == 0 ? 0 : h)),
+                    Math.round(Math.max(x1, x2) + (dy == 0 ? 0 : h)), Math.round(Math.max(y1, y2) + (dx == 0 ? 0 : h)), color);
+            return;
+        }
+        g.pose().pushMatrix();
+        g.pose().translate(x1, y1);
+        g.pose().rotate((float) Math.atan2(dy, dx));
+        int t = Math.max(1, Math.round(thick));
+        int l = (int) Math.ceil(len);
+        g.fill(0, -(t / 2), l, t - (t / 2), color);
+        g.pose().popMatrix();
+    }
+
+    public static void outline(GuiGraphics g, int x1, int y1, int x2, int y2, int color) {
+        g.fill(x1, y1, x2, y1 + 1, color);
+        g.fill(x1, y2 - 1, x2, y2, color);
+        g.fill(x1, y1 + 1, x1 + 1, y2 - 1, color);
+        g.fill(x2 - 1, y1 + 1, x2, y2 - 1, color);
+    }
+
+    public static void ellipse(GuiGraphics g, int cx, int cy, int rx, int ry, int color) {
+        for (int y = -ry; y <= ry; y++) {
+            double t = y / (double) Math.max(1, ry);
+            int half = (int) Math.round(rx * Math.sqrt(Math.max(0, 1 - t * t)));
+            g.fill(cx - half, cy + y, cx + half, cy + y + 1, color);
+        }
+    }
+
+    // ------------------------------------------------------------------ text
+
+    public static Font font() {
+        return Minecraft.getInstance().font;
+    }
+
+    private static final java.util.HashMap<String, Integer> WIDTHS = new java.util.HashMap<>();
+    private static final java.util.HashMap<String, Integer> WIDTHS_BOLD = new java.util.HashMap<>();
+    private static final java.util.HashMap<String, String> FITS = new java.util.HashMap<>();
+
+    public static int width(String s) {
+        Integer w = WIDTHS.get(s);
+        if (w == null) {
+            if (WIDTHS.size() > 3000) WIDTHS.clear();
+            w = font().width(Component.literal(s));
+            WIDTHS.put(s, w);
+        }
+        return w;
+    }
+
+    public static int widthBold(String s) {
+        Integer w = WIDTHS_BOLD.get(s);
+        if (w == null) {
+            if (WIDTHS_BOLD.size() > 1000) WIDTHS_BOLD.clear();
+            w = font().width(Component.literal(s).withStyle(ChatFormatting.BOLD));
+            WIDTHS_BOLD.put(s, w);
+        }
+        return w;
+    }
+
+    public static void text(GuiGraphics g, String s, int x, int y, int color) {
+        g.drawString(font(), Component.literal(s), x, y, color, false);
+    }
+
+    public static void textShadow(GuiGraphics g, String s, int x, int y, int color) {
+        g.drawString(font(), Component.literal(s), x, y, color, true);
+    }
+
+    public static void bold(GuiGraphics g, String s, int x, int y, int color) {
+        g.drawString(font(), Component.literal(s).withStyle(ChatFormatting.BOLD), x, y, color, false);
+    }
+
+    public static void textRight(GuiGraphics g, String s, int xRight, int y, int color) {
+        text(g, s, xRight - width(s), y, color);
+    }
+
+    public static void textCenter(GuiGraphics g, String s, int cx, int y, int color) {
+        text(g, s, cx - width(s) / 2, y, color);
+    }
+
+    public static void boldCenter(GuiGraphics g, String s, int cx, int y, int color) {
+        bold(g, s, cx - widthBold(s) / 2, y, color);
+    }
+
+    /** The start of {@code s} that fits in {@code max} pixels, with an ellipsis when cut. */
+    public static String fit(String s, int max) {
+        if (width(s) <= max) return s;
+        String key = max + "|" + s;
+        String cached = FITS.get(key);
+        if (cached != null) return cached;
+        if (FITS.size() > 2000) FITS.clear();
+        String out = fitSlow(s, max);
+        FITS.put(key, out);
+        return out;
+    }
+
+    private static String fitSlow(String s, int max) {
+        String dots = "...";
+        int lo = 0;
+        int hi = s.length();
+        while (lo < hi) {
+            int mid = (lo + hi + 1) >>> 1;
+            if (width(s.substring(0, mid) + dots) <= max) lo = mid;
+            else hi = mid - 1;
+        }
+        return s.substring(0, lo) + dots;
+    }
+
+    // ------------------------------------------------------------------ scaled text (the pixel font enlarged in half steps)
+
+    public static int widthS(String s, float sc) {
+        return Math.round(width(s) * sc);
+    }
+
+    public static int widthBoldS(String s, float sc) {
+        return Math.round(widthBold(s) * sc);
+    }
+
+    public static void textS(GuiGraphics g, String s, int x, int y, int color, float sc) {
+        if (sc == 1f) {
+            text(g, s, x, y, color);
+            return;
+        }
+        g.pose().pushMatrix();
+        g.pose().translate(x, y);
+        g.pose().scale(sc, sc);
+        text(g, s, 0, 0, color);
+        g.pose().popMatrix();
+    }
+
+    public static void boldS(GuiGraphics g, String s, int x, int y, int color, float sc) {
+        if (sc == 1f) {
+            bold(g, s, x, y, color);
+            return;
+        }
+        g.pose().pushMatrix();
+        g.pose().translate(x, y);
+        g.pose().scale(sc, sc);
+        bold(g, s, 0, 0, color);
+        g.pose().popMatrix();
+    }
+
+    public static void textCenterS(GuiGraphics g, String s, int cx, int y, int color, float sc) {
+        textS(g, s, cx - widthS(s, sc) / 2, y, color, sc);
+    }
+
+    public static void boldCenterS(GuiGraphics g, String s, int cx, int y, int color, float sc) {
+        boldS(g, s, cx - Math.round(widthBoldS(s, sc) / 2f), y, color, sc);
+    }
+
+    public static void textRightS(GuiGraphics g, String s, int xRight, int y, int color, float sc) {
+        textS(g, s, xRight - widthS(s, sc), y, color, sc);
+    }
+
+    /** Text with extra space between the letters (for wordmarks). Returns the width used. */
+    public static int spaced(GuiGraphics g, String s, int x, int y, int color, float sc, int gap, boolean bold) {
+        int cx = x;
+        for (int i = 0; i < s.length(); i++) {
+            String c = String.valueOf(s.charAt(i));
+            if (bold) boldS(g, c, cx, y, color, sc);
+            else textS(g, c, cx, y, color, sc);
+            cx += (bold ? widthBoldS(c, sc) : widthS(c, sc)) + gap;
+        }
+        return cx - x - gap;
+    }
+
+    public static int spacedWidth(String s, float sc, int gap, boolean bold) {
+        int w = 0;
+        for (int i = 0; i < s.length(); i++) {
+            String c = String.valueOf(s.charAt(i));
+            w += (bold ? widthBoldS(c, sc) : widthS(c, sc)) + gap;
+        }
+        return Math.max(0, w - gap);
+    }
+
+    /** A short message pill, centred on x. */
+    public static void toast(GuiGraphics g, Minecraft mc, int cx, int y, String text, boolean good, float alpha) {
+        int w = width(text) + 22;
+        int x = cx - w / 2;
+        int accent = good ? 0xFF5EE6A0 : 0xFFFF6B6B;
+        shadow(g, x, y, w, 15, 4, 4, alpha);
+        rrect(g, x, y, w, 15, 4, rgba(0xFF0D1018, 0.94f * alpha));
+        rrectLine(g, x, y, w, 15, 4, rgba(accent, 0.55f * alpha));
+        g.fill(x + 6, y + 6, x + 9, y + 9, rgba(accent, alpha));
+        text(g, text, x + 14, y + 3, rgba(0xFFE8ECF8, alpha));
+    }
+}

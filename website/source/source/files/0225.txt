@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+"""Bundles the project's source code into the website so the Source code page can list and show every file.
+
+Run it on EVERY release, after the last code change and before building the website / the jar:
+    python3 tools/make_source_manifest.py
+
+It writes  src/main/resources/assets/zeus/web/source/index.json  (the file tree and totals) and
+           src/main/resources/assets/zeus/web/source/files/0001.txt ...  (one plain-text copy per file, flat names).
+Binary files (images, sounds, jars, fonts) and generated output are skipped. Nothing outside the repository is read."""
+import hashlib, json, os, re, shutil, sys, datetime
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+WEB = os.path.join(ROOT, "src", "main", "resources", "assets", "zeus", "web")
+OUT = os.path.join(WEB, "source")
+
+TEXT_EXT = {".java": "Java", ".json": "JSON", ".py": "Python", ".js": "JavaScript", ".css": "CSS", ".html": "HTML", ".md": "Markdown",
+            ".gradle": "Gradle", ".properties": "Properties", ".bat": "Batch", ".txt": "Text", ".webmanifest": "JSON", ".mcmeta": "JSON"}
+SKIP_DIRS = {".git", ".gradle", "build", "website", "__pycache__", "node_modules", ".idea", ".vscode", "out", "run"}
+W = "src/main/resources/assets/zeus/web/"
+# the bundle itself, a copy of README.md, and the generated website data (it is rebuilt from tools/site/*.py)
+SKIP_PATHS = {W + "source", "src/main/resources/README.md"} | {W + n for n in ("features.json", "help.json", "timeline.json", "trouble.json", "presets.json")}
+MAX_BYTES = 600_000
+
+
+def version():
+    try:
+        s = open(os.path.join(ROOT, "src/main/java/com/zlorbie788/zeus/core/Zeus.java"), encoding="utf-8").read()
+        return re.search(r'VERSION\s*=\s*"([^"]+)"', s).group(1)
+    except Exception:
+        return ""
+
+
+def wanted(rel):
+    if rel in ("LICENSE", "NOTICE", "gradlew"):
+        return "Text" if rel != "gradlew" else "Shell"
+    return TEXT_EXT.get(os.path.splitext(rel)[1].lower())
+
+
+def previous():
+    try:
+        return json.load(open(os.path.join(OUT, "index.json"), encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def main():
+    prev = previous()
+    if os.path.isdir(OUT):
+        shutil.rmtree(OUT)
+    os.makedirs(os.path.join(OUT, "files"))
+    entries = []
+    for base, dirs, files in os.walk(ROOT):
+        rel_base = os.path.relpath(base, ROOT).replace(os.sep, "/")
+        dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS and (rel_base + "/" + d).lstrip("./") not in SKIP_PATHS)
+        for name in sorted(files):
+            rel = (rel_base + "/" + name).lstrip("./") if rel_base != "." else name
+            if rel in SKIP_PATHS or name.endswith(".pyc"):
+                continue
+            lang = wanted(rel)
+            if not lang:
+                continue
+            full = os.path.join(base, name)
+            if os.path.getsize(full) > MAX_BYTES:
+                print("skipped (too big):", rel)
+                continue
+            try:
+                text = open(full, encoding="utf-8").read()
+            except UnicodeDecodeError:
+                continue
+            entries.append((rel, lang, text))
+    entries.sort(key=lambda e: e[0])
+    files = []
+    for i, (rel, lang, text) in enumerate(entries, 1):
+        fid = "%04d" % i
+        data = text.replace("\r\n", "\n")
+        with open(os.path.join(OUT, "files", fid + ".txt"), "w", encoding="utf-8", newline="\n") as f:
+            f.write(data)
+        files.append({"id": fid, "path": rel, "lang": lang, "size": len(data.encode("utf-8")), "lines": data.count("\n") + (0 if data.endswith("\n") or not data else 1),
+                      "sha256": hashlib.sha256(data.encode("utf-8")).hexdigest()[:16]})
+    langs = {}
+    for f in files:
+        l = langs.setdefault(f["lang"], {"files": 0, "lines": 0})
+        l["files"] += 1
+        l["lines"] += f["lines"]
+    # which files are new or changed since the previous release (the page marks them); running twice for one version keeps the first result
+    changes = None
+    now = {f["path"]: f["sha256"] for f in files}
+    if prev and prev.get("version") and prev.get("version") != version():
+        old = {f["path"]: f["sha256"] for f in prev.get("files", [])}
+        changes = {"since": prev["version"], "added": sorted(p for p in now if p not in old),
+                   "changed": sorted(p for p in now if p in old and old[p] != now[p]), "removed": sorted(p for p in old if p not in now)}
+    elif prev and prev.get("version") == version():
+        changes = prev.get("changes")
+    index = {"version": version(), "changes": changes, "generated": datetime.date.today().isoformat(), "files": files,
+             "totals": {"files": len(files), "lines": sum(f["lines"] for f in files), "bytes": sum(f["size"] for f in files), "languages": langs}}
+    with open(os.path.join(OUT, "index.json"), "w", encoding="utf-8") as f:
+        json.dump(index, f, ensure_ascii=False, separators=(",", ":"))
+    print("source bundle: %d files, %d lines, version %s" % (len(files), index["totals"]["lines"], index["version"]))
+
+
+if __name__ == "__main__":
+    main()

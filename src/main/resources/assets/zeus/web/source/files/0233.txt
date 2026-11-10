@@ -1,0 +1,241 @@
+"""0.9.5.0 changes to the FAQ: the website is now described as the published site, a few site-owner entries leave the public FAQ,
+and many questions get several differently worded answers (ALTS). The helper picks a different one each time you ask."""
+
+# questions that were about running your own copy of the site: they are not for visitors of the published site
+REMOVE = {
+    "How can I publish this website on my own domain?", "How do I publish the Zeus website on my own domain?", "Which hosts can serve the website?",
+    "Do I need HTTPS for the website?", "How do I set the download link on the website?", "How do I change the Discord link on the website?",
+    "How do I add a SHA-256 checksum for the download?",
+}
+
+RENAME = {"Is the local website safe?": "Is the control center safe?"}
+
+PATCH = {
+    "What is the Zeus website?": "The official Zeus website. It has the download and install guide, every module and setting, the help centre with this helper, the update timeline, the source code browser, a config builder and a troubleshooter. A Settings page can also connect to the Zeus running in your game.",
+    "Is the control center safe?": "Yes. The control center is an optional page that only talks to your own game. Zeus's built-in web server accepts connections from your computer only (127.0.0.1), checks the Host and Origin of every request, serves no inline scripts and needs your private access token to read or change anything. Nobody else on your network or on the internet can reach it, and this website never connects to your game by itself.",
+    "The control center says it must be opened from Minecraft": "The Settings page controls the Zeus running in your game, so it needs the link the game prints. Run /zeus website in Minecraft and open that link; the public pages work anywhere, but the control center only works from the game's own link.",
+    "Why does the Settings page say it needs Minecraft?": "Settings controls the running game, so it needs the link Zeus prints when you run /zeus website. The public website cannot reach your game on its own, which is how it should be.",
+    "Does the website work without internet?": "The website needs an internet connection like any other website. The control center link that Zeus prints in game is served by the game itself and keeps working offline.",
+    "Is Zeus safe?": "Zeus is a client-side Fabric mod: it has no accounts, never asks for a password and has no server of its own to send your data to. Only three optional modules connect out: Discord Webhook (to the address you type in), Staff Live (which asks YouTube, TikTok and Twitch whether the channels in your list are live) and Update Checker (which reads the one version file at the address you give it). Discord Rich Presence talks only to the Discord app on your own computer. You can read all of the code on the Source code page. What can hurt you is on the game side (servers ban cheat clients) and fake copies, so download Zeus only from the official Download page or the GitHub releases page.",
+    "Is the source code available?": "Yes. You can read every file of this release on the Source code page, and the GitHub page links to the full repository. Zeus is built from source with Gradle, and the LICENSE and NOTICE files say what you may do with the code.",
+    "Is Zeus open source?": "You can read all of Zeus's source on the Source code page, and the GitHub page has the repository. Parts of it are derived from GPL-3.0 software and the licence notices ship in the jar. For anything about reuse, ask on the Discord.",
+    "Where can I read the Zeus source code?": "On the Source code page of this website: it lists every file of the release you are looking at, with line counts, a file filter and a viewer with line numbers. The same code is on the project's GitHub page, which that page links to.",
+    "How do I build a config for my playstyle?": "Open Build a config (it is in the More menu, on the Tutorial page and in the Help centre). Either answer a few yes or no questions and it assembles a custom pack for you, or pick a playstyle such as Explorer, Base hunter, Crystal PvP, Quiet helper, Builder, Streamer, Single-player practice or Miner and tune it. Then download zeus.json or copy the /zeus on commands. The file only holds which modules switch on at launch, so back up your own zeus.json first.",
+    "Is there a troubleshooting wizard?": "Yes. The Troubleshooter (in the More menu and the Help centre) asks a few yes or no questions and ends at the matching fix, together with the exact lines to look for in logs/latest.log.",
+}
+
+NEW = [
+    ("Why is Zeus using so much of my FPS?", "Open the Performance page (Interface) and look at Right now. Zeus defaults to Light mode, which skips the expensive outline and glow effects and scans less often, and it lightens itself further when your frame rate drops. Switch on Performance Monitor to see which modules cost the most, and use Switch off the 3 costliest if one of them is the problem. ESPs and base finders are usually the heaviest.", "fps lag slow performance stutter lightweight light mode lag frames", [("Features", "/features")]),
+    ("What are the Crystal PvP Bot and the Sword PvP Bot?", "Fighting bots that walk, turn and fight the nearest player for you. The Sword Bot closes in, strafes, times critical hits, stays out of reach while the swing recharges, eats golden apples, mends armour, refills the hotbar and throws pearls to close a gap. The Crystal Bot keeps the right distance and steers Crystal Aura and Anchor Aura. They never target friends. Whether a server allows a bot is your decision and your risk.", "bot pvp crystal sword fight auto fighting bot", [("Features", "/features")]),
+    ("Is there an Amethyst Bypass or Netherite Finder?", "No. Both work by seeing through a server's anti-xray protection, so they were not built. Amethyst ESP, Block ESP and X-Ray still find what the game itself sends to your client, which covers amethyst geodes you are near and your own worlds.", "amethyst bypass netherite finder ancient debris anti xray", [("Features", "/features")]),
+    ("How do I set up Discord Rich Presence?", "Create a free application at discord.com/developers, copy its Application ID into the Discord Rich Presence module, keep the Discord app open and switch the module on. The application's name is what people see after Playing. It only talks to the Discord app on your own computer.", "discord rich presence rpc application id playing status", []),
+    ("How does the AH Sniper work?", "It is part of Auction House Tweaks and is off by default. You give it rules such as item=maxprice (or just the item name to use the learned market price), a spending limit and a maximum number of purchases. It reads every listing on the page, compares the price with your rule and with what the item has been seen selling for, pages through the auction house, refreshes and can run a search command. It buys the biggest discount, supports shift-click instant buys, and after confirming it checks the item is really in your inventory before counting the money as spent. It stops itself at its limits, refuses a confirm window above your remaining budget, and remembers a listing that failed so it is not clicked in a loop. Check the rules of the server first.", "ah sniper auto buy auction house snipe buy below price paging search", []),
+    ("Which modules connect to the internet?", "Only three optional ones: Discord Webhook (to the address you type in), Staff Live (to YouTube, TikTok and Twitch, to see whether the channels in your list are live) and Update Checker (to the version file at the address you set, and nowhere else). Discord Rich Presence talks only to the Discord app on your own computer.", "internet network connect staff live webhook youtube tiktok", []),
+    ("Where can I download Zeus from?", "Only from the official sources: the Download page of this website, or the Releases page of the project's GitHub repository. Copies from video descriptions, file-sharing sites or anyone who asks you to turn off your antivirus are not official.", "download where get link official source github releases safe", [("Download page", "/download")]),
+    ("Can I download Zeus from GitHub instead?", "Yes. The same jar is published on the project's GitHub page (Releases). If you would rather not download from this site, get it there and compare its SHA-256 with the one shown on the Download page. You can also build it yourself from the source.", "github download releases instead trust mirror build from source jar", [("Download page", "/download"), ("Source code", "/source")]),
+    ("How do I check that my download is genuine?", "Hash the file and compare it with the SHA-256 on the Download page. On Windows run certutil -hashfile zeus.jar SHA256, on Linux or macOS run sha256sum zeus.jar. If the two strings differ, delete the file and download it again from an official place.", "verify checksum sha256 hash genuine fake real check download integrity", [("Download page", "/download")]),
+    ("Boat NoClip or Boat Fly does not work", "Sit in the boat or raft first, since both modules only act on the vehicle you are riding, and close any open screen because they pause while one is open. In your own single-player world Boat NoClip should phase through blocks: keep Ignore server corrections on and use the vertical keys to move up and down. On a multiplayer server the server decides where the boat really is, so it may snap back or refuse the move, and no setting can force that. In survival, do not let your head stay inside a block or you will suffocate.", "boat noclip boat fly raft phase suffocate", [("Boat NoClip", "/features?m=boatnoclip")]),
+    ("Is this website official?", "Yes. This is the official Zeus Client website. The download link, the Discord invite and the GitHub link on it are the ones the developer published. Be careful with look-alike sites that ask for your Minecraft or Microsoft password: the real Zeus never does.", "official website real fake legit site is this", [("Download page", "/download")]),
+    ("How do I see what each module costs?", "Open the panel: every module row shows its measured cost on the right (green is cheap, red is heavy). To show the same figures on your HUD, switch on Interface > Module list > Show what each costs. The numbers are Zeus's own timers, a share of the time it spends per frame, not a profiler reading. You can switch the figures off in the UI settings.", "cost module list fps lag expensive heavy which module measured percent", [("Features", "/features")]),
+    ("Can I see what a set of modules will cost before I switch them on?", "Yes. The Performance monitor page on this website shows a gauge and a bar for every module. Pick a playstyle or tick modules yourself and it adds up their estimated cost, split into game tick work, screen drawing, world drawing and scanning. It is an estimate worked out from the code, not a measurement, so use the in-game costs for real numbers.", "performance monitor gauge cost fps estimate load before switch on", [("Performance monitor", "/monitor")]),
+    ("What are the new modules in 0.9.8.0?", "Target Strafe circles the player or mob you fight. Auto Farm breaks ripe crops around you and plants them again. Chest Stealer takes the items out of an open chest, barrel, shulker box or hopper. Inventory Cleaner throws junk out of your inventory. Loot Walker walks to the nearest dropped item. Entity Speed makes the horse, boat or other mount you ride go faster. Ore Compass is a small panel that lists the nearest ore of each kind with its distance and direction. Kill Aura can also attack players now and can pick the target with the lowest health.", "new modules 0.9.8.0 target strafe auto farm chest stealer inventory cleaner loot walker entity speed ore compass kill aura players", [("Target Strafe", "/features?m=targetstrafe"), ("Auto Farm", "/features?m=autofarm"), ("Ore Compass", "/features?m=orecompass")]),
+    ("Does Zeus still limit anything to single-player?", "Not any more. MultiAura, Tunnel Miner, Tree Bot and the Schematic Builder's auto-place used to refuse to run on a server and now work the same everywhere. They use the game's own breaking and placing, so a server sees ordinary digging and placing. Whether a server allows that is up to the server's rules.", "single-player only multiplayer server lock multiaura tunnel miner tree bot schematic auto-place", [("MultiAura", "/features?m=multiaura"), ("Tunnel Miner", "/features?m=tunnelminer")]),
+    ("How do I pick a knife and a finish?", "Switch on Butterfly & Karambit and press Open the knife gallery in its settings. It shows every knife on the left and every finish of the chosen knife on the right, each drawn by the same code the game uses, and a click changes the setting at once. The Knife preview page on this website shows the same pictures. Each knife also has its own Inspect trick, which you can play from the trick list.", "knife gallery finish picker inspect preview skin", [("Knife preview", "/knives"), ("Butterfly & Karambit", "/features?m=knife")]),
+    ("What is Performance Guard?", "A module that switches the costliest ESPs and scanners off by itself when your FPS stays under a limit you set, and switches them back on once the frame rate has recovered. You choose the limit, how many it switches off at a time, whether it touches only scanners or any module, and it tells you in chat what it did. It never touches a module you switched off yourself.", "performance guard auto disable fps limit esp heavy switch off automatically", [("Features", "/features")]),
+    ("How do I bind a key to a module?", "Type /zeus keybinds, or switch on the Keybinds module. Every module is listed with its key: click a key box, press the key you want, and it is saved. Backspace or a right click clears a key, and a key that two modules share is marked. They are the same keys that Options > Controls shows.", "keybind key bind hotkey shortcut keyboard assign toggle module", [("Features", "/features")]),
+    ("How do I get told about a new Zeus version?", "Switch on Update Checker and give it the address of the version file that the website build writes (version.json). Every time you join a server it compares versions and, if a newer one exists, shows a chat line and a pop-up at the top of the screen for about five seconds. It does nothing until you set the address.", "update checker new version notification popup latest download", [("Download", "/download")]),
+    ("Does Zeus mark where I died?", "Yes. The Death Marker module remembers the place you died and shows a marker with the distance so you can find your items. It is kept in memory only, so it is gone when you leave the game, and you can clear it with its button.", "death marker point where died coordinates grave items recover", [("Features", "/features")]),
+    ("How do I add or remove Staff Live channels?", "Open Staff Live in the panel. Type the channel name, pick YouTube, TikTok or Twitch and press Add; remove a channel with its Remove button. The check is a best-effort read of the channel page, so a channel can show as unknown when the site changes or blocks the request.", "staff live channels twitch youtube tiktok add remove list streamers", [("Features", "/features")]),
+    ("Which knives does Zeus have?", "The butterfly knife, the karambit and eighteen knives modelled on the CS2 line-up: Bayonet, M9 Bayonet, Huntsman, Flip, Gut, Falchion, Bowie, Navaja, Stiletto, Talon, Ursus, Classic, Paracord, Survival, Nomad, Skeleton, Kukri and the Shadow Daggers. Pick one in the Knife module (Knife type), choose a finish such as Fade, Slaughter, Doppler or Case hardened, and use the karambit's tricks with it. The shapes and the motion were made from scratch.", "knife knives cs2 bayonet m9 huntsman falchion bowie kukri talon karambit butterfly finish fade doppler", [("Features", "/features")]),
+]
+
+ALTS = {
+ "What is Zeus Client?": [
+  "Zeus Client is a Fabric mod for Minecraft Java 1.21.11 with about 170 modules: combat helpers, movement, ESP and other visuals, base finders and everyday utilities. You run it from a storm-themed panel opened with Z, place its widgets with a HUD editor and can optionally use the website's control center.",
+  "Zeus is a Fabric mod for Minecraft 1.21.11 with about 170 modules: combat, movement, ESP, base finding, automation and utilities. You open it with Z. It also has profiles and a HUD editor. It is a client-side cheat client, meant for your own worlds or servers that allow it.",
+ ],
+ "Is Zeus a cheat client?": [
+  "Yes, and it says so openly. Zeus has combat, movement, ESP and base-finding modules, which many servers forbid. It is best used in your own worlds or on servers whose rules allow it.",
+  "It is. Anything that gives an edge, such as Kill Aura, Flight or X-Ray, counts as cheating on most multiplayer servers, so check the rules before you switch such modules on.",
+ ],
+ "Is Zeus safe?": [
+  "For your computer and accounts, yes, as long as the jar comes from an official place. Zeus has no logins and no server of its own, and the code is on the Source code page for anyone to read. The risk that is left is on the server side: many servers ban cheat clients.",
+  {"p": ["Here is what you can check yourself:"], "ul": ["The code is readable on the Source code page.", "Zeus never asks for your Minecraft or Microsoft password and has no telemetry.", "It is a .jar for your mods folder, not an installer.", "The Download page shows the SHA-256 of the official file so you can compare it with yours.", "If you do not want to download from this site, the same file is on the GitHub page."], "extra": "Server bans are the main real risk, so read each server's rules."},
+ ],
+ "Will I get banned?": [
+  "It can happen. Each server decides what it allows, many detect or forbid combat and movement modules, and Zeus has no ban protection. The safest place is single-player; anywhere else read the rules and keep to the minimum.",
+  "I cannot promise you will not be. Test in single-player first, read the server's rules, and do not use modules that give an obvious edge where cheats are banned.",
+ ],
+ "Is Zeus a virus?": [
+  "No. Zeus is a Fabric mod .jar, not an executable. The danger is fake copies: they exist for every popular client, so use only the official Download page or the GitHub releases page, and be wary of anything that asks you to run an .exe.",
+  "No. A real Zeus file is a .jar that goes into your mods folder. If a download is an installer, asks you to disable antivirus or wants a password, it is not Zeus.",
+ ],
+ "Does Zeus steal my account or password?": [
+  "No. Zeus has no code for reading your launcher accounts and never asks for a login. If something that claims to be Zeus asks for your password, close it.",
+  "No. It never asks for your Minecraft or Microsoft login, and there is no Zeus server it could send one to.",
+ ],
+ "Does Zeus collect data or have telemetry?": [
+  "No. There is no telemetry and no Zeus server to receive any. Only three optional modules connect out: Discord Webhook (to the address you give it), Staff Live (to YouTube, TikTok and Twitch, to see whether your listed channels are live) and Update Checker (to the version file at the address you set).",
+  "Zeus collects nothing. It has nowhere to send data, apart from the Discord Webhook and Staff Live modules, which you have to switch on yourself.",
+ ],
+ "Which Minecraft version does Zeus support?": [
+  "Minecraft Java Edition 1.21.11, with Fabric Loader 0.18 or newer and Fabric API for 1.21.11. Other versions are not supported.",
+  "Only 1.21.11 (Java Edition) on Fabric. You also need Fabric API for 1.21.11 and Java 21.",
+ ],
+ "Is Zeus free?": [
+  "Yes, updates are free. If someone charged you for a copy, tell the team on Discord.",
+  "It is free. Paying for a copy means you were scammed, and the Discord is the place to report it.",
+ ],
+ "How do I install Zeus?": [
+  {"p": ["Four steps:"], "ol": ["Install Java 21 and the Fabric Loader for 1.21.11.", "Put the Fabric API jar for 1.21.11 into .minecraft/mods.", "Put the Zeus jar (not the -sources one) into the same folder.", "Start the Fabric profile and press Z in a world."], "extra": "The Download page has the same steps with more detail."},
+  "You need Java 21, Fabric Loader for 1.21.11 and Fabric API. Drop the Fabric API jar and the Zeus jar into your mods folder, launch the Fabric profile, then press Z in a world to open the menu.",
+ ],
+ "What is Fabric and do I need Fabric API?": [
+  "Fabric is the mod loader Zeus runs on, and Fabric API is a library Fabric mods rely on. Zeus needs both, in their 1.21.11 versions.",
+  "Yes, both. Install Fabric Loader to run mods at all, and add Fabric API for 1.21.11 to the mods folder next to Zeus.",
+ ],
+ "Which Java version do I need?": [
+  "Java 21 or newer. Check with java -version in a terminal; current Minecraft launchers bundle Java 21 for you.",
+  "Java 21 or later. If the game says your Java is too old, install a Java 21 build or let the official launcher use its bundled one.",
+ ],
+ "How do I open the Zeus menu?": [
+  "Press Z in a world, or type /zeus. You can change the key in Minecraft's Controls under the Zeus category.",
+  "In a world press Z. If another mod uses that key, rebind it in Controls or just type /zeus in chat.",
+ ],
+ "The Z key does nothing": [
+  "Probably another mod uses Z. Rebind the Zeus key in Controls, or type /zeus in chat to open the panel.",
+  "Check Controls for a conflict on Z. Until you fix it, /zeus in chat opens the same panel.",
+ ],
+ "How do I turn a module on?": [
+  "Open the panel with Z, find the module (search helps) and click its switch. Click the rest of the row for its settings. /zeus on <module> works too.",
+  {"p": ["Three ways:"], "ul": ["Click the module's switch in the panel.", "Type /zeus on <module> or /zeus toggle <module>.", "Bind it to a key in its settings and press that key."]},
+ ],
+ "How do I switch everything off quickly?": [
+  "Click Panic at the bottom of the panel, type /zeus panic, or use the Panic button on the control center. Every module goes off at once.",
+  "Panic does it: the button in the panel, the /zeus panic command, or the control center button. It does not close the game.",
+ ],
+ "What does Panic do?": [
+  "It switches every Zeus module off at once. The game keeps running and Zeus stays installed.",
+  "Panic turns all modules off immediately, nothing more: no restart, no uninstall.",
+ ],
+ "Where are my settings saved?": [
+  "In config/zeus.json in your Minecraft folder. Waypoints are in config/zeus-waypoints.json and schematics in config/zeus/schematics.",
+  "Everything lives in your Minecraft config folder: zeus.json for settings, zeus-waypoints.json for waypoints and a zeus folder for schematics and profiles.",
+ ],
+ "How do I reset Zeus to defaults?": [
+  "Close the game, delete config/zeus.json and start again. A single HUD widget can be reset with R in the HUD editor.",
+  "Deleting config/zeus.json while the game is closed resets everything. Back it up first if you might want it again.",
+ ],
+ "How do I use the HUD editor?": [
+  {"p": ["Type /zeus hud, then:"], "ul": ["Click a widget's outline to select it and drag to move it.", "Use the mouse wheel to scale, the arrow keys to nudge.", "R resets a widget, U undoes, G toggles the grid and S toggles snapping."], "extra": "The floating panel also edits position, scale, opacity and colour."},
+  "/zeus hud opens it. Drag widgets where you want them; they snap to edges, centre lines and each other. The wheel scales, R resets, U undoes. A floating panel has position, scale, opacity, colour and a List tab to switch widgets on.",
+ ],
+ "How do I open the control center?": [
+  "Run /zeus website in the game (or switch on Interface, Web Dashboard), click the link in chat, open Settings and paste the access token.",
+  {"p": ["To connect the control center:"], "ol": ["Run /zeus website in Minecraft.", "Click the link it prints.", "Open the Settings page and paste the access token."]},
+ ],
+ "Is the control center safe?": [
+  "Yes. It only accepts connections from your own computer, checks every request and needs your private token. No one else can reach it.",
+  "Yes. It listens on 127.0.0.1 only, so the internet and your network cannot connect, and nothing can be read or changed without the token that stays in your game.",
+ ],
+ "Does Zeus work in single-player?": [
+  "Yes, everything works in single-player, and a few modules (Tree Bot, Tunnel Miner, MultiAura and the schematic builder's automatic placement) only run there.",
+  "It does, and it is the best place to try things. Tree Bot, Tunnel Miner, MultiAura and automatic schematic placement are single-player only.",
+ ],
+ "Does Zeus lag my game?": [
+  "It is designed to be light, but scanners and ESPs cost the most. Keep entity caps low and switch off scanners you are not using. Zeus Brain adjusts scan budgets for you.",
+  "Mostly no. If you notice a drop, check which scanners and ESPs are on, lower their ranges and entity caps, and let Zeus Brain manage the scan budget.",
+ ],
+ "My FPS dropped after enabling a module": [
+  "Lower the entity cap on ESPs, shorten scanner ranges and switch off scanners you are not using. Zeus Brain (Tools) manages scan budgets automatically.",
+  "Try the heavy ones first: ESPs and scanners. Reduce their range or entity cap, or turn them off, and see whether the frame rate comes back.",
+ ],
+ "The game crashes with Zeus installed": [
+  "Check that you use Fabric Loader for 1.21.11, Fabric API for 1.21.11 and Java 21. If it still crashes, send the file from the crash-reports folder to the Discord.",
+  {"p": ["Work through this:"], "ol": ["Make sure only one Zeus jar is in the mods folder.", "Check Fabric Loader, Fabric API and Minecraft are all 1.21.11 and Java is 21.", "Remove other mods and try again.", "Still crashing? Send the crash report to the Discord."]},
+ ],
+ "A module does nothing": [
+  "Open its card and read the Status text. The log (logs/latest.log, lines starting with Zeus) says what happened. Send both to the Discord if it is still stuck.",
+  "Read the module's Status line first: it usually names what is missing. If not, look for Zeus lines in logs/latest.log and share them on the Discord.",
+ ],
+ "Is the source code available?": [
+  "Yes. Read every file of this release on the Source code page; the GitHub page links to the repository.",
+  "Yes, on the Source code page and on GitHub. The LICENSE and NOTICE files describe what you may do with it.",
+ ],
+ "How do I update Zeus?": [
+  "Download the new jar from the official link, delete the old one from the mods folder and put the new one in. Your settings stay in config/zeus.json.",
+  "Swap the jar: remove the old Zeus file from the mods folder, add the new one and start the game. Settings are kept.",
+ ],
+ "How do I uninstall Zeus?": [
+  "Delete the Zeus jar from the mods folder. To remove its data as well, delete config/zeus.json and the config/zeus folder.",
+  "Remove the jar from the mods folder and Zeus is gone. The config files only matter if you want to erase your settings too.",
+ ],
+ "Does Zeus work on DonutSMP?": [
+  "Zeus has DonutSMP-aware helpers (Media Base Finder, Goliath RTP, staff detection), but whether any module is allowed there is up to the server's rules, and there is no ban protection.",
+  "It contains helpers made for DonutSMP. That does not make them allowed: check the server rules before using them.",
+ ],
+ "Does Zeus include a bypass for anti-cheat?": [
+  "No. Zeus does not include packet spoofing, fake lag holding, anti-xray bypasses or other attacks on server protections.",
+  "No bypasses: nothing in Zeus is meant to defeat a server's anti-cheat.",
+ ],
+ "Why does the server rubber-band me?": [
+  "The server is correcting a movement it does not accept. Lower the speed or switch the movement module off; Zeus cannot override the server.",
+  "Rubber-banding means the server rejected your position. Reduce the speed or turn the module off.",
+ ],
+ "Does Zeus work on Mac and Linux?": [
+  "Yes, it is a Java mod. The mods folder is ~/Library/Application Support/minecraft/mods on macOS and ~/.minecraft/mods on Linux.",
+  "Yes. Anything that runs Minecraft Java with Java 21 works; only the mods folder path differs.",
+ ],
+ "Does Zeus work with shaders?": [
+  "Yes. Zeus draws through the normal renderer, but ESPs and overlays can look different under some shader packs. If one looks wrong, test it with shaders off.",
+  "It works; some overlays look off under certain shader packs, in which case try the module without shaders.",
+ ],
+ "How do I bind a module to a key?": [
+  "Open the module's card, click the None chip and press the key. Backspace or Delete clears it.",
+  {"p": ["To give a module its own key:"], "ol": ["Open the panel and click the module's row (not the switch).", "Click the key chip that says None.", "Press the key you want. Backspace clears it."]},
+ ],
+ "How do I favourite a module?": [
+  "Click the star beside a module in the panel. Starred modules appear on the Favourites page, above a Recently used row.",
+  "Use the star on the module's row or card. You will find them again on Favourites.",
+ ],
+ "Can Zeus switch profile by itself on a server?": [
+  "Yes. In the Profiles module switch on Switch profile per server, join the server and press Use it on the server I am on. After that, that profile loads whenever you join it.",
+  "Yes: link the active profile to a server with Use it on the server I am on, in the Profiles module. Single-player counts as its own place.",
+ ],
+ "How do I back up my Zeus settings?": [
+  "Copy config/zeus.json, config/zeus-waypoints.json and the config/zeus folder somewhere safe.",
+  "Back up three things in your config folder: zeus.json, zeus-waypoints.json and the zeus folder.",
+ ],
+ "How do I find a base with Zeus?": [
+  "Begin with Suspicious Chunks, which ranks loaded chunks by signs of building. Confirm with Advanced Base Finder, Storage ESP or Base Clues. Underground, use Tunnel Base Finder and Light Detector.",
+  {"p": ["A good order:"], "ol": ["Switch on Suspicious Chunks and look at its list or radar.", "Check the top hits with Advanced Base Finder and Storage ESP.", "Use Tunnel Base Finder underground."], "extra": "Scores are hints, not proof."},
+ ],
+ "Why does a scanner show nothing?": [
+  "Scanners only look at chunks your game has loaded. Move around, raise render distance and lower the minimum score. If nothing nearby was built, there is nothing to find.",
+  "Probably nothing is loaded or nothing scores high enough. Fly around, increase render distance and lower the minimum score in the settings.",
+ ],
+ "What does Auto Totem do?": [
+  "It keeps a totem of undying in your offhand and swaps in a new one after a pop.",
+  "Auto Totem puts a totem into your offhand automatically, and again after one is used.",
+ ],
+ "What does Kill Aura do?": [
+  "It attacks the nearest valid target in range for you. Range, delay and target types are in its settings, and it is one of the modules servers ban fastest.",
+  "Kill Aura hits nearby targets automatically. Tune range, delay and which targets count in its settings, and use it only where allowed.",
+ ],
+ "How do I fly?": [
+  "Switch on Flight in the Movement category and start with a low speed. Many servers detect flight, so use it where it is allowed.",
+  "Turn on Flight (Movement). Keep the speed low at first; servers that forbid flying will kick you.",
+ ],
+ "Are Zeus commands sent to the server?": [
+  "No. Zeus commands run on your client and are never sent to a server.",
+  "They stay on your computer: the game handles /zeus itself.",
+ ],
+ "Can I make a YouTube video or stream with Zeus?": [
+  "Yes. Remember a cheat client on a server can get you banned from it, switch on Streamer Privacy to hide identity-bearing panels, and credit Zlorbie788.",
+  "Sure. Use Streamer Privacy to keep your name and coordinates off screen, mind the server rules, and credit the developer.",
+ ],
+ "Does Zeus show up in screenshots or recordings?": [
+  "Your HUD does. Streamer Privacy hides identity-bearing panels and the HUD editor lets you hide the rest.",
+  "Anything on your HUD is captured. Use Streamer Privacy and the HUD editor to keep things off camera.",
+ ],
+}

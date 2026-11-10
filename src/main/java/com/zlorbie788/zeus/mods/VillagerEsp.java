@@ -1,0 +1,134 @@
+package com.zlorbie788.zeus.mods;
+
+import com.zlorbie788.zeus.core.Category;
+import com.zlorbie788.zeus.core.Env;
+import com.zlorbie788.zeus.core.Module;
+import com.zlorbie788.zeus.core.Setting;
+import com.zlorbie788.zeus.render.EspKit;
+import com.zlorbie788.zeus.render.Projector;
+import com.zlorbie788.zeus.render.Wire;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.phys.AABB;
+
+import java.util.Locale;
+
+/**
+ * Marks villagers (and wandering traders) through walls, with their job in the name tag and a colour per job, so a
+ * librarian or a cleric is easy to find in a village or a trading hall. Boxes, outline, tracers, colours and labels share the
+ * look of the other ESPs and can all be changed.
+ */
+public final class VillagerEsp extends Module {
+    private static volatile VillagerEsp self;
+
+    private final Setting.Num range = add(new Setting.Num("Range", "Furthest distance that is marked.", 64, 8, 256, 8, " blocks"));
+    private final Setting.Bool traders = add(new Setting.Bool("Wandering traders", "Also mark wandering traders.", true));
+    private final Setting.Bool zombies = add(new Setting.Bool("Zombie villagers", "Also mark zombie villagers.", false));
+    private final Setting.Bool outline = add(new Setting.Bool("Glow outline", "Traces the real shape of the villager in the game's own glow, through walls.", true));
+    private final Setting.Bool jobColours = add(new Setting.Bool("Colour by job", "Every job has its own colour (librarian purple, farmer green, cleric pink and so on). Off: one colour for all.", true));
+    private final Setting.Bool names = add(new Setting.Bool("Job labels", "A tag above each villager with its job.", false));
+    private final Setting.Bool distance = add(new Setting.Bool("Distance", "Show the distance in the tag.", false));
+    private final Setting.Bool skipJobless = add(new Setting.Bool("Hide jobless villagers", "Do not mark villagers that have no job (and nitwits).", false));
+    private final EspKit kit;
+    private int shown;
+
+    public VillagerEsp() {
+        super("villageresp", "Villager ESP", "See villagers and their jobs through walls.", Category.RENDER);
+        light();
+        kit = new EspKit(this, 0, false);
+        self = this;
+    }
+
+    @Override
+    public String info() {
+        return shown > 0 ? Integer.toString(shown) : null;
+    }
+
+    private static boolean kind(VillagerEsp s, Entity e) {
+        EntityType<?> t = e.getType();
+        if (t == EntityType.VILLAGER) return true;
+        if (t == EntityType.WANDERING_TRADER) return s.traders.on();
+        return t == EntityType.ZOMBIE_VILLAGER && s.zombies.on();
+    }
+
+    /** What the villager does: the game names a villager after its job ("Librarian"), or "Villager" when it has none. */
+    private static String job(Entity e) {
+        if (e.getType() == EntityType.WANDERING_TRADER) return "Wandering Trader";
+        if (e.getType() == EntityType.ZOMBIE_VILLAGER) return "Zombie Villager";
+        return e.getName().getString();
+    }
+
+    private static boolean jobless(String job) {
+        String j = job.toLowerCase(Locale.ROOT);
+        return j.equals("villager") || j.contains("nitwit") || j.contains("unemployed");
+    }
+
+    private int colorFor(Entity e) {
+        if (!jobColours.on()) return 0xFF6BE38A;
+        if (e.getType() == EntityType.WANDERING_TRADER) return 0xFF6FE3FF;
+        if (e.getType() == EntityType.ZOMBIE_VILLAGER) return 0xFFFF5A5A;
+        String j = job(e).toLowerCase(Locale.ROOT);
+        if (j.contains("librarian")) return 0xFFB06BFF;
+        if (j.contains("farmer")) return 0xFF6BE38A;
+        if (j.contains("cleric")) return 0xFFFF7AB6;
+        if (j.contains("armorer") || j.contains("weaponsmith") || j.contains("toolsmith")) return 0xFFFF9F43;
+        if (j.contains("butcher") || j.contains("leatherworker") || j.contains("mason")) return 0xFFE0B070;
+        if (j.contains("fisherman") || j.contains("cartographer")) return 0xFF4DA3FF;
+        if (j.contains("fletcher") || j.contains("shepherd")) return 0xFFFFD84D;
+        return 0xFFC8D0E0;
+    }
+
+    private boolean wanted(Minecraft mc, Entity e) {
+        if (mc.player == null || e == mc.player || !e.isAlive() || !kind(this, e)) return false;
+        if (skipJobless.on() && e.getType() == EntityType.VILLAGER && jobless(job(e))) return false;
+        double r = range.get();
+        return mc.player.distanceToSqr(e) <= r * r;
+    }
+
+    // --------------------------------------------------------------- the glow hooks (called through Esp)
+
+    public static boolean outlines(Entity e) {
+        VillagerEsp s = self;
+        if (s == null || !s.enabled() || !s.outline.on()) return false;
+        return s.wanted(Minecraft.getInstance(), e);
+    }
+
+    public static int outlineColor(Entity e) {
+        return outlines(e) ? EspKit.pick(self.kit.color, self.colorFor(e)) : 0;
+    }
+
+    // --------------------------------------------------------------- the screen overlay
+
+    @Override
+    protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+        shown = 0;
+        if (mc.level == null || mc.player == null || !Projector.prepare(mc, partial, w, h)) return;
+        for (Entity e : Env.entities(mc, range.get())) {
+            if (!wanted(mc, e)) continue;
+            shown++;
+            double dist = Math.sqrt(mc.player.distanceToSqr(e));
+            float alpha = kit.alphaFor(dist, range.get());
+            int color = colorFor(e);
+            double sx = e.xo + (e.getX() - e.xo) * partial - e.getX();
+            double sy = e.yo + (e.getY() - e.yo) * partial - e.getY();
+            double sz = e.zo + (e.getZ() - e.zo) * partial - e.getZ();
+            AABB bb = e.getBoundingBox();
+            double x1 = bb.minX + sx, y1 = bb.minY + sy, z1 = bb.minZ + sz, x2 = bb.maxX + sx, y2 = bb.maxY + sy, z2 = bb.maxZ + sz;
+            kit.box(g, x1, y1, z1, x2, y2, z2, color, alpha, shown < 12);
+            kit.tracer(g, w, h, (x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2, color, alpha);
+            if (names.on() || distance.on()) {
+                float[] r = Wire.bounds(x1, y1, z1, x2, y2, z2);
+                if (r == null) continue;
+                String text = names.on() ? job(e) : "";
+                String right = distance.on() ? Math.round(dist) + "m" : "";
+                if (text.isEmpty()) {
+                    text = right;
+                    right = "";
+                }
+                kit.tag(g, text, right, Math.round((r[0] + r[2]) / 2f), Math.round(r[1]) - 15, color, alpha, w, h);
+            }
+        }
+    }
+}

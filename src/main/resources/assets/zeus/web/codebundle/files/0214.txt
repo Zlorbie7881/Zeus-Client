@@ -1,0 +1,114 @@
+package com.zlorbie788.zeus.ui;
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.zlorbie788.zeus.core.Category;
+
+import java.util.HashMap;
+import java.util.Map;
+
+/** Where the windows of the Windows layout are and which ones are folded. Saved with the rest of the settings. */
+public final class UiState {
+    private UiState() {}
+
+    public static final class Win {
+        public float x;
+        public float y;
+        /** False until the player moves the window: it then follows the automatic tiling. */
+        public boolean placed;
+        public boolean collapsed;
+        public float scroll;
+    }
+
+    private static final Map<String, Win> WINS = new HashMap<>();
+    /** Windows that are not a category: starred modules and the ones used lately. */
+    public static final String FAVOURITES = "FAVOURITES";
+    public static final String RECENT = "RECENT";
+    private static boolean tutorialSeen;
+    /** The version whose "What's new" screen the player has already been shown. */
+    private static String whatsNewSeen = "";
+
+    public static String whatsNewSeen() { return whatsNewSeen; }
+    public static void markWhatsNewSeen() { whatsNewSeen = com.zlorbie788.zeus.core.Zeus.VERSION; com.zlorbie788.zeus.core.Zeus.markDirty(); }
+
+    public static boolean tutorialSeen() { return tutorialSeen; }
+    public static void markTutorialSeen() { tutorialSeen = true; com.zlorbie788.zeus.core.Zeus.markDirty(); }
+
+    public static Win win(Category c) {
+        return win(c.name());
+    }
+
+    public static Win win(String key) {
+        return WINS.computeIfAbsent(key, k -> new Win());
+    }
+
+    public static void reset() {
+        for (Win w : WINS.values()) {
+            w.placed = false;
+            w.collapsed = false;
+            w.scroll = 0;
+        }
+        com.zlorbie788.zeus.core.Zeus.markDirty();
+    }
+
+    /** Snaps every window back into the automatic grid (folded windows stay folded). */
+    public static void tidy() {
+        for (Win w : WINS.values()) {
+            w.placed = false;
+            w.scroll = 0;
+        }
+        com.zlorbie788.zeus.core.Zeus.markDirty();
+    }
+
+    /** Bumped when the automatic layout changes so windows dragged around in an older version do not keep an old, messy arrangement. */
+    private static final int WINDOW_REV = 2;
+
+    public static void save(JsonObject root) {
+        JsonObject o = new JsonObject();
+        for (Map.Entry<String, Win> e : WINS.entrySet()) {
+            Win w = e.getValue();
+            if (!w.placed && !w.collapsed) continue;
+            JsonArray a = new JsonArray();
+            a.add(Math.round(w.x));
+            a.add(Math.round(w.y));
+            a.add(w.placed ? 1 : 0);
+            a.add(w.collapsed ? 1 : 0);
+            o.add(e.getKey(), a);
+        }
+        root.add("windows", o);
+        root.addProperty("windowRev", WINDOW_REV);
+        root.addProperty("tutorialSeen", tutorialSeen);
+        root.addProperty("whatsNewSeen", whatsNewSeen);
+    }
+
+    public static void load(JsonObject root) {
+        WINS.clear();
+        tutorialSeen = root.has("tutorialSeen") && root.get("tutorialSeen").getAsBoolean();
+        whatsNewSeen = root.has("whatsNewSeen") ? root.get("whatsNewSeen").getAsString() : "";
+        if (!root.has("windows") || !root.get("windows").isJsonObject()) return;
+        JsonObject o = root.getAsJsonObject("windows");
+        boolean oldRev = !root.has("windowRev") || root.get("windowRev").getAsInt() < WINDOW_REV;
+        java.util.List<String> keys = new java.util.ArrayList<>();
+        for (Category c : Category.values()) keys.add(c.name());
+        keys.add(FAVOURITES);
+        keys.add(RECENT);
+        for (String key : keys) {
+            try {
+                JsonElement e = o.get(key);
+                if (e == null || !e.isJsonArray() || e.getAsJsonArray().size() < 4) continue;
+                JsonArray a = e.getAsJsonArray();
+                float x = a.get(0).getAsFloat();
+                float y = a.get(1).getAsFloat();
+                if (!Float.isFinite(x) || !Float.isFinite(y)) continue;
+                Win w = win(key);
+                w.x = x;
+                w.y = y;
+                w.placed = a.get(2).getAsInt() == 1 && !oldRev;
+                w.collapsed = a.get(3).getAsInt() == 1;
+            } catch (RuntimeException ignored) {
+                // A broken window entry should not prevent other windows from being restored.
+            }
+        }
+    }
+}

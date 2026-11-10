@@ -1,0 +1,2294 @@
+package com.zlorbie788.zeus.ui;
+
+import com.mojang.blaze3d.platform.InputConstants;
+import com.zlorbie788.zeus.client.ZeusClient;
+import com.zlorbie788.zeus.core.Category;
+import com.zlorbie788.zeus.core.Env;
+import com.zlorbie788.zeus.core.Module;
+import com.zlorbie788.zeus.core.Setting;
+import com.zlorbie788.zeus.core.Usage;
+import com.zlorbie788.zeus.core.Zeus;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.resources.sounds.SimpleSoundInstance;
+import net.minecraft.network.chat.Component;
+import net.minecraft.sounds.SoundEvents;
+import org.lwjgl.glfw.GLFW;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * The Zeus interface, in two layouts. "Panel" is one window with a sidebar of pages, a list of module cards that open to
+ * show their settings, a search box and a footer. "Windows" is a floating, draggable window for every category with a
+ * row per module (left click switches it, right click opens its settings), the way classic clients look. The lightning
+ * intro plays first every time it opens (unless it is switched off), and the animated lightning Z sits in the corner.
+ */
+public final class ZeusScreen extends Screen {
+    private static final int HEAD = 48;
+    private static final int FOOT = 22;
+    private static final int SIDE = 128;
+    private static final int PAGE_ACTIVE = Category.values().length;
+    private static final int PAGE_PANEL = PAGE_ACTIVE + 1;
+    private static final int PAGE_FAV = PAGE_PANEL + 1;
+
+    // the Windows layout
+    private static final int WIN_W = 104;
+    /** The most rows a category window shows before it scrolls inside, and the same for Favourites. */
+    private static final int WIN_ROWS = 5;
+    private static final int WIN_ROWS_SHORT = 4;
+    private static final int WIN_HEAD = 16;
+    private static final int ROW_H = 14;
+
+    private static int lastPage = 0;
+    private static final Set<String> OPEN = new HashSet<>();
+    private static final List<String> ORDER = new ArrayList<>();
+    static {
+        ORDER.add(UiState.FAVOURITES);
+        for (Category c : Category.values()) ORDER.add(c.name());
+    }
+
+    private int px;
+    private int py;
+    private int pw;
+    private int ph;
+    private int page;
+
+    private float scroll;
+    private float scrollShown;
+    private int contentH;
+    private int listX;
+    private int listY;
+    private int listW;
+    private int listH;
+
+    private final Map<String, Float> expand = new HashMap<>();
+    private final Map<String, Float> toggle = new HashMap<>();
+    private final Map<String, Float> hover = new HashMap<>();
+    private float pillY = -1;
+    private EditBox search;
+    /** The box that opens over a text setting while you type into it. */
+    private EditBox field;
+    private Setting.Text editing;
+    private boolean fieldDrawn;
+
+    private final long bornNanos = System.nanoTime();
+    private final long startNanos = bornNanos;
+    private long lastNanos;
+    private float offset;
+    private final float speed;
+    private final boolean intro;
+    private int soundIdx;
+
+    private Module listening;
+    private boolean listeningOpen;
+    private Setting.Num dragging;
+    private int dragX;
+    private int dragW;
+
+    private int mx;
+    private int my;
+    private String tip;
+    private boolean columns;
+
+    // Windows layout state
+    private String dragWin;
+    private boolean dragPopup;
+    private float dragOffX;
+    private float dragOffY;
+    private float pressX;
+    private float pressY;
+    private boolean dragMoved;
+    private Module popup;
+    private boolean popupPanel;
+    private float popupX = -1;
+    private float popupY = -1;
+    private float popupScroll;
+    private float popupReveal;
+    private int popupContent;
+    private int popupViewTop;
+    private int popupViewH;
+    private final Map<String, int[]> winRect = new HashMap<>();
+    /** Animated expansion state for floating category windows (0 folded, 1 expanded). */
+    private final Map<String, Float> windowOpen = new HashMap<>();
+
+    private interface Click {
+        void on(int button);
+    }
+
+    private record Hit(int x, int y, int w, int h, Click run) {}
+
+    private final List<Hit> hits = new ArrayList<>();
+
+    private final Screen parent;
+    private static boolean videoSeen;
+
+    public ZeusScreen() {
+        this(null);
+    }
+
+    public ZeusScreen(Screen parent) {
+        super(Component.literal("Zeus"));
+        this.parent = parent;
+        int mode = UiSettings.INTRO.index();
+        intro = mode == 2 || mode == 3; // the lightning; the video modes play before the panel opens (see make)
+        speed = mode == 3 ? 2.1f : 1f;
+        page = Math.max(0, Math.min(PAGE_FAV, lastPage));
+    }
+
+    /** The screen to open for the panel: the intro video first when it is switched on, then the panel. */
+    public static Screen make(Screen parent) {
+        int mode = UiSettings.INTRO.index();
+        boolean video = mode == 0 || (mode == 1 && !videoSeen);
+        if (video && VideoIntroScreen.available()) {
+            videoSeen = true;
+            return new VideoIntroScreen(() -> new ZeusScreen(parent), false);
+        }
+        return new ZeusScreen(parent);
+    }
+
+    @Override
+    public void onClose() {
+        minecraft.setScreen(parent);
+    }
+
+    // ------------------------------------------------------------ setup
+
+    @Override
+    protected void init() {
+        if (!columns && UiSettings.LAYOUT.index() == 0) {
+            // build the storm picture now, while the opening animation covers it, not in the first drawn frame
+            try {
+                layoutPanel();
+                if (!artFailed) backdrop();
+            } catch (Throwable t) {
+                artFailed = true;
+                Zeus.LOG.warn("Panel backdrop could not be prepared", t);
+            }
+        }
+        pw = Math.min(width - 16, 680);
+        ph = Math.min(height - 16, 380);
+        px = (width - pw) / 2;
+        py = (height - ph) / 2;
+        if (search == null) {
+            search = new EditBox(minecraft.font, 0, 0, 100, 12, Component.empty());
+            search.setMaxLength(32);
+            search.setBordered(false);
+            search.setHint(Component.literal("Search modules"));
+            search.setResponder(s -> scroll = 0);
+        }
+        addRenderableWidget(search);
+        // The Windows-style Modules menu is designed for keyboard-first use:
+        // focus search immediately, while leaving the Panel layout's focus behaviour alone.
+        search.setFocused(true);
+        setFocused(search);
+        setInitialFocus(search);
+        if (field == null) {
+            field = new EditBox(minecraft.font, 0, 0, 100, 12, Component.empty());
+            field.setBordered(false);
+            field.setResponder(v -> {
+                if (editing != null) editing.set(v);
+            });
+        }
+        editing = null;
+        field.setFocused(false);
+        field.visible = false;
+        addRenderableWidget(field);
+    }
+
+    @Override
+    public boolean isPauseScreen() {
+        return false;
+    }
+
+    @Override
+    public void removed() {
+        Zeus.save();
+    }
+
+    /** Seconds of the intro that have played. */
+    private float time() {
+        if (!intro) return Intro.LENGTH + 1f;
+        return (System.nanoTime() - startNanos) / 1e9f * speed + offset;
+    }
+
+    private float anim() {
+        return (System.nanoTime() - bornNanos) / 1e9f;
+    }
+
+    private void skipIntro() {
+        float t = time();
+        if (t < Intro.LEAVE) {
+            offset += Intro.LEAVE - t;
+            soundIdx = 4;
+        }
+    }
+
+    /** A value that eases toward a target while the mouse is over something. */
+    private static final java.util.Map<String, String> CARD_KEYS = new java.util.HashMap<>();
+
+    /** "card" + id, built once per module instead of every frame. */
+    private static String cardKey(String id) {
+        return CARD_KEYS.computeIfAbsent(id, k -> "card" + k);
+    }
+
+    private float ease(String key, boolean on, float dt) {
+        float v = hover.getOrDefault(key, 0f);
+        v += ((on ? 1f : 0f) - v) * Math.min(1f, dt * 16f);
+        if (Math.abs((on ? 1f : 0f) - v) < 0.01f) v = on ? 1f : 0f;
+        hover.put(key, v);
+        return v;
+    }
+
+    private float dtNow;
+
+    // ------------------------------------------------------------ drawing
+
+    @Override
+    public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        if (bgDrawn) return;
+        bgDrawn = true;
+        if (UiSettings.LAYOUT.index() == 1) g.fillGradient(0, 0, width, height, 0x90040610, 0xB8070B16);
+        else g.fillGradient(0, 0, width, height, 0xC0040610, 0xE0070B16);
+    }
+
+    private boolean bgDrawn;
+    private long pageAt = System.nanoTime();
+    private static final java.util.Map<String, Long> BURSTS = new java.util.HashMap<>();
+
+    @Override
+    public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        mx = mouseX;
+        my = mouseY;
+        Accent.contrast(UiSettings.CONTRAST.on());
+        fieldDrawn = false;
+        long now = System.nanoTime();
+        float dt = lastNanos == 0 ? 0.016f : Math.min(0.1f, (now - lastNanos) / 1e9f);
+        lastNanos = now;
+        dtNow = dt;
+        float t = time();
+        boolean playing = t < Intro.LENGTH;
+        int accent = Accent.main();
+        int second = Accent.second();
+        columns = UiSettings.LAYOUT.index() == 1;
+
+        renderBackground(g, mouseX, mouseY, partialTick);
+
+        // sounds that go with the strikes
+        if (playing && UiSettings.THUNDER.on()) {
+            float[] at = {Intro.STRIKE1, Intro.STRIKE2, Intro.STRIKE3, Intro.FORMED};
+            while (soundIdx < 4 && t >= at[soundIdx]) {
+                play(soundIdx == 3);
+                soundIdx++;
+            }
+        }
+
+        float shake = playing && !UiSettings.CALM.on() ? Intro.shake(t) : 0f;
+        g.pose().pushMatrix();
+        if (shake > 0.01f) {
+            int f = (int) (t * 40f);
+            g.pose().translate((float) Math.sin(f * 12.9898) * 2.4f * shake, (float) Math.cos(f * 78.233) * 2.4f * shake);
+        }
+
+        float open = playing ? Math.max(0f, Math.min(1f, (t - Intro.LEAVE + 0.1f) / 0.7f)) : 1f;
+        if (!columns) layoutPanel();
+        float logoX = columns ? 24 : U(113);
+        float logoY = columns ? 22 : U(93);
+        float logoSize = columns ? 24f : Math.max(30f, U(110));
+        if (open > 0f) {
+            float e = open * open * (3f - 2f * open);
+            float sc = 0.94f + 0.06f * e;
+            g.pose().pushMatrix();
+            g.pose().translate(width / 2f, height / 2f);
+            g.pose().scale(sc, sc);
+            g.pose().translate(-width / 2f, -height / 2f);
+            if (columns) drawColumns(g, dt, playing ? 0 : 1, accent, second);
+            else drawPanel(g, dt, playing ? 0 : 1, accent, second);
+            if (open < 1f) {
+                if (columns) g.fill(0, 0, width, height, Draw.rgba(0xFF05070F, 1f - e));
+                else g.fill(px - 14, py - 14, px + pw + 14, py + ph + 14, Draw.rgba(0xFF05070F, 1f - e));
+            }
+            g.pose().popMatrix();
+        }
+        if (playing) {
+            g.nextStratum();
+            float fade = 1f - Math.max(0f, Math.min(1f, (t - Intro.LEAVE) / 0.5f));
+            Intro.backdrop(g, width, height, t, accent, fade);
+            float leave = Math.max(0f, Math.min(1f, (t - Intro.LEAVE) / (Intro.LENGTH - Intro.LEAVE)));
+            Intro.front(g, width, height, t, accent, second, leave, logoX, logoY, logoSize);
+            float fl = Intro.flash(t);
+            if (fl > 0.01f) g.fill(0, 0, width, height, Draw.rgba(0xFFDCEBFF, fl * (UiSettings.CALM.on() ? 0.12f : 0.55f)));
+        }
+        g.pose().popMatrix();
+        bgDrawn = false;
+        // the text box belongs to a row that is on screen; when the row is gone (scrolled away, page changed) so is the box
+        if (editing != null && !fieldDrawn) stopEditing();
+    }
+
+    private void play(boolean thunder) {
+        try {
+            var sound = thunder ? SoundEvents.LIGHTNING_BOLT_THUNDER : SoundEvents.LIGHTNING_BOLT_IMPACT;
+            minecraft.getSoundManager().play(SimpleSoundInstance.forUI(sound, thunder ? 0.85f : 1.2f, thunder ? 0.5f : 0.3f));
+        } catch (Throwable ignored) {
+            // a missing sound must never break the panel
+        }
+    }
+
+    // ------------------------------------------------------------ the Panel layout (drawn after the 1672 x 941 mockup)
+
+    private float u = 1f;
+    private int sbRight;
+    private int railX;
+    private int railW;
+    private int listTop;
+    private int footY;
+    private Tex.Img logoImg;
+    private boolean artFailed;
+
+    /** A length from the mockup, scaled to this screen. */
+    private int U(double design) {
+        return (int) Math.round(design * u);
+    }
+
+    /** Text scale so a capital letter is {@code cap} mockup pixels tall (never smaller than the normal font). */
+    private float ts(double cap) {
+        return Math.max(1f, (float) (cap * u / 7.0));
+    }
+
+    private int blue(int accent) {
+        return UiSettings.ACCENT.index() == 0 ? 0xFF2F86FF : accent;
+    }
+
+    private void layoutPanel() {
+        u = Math.max(0.2f, height / 941f);
+        int m = Math.max(2, U(8));
+        px = m;
+        py = m;
+        pw = width - 2 * m;
+        ph = height - 2 * m;
+    }
+
+    /** The night picture behind everything, built once at the real pixel size (capped) and kept. */
+    private Tex.Img backdrop() {
+        int gs = Tex.guiScale();
+        int dw = Math.max(64, pw * gs);
+        int dh = Math.max(64, ph * gs);
+        float k = Math.min(1f, 1920f / dw);
+        int rw = Math.max(64, Math.round(dw * k));
+        int rh = Math.max(64, Math.round(dh * k));
+        Tex.Img have = Tex.cached("panelbg");
+        if (have != null && have.w == rw && have.h == rh) return have;
+        return Tex.made("panelbg", PanelArt.render(rw, rh, Math.round(Math.max(6, U(16)) * gs * k)), rw, rh);
+    }
+
+    /** Draws {@code s} spread over {@code target} pixels, with a gap between the letters worth {@code gapEm} letter widths. */
+    private void spacedFit(GuiGraphics g, String s, int x, int y, int color, int target, double gapEm, boolean bold) {
+        float base = 0;
+        for (int i = 0; i < s.length(); i++) {
+            String c = String.valueOf(s.charAt(i));
+            base += bold ? Draw.widthBold(c) : Draw.width(c);
+        }
+        float sc = Math.max(1f, target / (base + (s.length() - 1) * (float) gapEm * 6f));
+        Draw.spaced(g, s, x, y, color, sc, Math.round((float) gapEm * 6f * sc), bold);
+    }
+
+    private int spacedFitWidth(String s, int target, double gapEm, boolean bold) {
+        float base = 0;
+        for (int i = 0; i < s.length(); i++) {
+            String c = String.valueOf(s.charAt(i));
+            base += bold ? Draw.widthBold(c) : Draw.width(c);
+        }
+        float sc = Math.max(1f, target / (base + (s.length() - 1) * (float) gapEm * 6f));
+        return Draw.spacedWidth(s, sc, Math.round((float) gapEm * 6f * sc), bold);
+    }
+
+    private void drawPanel(GuiGraphics g, float dt, int live, int accent, int second) {
+        hits.clear();
+        tip = null;
+        boolean interactive = live == 1;
+        int rmx = mx;
+        int rmy = my;
+        mx = interactive ? mx : -1000;
+        my = interactive ? my : -1000;
+        int bl = blue(accent);
+        int r = Math.max(6, U(16));
+
+        Tex.Img bg = null;
+        if (!artFailed) {
+            try {
+                bg = backdrop();
+            } catch (Throwable t) {
+                artFailed = true;
+                Zeus.LOG.warn("Panel backdrop could not be drawn", t);
+            }
+        }
+        if (bg != null) bg.draw(g, px, py, pw, ph, 0xFFFFFFFF);
+        else Draw.rrect(g, px, py, pw, ph, r, 0xF2060A16, 0xF2040711);
+        Draw.rrectLine(g, px, py, pw, ph, r, Draw.rgba(bl, 0.65f));
+        Draw.rrectLine(g, px + 1, py + 1, pw - 2, ph - 2, r, Draw.rgba(bl, 0.18f));
+
+        // ---- header: the big Z, the name, the search, the layout switch and close
+        if (logoImg == null) logoImg = Tex.resource("textures/gui/logo_z.png");
+        if (logoImg != null) logoImg.draw(g, U(64), U(10), U(184), U(184), 0xFFFFFFFF);
+        int zeusX = U(268);
+        int zw = U(262);
+        spacedFit(g, "ZEUS", zeusX + Math.max(1, U(4)), U(52) + Math.max(1, U(4)), 0xFF1B4FBF, zw, 0.30, true);
+        spacedFit(g, "ZEUS", zeusX, U(52), 0xFFEAF2FF, zw, 0.30, true);
+        int clientY = U(142);
+        int lineH = Math.max(1, U(3));
+        int cw0 = spacedFitWidth("CLIENT", U(150), 0.9, false);
+        int cx0 = zeusX + (zw - cw0) / 2;
+        spacedFit(g, "CLIENT", cx0, clientY, 0xFF9DC4FF, U(150), 0.9, false);
+        g.fill(zeusX, clientY + U(9), cx0 - U(14), clientY + U(9) + lineH, Draw.rgba(bl, 0.85f));
+        g.fill(cx0 + cw0 + U(14), clientY + U(9), zeusX + zw, clientY + U(9) + lineH, Draw.rgba(bl, 0.85f));
+        String ver = "v" + Zeus.VERSION;
+        int pillW = Math.max(U(92), Draw.width(ver) + 14);
+        int pillH = Math.max(U(32), 13);
+        int pillX = zeusX + zw + U(22);
+        int pillY = clientY - U(4);
+        Draw.rrect(g, pillX, pillY, pillW, pillH, Math.max(4, U(10)), 0xE00A1B3E, 0xE0081430);
+        Draw.rrectLine(g, pillX, pillY, pillW, pillH, Math.max(4, U(10)), 0xFF2358B8);
+        float vs = Math.min(ts(14), (pillW - 8f) / Math.max(1, Draw.width(ver)));
+        Draw.textCenterS(g, ver, pillX + pillW / 2, pillY + (pillH - Math.round(8 * vs)) / 2, 0xFF8FC0FF, Math.max(1f, vs));
+
+        int bh = Math.max(16, U(58));
+        int by = U(88);
+        int closeW = Math.max(16, U(58));
+        int closeX = width - U(35) - closeW;
+        boolean hotC = hov(closeX, by, closeW, bh);
+        Draw.rrect(g, closeX, by, closeW, bh, Math.max(4, U(14)), hotC ? 0xE0401222 : 0xE0071030);
+        Draw.rrectLine(g, closeX, by, closeW, bh, Math.max(4, U(14)), hotC ? 0xFFFF5C6C : 0xFF2A62C8);
+        float cs = Math.max(3f, U(12));
+        Draw.line(g, closeX + closeW / 2f - cs, by + bh / 2f - cs, closeX + closeW / 2f + cs, by + bh / 2f + cs, Math.max(1.2f, U(3.5)), hotC ? 0xFFFFA0A8 : 0xFFE8F0FF);
+        Draw.line(g, closeX + closeW / 2f + cs, by + bh / 2f - cs, closeX + closeW / 2f - cs, by + bh / 2f + cs, Math.max(1.2f, U(3.5)), hotC ? 0xFFFFA0A8 : 0xFFE8F0FF);
+        hit(closeX, by, closeW, bh, b -> onClose(), "Close (Esc)");
+
+        int gridW = Math.max(16, U(58));
+        int gridX = closeX - Math.max(3, U(22)) - gridW;
+        boolean hotG = hov(gridX, by, gridW, bh);
+        Draw.rrect(g, gridX, by, gridW, bh, Math.max(4, U(14)), hotG ? 0xE0102A66 : 0xE0071030);
+        Draw.rrectLine(g, gridX, by, gridW, bh, Math.max(4, U(14)), hotG ? bl : 0xFF2A62C8);
+        Glyphs.draw(g, "grid", gridX + gridW / 2f, by + bh / 2f, Math.max(10, U(32)), 0xFFFFFFFF);
+        hit(gridX, by, gridW, bh, b -> UiSettings.LAYOUT.set(1), "Switch to the Windows layout");
+
+        int sw = Math.max(110, Math.min(U(350), gridX - U(22) - Math.round(width * 0.58f)));
+        int sx = gridX - Math.max(3, U(22)) - sw;
+        boolean focused = search.isFocused();
+        Draw.rrect(g, sx, by, sw, bh, Math.max(4, U(16)), 0xE0050C20, 0xE0060F26);
+        Draw.rrectLine(g, sx, by, sw, bh, Math.max(4, U(16)), focused ? bl : 0xFF2A62C8);
+        if (focused) Draw.glow(g, sx, by, sw, bh, Math.max(4, U(16)), bl, 3, 0.18f);
+        Glyphs.draw(g, "magnifier", sx + Math.max(9, U(34)), by + bh / 2f, Math.max(9, U(32)), 0xFFB8D4FF);
+        int ex = sx + Math.max(20, U(70));
+        search.setX(ex);
+        search.setY(by + (bh - 8) / 2);
+        search.setWidth(sw - (ex - sx) - 6);
+        hit(sx, by, sw, bh, b -> {
+            search.setFocused(true);
+            setFocused(search);
+        }, null);
+        if (UiSettings.LAYOUT.index() == 1 && search.isFocused()) setFocused(search);
+        search.render(g, mx, my, 0f);
+
+        // ---- the two glass cards: the sidebar and the list
+        int bodyTop = U(237);
+        footY = U(872);
+        railX = U(52);
+        railW = U(322);
+        sbRight = railX + railW + U(8);
+        int cardX = U(396);
+        int cardW = width - U(40) - cardX;
+        int cardR = Math.max(5, U(18));
+        glassCard(g, railX, bodyTop, railW, footY - bodyTop, cardR, bl);
+        glassCard(g, cardX, bodyTop, cardW, footY - bodyTop, cardR, bl);
+        drawSidebar(g, accent, bl);
+
+        listX = cardX + U(20);
+        listY = bodyTop;
+        listW = cardW - U(40);
+        listH = footY - bodyTop;
+        listTop = bodyTop;
+        drawList(g, dt, accent, bl);
+
+        // ---- footer
+        drawPanelFooter(g, accent, bl);
+
+        if (tip != null && interactive) drawTip(g);
+        mx = rmx;
+        my = rmy;
+    }
+
+    /** A rounded glass card: dark, a little see-through, with a blue edge and a faint inner edge. */
+    private void glassCard(GuiGraphics g, int x, int y, int w, int h, int r, int bl) {
+        Draw.rrect(g, x, y, w, h, r, 0xC4060C1E, 0xCC040810);
+        Draw.rrectLine(g, x, y, w, h, r, Draw.rgba(bl, 0.70f));
+        Draw.rrectLine(g, x + 1, y + 1, w - 2, h - 2, Math.max(1, r - 1), Draw.rgba(bl, 0.16f));
+    }
+
+    private void drawPanelFooter(GuiGraphics g, int accent, int bl) {
+        boolean inWorld = Env.inWorld();
+        int dot = inWorld ? 0xFF3DE07A : 0xFFFFC857;
+        int fh = Math.max(14, U(44));
+        int fy = footY + Math.max(2, U(5));
+        int pwid = Math.max(U(142), Draw.width("Panic") + 20);
+        int panicX = width - U(40) - pwid;
+        int capX = U(34);
+        int capW = panicX - U(12) - capX;
+        int rr = Math.max(4, U(14));
+        Draw.rrect(g, capX, fy, capW, fh, rr, 0xC4060C1E, 0xCC040810);
+        Draw.rrectLine(g, capX, fy, capW, fh, rr, Draw.rgba(bl, 0.55f));
+        int cy = fy + fh / 2;
+        int dr = Math.max(3, U(9));
+        float pulse = 0.5f + 0.5f * (float) Math.sin(anim() * 3.0);
+        if (inWorld) Draw.glow(g, capX + U(28) - dr, cy - dr, dr * 2, dr * 2, dr, dot, 3, 0.10f + 0.14f * pulse);
+        Draw.ellipse(g, capX + U(28), cy, dr, dr, dot);
+        float fs = ts(16);
+        String status = !inWorld ? "No world" : Env.local() ? "Client side" : "Client side";
+        String where = !inWorld ? "" : Env.local() ? "singleplayer" : "server";
+        int tx = capX + U(60);
+        Draw.textS(g, status, tx, cy - Math.round(4 * fs), 0xFFEAF2FF, fs);
+        if (!where.isEmpty()) {
+            int sw2 = Draw.widthS(status, fs);
+            g.fill(tx + sw2 + U(16), cy - U(9), tx + sw2 + U(16) + Math.max(1, U(2)), cy + U(9), 0xFF2A3F6E);
+            Draw.textS(g, where, tx + sw2 + U(32), cy - Math.round(4 * fs), 0xFF9DB0D8, fs);
+        }
+        int active = activeCount();
+        String a = active + " active";
+        float as = ts(17);
+        Draw.boldS(g, a, capX + capW - U(34) - Draw.widthBoldS(a, as), cy - Math.round(4 * as), active > 0 ? 0xFF4A9BFF : 0xFF4A5C85, as);
+
+        boolean hot = hov(panicX, fy, pwid, fh);
+        Draw.rrect(g, panicX, fy, pwid, fh, rr, hot ? 0xF0481220 : 0xF0220A12);
+        Draw.rrectLine(g, panicX, fy, pwid, fh, rr, hot ? 0xFFFF5C6C : 0xFFD83A4C);
+        if (hot) Draw.glow(g, panicX, fy, pwid, fh, rr, 0xFFFF3B4D, 3, 0.2f);
+        float ps = ts(17);
+        int labW = Draw.widthS("Panic", ps);
+        int iconW = U(34);
+        int startX = panicX + (pwid - (labW + iconW)) / 2;
+        // a small warning triangle
+        float tcx = startX + iconW / 2f - U(4);
+        float tcy = cy;
+        float tr = Math.max(4f, U(12));
+        Draw.line(g, tcx, tcy - tr, tcx - tr, tcy + tr * 0.8f, Math.max(1f, U(2.5)), 0xFFFF7080);
+        Draw.line(g, tcx - tr, tcy + tr * 0.8f, tcx + tr, tcy + tr * 0.8f, Math.max(1f, U(2.5)), 0xFFFF7080);
+        Draw.line(g, tcx + tr, tcy + tr * 0.8f, tcx, tcy - tr, Math.max(1f, U(2.5)), 0xFFFF7080);
+        Draw.line(g, tcx, tcy - tr * 0.4f, tcx, tcy + tr * 0.2f, Math.max(1f, U(2.5)), 0xFFFF7080);
+        Draw.textS(g, "Panic", startX + iconW, cy - Math.round(4 * ps), 0xFFFF7080, ps);
+        hit(panicX, fy, pwid, fh, b -> Zeus.panic(true), "Switches every module off at once");
+    }
+
+    /** The pages in the order the rail shows them; -1 is the gap between the two groups. */
+    private static int[] railOrder() {
+        Category[] cats = Category.values();
+        java.util.List<Integer> o = new ArrayList<>();
+        Category[] first = {Category.COMBAT, Category.MOVEMENT, Category.PLAYER, Category.WORLD, Category.RENDER, Category.SCANNER, Category.UTILITY};
+        Category[] second = {Category.INTERFACE, Category.FRIENDS, Category.PROFILES, Category.PANELS};
+        boolean[] used = new boolean[cats.length];
+        for (Category c : first) {
+            o.add(c.ordinal());
+            used[c.ordinal()] = true;
+        }
+        o.add(-1);
+        for (Category c : second) {
+            o.add(c.ordinal());
+            used[c.ordinal()] = true;
+        }
+        for (int i = 0; i < cats.length; i++) if (!used[i]) o.add(i);
+        o.add(PAGE_FAV);
+        o.add(PAGE_ACTIVE);
+        o.add(PAGE_PANEL);
+        int[] out = new int[o.size()];
+        for (int i = 0; i < out.length; i++) out[i] = o.get(i);
+        return out;
+    }
+
+    private void drawSidebar(GuiGraphics g, int accent, int bl) {
+        Category[] cats = Category.values();
+        int[] order = railOrder();
+        int n = order.length;
+        int top = footY - 0;
+        int bodyTop = U(237);
+        top = bodyTop + Math.max(4, U(14));
+        int gap = Math.max(4, U(24));
+        int avail = footY - top - Math.max(4, U(14)) - gap;
+        int rows = n - 1;
+        int pitch = Math.max(13, Math.min(U(64), avail / rows));
+        int ih = Math.max(12, Math.min(U(63), pitch - 1));
+        int x = railX + Math.max(4, U(14));
+        int w = railW - 2 * Math.max(4, U(14));
+        boolean searching = !query().isEmpty();
+        int sel = searching ? -1 : page;
+        int[] ys = new int[n];
+        int yy = top;
+        int selRow = -1;
+        for (int i = 0; i < n; i++) {
+            if (order[i] == -1) {
+                ys[i] = yy;
+                // a thin divider line in the middle of the gap
+                g.fill(x + U(10), yy + gap / 2, x + w - U(10), yy + gap / 2 + 1, Draw.rgba(bl, 0.35f));
+                yy += gap;
+                continue;
+            }
+            ys[i] = yy;
+            if (order[i] == sel) selRow = i;
+            yy += pitch;
+        }
+        int rr = Math.max(4, U(14));
+        if (selRow >= 0) {
+            float target = ys[selRow];
+            pillY = pillY < 0 ? target : pillY + (target - pillY) * Math.min(1f, dtNow * 18f);
+            int py2 = Math.round(pillY);
+            Draw.glow(g, x, py2, w, ih, rr, bl, Math.max(2, U(8)), 0.38f);
+            Draw.rrect(g, x, py2, w, ih, rr, 0xF00D3480, 0xF0081C52);
+            Draw.rrectLine(g, x, py2, w, ih, rr, 0xFF4C9CFF);
+            Draw.rrectLine(g, x + 1, py2 + 1, w - 2, ih - 2, Math.max(1, rr - 1), 0x902F86FF);
+        }
+        float ls = ts(17);
+        for (int i = 0; i < n; i++) {
+            int id = order[i];
+            if (id == -1) continue;
+            boolean active = id == PAGE_ACTIVE;
+            boolean panel = id == PAGE_PANEL;
+            boolean fav = id == PAGE_FAV;
+            boolean isSel = sel == id;
+            boolean hot = hov(x, ys[i], w, pitch);
+            float hv = ease("side" + id, hot && !isSel, dtNow);
+            if (hv > 0.01f) Draw.rrect(g, x, ys[i], w, ih, rr, Draw.rgba(0xFF3C92FF, 0.10f * hv));
+            int cy = ys[i] + ih / 2;
+            String icon = id < cats.length ? Glyphs.forCategory(cats[id]) : fav ? (isSel ? "starfill" : "star") : active ? "bolt" : "sliders";
+            int ic = isSel ? 0xFFFFFFFF : hot ? 0xFFDCE8FF : 0xFFB9C9EC;
+            if (id < cats.length && cats[id] == Category.SCANNER && !isSel) ic = hot ? 0xFF8CF5E8 : 0xFF63E6D4;
+            Glyphs.draw(g, icon, x + U(46), cy, Math.max(10, U(44)), ic);
+            String label = active ? "Active" : panel ? "Panel" : fav ? "Favourites" : cats[id].label;
+            int lx = x + U(88);
+            // a long name ("Base Finding") shrinks a little instead of running under the count badge
+            int badgeRoom = (isSel ? U(62) : sideCount(id, active, panel, fav, cats) > 0 ? Math.max(U(42), Draw.widthS("00", Math.min(ts(14), 3f)) + 10) + U(20) : U(24));
+            int labelRoom = x + w - badgeRoom - U(16) - lx;
+            int labelW = isSel ? Draw.widthBoldS(label, ls) : Draw.widthS(label, ls);
+            float lsUse = labelW > labelRoom && labelRoom > 10 ? Math.max(1f, ls * labelRoom / labelW) : ls;
+            int ly = cy - Math.round(4 * lsUse);
+            if (isSel) Draw.boldS(g, label, lx, ly, 0xFFFFFFFF, lsUse);
+            else Draw.textS(g, label, lx, ly, hot ? 0xFFEAF2FF : 0xFFBBC8E6, lsUse);
+            int count;
+            if (active) count = activeCount();
+            else if (panel) count = 0;
+            else if (fav) count = Usage.favouriteCount();
+            else if (cats[id] == Category.FRIENDS) count = com.zlorbie788.zeus.mods.Friends.friendCount();
+            else if (cats[id] == Category.PROFILES) count = com.zlorbie788.zeus.mods.Profiles.savedCount();
+            else count = Zeus.enabledCount(cats[id]);
+            if (isSel) {
+                float s = Math.max(3f, U(9));
+                float ccx = x + w - U(28);
+                Draw.line(g, ccx - s * 0.5f, cy - s, ccx + s * 0.5f, cy, Math.max(1.2f, U(3)), 0xFFE8F0FF);
+                Draw.line(g, ccx + s * 0.5f, cy, ccx - s * 0.5f, cy + s, Math.max(1.2f, U(3)), 0xFFE8F0FF);
+            } else if (count > 0) {
+                String s = Integer.toString(count);
+                float bs = ts(14);
+                int bw = Math.max(U(42), Draw.widthS(s, bs) + 10);
+                int bh = Math.max(11, U(32));
+                int bx = x + w - U(14) - bw;
+                Draw.rrect(g, bx, cy - bh / 2, bw, bh, Math.max(3, U(9)), 0xFF0E1A3C);
+                Draw.rrectLine(g, bx, cy - bh / 2, bw, bh, Math.max(3, U(9)), 0xFF2F4A8A);
+                Draw.textCenterS(g, s, bx + bw / 2, cy - Math.round(4 * bs), 0xFFFFFFFF, bs);
+            }
+            final int target = id;
+            hit(x, ys[i], w, pitch, b -> {
+                page = target;
+                pageAt = System.nanoTime();
+                lastPage = target;
+                scroll = 0;
+                scrollShown = 0;
+                search.setValue("");
+                search.setFocused(false);
+                setFocused(null);
+            }, active ? "Every module that is switched on" : panel ? "The panel's own settings and keys" : fav ? "Modules you starred, and the ones you used lately" : cats[id].label + " modules");
+        }
+    }
+
+    private int sideCount(int id, boolean active, boolean panel, boolean fav, Category[] cats) {
+        if (active) return activeCount();
+        if (panel) return 0;
+        if (fav) return Usage.favouriteCount();
+        if (cats[id] == Category.FRIENDS) return com.zlorbie788.zeus.mods.Friends.friendCount();
+        if (cats[id] == Category.PROFILES) return com.zlorbie788.zeus.mods.Profiles.savedCount();
+        return Zeus.enabledCount(cats[id]);
+    }
+
+    private void drawBrand(GuiGraphics g, int x, int y, int accent, int second) {
+        String brand = "ZEUS";
+        int bx = x;
+        for (int i = 0; i < brand.length(); i++) {
+            String c = String.valueOf(brand.charAt(i));
+            Draw.bold(g, c, bx, y, Draw.mix(0xFFFFFFFF, Draw.mix(accent, second, i / 3f), 0.35f));
+            bx += Draw.widthBold(c) + 1;
+        }
+        String v = "v" + Zeus.VERSION;
+        int cw = Draw.width(v) + 10;
+        Draw.rrect(g, bx + 4, y - 1, cw, 11, 5, Draw.rgba(accent, 0.2f));
+        Draw.text(g, v, bx + 9, y + 1, Draw.mix(Accent.TEXT, accent, 0.4f));
+        Draw.text(g, "Thunder client", x, y + 12, Accent.DIM);
+    }
+
+    /** Close, layout switch and the search box, anchored at their right edge. */
+    private void drawHeaderButtons(GuiGraphics g, int right, int y, int accent, boolean withSearch) {
+        int cx = right - 16;
+        boolean hotC = hov(cx, y, 16, 16);
+        Draw.rrect(g, cx, y, 16, 16, 5, hotC ? Draw.rgba(0xFFFF5C6C, 0.25f) : Accent.CARD);
+        Draw.line(g, cx + 5, y + 5, cx + 11, y + 11, 1.2f, hotC ? 0xFFFF8C98 : Accent.DIM);
+        Draw.line(g, cx + 11, y + 5, cx + 5, y + 11, 1.2f, hotC ? 0xFFFF8C98 : Accent.DIM);
+        hit(cx, y, 16, 16, b -> onClose(), "Close (Esc)");
+
+        int lx = cx - 20;
+        boolean hotL = hov(lx, y, 16, 16);
+        Draw.rrect(g, lx, y, 16, 16, 5, hotL ? Draw.rgba(accent, 0.28f) : Accent.CARD);
+        Icons.draw(g, columns ? Icons.PANEL : Icons.WINDOWS, lx + 8, y + 8, hotL ? 0xFFFFFFFF : Accent.DIM);
+        hit(lx, y, 16, 16, b -> UiSettings.LAYOUT.set(columns ? 0 : 1), columns ? "Switch to the Panel layout" : "Switch to the Windows layout");
+
+        int hx = cx - 40;
+        boolean hotH = hov(hx, y, 16, 16);
+        Draw.rrect(g, hx, y, 16, 16, 5, hotH ? Draw.rgba(accent, 0.28f) : Accent.CARD);
+        Icons.draw(g, Category.PANELS.ordinal(), hx + 8, y + 8, hotH ? 0xFFFFFFFF : Accent.DIM);
+        hit(hx, y, 16, 16, b -> minecraft.setScreen(new HudEditorScreen(this)), "Open the global HUD editor");
+
+        if (!withSearch) return;
+        int sw = Math.min(190, pw - SIDE - 110);
+        int sx = lx - 8 - sw;
+        boolean focused = search.isFocused();
+        Draw.rrect(g, sx, y - 1, sw, 18, 7, Accent.CARD);
+        Draw.rrectLine(g, sx, y - 1, sw, 18, 7, focused ? Draw.rgba(accent, 0.85f) : Accent.LINE);
+        Draw.ellipse(g, sx + 9, y + 7, 3, 3, Accent.FAINT);
+        Draw.ellipse(g, sx + 9, y + 7, 2, 2, Accent.CARD);
+        Draw.line(g, sx + 11, y + 9, sx + 14, y + 12, 1.2f, Accent.FAINT);
+        search.setX(sx + 20);
+        search.setY(y + 2);
+        search.setWidth(sw - 26);
+        hit(sx, y - 1, sw, 18, b -> {
+            search.setFocused(true);
+            setFocused(search);
+        }, null);
+        if (search.isFocused()) setFocused(search);
+        search.render(g, mx, my, 0f);
+    }
+
+    private int activeCount() {
+        int n = 0;
+        for (Module m : Zeus.all()) if (m.toggleable() && m.enabled()) n++;
+        return n;
+    }
+
+    private String query() {
+        return search == null ? "" : search.getValue().trim().toLowerCase(Locale.ROOT);
+    }
+
+    // ---- search: typo tolerant and ranked by relevance across names, ids, categories, descriptions and settings.
+    // Everything is computed once per typed query and once per module text (not every frame): the texts are normalised
+    // a single time, the scores are cached per query, and the sorted result lists are reused until the query changes.
+
+    /** The searchable text of one module, normalised once. */
+    private static final class Index {
+        final String name, id, category, desc;
+        final String[] aliasText;
+        final String[] settingNames, settingDescs;
+        final String[][] words = new String[3][];
+
+        Index(Module m) {
+            name = normalizeSearch(m.name);
+            id = normalizeSearch(m.id);
+            category = normalizeSearch(m.category.label);
+            desc = normalizeSearch(m.desc);
+            aliasText = new String[m.aliases().size()];
+            for (int i = 0; i < aliasText.length; i++) aliasText[i] = normalizeSearch(m.aliases().get(i));
+            List<Setting> list = m.settings();
+            settingNames = new String[list.size()];
+            settingDescs = new String[list.size()];
+            for (int i = 0; i < settingNames.length; i++) {
+                settingNames[i] = normalizeSearch(list.get(i).name);
+                settingDescs[i] = normalizeSearch(list.get(i).desc);
+            }
+        }
+    }
+
+    private static final java.util.Map<Module, Index> INDEX = new java.util.IdentityHashMap<>();
+    private final java.util.Map<Module, Integer> scoreCache = new java.util.IdentityHashMap<>();
+    private final java.util.Map<Object, List<Module>> resultCache = new java.util.HashMap<>();
+    private String cachedQuery = "";
+
+    private void syncSearchCache(String q) {
+        if (!q.equals(cachedQuery)) {
+            cachedQuery = q;
+            scoreCache.clear();
+            resultCache.clear();
+        }
+    }
+
+    private boolean matches(Module m, String q) {
+        return matchScore(m, q) >= 0;
+    }
+
+    private int matchScore(Module m, String q) {
+        if (q == null || q.isBlank()) return 0;
+        syncSearchCache(q);
+        Integer cached = scoreCache.get(m);
+        if (cached != null) return cached;
+        Index ix = INDEX.computeIfAbsent(m, Index::new);
+        String needle = normalizeSearch(q);
+        int best = Math.max(scoreText(ix.name, m.name, needle), scoreText(ix.id, m.id, needle));
+        for (int i = 0; i < ix.aliasText.length; i++) best = Math.max(best, scoreText(ix.aliasText[i], m.aliases().get(i), needle) - 10);
+        best = Math.max(best, scoreText(ix.category, null, needle) - 20);
+        // Descriptions and setting help remain searchable, but rank below a name match.
+        best = Math.max(best, scoreText(ix.desc, null, needle) - 140);
+        List<Setting> list = m.settings();
+        for (int i = 0; i < ix.settingNames.length && i < list.size(); i++) {
+            best = Math.max(best, scoreText(ix.settingNames[i], list.get(i).name, needle) - 90);
+            best = Math.max(best, scoreText(ix.settingDescs[i], null, needle) - 170);
+        }
+        scoreCache.put(m, best);
+        return best;
+    }
+
+    private static String normalizeSearch(String value) {
+        if (value == null) return "";
+        StringBuilder out = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char c = Character.toLowerCase(value.charAt(i));
+            if (c >= 'a' && c <= 'z' || c >= '0' && c <= '9') out.append(c);
+        }
+        return out.toString();
+    }
+
+    /** Higher scores are better; -1 means no plausible match. {@code raw} (may be null) allows a typo in one word of a multi-word name. */
+    private static int scoreText(String hay, String raw, String needle) {
+        if (needle.isEmpty() || hay.isEmpty()) return -1;
+        if (hay.equals(needle)) return 1200;
+        if (hay.startsWith(needle)) return 1050 - Math.min(100, hay.length() - needle.length());
+        int at = hay.indexOf(needle);
+        if (at >= 0) return 930 - Math.min(100, at);
+        if (isSubsequence(needle, hay)) return 700 - Math.min(120, hay.length() - needle.length());
+        int distance = editDistance(needle, hay);
+        int limit = needle.length() <= 4 ? 1 : needle.length() <= 8 ? 2 : 3;
+        if (distance <= limit) return 650 - distance * 90 - Math.abs(hay.length() - needle.length()) * 3;
+        // Also allow a typo in one word of a multi-word module or setting name.
+        if (raw != null) {
+            for (String word : raw.toLowerCase(Locale.ROOT).split("[^a-z0-9]+")) {
+                if (word.isEmpty()) continue;
+                int d = editDistance(needle, word);
+                if (d <= limit) return 620 - d * 90;
+            }
+        }
+        return -1;
+    }
+
+    private static boolean isSubsequence(String needle, String hay) {
+        int at = 0;
+        for (int i = 0; i < hay.length() && at < needle.length(); i++) {
+            if (hay.charAt(i) == needle.charAt(at)) at++;
+        }
+        return at == needle.length();
+    }
+
+    private static int editDistance(String a, String b) {
+        if (Math.abs(a.length() - b.length()) > 3) return 99;
+        int[] prev = new int[b.length() + 1];
+        int[] next = new int[b.length() + 1];
+        for (int j = 0; j <= b.length(); j++) prev[j] = j;
+        for (int i = 1; i <= a.length(); i++) {
+            next[0] = i;
+            int rowMin = next[0];
+            for (int j = 1; j <= b.length(); j++) {
+                next[j] = Math.min(Math.min(next[j - 1] + 1, prev[j] + 1), prev[j - 1] + (a.charAt(i - 1) == b.charAt(j - 1) ? 0 : 1));
+                rowMin = Math.min(rowMin, next[j]);
+            }
+            if (rowMin > 3) return 99;
+            int[] swap = prev; prev = next; next = swap;
+        }
+        return prev[b.length()];
+    }
+
+    /** Every module that matches the query, best first. Cached until the query changes; do not modify the result. */
+    private List<Module> searchResults(String q, Category only) {
+        syncSearchCache(q);
+        Object key = only == null ? "*" : only;
+        List<Module> hit = resultCache.get(key);
+        if (hit != null) return hit;
+        List<Module> out = new ArrayList<>();
+        for (Module m : only == null ? Zeus.all() : Zeus.in(only)) if (matches(m, q)) out.add(m);
+        out.sort((a, b) -> {
+            int score = Integer.compare(matchScore(b, q), matchScore(a, q));
+            return score != 0 ? score : a.name.compareToIgnoreCase(b.name);
+        });
+        resultCache.put(key, out);
+        return out;
+    }
+
+    // ------------------------------------------------------------ the list
+
+    private void drawList(GuiGraphics g, float dt, int accent, int bl) {
+        List<Module> mods;
+        String title;
+        String q = query();
+        boolean panelPage = q.isEmpty() && page == PAGE_PANEL;
+        if (!q.isEmpty()) {
+            mods = searchResults(q, null);
+            title = "Search results";
+        } else if (panelPage) {
+            mods = new ArrayList<>();
+            title = "Panel";
+        } else if (page == PAGE_ACTIVE) {
+            List<Module> list = new ArrayList<>();
+            for (Module m : Zeus.all()) if (m.toggleable() && m.enabled()) list.add(m);
+            mods = Usage.sorted(list, UiSettings.SORT.index());
+            title = "Active";
+        } else if (page == PAGE_FAV) {
+            mods = Usage.favourites();
+            title = "Favourites";
+        } else {
+            Category c = Category.values()[page];
+            mods = Usage.sorted(Zeus.in(c), UiSettings.SORT.index());
+            title = c.label;
+        }
+        boolean favPage = q.isEmpty() && page == PAGE_FAV;
+        // the title with the count beside it, like "Combat | 18 modules"
+        float tsz = ts(22);
+        int tx = listX + U(6);
+        int ty = listTop + U(16);
+        Draw.boldS(g, title, tx, ty, 0xFFFFFFFF, tsz);
+        int tw = Draw.widthBoldS(title, tsz);
+        String sub = panelPage ? "look and keys" : favPage ? mods.size() + " starred" : mods.size() + (mods.size() == 1 ? " module" : " modules");
+        float ss = Math.min(ts(16), 2.2f);
+        int barX = tx + tw + Math.max(6, U(20));
+        g.fill(barX, ty + Math.round(1 * tsz), barX + Math.max(1, U(2)), ty + Math.round(7 * tsz), 0xFF2A4A8A);
+        Draw.textS(g, sub, barX + Math.max(6, U(20)), ty + Math.round(4 * tsz) - Math.round(4 * ss), 0xFF4A9BFF, ss);
+
+        if (!panelPage && q.isEmpty()) {
+            // the sort button, at the right end of the title row
+            String st = "Sort: " + sortName();
+            float cs2 = Math.min(ts(15), 2.0f);
+            int chipH = Math.max(12, U(40));
+            int chipW2 = Draw.widthS(st, cs2) + Math.max(10, U(34));
+            int chipX2 = listX + listW - chipW2;
+            int chipY2 = ty - Math.max(1, U(6));
+            boolean sortHot = hov(chipX2, chipY2, chipW2, chipH);
+            boolean sortOn = UiSettings.SORT.index() != 0;
+            Draw.rrect(g, chipX2, chipY2, chipW2, chipH, Math.max(3, U(12)), sortHot ? Draw.rgba(bl, 0.35f) : sortOn ? Draw.rgba(bl, 0.2f) : 0xC0070D20);
+            Draw.rrectLine(g, chipX2, chipY2, chipW2, chipH, Math.max(3, U(12)), sortHot || sortOn ? Draw.rgba(bl, 0.8f) : 0xFF26396A);
+            Draw.textCenterS(g, st, chipX2 + chipW2 / 2, chipY2 + (chipH - Math.round(8 * cs2)) / 2, sortHot || sortOn ? 0xFFFFFFFF : 0xFF9DB0D8, cs2);
+            hit(chipX2, chipY2, chipW2, chipH, b -> {
+                int n = UiSettings.SORT.index();
+                UiSettings.SORT.set((n + (b == 1 ? 2 : 1)) % 3);
+                scroll = 0;
+                pageAt = System.nanoTime();
+            }, "Sort the modules: category order, the ones you use most first, or A to Z. Click to change (right click goes back).");
+        }
+
+        int top = listTop + U(66);
+        int viewH = footY - top - Math.max(3, U(16));
+        int maxScroll = Math.max(0, contentH - viewH);
+        scroll = Math.max(0, Math.min(maxScroll, scroll));
+        scrollShown += (scroll - scrollShown) * Math.min(1f, dt * 16f);
+        if (Math.abs(scroll - scrollShown) < 0.2f) scrollShown = scroll;
+
+        int pad = Math.max(4, U(10));
+        g.enableScissor(listX - pad, top - Math.max(3, U(6)), listX + listW + pad, top + viewH);
+        clipTop = top - Math.max(3, U(6));
+        clipBottom = top + viewH;
+        int y = top - Math.round(scrollShown);
+        int start = y;
+        if (panelPage) {
+            y = drawPanelCard(g, y, accent, top, viewH);
+        } else if (mods.isEmpty() && !(favPage && !Usage.recent().isEmpty())) {
+            String msg = !q.isEmpty() ? "No module matches \"" + q + "\"" : page == PAGE_ACTIVE ? "Nothing is switched on" : favPage ? "No favourites yet. Click the star on a module to pin it here." : "Nothing here";
+            Draw.textCenterS(g, msg, listX + listW / 2, top + U(60), 0xFF58698F, Math.max(1f, ts(16)));
+        } else {
+            float since = (System.nanoTime() - pageAt) / 1e9f;
+            int idx = 0;
+            for (Module m : mods) {
+                // each card slides up into place a moment after the one above it
+                float e = UiSettings.CALM.on() || Perf.fast() ? 1f : Math.max(0f, Math.min(1f, (since - Math.min(idx, 12) * 0.035f) / 0.30f));
+                float out = 1f - (1f - e) * (1f - e) * (1f - e);
+                if (out < 1f) {
+                    g.pose().pushMatrix();
+                    g.pose().translate(0f, (1f - out) * U(26));
+                }
+                y = drawCard(g, m, y, accent, dt, top, viewH, bl);
+                if (out < 1f) g.pose().popMatrix();
+                idx++;
+            }
+            if (favPage) {
+                List<Module> recent = Usage.recent();
+                if (mods.isEmpty()) {
+                    Draw.textS(g, "No favourites yet. Click the star on a module to pin it here.", listX + U(6), y + U(4), 0xFF58698F, Math.max(1f, ts(14)));
+                    y += U(40);
+                }
+                if (!recent.isEmpty()) {
+                    y += U(10);
+                    Draw.boldS(g, "Recently used", listX + U(6), y, 0xFF9DC4FF, Math.max(1f, ts(17)));
+                    y += U(44);
+                    for (Module m : recent) y = drawCard(g, m, y, accent, dt, top, viewH, bl);
+                }
+            }
+        }
+        g.disableScissor();
+        clipTop = -1;
+        clipBottom = -1;
+        contentH = y - start;
+
+        if (maxScroll > 0) {
+            int bh = Math.max(20, Math.round(viewH * (viewH / (float) contentH)));
+            int by = top + Math.round((viewH - bh) * (scrollShown / maxScroll));
+            int sbx = listX + listW + Math.max(5, U(14));
+            g.fill(sbx, top, sbx + 2, top + viewH, Draw.rgba(0xFFFFFFFF, 0.05f));
+            g.fill(sbx, by, sbx + 2, by + bh, Draw.rgba(bl, 0.8f));
+        }
+    }
+
+    private boolean inView(int top, int viewH) {
+        return my >= top && my < top + viewH;
+    }
+
+    private int drawPanelCard(GuiGraphics g, int y, int accent, int top, int viewH) {
+        int x = listX;
+        int w = listW;
+        int bl = blue(accent);
+        List<Setting> rows = Zeus.UI.settings();
+        int inner = 8 + 22;
+        for (Setting s : rows) if (s.visible()) inner += rowH(s);
+        inner += 32;
+        int rr = Math.max(5, U(14));
+        Draw.rrect(g, x, y, w, inner, rr, 0xE60A1126, 0xE6070C1C);
+        Draw.rrectLine(g, x, y, w, inner, rr, 0xFF1F3366);
+        int ry = y + 8;
+        Draw.text(g, "Open key", x + 12, ry + 5, Accent.TEXT);
+        drawBind(g, ZeusClient.OPEN, null, x + w - 12, ry + 3, true, top, viewH);
+        ry += 22;
+        for (Setting s : rows) {
+            if (!s.visible()) continue;
+            int h = rowH(s);
+            drawRow(g, s, x + 12, ry, w - 24, bl, top, viewH);
+            ry += h;
+        }
+        Draw.text(g, Draw.fit("Press the open key in a world. Every module has its own key on its row.", w - 24), x + 12, y + inner - 24, Accent.FAINT);
+        Draw.text(g, Draw.fit("Keys can also be set in Options > Controls.", w - 24), x + 12, y + inner - 14, Accent.FAINT);
+        return y + inner + 6;
+    }
+
+    private int rowBase() {
+        return Math.max(26, U(88));
+    }
+
+    private int cardFull(Module m) {
+        int h = rowBase() + 6;
+        for (Setting s : m.settings()) if (s.visible()) h += rowH(s);
+        return h + 8;
+    }
+
+    private int drawCard(GuiGraphics g, Module m, int y, int accent, float dt, int top, int viewH, int bl) {
+        int x = listX;
+        int w = listW;
+        int rowH = rowBase();
+        int gap = Math.max(3, U(9));
+        boolean open = OPEN.contains(m.id);
+        // a settled, closed card outside the visible area costs nothing: no animation state, no height maths, no drawing
+        if (!open) {
+            Float settledEx = expand.get(m.id);
+            Float settledOn = toggle.get(m.id);
+            if ((settledEx == null || settledEx == 0f) && (settledOn == null || settledOn == (m.enabled() ? 1f : 0f))
+                    && (y + rowH < top - 8 || y > top + viewH + 8)) {
+                return y + rowH + gap;
+            }
+        }
+        float ex = expand.getOrDefault(m.id, open ? 1f : 0f);
+        ex += ((open ? 1f : 0f) - ex) * Math.min(1f, dt * 14f);
+        if (Math.abs((open ? 1f : 0f) - ex) < 0.01f) ex = open ? 1f : 0f;
+        expand.put(m.id, ex);
+        float on = toggle.getOrDefault(m.id, m.enabled() ? 1f : 0f);
+        float want = m.enabled() ? 1f : 0f;
+        on += (want - on) * Math.min(1f, dt * 18f);
+        if (Math.abs(want - on) < 0.01f) on = want;
+        toggle.put(m.id, on);
+
+        int full = cardFull(m);
+        float ee = ex * ex * (3f - 2f * ex);
+        int h = rowH + Math.round((full - rowH) * ee);
+        if (y + h < top - 8 || y > top + viewH + 8) return y + h + gap;
+
+        boolean hot = hov(x, y, w, rowH) && inView(top, viewH);
+        float hv = ease(cardKey(m.id), hot, dt);
+        int rr = Math.max(5, U(14));
+        if (on > 0.02f) Draw.glow(g, x, y, w, rowH, rr, bl, Math.max(2, U(6)), 0.30f * on);
+        Draw.rrect(g, x, y, w, h, rr, Draw.mix(0xE60A1126, 0xF00B2150, on), Draw.mix(0xE6070C1C, 0xF0081638, on));
+        int edge = Draw.mix(Draw.mix(0xFF1A2646, 0xFF2D4A8A, hv), 0xFF3C92FF, on);
+        Draw.rrectLine(g, x, y, w, h, rr, edge);
+        if (on > 0.3f) Draw.rrectLine(g, x + 1, y + 1, w - 2, h - 2, Math.max(1, rr - 1), Draw.rgba(0xFF2F86FF, 0.55f * on));
+        if (hv > 0.05f && !UiSettings.CALM.on() && !Perf.fast()) Thunder.outline(g, x, y, w, rowH, anim(), hv * 0.6f, Math.max(0.6f, u), 0.35f);
+
+        // an enabled card gets a blue wash that builds up towards its right end, like the lit card of the mockup
+        if (on > 0.02f) {
+            int wx0 = x + w * 52 / 100;
+            int wx1 = x + w - Math.max(2, rr / 2);
+            int strips = 30;
+            for (int i = 0; i < strips; i++) {
+                int a0 = wx0 + (wx1 - wx0) * i / strips;
+                int a1 = wx0 + (wx1 - wx0) * (i + 1) / strips;
+                float k = (i + 1f) / strips;
+                g.fill(a0, y + Math.max(2, rr / 3), a1, y + rowH - Math.max(2, rr / 3), Draw.rgba(0xFF2F86FF, 0.24f * k * k * on));
+            }
+        }
+
+        // icon tile
+        int tile = Math.max(16, Math.min(U(68), rowH - Math.max(6, U(20))));
+        int tx = x + Math.max(6, U(26));
+        int ty = y + (rowH - tile) / 2;
+        int tr = Math.max(3, U(10));
+        Draw.rrect(g, tx, ty, tile, tile, tr, Draw.mix(0xFF09112B, 0xFF0C1E4A, on), Draw.mix(0xFF070D22, 0xFF091638, on));
+        Draw.rrectLine(g, tx, ty, tile, tile, tr, Draw.mix(0xFF26396A, 0xFF3C7DE0, on));
+        Glyphs.draw(g, Glyphs.forModule(m.id, m.category), tx + tile / 2f, ty + tile / 2f, Math.round(tile * 0.62f), on > 0.5f ? 0xFFFFFFFF : 0xFFC8D9FF);
+
+        // switch
+        int sw = Math.max(26, U(63));
+        int sh = Math.max(14, U(38));
+        int sx = tx + tile + Math.max(6, U(29));
+        int sy = y + (rowH - sh) / 2;
+        if (m.toggleable()) {
+            drawBigSwitch(g, sx, sy, sw, sh, on);
+            Long burstAt = BURSTS.get(m.id);
+            if (burstAt != null) {
+                float bp = (System.nanoTime() - burstAt) / 0.6e9f;
+                if (bp >= 1f) BURSTS.remove(m.id);
+                else Thunder.burst(g, sx + sw * 0.75f, sy + sh / 2f, Math.max(18f, U(70)), bp, Math.max(0.6f, u));
+            }
+            hit(sx - 3, y + 2, sw + 6, rowH - 4, b -> {
+                if (!m.enabled()) BURSTS.put(m.id, System.nanoTime());
+                m.toggle();
+            }, "Switch " + m.name + (m.enabled() ? " off" : " on"));
+        } else {
+            Glyphs.draw(g, "sliders", sx + sw / 2f, y + rowH / 2f, Math.max(10, sh - 4), 0xFF5AA2FF);
+        }
+
+        // key chip and chevron
+        int chevCx = x + w - Math.max(8, U(38));
+        int chipW = Math.max(U(141), 54);
+        int chipH = Math.max(14, Math.min(U(50), rowH - 8));
+        int chipX = x + w - Math.max(14, U(81)) - chipW;
+        int chipY = y + (rowH - chipH) / 2;
+        boolean hasChip = m.key != null && m.toggleable();
+        int textLeft = sx + sw + Math.max(6, U(32));
+        int rightEdge = hasChip ? chipX : chevCx - Math.max(8, U(16));
+        int starS = Math.max(10, U(38));
+        int starCx = rightEdge - Math.max(6, U(18)) - starS / 2;
+        int textRight = starCx - starS / 2 - Math.max(6, U(14));
+
+        // name, info pill and description
+        float ns = ts(18.5);
+        float ds = ts(14);
+        int nameH = Math.round(8 * ns);
+        int descH = Math.round(8 * ds);
+        int inter = Math.max(2, U(10));
+        int block = nameH + inter + descH;
+        int ny = y + Math.max(2, (rowH - block) / 2);
+        Draw.boldS(g, m.name, textLeft, ny, 0xFFFFFFFF, ns);
+        int nameW = Draw.widthBoldS(m.name, ns);
+        String info = m.enabled() ? m.info() : null;
+        if (info != null && !info.isEmpty()) {
+            int iw = Draw.width(info) + 10;
+            int ix = textLeft + nameW + Math.max(6, U(14));
+            if (ix + iw < textRight) {
+                int ih2 = 12;
+                int iy = ny + Math.max(0, (nameH - ih2) / 2);
+                Draw.rrect(g, ix, iy, iw, ih2, 5, Draw.rgba(bl, 0.22f));
+                Draw.text(g, info, ix + 5, iy + 2, 0xFFBFD8FF);
+            }
+        }
+        int dy = ny + nameH + inter;
+        if (m.error != null) {
+            Draw.textS(g, Draw.fit("Switched off: " + m.error, Math.round((textRight - textLeft) / ds)), textLeft, dy, 0xFFFF7B7B, ds);
+        } else {
+            Draw.textS(g, Draw.fit(m.desc, Math.round((textRight - textLeft) / ds)), textLeft, dy, 0xFF8EA2CC, ds);
+        }
+
+        // row hit areas, the broad one first so the small ones on top win
+        hit(x, y, w, rowH, b -> {
+            if (b == 1 && m.toggleable()) m.toggle();
+            else if (OPEN.contains(m.id)) OPEN.remove(m.id);
+            else OPEN.add(m.id);
+        }, m.desc);
+        if (m.toggleable()) hit(sx - 3, y + 2, sw + 6, rowH - 4, b -> m.toggle(), "Switch " + m.name + (m.enabled() ? " off" : " on"));
+        if (hasChip) drawKeyChip(g, m, chipX, chipY, chipW, chipH, top, viewH);
+        if (m.toggleable()) {
+            boolean fav = Usage.favourite(m);
+            boolean starHot = hov(starCx - starS / 2 - 3, y + 2, starS + 6, rowH - 4) && inView(top, viewH);
+            int starCol = fav ? 0xFFFFC857 : starHot ? 0xFFFFE08A : hot ? 0xFF7F93BD : 0xFF3B4E78;
+            Glyphs.draw(g, fav ? "starfill" : "star", starCx, y + rowH / 2f, starS, starCol);
+            hit(starCx - starS / 2 - 3, y + 2, starS + 6, rowH - 4, b -> Usage.toggleFavourite(m),
+                    fav ? "Remove " + m.name + " from your favourites" : "Add " + m.name + " to your favourites");
+        }
+
+        int cr = Math.max(3, U(9));
+        float turn = ee * (float) (Math.PI / 2);
+        float cc = (float) Math.cos(turn);
+        float cs = (float) Math.sin(turn);
+        int chev = hot || ee > 0.5f ? 0xFF8CC4FF : 0xFF3D8BFF;
+        float[][] pts = {{-cr * 0.5f, -cr}, {cr * 0.5f, 0}, {-cr * 0.5f, cr}};
+        float[] qx = new float[3];
+        float[] qy = new float[3];
+        for (int i = 0; i < 3; i++) {
+            qx[i] = chevCx + pts[i][0] * cc - pts[i][1] * cs;
+            qy[i] = y + rowH / 2f + pts[i][0] * cs + pts[i][1] * cc;
+        }
+        float lw = Math.max(1.3f, U(3));
+        Draw.line(g, qx[0], qy[0], qx[1], qy[1], lw, chev);
+        Draw.line(g, qx[1], qy[1], qx[2], qy[2], lw, chev);
+        int chevHitW = Math.max(14, U(70));
+        hit(x + w - chevHitW, y, chevHitW, rowH, b -> {
+            if (OPEN.contains(m.id)) OPEN.remove(m.id);
+            else OPEN.add(m.id);
+        }, "Settings");
+
+        if (ee > 0.02f && !m.settings().isEmpty()) {
+            g.enableScissor(x, y + rowH, x + w, y + h);
+            int ry = y + rowH + 4;
+            g.fill(x + Math.max(8, U(26)), y + rowH, x + w - Math.max(8, U(26)), y + rowH + 1, 0xFF1A2E5C);
+            int rx = x + Math.max(12, U(26));
+            for (Setting s : m.settings()) {
+                if (!s.visible()) continue;
+                drawRow(g, s, rx, ry, w - 2 * (rx - x), bl, top, viewH);
+                ry += rowH(s);
+            }
+            g.disableScissor();
+        }
+        return y + h + gap;
+    }
+
+    private void drawKeyChip(GuiGraphics g, Module m, int x, int y, int w, int h, int top, int viewH) {
+        boolean wait = listening == m;
+        KeyMapping k = m.key;
+        String text = wait ? "Press a key" : k.isUnbound() ? "None" : k.getTranslatedKeyMessage().getString();
+        boolean hot = hov(x, y, w, h) && inView(top, viewH);
+        int rr = Math.max(3, U(10));
+        Draw.rrect(g, x, y, w, h, rr, wait ? 0xFF10306E : hot ? 0xFF0F1B3C : 0xFF0A1128);
+        Draw.rrectLine(g, x, y, w, h, rr, wait ? 0xFF3C92FF : hot ? 0xFF3A5AA0 : 0xFF263860);
+        float fs = ts(15);
+        int room = w - Math.max(14, U(52));
+        while (fs > 1f && Draw.widthS(text, fs) > room) fs -= 0.25f;
+        String shown = Draw.widthS(text, fs) > room ? Draw.fit(text, Math.round(room / Math.max(1f, fs))) : text;
+        Draw.textS(g, shown, x + Math.max(6, U(17)), y + (h - Math.round(8 * fs)) / 2, wait ? 0xFFFFFFFF : k.isUnbound() ? 0xFFC3D2F2 : 0xFFFFFFFF, fs);
+        float cs = Math.max(2.5f, U(8));
+        float ccx = x + w - Math.max(8, U(26));
+        float ccy = y + h / 2f;
+        Draw.line(g, ccx - cs, ccy - cs * 0.45f, ccx, ccy + cs * 0.55f, Math.max(1.2f, U(2.5)), 0xFFB8CCF0);
+        Draw.line(g, ccx, ccy + cs * 0.55f, ccx + cs, ccy - cs * 0.45f, Math.max(1.2f, U(2.5)), 0xFFB8CCF0);
+        hit(x, y, w, h, b -> {
+            if (b == 1) {
+                setKey(k, InputConstants.UNKNOWN);
+                listening = null;
+                listeningOpen = false;
+                return;
+            }
+            listening = m;
+            listeningOpen = false;
+        }, "Click, then press a key. Right click removes the key.");
+    }
+
+    private void drawBigSwitch(GuiGraphics g, int x, int y, int w, int h, float on) {
+        int track = Draw.mix(0xFF1A2342, 0xFF2D7BFF, on);
+        Draw.rrect(g, x, y, w, h, h / 2, track, Draw.mix(0xFF141C38, 0xFF2368E6, on));
+        Draw.rrectLine(g, x, y, w, h, h / 2, Draw.mix(0xFF2A3860, 0xFF5AA2FF, on));
+        int in = Math.max(2, h / 8);
+        int d = h - 2 * in;
+        int kx = x + in + Math.round((w - h) * on);
+        Draw.rrect(g, kx, y + in, d, d, d / 2, Draw.mix(0xFFC9CCE6, 0xFFFFFFFF, on));
+        if (on > 0.5f) Draw.glow(g, x, y, w, h, h / 2, 0xFF2F86FF, 3, 0.2f);
+    }
+
+    private void drawSwitch(GuiGraphics g, int x, int y, int w, int h, float on, int col, boolean locked) {
+        int track = Draw.mix(0xFF2A3150, col, on);
+        if (locked) track = Draw.mix(track, 0xFF1A1F30, 0.6f);
+        Draw.rrect(g, x, y, w, h, h / 2, track);
+        int kx = x + 1 + Math.round((w - h) * on);
+        Draw.rrect(g, kx, y + 1, h - 2, h - 2, (h - 2) / 2, locked ? 0xFF8791AE : 0xFFFFFFFF);
+        if (on > 0.5f && !locked) Draw.glow(g, x, y, w, h, h / 2, col, 3, 0.18f);
+    }
+
+    // ------------------------------------------------------------ setting rows
+
+    private int rowH(Setting s) {
+        if (s instanceof Setting.Num) return 26;
+        if (s instanceof Setting.Action) return 24;
+        if (s instanceof Setting.Pick p) return 20 + Math.max(1, p.rows) * 17 + 2;
+        if (s instanceof Setting.Info info) {
+            int n = Math.min(info.lines().size(), 10);
+            return 16 + Math.max(1, n) * 10 + (info.lines().size() > 10 ? 10 : 0);
+        }
+        return 20;
+    }
+
+    private void drawRow(GuiGraphics g, Setting s, int x, int y, int w, int col, int top, int viewH) {
+        boolean hot = hov(x - 4, y, w + 8, rowH(s)) && inView(top, viewH);
+        if (hot && s.desc != null && !s.desc.isEmpty()) tip = s.desc;
+        if (s instanceof Setting.Bool b) {
+            Draw.text(g, s.name, x, y + 6, Accent.TEXT);
+            float v = b.on() ? 1f : 0f;
+            drawSwitch(g, x + w - 22, y + 4, 22, 11, v, col, false);
+            hit(x - 4, y, w + 8, 20, k -> b.toggle(), null);
+        } else if (s instanceof Setting.Num n) {
+            Draw.text(g, s.name, x, y + 2, Accent.TEXT);
+            Draw.textRight(g, n.text(), x + w, y + 2, Draw.mix(Accent.TEXT, col, 0.5f));
+            int ty = y + 16;
+            Draw.rrect(g, x, ty, w, 4, 2, 0xFF222942);
+            int fw = Math.max(0, Math.round(w * (float) n.fraction()));
+            if (fw > 0) Draw.rrect(g, x, ty, Math.max(4, fw), 4, 2, Draw.mix(col, 0xFFFFFFFF, 0.1f), col);
+            int kx = x + fw;
+            boolean drag = dragging == n;
+            Draw.rrect(g, kx - 4, ty - 2, 8, 8, 4, drag || hot ? 0xFFFFFFFF : 0xFFDCE4FA);
+            if (drag) Draw.glow(g, kx - 4, ty - 2, 8, 8, 4, col, 4, 0.3f);
+            final int fx = x;
+            final int fwid = w;
+            hit(x - 4, y + 10, w + 8, 14, k -> {
+                dragging = n;
+                dragX = fx;
+                dragW = fwid;
+                applyDrag(mx);
+            }, null);
+        } else if (s instanceof Setting.Choice c) {
+            Draw.text(g, s.name, x, y + 6, Accent.TEXT);
+            drawChoice(g, c, x, y, w, col);
+        } else if (s instanceof Setting.Pick p) {
+            Draw.text(g, s.name, x, y + 3, Accent.TEXT);
+            Draw.textRight(g, p.label(), x + w, y + 3, Draw.mix(Accent.TEXT, col, 0.6f));
+            int cx = x;
+            int cy = y + 17;
+            int rows = 1;
+            for (int i = 0; i < p.labels.length; i++) {
+                int cw = Draw.width(p.labels[i]) + 12;
+                if (cx + cw > x + w && cx > x) {
+                    cx = x;
+                    cy += 17;
+                    rows++;
+                }
+                if (cy + 15 > top && cy < top + viewH) {
+                    boolean sel = p.index() == i;
+                    boolean hb = hov(cx, cy, cw, 15) && inView(top, viewH);
+                    Draw.rrect(g, cx, cy, cw, 15, 5, sel ? Draw.rgba(col, 0.34f) : hb ? Draw.rgba(0xFFFFFFFF, 0.09f) : 0xFF1B2136);
+                    if (sel) Draw.rrectLineFast(g, cx, cy, cw, 15, 5, Draw.rgba(col, 0.9f));
+                    Draw.textCenter(g, p.labels[i], cx + cw / 2, cy + 4, sel ? 0xFFFFFFFF : hb ? Accent.TEXT : Accent.DIM);
+                    final int idx = i;
+                    hit(cx, cy, cw, 15, k -> p.set(idx), null);
+                }
+                cx += cw + 3;
+            }
+            p.rows = rows;
+        } else if (s instanceof Setting.Text t) {
+            Draw.text(g, s.name, x, y + 6, Accent.TEXT);
+            int bw = Math.max(70, Math.min(w - Draw.width(s.name) - 14, 150));
+            int bx = x + w - bw;
+            boolean mine = editing == t;
+            boolean hb = hov(bx, y + 1, bw, 18) && inView(top, viewH);
+            Draw.rrect(g, bx, y + 1, bw, 18, 6, mine ? 0xFF0C1019 : hb ? Draw.rgba(col, 0.2f) : 0xFF1B2136);
+            Draw.rrectLine(g, bx, y + 1, bw, 18, 6, Draw.rgba(col, mine ? 0.95f : hb ? 0.7f : 0.35f));
+            if (mine) {
+                field.setX(bx + 6);
+                field.setY(y + 6);
+                field.setWidth(bw - 12);
+                field.visible = true;
+                field.render(g, mx, my, 0f);
+                fieldDrawn = true;
+            } else {
+                Draw.text(g, Draw.fit(t.get().isEmpty() ? "(empty)" : t.get(), bw - 12), bx + 6, y + 6, t.get().isEmpty() ? Accent.FAINT : Accent.TEXT);
+            }
+            hit(bx, y + 1, bw, 18, k -> {
+                editing = t;
+                field.setMaxLength(t.max);
+                field.setValue(t.get());
+                field.setFocused(true);
+                setFocused(field);
+            }, null);
+        } else if (s instanceof Setting.Action a) {
+            int bw = Draw.width(a.name) + 20;
+            boolean hb = hov(x, y + 2, bw, 18) && inView(top, viewH);
+            Draw.rrect(g, x, y + 2, bw, 18, 6, hb ? Draw.rgba(col, 0.38f) : Draw.rgba(col, 0.2f));
+            Draw.rrectLine(g, x, y + 2, bw, 18, 6, Draw.rgba(col, hb ? 0.9f : 0.5f));
+            Draw.textCenter(g, a.name, x + bw / 2, y + 7, 0xFFFFFFFF);
+            if (a.desc != null && !a.desc.isEmpty()) Draw.text(g, Draw.fit(a.desc, w - bw - 10), x + bw + 8, y + 7, Accent.FAINT);
+            hit(x, y + 2, bw, 18, k -> a.fire(), a.desc);
+        } else if (s instanceof Setting.Info info) {
+            Draw.text(g, s.name.toUpperCase(Locale.ROOT), x, y + 3, Accent.FAINT);
+            List<String> lines = info.lines();
+            Draw.rrect(g, x, y + 14, w, rowH(s) - 18, 5, 0xFF0C1019);
+            int ly = y + 18;
+            if (lines.isEmpty()) {
+                Draw.text(g, "Nothing yet", x + 8, ly, Accent.FAINT);
+            } else {
+                int shown = Math.min(lines.size(), 10);
+                for (int i = 0; i < shown; i++) {
+                    Draw.text(g, Draw.fit(lines.get(i), w - 16), x + 8, ly, i == 0 ? Accent.TEXT : Accent.DIM);
+                    ly += 10;
+                }
+                if (lines.size() > shown) Draw.text(g, "+ " + (lines.size() - shown) + " more", x + 8, ly, Accent.FAINT);
+            }
+        }
+    }
+
+    private void drawChoice(GuiGraphics g, Setting.Choice c, int x, int y, int w, int col) {
+        String[] o = c.options;
+        int total = 0;
+        for (String s : o) total += Draw.width(s) + 14;
+        int labelW = Draw.width(c.name) + 16;
+        if (o.length <= 5 && total + o.length * 2 <= w - labelW) {
+            int cx = x + w;
+            for (int i = o.length - 1; i >= 0; i--) {
+                int cw = Draw.width(o[i]) + 14;
+                cx -= cw;
+                boolean sel = c.index() == i;
+                boolean hot = hov(cx, y + 1, cw, 18);
+                Draw.rrect(g, cx, y + 1, cw, 18, 6, sel ? Draw.rgba(col, 0.30f) : hot ? Draw.rgba(0xFFFFFFFF, 0.07f) : 0xFF1B2136);
+                if (sel) Draw.rrectLine(g, cx, y + 1, cw, 18, 6, Draw.rgba(col, 0.85f));
+                Draw.textCenter(g, o[i], cx + cw / 2, y + 6, sel ? 0xFFFFFFFF : Accent.DIM);
+                final int idx = i;
+                hit(cx, y + 1, cw, 18, k -> c.set(idx), null);
+                cx -= 2;
+            }
+        } else {
+            String v = c.value();
+            int vw = Math.max(70, Draw.width(v) + 28);
+            int cx = x + w - vw;
+            boolean hot = hov(cx, y + 1, vw, 18);
+            Draw.rrect(g, cx, y + 1, vw, 18, 6, hot ? Draw.rgba(col, 0.25f) : 0xFF1B2136);
+            Draw.rrectLine(g, cx, y + 1, vw, 18, 6, Draw.rgba(col, hot ? 0.8f : 0.35f));
+            Draw.textCenter(g, v, cx + vw / 2, y + 6, Accent.TEXT);
+            Draw.text(g, "<", cx + 6, y + 6, Accent.FAINT);
+            Draw.text(g, ">", cx + vw - 11, y + 6, Accent.FAINT);
+            hit(cx, y + 1, vw, 18, k -> c.set(k == 1 ? (c.index() + o.length - 1) % o.length : (c.index() + 1) % o.length), "Left click: next, right click: previous");
+        }
+    }
+
+    // ------------------------------------------------------------ keys
+
+    private int bindWidth(KeyMapping k, Module m) {
+        return Math.max(28, Draw.width(keyText(k, m)) + 14);
+    }
+
+    private String keyText(KeyMapping k, Module m) {
+        if (listening == m && (m != null || listeningOpen)) return "press a key";
+        if (k.isUnbound()) return "none";
+        return k.getTranslatedKeyMessage().getString();
+    }
+
+    /** The key chip. Anchored at its right edge. */
+    private void drawBind(GuiGraphics g, KeyMapping k, Module m, int right, int y, boolean openKey, int top, int viewH) {
+        boolean wait = openKey ? listeningOpen : listening == m;
+        String text = wait ? "press a key" : (k.isUnbound() ? "none" : k.getTranslatedKeyMessage().getString());
+        int bw = Math.max(28, Draw.width(text) + 14);
+        int x = right - bw;
+        boolean hot = hov(x, y, bw, 14) && inView(top, viewH);
+        int col = Accent.main();
+        Draw.rrect(g, x, y, bw, 14, 5, wait ? Draw.rgba(col, 0.3f) : hot ? 0xFF222A44 : 0xFF181E33);
+        Draw.rrectLine(g, x, y, bw, 14, 5, wait ? col : Accent.LINE);
+        Draw.textCenter(g, text, x + bw / 2, y + 3, wait ? 0xFFFFFFFF : k.isUnbound() ? Accent.FAINT : Accent.TEXT);
+        hit(x, y, bw, 14, b -> {
+            if (b == 1) {
+                setKey(k, InputConstants.UNKNOWN);
+                listening = null;
+                listeningOpen = false;
+                return;
+            }
+            listening = openKey ? null : m;
+            listeningOpen = openKey;
+        }, "Click, then press a key. Right click removes the key.");
+    }
+
+    private void setKey(KeyMapping k, InputConstants.Key key) {
+        k.setKey(key);
+        KeyMapping.resetMapping();
+        minecraft.options.save();
+    }
+
+    // ------------------------------------------------------------ footer
+
+    private void drawFooter(GuiGraphics g, int left, int right, int y, int accent) {
+        boolean inWorld = Env.inWorld();
+        int dot = inWorld ? 0xFF5EE6A0 : 0xFFFFC857;
+        float pulse = 0.5f + 0.5f * (float) Math.sin(anim() * 3.0);
+        if (inWorld) Draw.glow(g, left, y + 1, 6, 6, 3, dot, 2, 0.10f + 0.12f * pulse);
+        Draw.rrect(g, left, y + 1, 6, 6, 3, dot);
+        String status = !inWorld ? "No world" : Env.local() ? "Client side  -  singleplayer" : "Client side  -  server";
+        Draw.text(g, status, left + 12, y, Accent.DIM);
+        int active = activeCount();
+        String a = active + " active";
+        int pw2 = Draw.width("Panic") + 16;
+        int bx = right - pw2;
+        boolean hot = hov(bx, y - 3, pw2, 16);
+        Draw.rrect(g, bx, y - 3, pw2, 16, 6, hot ? Draw.rgba(0xFFFF5C6C, 0.38f) : Draw.rgba(0xFFFF5C6C, 0.16f));
+        Draw.rrectLine(g, bx, y - 3, pw2, 16, 6, Draw.rgba(0xFFFF5C6C, hot ? 0.9f : 0.4f));
+        Draw.textCenter(g, "Panic", bx + pw2 / 2, y, 0xFFFFA0A8);
+        hit(bx, y - 3, pw2, 16, b -> Zeus.panic(true), "Switches every module off at once");
+        Draw.textRight(g, a, bx - 10, y, active > 0 ? Draw.mix(Accent.TEXT, accent, 0.5f) : Accent.FAINT);
+    }
+
+    // ------------------------------------------------------------ the Windows layout
+
+    private void drawColumns(GuiGraphics g, float dt, int live, int accent, int second) {
+        hits.clear();
+        tip = null;
+        boolean interactive = live == 1;
+        int rmx = mx;
+        int rmy = my;
+        mx = interactive ? mx : -1000;
+        my = interactive ? my : -1000;
+        winRect.clear();
+        clipTop = -1;
+        clipBottom = -1;
+        String q = query();
+
+        // ---- the top bar. Laid out from the right: close, layout, HUD editor and look settings sit in one row that
+        // owns its own space; the search box and the sort button are fitted into what is left between the name and them.
+        g.fillGradient(0, 0, width, 40, Draw.rgba(0xFF04060E, 0.55f), 0x00000000);
+        if (live == 1 && !Logo.live("panel", g, 24, 22, 30f, anim(), accent, second, 1f)) Logo.packed(g, 24, 22, 24f, anim(), accent, second, 1f);
+        drawBrand(g, 44, 9, accent, second);
+        int right = width - 10;
+        drawHeaderButtons(g, right, 12, accent, false);
+        int gx = right - 76; // the look button, the fourth in the row (close, layout, HUD editor are drawn by drawHeaderButtons)
+        boolean hotG = hov(gx, 12, 16, 16);
+        Draw.rrect(g, gx, 12, 16, 16, 5, hotG ? Draw.rgba(accent, 0.28f) : Accent.CARD);
+        Icons.draw(g, Icons.GEAR, gx + 8, 20, hotG ? 0xFFFFFFFF : Accent.DIM);
+        hit(gx, 12, 16, 16, b -> {
+            popup = null;
+            popupPanel = true;
+            popupReveal = 0f;
+            popupScroll = 0;
+            popupX = Math.max(8, width - 250);
+            popupY = 36;
+        }, "The look of Zeus: colour, layout, intro and keys");
+
+        // tidy: snaps every dragged window back into the neat grid
+        int tdx = gx - 20;
+        boolean hotT = hov(tdx, 12, 16, 16);
+        Draw.rrect(g, tdx, 12, 16, 16, 5, hotT ? Draw.rgba(accent, 0.28f) : Accent.CARD);
+        int tcol = hotT ? 0xFFFFFFFF : Accent.DIM;
+        g.fill(tdx + 3, 15, tdx + 7, 19, tcol);
+        g.fill(tdx + 9, 15, tdx + 13, 19, tcol);
+        g.fill(tdx + 3, 21, tdx + 7, 25, tcol);
+        g.fill(tdx + 9, 21, tdx + 13, 25, tcol);
+        hit(tdx, 12, 16, 16, b -> {
+            UiState.tidy();
+            ORDER.clear();
+            ORDER.add(UiState.FAVOURITES);
+                for (Category c : Category.values()) ORDER.add(c.name());
+            pageAt = System.nanoTime();
+        }, "Tidy up: put every window back into the neat grid");
+
+        int brandRight = 44 + Math.max(Draw.width("Thunder client"), Draw.widthBold("ZEUS") + 8 + Draw.width("v" + Zeus.VERSION) + 10) + 14;
+        int midL = brandRight;
+        int midR = tdx - 10;
+        int mid = Math.max(40, midR - midL);
+        String sortText = "Sort: " + sortName();
+        int chipW = Draw.width(sortText) + 16;
+        boolean showChip = mid >= 120 + chipW + 8;
+        int sw = Math.max(60, Math.min(210, showChip ? mid - chipW - 8 : mid));
+        int total = sw + (showChip ? chipW + 8 : 0);
+        int sx = midL + Math.max(0, (mid - total) / 2);
+        boolean focused = search.isFocused();
+        Draw.rrect(g, sx, 11, sw, 18, 7, 0xE0111626);
+        Draw.rrectLine(g, sx, 11, sw, 18, 7, focused ? Draw.rgba(accent, 0.85f) : Accent.LINE);
+        Draw.ellipse(g, sx + 9, 19, 3, 3, Accent.FAINT);
+        Draw.ellipse(g, sx + 9, 19, 2, 2, 0xFF111626);
+        Draw.line(g, sx + 11, 21, sx + 14, 24, 1.2f, Accent.FAINT);
+        search.setX(sx + 20);
+        search.setY(14);
+        search.setWidth(sw - 26);
+        hit(sx, 11, sw, 18, b -> {
+            search.setFocused(true);
+            setFocused(search);
+        }, null);
+        search.render(g, mx, my, 0f);
+        if (showChip) drawSortChip(g, sx + sw + 8, 11, chipW, 18, sortText, accent);
+
+        // ---- which windows there are: starred modules, recent ones, then the categories
+        int sortMode = UiSettings.SORT.index();
+        // The sorted lists are rebuilt a few times a second, not every frame (sorting 170+ modules 60 times a second is wasted work).
+        long nowNs = System.nanoTime();
+        String defsKey = q + "|" + sortMode;
+        if (defsCache == null || !defsKey.equals(defsCacheKey) || nowNs - defsCacheAt > 120_000_000L) {
+            List<WinDef> built = new ArrayList<>();
+            if (q.isEmpty()) {
+                built.add(new WinDef(UiState.FAVOURITES, "Favourites", 0xFFFFC857, null, "starfill", Usage.favourites()));
+            }
+            for (Category c : Category.values()) {
+                List<Module> mods = q.isEmpty() ? Usage.sorted(Zeus.in(c), sortMode) : searchResults(q, c);
+                if (!mods.isEmpty()) built.add(new WinDef(c.name(), c.label, c.color, c, null, mods));
+            }
+            // keep the fold animation state of windows that already existed
+            if (defsCache != null) for (WinDef nd : built) for (WinDef od : defsCache) if (od.key.equals(nd.key)) nd.open = od.open;
+            defsCache = built;
+            defsCacheKey = defsKey;
+            defsCacheAt = nowNs;
+        }
+        List<WinDef> defs = defsCache;
+
+        // ---- the size and place of every window
+        int w = windowWidth();
+        winW = w;
+        int topY = 38;
+        int bottom = height - 30;
+        int avail = Math.max(WIN_HEAD + ROW_H * 3, bottom - topY);
+        int cols = Math.max(1, (width - 8) / (w + 6));
+        int gridW = cols * (w + 6) - 6;
+        int left = Math.max(4, (width - gridW) / 2);
+        Map<String, int[]> plan = new HashMap<>();
+        List<WinDef> tiled = new ArrayList<>();
+        for (WinDef d : defs) {
+            UiState.Win st = UiState.win(d.key);
+            float open = openOf(d.key, st.collapsed && q.isEmpty(), dt);
+            d.open = open;
+            d.content = Math.max(1, d.mods.size()) * ROW_H + 4;
+            if (st.placed) {
+                int px2 = Math.round(Math.max(0, Math.min(width - w, st.x)));
+                int py2 = Math.round(Math.max(0, Math.min(height - WIN_HEAD - 2, st.y)));
+                plan.put(d.key, new int[] {px2, py2, Math.max(ROW_H * 3, height - py2 - WIN_HEAD - 30)});
+            } else {
+                tiled.add(d);
+            }
+        }
+        // Tiled windows are packed into columns: each next window goes under the shortest column, so there are no big gaps and
+        // nothing overlaps. A column that would run off the screen shrinks its windows a little (they scroll inside).
+        int[] colH = new int[cols];
+        List<List<WinDef>> stacks = new ArrayList<>();
+        for (int i = 0; i < cols; i++) stacks.add(new ArrayList<>());
+        for (WinDef d : tiled) {
+            int best = 0;
+            for (int i = 1; i < cols; i++) if (colH[i] < colH[best]) best = i;
+            stacks.get(best).add(d);
+            colH[best] += WIN_HEAD + Math.min(d.content, fixedSize(d) ? ROW_H * WIN_ROWS_SHORT + 4 : ROW_H * WIN_ROWS + 4) + 6;
+        }
+        for (int ci = 0; ci < cols; ci++) {
+            List<WinDef> stack = stacks.get(ci);
+            if (stack.isEmpty()) continue;
+            int heads = stack.size() * WIN_HEAD + (stack.size() - 1) * 6;
+            // the Favourites and Recently used windows keep their size (they are short); the rest share what is left
+            float natural = 0;
+            float fixedBody = 0;
+            for (WinDef d : stack) {
+                if (fixedSize(d)) fixedBody += Math.min(d.content, ROW_H * WIN_ROWS_SHORT + 4) * d.open;
+                else natural += Math.min(d.content, ROW_H * WIN_ROWS + 4) * d.open;
+            }
+            float room = avail - heads - fixedBody;
+            float factor = natural <= room || natural <= 0 ? 1f : Math.max(0.2f, room / natural);
+            int yy = topY;
+            for (WinDef d : stack) {
+                int cap = Math.min(d.content, ROW_H * WIN_ROWS + 4);
+                int body = fixedSize(d) ? Math.min(d.content, ROW_H * WIN_ROWS_SHORT + 4)
+                        : Math.max(Math.min(d.content, ROW_H * 3), Math.round(cap * factor));
+                int shown = Math.round(Math.min(d.content, body) * d.open);
+                plan.put(d.key, new int[] {left + ci * (w + 6), yy, body});
+                yy += WIN_HEAD + shown + 6;
+            }
+        }
+        // z-order: the window you touched last is on top
+        for (String key : ORDER) {
+            int[] at = plan.get(key);
+            if (at == null) continue;
+            for (WinDef d : defs) {
+                if (d.key.equals(key)) {
+                    drawWindow(g, d, at[0], at[1], at[2], accent, second, dt, !q.isEmpty());
+                    break;
+                }
+            }
+        }
+        clipTop = -1;
+        clipBottom = -1;
+
+        // the bottom bar
+        int bw = Math.min(width - 16, 280);
+        int bx = (width - bw) / 2;
+        Draw.rrect(g, bx, height - 24, bw, 20, 9, 0xE60B0F1A);
+        Draw.rrectLine(g, bx, height - 24, bw, 20, 9, Accent.LINE);
+        drawFooter(g, bx + 12, bx + bw - 8, height - 18, accent);
+
+        drawPopup(g, accent, second, dt);
+        if (tip != null && interactive) drawTip(g);
+        mx = rmx;
+        my = rmy;
+    }
+
+    private static boolean fixedSize(WinDef d) {
+        return d.cat == null;
+    }
+
+    /** One window of the Windows layout: its name, colour, icon and the modules in it. */
+    private static final class WinDef {
+        final String key;
+        final String label;
+        final int color;
+        final Category cat;
+        final String glyph;
+        final List<Module> mods;
+        float open;
+        int content;
+
+        WinDef(String key, String label, int color, Category cat, String glyph, List<Module> mods) {
+            this.key = key;
+            this.label = label;
+            this.color = color;
+            this.cat = cat;
+            this.glyph = glyph;
+            this.mods = mods;
+        }
+    }
+
+    private List<WinDef> defsCache;
+    private String defsCacheKey = "";
+    private long defsCacheAt;
+    private int winW = WIN_W;
+
+    /** The width of every window: wide enough for nearly every module name, between 104 and 124. */
+    private int windowWidth() {
+        if (cachedWinW > 0) return cachedWinW;
+        List<Integer> widths = new ArrayList<>();
+        for (Module m : Zeus.all()) if (m.toggleable()) widths.add(Draw.width(m.name));
+        java.util.Collections.sort(widths);
+        int p = widths.isEmpty() ? 80 : widths.get(Math.min(widths.size() - 1, (int) (widths.size() * 0.97)));
+        cachedWinW = Math.max(104, Math.min(124, p + 26));
+        return cachedWinW;
+    }
+
+    private int cachedWinW;
+
+    /** Eases a window's fold amount toward open (1) or folded (0). */
+    private float openOf(String key, boolean collapsed, float dt) {
+        float target = collapsed ? 0f : 1f;
+        float open = windowOpen.getOrDefault(key, 0f);
+        open += (target - open) * Math.min(1f, dt * 17f);
+        if (Math.abs(target - open) < 0.008f) open = target;
+        windowOpen.put(key, open);
+        return open;
+    }
+
+    private String sortName() {
+        return switch (UiSettings.SORT.index()) {
+            case 1 -> "Most used";
+            case 2 -> "A to Z";
+            default -> "Category";
+        };
+    }
+
+    /** The small button that cycles Category order, Most used first and A to Z. */
+    private void drawSortChip(GuiGraphics g, int x, int y, int w, int h, String text, int accent) {
+        boolean hot = hov(x, y, w, h);
+        boolean on = UiSettings.SORT.index() != 0;
+        Draw.rrect(g, x, y, w, h, 7, hot ? Draw.rgba(accent, 0.30f) : on ? Draw.rgba(accent, 0.18f) : 0xE0111626);
+        Draw.rrectLine(g, x, y, w, h, 7, hot || on ? Draw.rgba(accent, 0.75f) : Accent.LINE);
+        Draw.textCenter(g, text, x + w / 2, y + (h - 8) / 2, hot || on ? 0xFFFFFFFF : Accent.DIM);
+        hit(x, y, w, h, b -> {
+            int n = UiSettings.SORT.index();
+            UiSettings.SORT.set((n + (b == 1 ? 2 : 1)) % 3);
+            scroll = 0;
+            pageAt = System.nanoTime();
+        }, "Sort the modules: category order, the ones you use most first, or A to Z. Click to change.");
+    }
+
+    private void drawWindow(GuiGraphics g, WinDef def, int x, int y, int bodyMax, int accent, int second, float dt, boolean searching) {
+        String key = def.key;
+        List<Module> mods = def.mods;
+        int ww = winW;
+        UiState.Win win = UiState.win(key);
+        boolean collapsed = win.collapsed && !searching;
+        int contentH = def.content;
+        float open = def.open;
+        int fullBodyH = Math.min(contentH, bodyMax);
+        int bodyH = Math.round(fullBodyH * open);
+        int total = WIN_HEAD + bodyH;
+        int maxScroll = Math.max(0, contentH - bodyH);
+        win.scroll = Math.max(0, Math.min(maxScroll, win.scroll));
+        winRect.put(key, new int[] {x, y, ww, total});
+
+        Draw.shadow(g, x, y, ww, total, 6, 6, 0.9f);
+        Draw.rrect(g, x, y, ww, total, 6, 0xFA090D18);
+        Draw.rrectLineFast(g, x, y, ww, total, 6, Draw.mix(Accent.LINE, accent, 0.28f));
+        // header: this category's colour blended with the accent, brightest on top
+        int tint = Draw.mix(def.color, accent, 0.45f);
+        int topC = Draw.mix(tint, 0xFFFFFFFF, 0.14f);
+        int botC = Draw.mix(tint, second, 0.45f);
+        Draw.rrect(g, x, y, ww, WIN_HEAD, 6, Draw.rgba(topC, 0.96f), Draw.rgba(botC, 0.96f));
+        if (!collapsed) g.fillGradient(x, y + WIN_HEAD - 6, x + ww, y + WIN_HEAD, Draw.rgba(Draw.mix(topC, botC, 0.66f), 0.96f), Draw.rgba(botC, 0.96f));
+        g.fill(x + 6, y + 1, x + ww - 6, y + 2, 0x30FFFFFF);
+        if (def.cat != null) Icons.draw(g, def.cat.ordinal(), x + 11, y + WIN_HEAD / 2f, 0xFFFFFFFF);
+        else Glyphs.draw(g, def.glyph, x + 11, y + WIN_HEAD / 2f, 11, 0xFFFFFFFF);
+        Draw.bold(g, def.label, x + 22, y + 5, 0xFFFFFFFF);
+        // fold arrow
+        int ax = x + ww - 11;
+        int ay = y + WIN_HEAD / 2;
+        if (collapsed) {
+            Draw.line(g, ax - 2, ay - 3, ax + 2, ay, 1.3f, 0xFFFFFFFF);
+            Draw.line(g, ax + 2, ay, ax - 2, ay + 3, 1.3f, 0xFFFFFFFF);
+        } else {
+            Draw.line(g, ax - 3, ay - 2, ax, ay + 2, 1.3f, 0xFFFFFFFF);
+            Draw.line(g, ax, ay + 2, ax + 3, ay - 2, 1.3f, 0xFFFFFFFF);
+        }
+        int on = 0;
+        for (Module m : mods) if (m.enabled() && m.toggleable()) on++;
+        if (on > 0) {
+            String s = Integer.toString(on);
+            int bw = Draw.width(s) + 8;
+            int bx = x + 22 + Draw.widthBold(def.label) + 5;
+            if (bx + bw < x + ww - 18) {
+                Draw.rrect(g, bx, y + 4, bw, 10, 5, 0x55000000);
+                Draw.textCenter(g, s, bx + bw / 2, y + 5, 0xFFFFFFFF);
+            }
+        }
+        // a block over the whole window so clicks do not fall through to windows below, then the header on top of it
+        hit(x, y, ww, total, b -> { }, null);
+        hit(x, y, ww, WIN_HEAD, b -> {
+            if (b != 0) return;
+            dragWin = key;
+            dragPopup = false;
+            dragMoved = false;
+            pressX = mx;
+            pressY = my;
+            dragOffX = mx - x;
+            dragOffY = my - y;
+            ORDER.remove(key);
+            ORDER.add(key);
+        }, "Drag to move, click to fold");
+        if (bodyH <= 0) return;
+
+        int top = y + WIN_HEAD;
+        g.enableScissor(x, top, x + ww, top + bodyH);
+        clipTop = top;
+        clipBottom = top + bodyH;
+        int ry = top + 2 - Math.round(win.scroll);
+        float entered = (System.nanoTime() - pageAt) / 1e9f;
+        int rowIndex = 0;
+        boolean winHot = hov(x, top, ww, bodyH);
+        if (mods.isEmpty()) {
+            Draw.text(g, "Nothing starred yet.", x + 8, top + 5, Accent.FAINT);
+            Draw.text(g, Draw.fit("Click the star on a module.", ww - 14), x + 8, top + 17, Accent.FAINT);
+        }
+        for (Module m : mods) {
+            if (ry + ROW_H >= top && ry <= top + bodyH) {
+                float stagger = UiSettings.CALM.on() || Perf.fast() ? 1f
+                        : Math.max(0f, Math.min(1f, (entered - Math.min(rowIndex, 10) * 0.025f) / 0.22f));
+                float slide = 1f - (1f - stagger) * (1f - stagger);
+                if (slide < 1f) {
+                    g.pose().pushMatrix();
+                    g.pose().translate((1f - slide) * 8f, (1f - slide) * 2f);
+                }
+                drawModuleRow(g, m, x + 2, ry, ww - 4, accent, second, dt, winHot);
+                if (slide < 1f) g.pose().popMatrix();
+            }
+            ry += ROW_H;
+            rowIndex++;
+        }
+        g.disableScissor();
+        clipTop = -1;
+        clipBottom = -1;
+        if (maxScroll > 0) {
+            int sbh = Math.max(10, Math.round(bodyH * (bodyH / (float) contentH)));
+            int sby = top + Math.round((bodyH - sbh) * (win.scroll / maxScroll));
+            g.fill(x + ww - 3, sby, x + ww - 2, sby + sbh, Draw.rgba(accent, 0.6f));
+        }
+    }
+
+    private final Map<Module, String> rowKeys = new HashMap<>();
+
+    private void drawModuleRow(GuiGraphics g, Module m, int x, int y, int w, int accent, int second, float dt, boolean winHot) {
+        boolean hot = hov(x, y, w, ROW_H - 1) && my >= clipTop && my < clipBottom;
+        String key = rowKeys.computeIfAbsent(m, k -> "row" + k.id);
+        float hv = ease(key, hot, dt);
+        float on = toggle.getOrDefault(m.id, m.enabled() ? 1f : 0f);
+        float want = m.enabled() ? 1f : 0f;
+        on += (want - on) * Math.min(1f, dt * 16f);
+        if (Math.abs(want - on) < 0.01f) on = want;
+        toggle.put(m.id, on);
+        int col = m.category.color;
+        if (on > 0.01f) {
+            g.fillGradient(x, y, x + w, y + ROW_H - 1, Draw.rgba(Draw.mix(accent, col, 0.4f), 0.30f * on), Draw.rgba(second, 0.14f * on));
+            g.fill(x, y + 1, x + 2, y + ROW_H - 2, Draw.rgba(Draw.mix(col, 0xFFFFFFFF, 0.35f), on));
+        } else if (hv > 0.01f) {
+            g.fill(x, y, x + w, y + ROW_H - 1, Draw.rgba(0xFFFFFFFF, 0.06f * hv));
+        }
+        // the star: gold when the module is a favourite, a faint outline while the mouse is over the window, nothing otherwise
+        boolean fav = Usage.favourite(m);
+        if (fav || winHot) {
+            int starCol = fav ? 0xFFFFC857 : hov(x + 2, y, 13, ROW_H - 1) ? 0xFFFFE08A : Draw.rgba(0xFFFFFFFF, 0.22f);
+            Glyphs.draw(g, fav ? "starfill" : "star", x + 9, y + ROW_H / 2f - 0.5f, 8, starCol);
+        }
+        int tc = Draw.mix(Draw.mix(Accent.DIM, Accent.TEXT, hv), 0xFFFFFFFF, on);
+        int nameX = x + 16;
+        int nameRoom = w - 16 - (m.toggleable() ? 20 : 8);
+        // what the module costs: a small percentage left of the switch, green when small, red when it takes a lot
+        float cost = m.enabled() && UiSettings.SHOW_COST.on() ? m.costPct : 0f;
+        if (cost >= 0.1f) {
+            String ct = cost >= 10f ? Math.round(cost) + "%" : String.format(java.util.Locale.ROOT, "%.1f%%", cost);
+            int cw = Draw.width(ct);
+            int cc = cost < 1f ? 0xFF5EE6A0 : cost < 3f ? 0xFFFFC857 : 0xFFFF5C6C;
+            Draw.text(g, ct, x + w - (m.toggleable() ? 20 : 8) - cw, y + 3, Draw.rgba(cc, 0.9f));
+            nameRoom -= cw + 4;
+        }
+        Draw.text(g, Draw.fit(m.name, nameRoom), nameX, y + 3, tc);
+        if (m.toggleable()) {
+            // a small switch at the right edge
+            int sx = x + w - 15;
+            int sy = y + 4;
+            g.fill(sx, sy, sx + 10, sy + 6, Draw.mix(0xFF1B2136, Draw.rgba(col, 1f), 0.55f * on));
+            int kx = sx + 1 + Math.round(4 * on);
+            g.fill(kx, sy + 1, kx + 4, sy + 5, Draw.mix(Accent.FAINT, 0xFFFFFFFF, on));
+        }
+        if (!m.settings().isEmpty()) {
+            // a dotted bar: this one has settings (right click)
+            g.fill(x + w - 3, y + 4, x + w - 2, y + 11, Draw.rgba(0xFFFFFFFF, 0.14f + 0.45f * hv + 0.2f * on));
+        }
+        final String hint = (Draw.width(m.name) > nameRoom ? m.name + ": " : "") + m.desc + (m.toggleable() ? "  (Right click: settings)" : "");
+        hit(x, y, w, ROW_H - 1, bt -> {
+            if (bt == 0 && m.toggleable()) m.toggle();
+            else openPopup(m);
+        }, hint);
+        hit(x, y, 14, ROW_H - 1, bt -> Usage.toggleFavourite(m), fav ? "Remove " + m.name + " from your favourites" : "Add " + m.name + " to your favourites");
+    }
+
+    private void openPopup(Module m) {
+        popup = m;
+        popupPanel = false;
+        popupReveal = 0f;
+        popupScroll = 0;
+        popupX = Math.min(width - 250, mx + 12);
+        popupY = Math.max(8, my - 10);
+    }
+
+    private void closePopup() {
+        popup = null;
+        popupPanel = false;
+        listening = null;
+        listeningOpen = false;
+    }
+
+    private void drawPopup(GuiGraphics g, int accent, int second, float dt) {
+        if (popup == null && !popupPanel) return;
+        List<Setting> rows = popupPanel ? Zeus.UI.settings() : popup.settings();
+        int w = 236;
+        int inner = 6;
+        for (Setting s : rows) if (s.visible()) inner += rowH(s);
+        if (popupPanel) inner += 24;
+        int head = 24;
+        int maxH = height - 56;
+        int bodyH = Math.min(inner, Math.max(60, maxH - head));
+        int h = head + bodyH;
+        popupX = Math.max(4, Math.min(width - w - 4, popupX < 0 ? (width - w) / 2f : popupX));
+        popupY = Math.max(4, Math.min(height - h - 28, popupY < 0 ? (height - h) / 2f : popupY));
+        popupReveal += (1f - popupReveal) * Math.min(1f, dt * 18f);
+        if (popupReveal > 0.995f) popupReveal = 1f;
+        int x = Math.round(popupX);
+        int y = Math.round(popupY + (1f - popupReveal) * 12f);
+        int col = popupPanel ? accent : popup.category.color;
+        popupContent = inner;
+        popupViewTop = y + head;
+        popupViewH = bodyH;
+        int maxScroll = Math.max(0, inner - bodyH);
+        popupScroll = Math.max(0, Math.min(maxScroll, popupScroll));
+
+        g.nextStratum();
+        Draw.shadow(g, x, y, w, h, 8, 14, 0.95f);
+        Draw.rrect(g, x, y, w, h, 8, 0xF5101524);
+        Draw.rrectLine(g, x, y, w, h, 8, Draw.rgba(col, 0.6f));
+        Draw.rrect(g, x, y, w, head, 8, Draw.rgba(Draw.mix(col, 0xFFFFFFFF, 0.1f), 0.28f), Draw.rgba(col, 0.10f));
+        winRect.put(null, new int[] {x, y, w, h});
+        hit(x, y, w, h, b -> { }, null);
+        hit(x, y, w - 60, head, b -> {
+            if (b != 0) return;
+            dragPopup = true;
+            dragWin = null;
+            dragMoved = false;
+            pressX = mx;
+            pressY = my;
+            dragOffX = mx - popupX;
+            dragOffY = my - popupY;
+        }, "Drag to move");
+        // header content
+        int hx = x + 8;
+        if (!popupPanel && popup.toggleable()) {
+            float on = toggle.getOrDefault(popup.id, popup.enabled() ? 1f : 0f);
+            drawSwitch(g, hx, y + 6, 22, 11, on, col, false);
+            final Module pm = popup;
+            hit(hx - 2, y + 3, 28, 17, b -> pm.toggle(), "Switch " + pm.name + (pm.enabled() ? " off" : " on"));
+            hx += 28;
+        }
+        Draw.bold(g, popupPanel ? "Zeus" : popup.name, hx, y + 8, Accent.TEXT);
+        int cx = x + w - 20;
+        boolean hotC = hov(cx, y + 4, 16, 16);
+        Draw.rrect(g, cx, y + 4, 16, 16, 5, hotC ? Draw.rgba(0xFFFF5C6C, 0.25f) : Draw.rgba(0xFFFFFFFF, 0.05f));
+        Draw.line(g, cx + 5, y + 9, cx + 11, y + 15, 1.2f, hotC ? 0xFFFF8C98 : Accent.DIM);
+        Draw.line(g, cx + 11, y + 9, cx + 5, y + 15, 1.2f, hotC ? 0xFFFF8C98 : Accent.DIM);
+        hit(cx, y + 4, 16, 16, b -> closePopup(), "Close");
+        if (!popupPanel && popup.key != null && popup.toggleable()) drawBind(g, popup.key, popup, cx - 4, y + 5, false, y, h);
+
+        // body
+        int top = y + head;
+        g.enableScissor(x, top, x + w, top + bodyH);
+        clipTop = top;
+        clipBottom = top + bodyH;
+        int ry = top + 4 - Math.round(popupScroll);
+        if (popupPanel) {
+            Draw.text(g, "Open key", x + 12, ry + 5, Accent.TEXT);
+            drawBind(g, ZeusClient.OPEN, null, x + w - 12, ry + 3, true, top, bodyH);
+            ry += 24;
+        }
+        for (Setting s : rows) {
+            if (!s.visible()) continue;
+            drawRow(g, s, x + 12, ry, w - 24, col, top, bodyH);
+            ry += rowH(s);
+        }
+        g.disableScissor();
+        clipTop = -1;
+        clipBottom = -1;
+        if (maxScroll > 0) {
+            int sbh = Math.max(10, Math.round(bodyH * (bodyH / (float) inner)));
+            int sby = top + Math.round((bodyH - sbh) * (popupScroll / maxScroll));
+            g.fill(x + w - 3, sby, x + w - 2, sby + sbh, Draw.rgba(col, 0.7f));
+        }
+    }
+
+    private void drawTip(GuiGraphics g) {
+        g.nextStratum();
+        String t = tip;
+        int maxW = 220;
+        List<String> lines = wrap(t, maxW);
+        int w = 0;
+        for (String l : lines) w = Math.max(w, Draw.width(l));
+        w += 14;
+        int h = lines.size() * 10 + 8;
+        int x = Math.min(width - w - 4, mx + 12);
+        int y = Math.min(height - h - 4, my + 14);
+        Draw.shadow(g, x, y, w, h, 4, 4, 0.8f);
+        Draw.rrect(g, x, y, w, h, 4, 0xFA0B0E18);
+        Draw.rrectLine(g, x, y, w, h, 4, Draw.rgba(Accent.main(), 0.5f));
+        int ly = y + 4;
+        for (String l : lines) {
+            Draw.text(g, l, x + 7, ly, Accent.TEXT);
+            ly += 10;
+        }
+    }
+
+    private static List<String> wrap(String s, int maxW) {
+        List<String> out = new ArrayList<>();
+        StringBuilder cur = new StringBuilder();
+        for (String word : s.split(" ")) {
+            String test = cur.length() == 0 ? word : cur + " " + word;
+            if (Draw.width(test) > maxW && cur.length() > 0) {
+                out.add(cur.toString());
+                cur = new StringBuilder(word);
+            } else {
+                cur = new StringBuilder(test);
+            }
+        }
+        if (cur.length() > 0) out.add(cur.toString());
+        return out;
+    }
+
+    // ------------------------------------------------------------ helpers and input
+
+    private boolean hov(int x, int y, int w, int h) {
+        return mx >= x && mx < x + w && my >= y && my < y + h;
+    }
+
+    private int clipTop = -1;
+    private int clipBottom = -1;
+
+    private void hit(int x, int y, int w, int h, Click run, String tipText) {
+        if (clipTop >= 0) {
+            int y2 = Math.min(y + h, clipBottom);
+            y = Math.max(y, clipTop);
+            h = y2 - y;
+            if (h <= 0) return;
+        }
+        hits.add(new Hit(x, y, w, h, run));
+        if (tipText != null && hov(x, y, w, h)) tip = tipText;
+    }
+
+    private void applyDrag(double mouseX) {
+        if (dragging == null) return;
+        double f = (mouseX - dragX) / Math.max(1.0, dragW);
+        f = Math.max(0, Math.min(1, f));
+        dragging.set(dragging.min + f * (dragging.max - dragging.min));
+    }
+
+    @Override
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        if (time() < Intro.LEAVE) {
+            skipIntro();
+            return true;
+        }
+        double x = event.x();
+        double y = event.y();
+        if (editing != null) stopEditing(); // the row you click next may open its own box again
+        if (listening != null || listeningOpen) {
+            // a click on the chip itself is handled below; any other click cancels
+            boolean onChip = false;
+            for (Hit h : hits) if (x >= h.x && x < h.x + h.w && y >= h.y && y < h.y + h.h) onChip = true;
+            if (!onChip) {
+                listening = null;
+                listeningOpen = false;
+            }
+        }
+        for (int i = hits.size() - 1; i >= 0; i--) {
+            Hit h = hits.get(i);
+            if (x >= h.x && x < h.x + h.w && y >= h.y && y < h.y + h.h) {
+                if (event.button() <= 1) {
+                    h.run.on(event.button());
+                    return true;
+                }
+            }
+        }
+        // a click on nothing closes the settings window of the Windows layout
+        if (columns && (popup != null || popupPanel)) {
+            closePopup();
+            return true;
+        }
+        return super.mouseClicked(event, doubleClick);
+    }
+
+    @Override
+    public boolean mouseDragged(MouseButtonEvent event, double dragX, double dragY) {
+        if (dragging != null) {
+            applyDrag(event.x());
+            return true;
+        }
+        if (dragWin != null || dragPopup) {
+            if (Math.abs(event.x() - pressX) + Math.abs(event.y() - pressY) > 3 || dragMoved) dragMoved = true;
+            if (dragMoved) {
+                if (dragWin != null) {
+                    UiState.Win w = UiState.win(dragWin);
+                    w.x = (float) Math.max(0, Math.min(width - winW, event.x() - dragOffX));
+                    w.y = (float) Math.max(0, Math.min(height - WIN_HEAD - 2, event.y() - dragOffY));
+                    w.placed = true;
+                    Zeus.markDirty();
+                } else {
+                    popupX = (float) (event.x() - dragOffX);
+                    popupY = (float) (event.y() - dragOffY);
+                }
+            }
+            return true;
+        }
+        return super.mouseDragged(event, dragX, dragY);
+    }
+
+    @Override
+    public boolean mouseReleased(MouseButtonEvent event) {
+        dragging = null;
+        if (dragWin != null && !dragMoved) {
+            UiState.Win w = UiState.win(dragWin);
+            w.collapsed = !w.collapsed;
+            Zeus.markDirty();
+        }
+        dragWin = null;
+        dragPopup = false;
+        return super.mouseReleased(event);
+    }
+
+    @Override
+    public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
+        if (scrollY == 0) return super.mouseScrolled(x, y, scrollX, scrollY);
+        if (columns) {
+            int[] pr = winRect.get(null);
+            if ((popup != null || popupPanel) && pr != null && x >= pr[0] && x < pr[0] + pr[2] && y >= pr[1] && y < pr[1] + pr[3]) {
+                popupScroll -= (float) scrollY * 22f;
+                return true;
+            }
+            for (int i = ORDER.size() - 1; i >= 0; i--) {
+                String c = ORDER.get(i);
+                int[] r = winRect.get(c);
+                if (r != null && x >= r[0] && x < r[0] + r[2] && y >= r[1] && y < r[1] + r[3]) {
+                    UiState.win(c).scroll -= (float) scrollY * 22f;
+                    return true;
+                }
+            }
+            return true;
+        }
+        if (x >= sbRight) {
+            scroll -= (float) scrollY * 28f;
+            return true;
+        }
+        return super.mouseScrolled(x, y, scrollX, scrollY);
+    }
+
+    private void stopEditing() {
+        editing = null;
+        if (field != null) {
+            field.setFocused(false);
+            field.visible = false;
+        }
+        setFocused(null);
+    }
+
+    @Override
+    public boolean keyPressed(KeyEvent event) {
+        int key = event.key();
+        if (time() < Intro.LEAVE) {
+            skipIntro();
+            return true;
+        }
+        if (listening != null || listeningOpen) {
+            if (key == GLFW.GLFW_KEY_ESCAPE) {
+                listening = null;
+                listeningOpen = false;
+                return true;
+            }
+            KeyMapping target = listeningOpen ? ZeusClient.OPEN : listening.key;
+            if (key == GLFW.GLFW_KEY_BACKSPACE || key == GLFW.GLFW_KEY_DELETE) setKey(target, InputConstants.UNKNOWN);
+            else setKey(target, InputConstants.Type.KEYSYM.getOrCreate(key));
+            listening = null;
+            listeningOpen = false;
+            return true;
+        }
+        if (editing != null && field != null && field.isFocused()) {
+            if (key == GLFW.GLFW_KEY_ESCAPE || key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
+                stopEditing();
+                return true;
+            }
+            return super.keyPressed(event);
+        }
+        // Ctrl+K is a familiar, fast path to the command/search field from anywhere in the panel.
+        if (key == GLFW.GLFW_KEY_K && minecraft != null
+                && (event.modifiers() & GLFW.GLFW_MOD_CONTROL) != 0) {
+            if (search != null) {
+                search.setFocused(true);
+                setFocused(search);
+                return true;
+            }
+        }
+        if (search != null && search.isFocused()) {
+            if (key == GLFW.GLFW_KEY_ESCAPE) {
+                if (search.getValue().isEmpty()) {
+                    search.setFocused(false);
+                    setFocused(null);
+                } else {
+                    search.setValue("");
+                }
+                return true;
+            }
+            return super.keyPressed(event);
+        }
+        if (key == GLFW.GLFW_KEY_ESCAPE && columns && (popup != null || popupPanel)) {
+            closePopup();
+            return true;
+        }
+        if (key == GLFW.GLFW_KEY_PAGE_DOWN) {
+            scroll += 120;
+            return true;
+        }
+        if (key == GLFW.GLFW_KEY_PAGE_UP) {
+            scroll -= 120;
+            return true;
+        }
+        // the open key closes the panel again
+        if (ZeusClient.OPEN != null && !ZeusClient.OPEN.isUnbound() && InputConstants.Type.KEYSYM.getOrCreate(key).getName().equals(ZeusClient.OPEN.saveString())) {
+            onClose();
+            return true;
+        }
+        return super.keyPressed(event);
+    }
+}

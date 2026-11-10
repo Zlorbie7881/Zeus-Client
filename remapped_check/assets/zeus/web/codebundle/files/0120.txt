@@ -1,0 +1,537 @@
+package com.zlorbie788.zeus.mods;
+
+import com.zlorbie788.zeus.core.Category;
+import com.zlorbie788.zeus.core.Env;
+import com.zlorbie788.zeus.core.Module;
+import com.zlorbie788.zeus.core.Names;
+import com.zlorbie788.zeus.core.Setting;
+import com.zlorbie788.zeus.ui.Accent;
+import com.zlorbie788.zeus.ui.Draw;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.monster.Enemy;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.HitResult;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+
+/** Extra things drawn on the game screen. They only read what your own game already knows. */
+public final class Hud {
+    private Hud() {}
+
+    // ------------------------------------------------------------------ placement
+
+    private static final int[] USED = new int[4];
+    /** Height of the module list at the top right, so boxes in that corner start below it. */
+    static int listHeight;
+    private static final ThreadLocal<String> CURRENT_WIDGET = new ThreadLocal<>();
+
+    /** Where each widget drew this frame (in its own, unscaled coordinates) and where it drew on the last finished frame. */
+    private static final java.util.Map<String, int[]> FRAME_BOUNDS = new java.util.HashMap<>();
+    private static final java.util.Map<String, int[]> KNOWN_BOUNDS = new java.util.HashMap<>();
+
+    public static void beginWidget(String id) {
+        CURRENT_WIDGET.set(id);
+        FRAME_BOUNDS.remove(id);
+    }
+
+    public static void endWidget() {
+        String id = CURRENT_WIDGET.get();
+        if (id != null) {
+            int[] b = FRAME_BOUNDS.remove(id);
+            if (b != null) KNOWN_BOUNDS.put(id, b);
+            else KNOWN_BOUNDS.remove(id);
+        }
+        CURRENT_WIDGET.remove();
+    }
+
+    /** A widget tells the HUD editor which rectangle it just drew. Called again for every extra box; the boxes are joined. */
+    public static void record(int x, int y, int w, int h) {
+        String id = CURRENT_WIDGET.get();
+        if (id == null || w <= 0 || h <= 0) return;
+        int[] b = FRAME_BOUNDS.get(id);
+        if (b == null) FRAME_BOUNDS.put(id, new int[] {x, y, x + w, y + h});
+        else {
+            b[0] = Math.min(b[0], x);
+            b[1] = Math.min(b[1], y);
+            b[2] = Math.max(b[2], x + w);
+            b[3] = Math.max(b[3], y + h);
+        }
+    }
+
+    /** The rectangle {x0, y0, x1, y1} the widget drew on the last frame, or null when it drew nothing. */
+    public static int[] bounds(String id) { return KNOWN_BOUNDS.get(id); }
+    public static int accent() {
+        String id = CURRENT_WIDGET.get();
+        if (id != null) {
+            int custom = com.zlorbie788.zeus.ui.HudLayout.get(id).accent;
+            if (custom != 0) return custom;
+        }
+        return Accent.main();
+    }
+    private static float widgetOpacity() {
+        String id = CURRENT_WIDGET.get();
+        return id == null ? 1f : com.zlorbie788.zeus.ui.HudLayout.get(id).opacity;
+    }
+
+    /** Called once at the start of every frame so the boxes stack from scratch. */
+    public static void newFrame() {
+        USED[0] = 0;
+        USED[1] = 0;
+        USED[2] = 0;
+        USED[3] = 0;
+    }
+
+    static Setting.Choice corner(Module m, int def) {
+        return m.addSetting(new Setting.Choice("Corner", "Where it sits. Boxes in the same corner stack on top of each other.", def,
+                "Top left", "Top right", "Bottom left", "Bottom right"));
+    }
+
+    /** Reserves a box of the given size in a corner and returns its top-left position. */
+    public static int[] place(int corner, int bw, int bh, int w, int h) {
+        boolean right = corner == 1 || corner == 3;
+        boolean bottom = corner >= 2;
+        int base = switch (corner) {
+            case 0 -> 30;
+            case 1 -> 6 + (listHeight > 0 ? listHeight + 2 : 0);
+            case 2 -> 66;
+            default -> 6;
+        };
+        int x = right ? w - 6 - bw : 6;
+        int y = bottom ? h - base - USED[corner] - bh : base + USED[corner];
+        USED[corner] += bh + 4;
+        record(x, y, bw, bh);
+        return new int[] {x, y};
+    }
+
+    /** The background colour of every HUD box, from the panel's look settings. */
+    public static int bg() {
+        return Draw.rgba(0xFF0B0E16, (float) com.zlorbie788.zeus.ui.UiSettings.HUD_OPACITY.get() / 100f * widgetOpacity());
+    }
+
+    /** The corner radius of every HUD box. */
+    public static int round(int def) {
+        return Math.max(0, Math.min(def + 6, com.zlorbie788.zeus.ui.UiSettings.HUD_ROUND.i() + (def - 4)));
+    }
+
+    static void panel(GuiGraphics g, int x, int y, int w, int h) {
+        if (com.zlorbie788.zeus.ui.UiSettings.HUD_OPACITY.i() > 0) Draw.rrect(g, x, y, w, h, round(4), bg());
+        if (com.zlorbie788.zeus.ui.UiSettings.HUD_STRIPE.on()) g.fill(x, y + 3, x + 2, y + h - 3, accent());
+    }
+
+    // ------------------------------------------------------------------ Armor HUD
+
+    public static final class ArmorHud extends Module {
+        private final Setting.Choice corner = corner(this, 3);
+        private final Setting.Bool bars = add(new Setting.Bool("Durability numbers", "Show how much is left on every piece.", true));
+        private static final EquipmentSlot[] SLOTS = {EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET, EquipmentSlot.OFFHAND};
+
+        public ArmorHud() {
+            super("armorhud", "Armor HUD", "Your armor and offhand with how much durability is left.", Category.PANELS);
+            anywhere();
+        }
+
+        @Override
+        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            if (mc.player == null) return;
+            int rows = 0;
+            for (EquipmentSlot s : SLOTS) if (!mc.player.getItemBySlot(s).isEmpty()) rows++;
+            if (rows == 0) return;
+            int bw = bars.on() ? 58 : 26;
+            int bh = rows * 18 + 4;
+            int[] at = place(corner.index(), bw, bh, w, h);
+            panel(g, at[0], at[1], bw, bh);
+            int y = at[1] + 3;
+            for (EquipmentSlot s : SLOTS) {
+                ItemStack st = mc.player.getItemBySlot(s);
+                if (st.isEmpty()) continue;
+                g.renderItem(st, at[0] + 6, y);
+                if (bars.on()) {
+                    if (st.isDamaged()) {
+                        int left = st.getMaxDamage() - st.getDamageValue();
+                        float f = left / (float) st.getMaxDamage();
+                        int c = f > 0.5f ? 0xFF5EE6A0 : f > 0.2f ? 0xFFFFC857 : 0xFFFF5C6C;
+                        Draw.text(g, Integer.toString(left), at[0] + 26, y + 4, c);
+                    } else if (st.getCount() > 1) {
+                        Draw.text(g, "x" + st.getCount(), at[0] + 26, y + 4, Accent.DIM);
+                    }
+                }
+                y += 18;
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ Potion HUD
+
+    public static final class PotionHud extends Module {
+        private final Setting.Choice corner = corner(this, 0);
+
+        public PotionHud() {
+            super("potionhud", "Potion HUD", "Your potion effects with the time left.", Category.PANELS);
+            anywhere();
+        }
+
+        private static String roman(int n) {
+            String[] r = {"", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"};
+            return n >= 1 && n < r.length ? " " + r[n] : n >= r.length ? " " + (n + 1) : "";
+        }
+
+        @Override
+        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            if (mc.player == null) return;
+            List<String> names = new ArrayList<>();
+            List<String> times = new ArrayList<>();
+            List<Boolean> good = new ArrayList<>();
+            for (MobEffectInstance e : mc.player.getActiveEffects()) {
+                names.add(e.getEffect().value().getDisplayName().getString() + roman(e.getAmplifier()));
+                int t = e.getDuration();
+                times.add(t < 0 || t > 1_000_000 ? "inf" : String.format(Locale.ROOT, "%d:%02d", t / 1200, (t / 20) % 60));
+                good.add(e.getEffect().value().isBeneficial());
+            }
+            if (names.isEmpty()) return;
+            int bw = 0;
+            for (int i = 0; i < names.size(); i++) bw = Math.max(bw, Draw.width(names.get(i)) + Draw.width(times.get(i)) + 20);
+            int bh = names.size() * 11 + 6;
+            int[] at = place(corner.index(), bw, bh, w, h);
+            panel(g, at[0], at[1], bw, bh);
+            for (int i = 0; i < names.size(); i++) {
+                int y = at[1] + 4 + i * 11;
+                Draw.text(g, names.get(i), at[0] + 7, y, good.get(i) ? 0xFFBFF5D8 : 0xFFFFB0B8);
+                Draw.textRight(g, times.get(i), at[0] + bw - 5, y, Accent.DIM);
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ Keystrokes
+
+    public static final class Keystrokes extends Module {
+        private final Setting.Choice corner = corner(this, 3);
+        private final Setting.Bool mouse = add(new Setting.Bool("Mouse buttons", "Show the left and right button with clicks per second.", true));
+        private final long[] left = new long[32];
+        private final long[] right = new long[32];
+        private boolean wasL;
+        private boolean wasR;
+
+        public Keystrokes() {
+            super("keystrokes", "Keystrokes", "Shows the keys you hold and your clicks per second.", Category.PANELS);
+            anywhere();
+        }
+
+        private static void push(long[] ring, long t) {
+            for (int i = ring.length - 1; i > 0; i--) ring[i] = ring[i - 1];
+            ring[0] = t;
+        }
+
+        private static int cps(long[] ring, long now) {
+            int n = 0;
+            for (long t : ring) if (t != 0 && now - t < 1000) n++;
+            return n;
+        }
+
+        @Override
+        protected void onTick(Minecraft mc) {
+            boolean l = mc.options.keyAttack.isDown();
+            boolean r = mc.options.keyUse.isDown();
+            long now = System.currentTimeMillis();
+            if (l && !wasL) push(left, now);
+            if (r && !wasR) push(right, now);
+            wasL = l;
+            wasR = r;
+        }
+
+        private void key(GuiGraphics g, int x, int y, int w, int hgt, String label, boolean down) {
+            Draw.rrect(g, x, y, w, hgt, round(3), down ? Draw.rgba(accent(), 0.75f) : bg());
+            Draw.rrectLine(g, x, y, w, hgt, 3, down ? accent() : Accent.LINE);
+            Draw.textCenter(g, label, x + w / 2, y + (hgt - 8) / 2, down ? 0xFFFFFFFF : Accent.DIM);
+        }
+
+        @Override
+        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            int k = 18;
+            int bw = k * 3 + 4;
+            int bh = k * 2 + 2 + 12 + (mouse.on() ? k + 2 : 0);
+            int[] at = place(corner.index(), bw, bh, w, h);
+            int x = at[0];
+            int y = at[1];
+            key(g, x + k + 2, y, k, k, "W", mc.options.keyUp.isDown());
+            key(g, x, y + k + 2, k, k, "A", mc.options.keyLeft.isDown());
+            key(g, x + k + 2, y + k + 2, k, k, "S", mc.options.keyDown.isDown());
+            key(g, x + (k + 2) * 2, y + k + 2, k, k, "D", mc.options.keyRight.isDown());
+            key(g, x, y + k * 2 + 4, bw, 10, "", mc.options.keyJump.isDown());
+            g.fill(x + bw / 2 - 8, y + k * 2 + 8, x + bw / 2 + 8, y + k * 2 + 9, mc.options.keyJump.isDown() ? 0xFFFFFFFF : Accent.FAINT);
+            if (mouse.on()) {
+                long now = System.currentTimeMillis();
+                int by = y + k * 2 + 18;
+                int half = (bw - 2) / 2;
+                key(g, x, by, half, k, cps(left, now) + " cps", mc.options.keyAttack.isDown());
+                key(g, x + half + 2, by, half, k, cps(right, now) + " cps", mc.options.keyUse.isDown());
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ Target HUD
+
+    public static final class TargetHud extends Module {
+        private final Setting.Num hold = add(new Setting.Num("Keep showing", "Seconds the last target stays after you look away.", 3, 0, 10, 1, " s"));
+        private LivingEntity last;
+        private long seen;
+        private float shownHealth;
+
+        public TargetHud() {
+            super("targethud", "Target HUD", "Health and armor of whatever you are looking at.", Category.PANELS);
+            anywhere();
+        }
+
+        @Override
+        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            if (mc.player == null) return;
+            HitResult r = mc.hitResult;
+            long now = System.currentTimeMillis();
+            if (r instanceof EntityHitResult ehr && ehr.getEntity() instanceof LivingEntity le && le.isAlive()) {
+                if (le != last) shownHealth = le.getHealth();
+                last = le;
+                seen = now;
+            }
+            if (last == null || !last.isAlive() || now - seen > hold.get() * 1000) return;
+            LivingEntity e = last;
+            float max = Math.max(1f, e.getMaxHealth());
+            shownHealth += (e.getHealth() - shownHealth) * 0.15f;
+            String name = e.getName().getString();
+            int bw = Math.max(110, Draw.width(name) + 40);
+            int bh = 34;
+            int x = w / 2 + 14;
+            int y = h / 2 + 14;
+            panel(g, x, y, bw, bh);
+            Draw.text(g, name, x + 8, y + 5, Accent.TEXT);
+            float f = Math.max(0f, Math.min(1f, shownHealth / max));
+            int col = f > 0.5f ? 0xFF5EE6A0 : f > 0.25f ? 0xFFFFC857 : 0xFFFF5C6C;
+            g.fill(x + 8, y + 18, x + bw - 8, y + 24, 0x80000000);
+            g.fill(x + 8, y + 18, x + 8 + Math.round((bw - 16) * f), y + 24, col);
+            String hp = String.format(Locale.ROOT, "%.1f / %.1f", e.getHealth(), max);
+            Draw.text(g, hp, x + 8, y + 26 - 1, Accent.DIM);
+            if (e.getArmorValue() > 0) Draw.textRight(g, "armor " + e.getArmorValue(), x + bw - 8, y + 25, Accent.DIM);
+        }
+    }
+
+    // ------------------------------------------------------------------ Radar
+
+    public static final class Radar extends Module {
+        private final Setting.Choice corner = corner(this, 2);
+        private final Setting.Num size = add(new Setting.Num("Size", "Diameter of the radar.", 84, 50, 160, 2, " px"));
+        private final Setting.Num range = add(new Setting.Num("Range", "How far it sees.", 40, 10, 128, 2, " blocks"));
+        private final Setting.Bool players = add(new Setting.Bool("Players", "White dots.", true));
+        private final Setting.Bool monsters = add(new Setting.Bool("Monsters", "Red dots.", true));
+        private final Setting.Bool animals = add(new Setting.Bool("Animals", "Green dots.", false));
+        private final Setting.Bool items = add(new Setting.Bool("Dropped items", "Yellow dots.", false));
+        private final Setting.Bool rotate = add(new Setting.Bool("Turn with you", "Up is where you look. Off: up is north.", true));
+        private List<Entity> cache = List.of();
+        private int ticks;
+
+        public Radar() {
+            super("radar", "Radar", "A round map of who is around you.", Category.PANELS);
+            anywhere();
+        }
+
+        @Override
+        protected void onTick(Minecraft mc) {
+            if (++ticks % 3 == 0) cache = Env.entities(mc, range.get());
+        }
+
+        @Override
+        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            if (mc.player == null) return;
+            int d = size.i();
+            int[] at = place(corner.index(), d, d, w, h);
+            int cx = at[0] + d / 2;
+            int cy = at[1] + d / 2;
+            int r = d / 2;
+            Draw.ellipse(g, cx, cy, r, r, 0xA00B0E16);
+            Draw.ellipse(g, cx, cy, r / 2, r / 2, 0x18FFFFFF);
+            Draw.ellipse(g, cx, cy, r / 2 - 1, r / 2 - 1, 0xA00B0E16);
+            ring(g, cx, cy, r, Draw.rgba(accent(), 0.7f));
+            ring(g, cx, cy, r / 2, 0x30FFFFFF);
+            g.fill(cx - r, cy, cx + r, cy + 1, 0x18FFFFFF);
+            g.fill(cx, cy - r, cx + 1, cy + r, 0x18FFFFFF);
+            double yaw = Math.toRadians(mc.player.getYRot());
+            double sin = Math.sin(yaw);
+            double cos = Math.cos(yaw);
+            double scale = (r - 3) / range.get();
+            double px = mc.player.getX();
+            double pz = mc.player.getZ();
+            for (Entity e : cache) {
+                if (e == mc.player || !e.isAlive()) continue;
+                int col;
+                if (e instanceof Player) {
+                    if (!players.on()) continue;
+                    col = 0xFFFFFFFF;
+                } else if (e instanceof Enemy) {
+                    if (!monsters.on()) continue;
+                    col = 0xFFFF5C6C;
+                } else if (e instanceof ItemEntity) {
+                    if (!items.on()) continue;
+                    col = 0xFFFFC857;
+                } else if (e instanceof LivingEntity) {
+                    if (!animals.on()) continue;
+                    col = 0xFF5EE6A0;
+                } else {
+                    continue;
+                }
+                double dx = e.getX() - px;
+                double dz = e.getZ() - pz;
+                double sx;
+                double sy;
+                if (rotate.on()) {
+                    // what is ahead of you goes up, what is on your left goes left
+                    double ahead = -dx * sin + dz * cos;
+                    double leftOf = dx * cos + dz * sin;
+                    sx = -leftOf;
+                    sy = -ahead;
+                } else {
+                    sx = dx;
+                    sy = dz;
+                }
+                sx *= scale;
+                sy *= scale;
+                double len = Math.sqrt(sx * sx + sy * sy);
+                if (len > r - 3) {
+                    sx = sx / len * (r - 3);
+                    sy = sy / len * (r - 3);
+                }
+                int dotx = cx + (int) Math.round(sx);
+                int doty = cy + (int) Math.round(sy);
+                g.fill(dotx - 1, doty - 1, dotx + 2, doty + 2, 0xFF000000);
+                g.fill(dotx - 1, doty - 1, dotx + 1, doty + 1, col);
+            }
+            // you
+            g.fill(cx - 1, cy - 2, cx + 1, cy + 2, accent());
+            g.fill(cx - 2, cy - 1, cx + 2, cy + 1, accent());
+        }
+
+        private static void ring(GuiGraphics g, int cx, int cy, int r, int color) {
+            int n = Math.max(24, r);
+            float px = cx + r;
+            float py = cy;
+            for (int i = 1; i <= n; i++) {
+                float a = i / (float) n * 6.2832f;
+                float x = cx + (float) Math.cos(a) * r;
+                float y = cy + (float) Math.sin(a) * r;
+                Draw.line(g, px, py, x, y, 1f, color);
+                px = x;
+                py = y;
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ Compass
+
+    public static final class Compass extends Module {
+        private final Setting.Num width = add(new Setting.Num("Width", "Width of the strip.", 220, 120, 400, 10, " px"));
+
+        public Compass() {
+            super("compass", "Compass", "A strip at the top that shows which way you face.", Category.PANELS);
+            anywhere();
+        }
+
+        @Override
+        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            if (mc.player == null) return;
+            int bw = width.i();
+            int x = (w - bw) / 2;
+            int y = 4;
+            Draw.rrect(g, x, y, bw, 15, round(4), bg());
+            float yaw = ((mc.player.getYRot() % 360f) + 360f) % 360f;
+            // yaw 0 is south, 90 west, 180 north, 270 east
+            String[] marks = {"S", "SW", "W", "NW", "N", "NE", "E", "SE"};
+            float pxPerDeg = bw / 140f;
+            g.enableScissor(x + 2, y, x + bw - 2, y + 15);
+            for (int i = 0; i < 24; i++) {
+                float deg = i * 15f;
+                float diff = ((deg - yaw + 540f) % 360f) - 180f;
+                int sx = Math.round(x + bw / 2f + diff * pxPerDeg);
+                if (sx < x || sx > x + bw) continue;
+                if (i % 3 == 0) {
+                    String m = marks[i / 3];
+                    boolean north = m.equals("N");
+                    Draw.textCenter(g, m, sx, y + 4, north ? 0xFFFF5C6C : Accent.TEXT);
+                } else {
+                    g.fill(sx, y + 5, sx + 1, y + 10, Accent.FAINT);
+                }
+            }
+            g.disableScissor();
+            g.fill(x + bw / 2, y + 1, x + bw / 2 + 1, y + 4, accent());
+            Draw.textCenter(g, Math.round(yaw) + "", x + bw / 2, y + 17, Accent.DIM);
+        }
+    }
+
+    // ------------------------------------------------------------------ Item Counter
+
+    public static final class ItemCounter extends Module {
+        private final Setting.Choice corner = corner(this, 3);
+        private final Setting.Bool totems = add(new Setting.Bool("Totems", "Totems of Undying.", true));
+        private final Setting.Bool crystals = add(new Setting.Bool("End crystals", "End crystals.", true));
+        private final Setting.Bool obsidian = add(new Setting.Bool("Obsidian", "Obsidian blocks.", true));
+        private final Setting.Bool gapples = add(new Setting.Bool("Golden apples", "Golden apples.", true));
+        private final Setting.Bool exp = add(new Setting.Bool("Experience bottles", "Bottles o' enchanting.", false));
+        private final Setting.Bool pearls = add(new Setting.Bool("Ender pearls", "Ender pearls.", false));
+        private final Setting.Bool anchors = add(new Setting.Bool("Anchors and glowstone", "Respawn anchors and glowstone blocks.", false));
+
+        public ItemCounter() {
+            super("itemcounter", "Item Counter", "How many of your important items you carry.", Category.PANELS);
+            anywhere();
+        }
+
+        private static int count(Minecraft mc, String... ids) {
+            int n = 0;
+            var inv = mc.player.getInventory();
+            for (int i = 0; i < 41; i++) {
+                ItemStack s = inv.getItem(i);
+                if (s.isEmpty()) continue;
+                String name = Names.item(s);
+                for (String id : ids) if (name.equals(id)) n += s.getCount();
+            }
+            return n;
+        }
+
+        @Override
+        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            if (mc.player == null) return;
+            List<String> lines = new ArrayList<>();
+            List<Integer> counts = new ArrayList<>();
+            add(lines, counts, totems.on(), "Totems", count(mc, "totem_of_undying"));
+            add(lines, counts, crystals.on(), "Crystals", count(mc, "end_crystal"));
+            add(lines, counts, obsidian.on(), "Obsidian", count(mc, "obsidian"));
+            add(lines, counts, gapples.on(), "Gapples", count(mc, "golden_apple", "enchanted_golden_apple"));
+            add(lines, counts, exp.on(), "Exp bottles", count(mc, "experience_bottle"));
+            add(lines, counts, pearls.on(), "Pearls", count(mc, "ender_pearl"));
+            add(lines, counts, anchors.on(), "Anchors", count(mc, "respawn_anchor"));
+            add(lines, counts, anchors.on(), "Glowstone", count(mc, "glowstone"));
+            if (lines.isEmpty()) return;
+            int bw = 0;
+            for (String s : lines) bw = Math.max(bw, Draw.width(s) + 30);
+            int bh = lines.size() * 11 + 6;
+            int[] at = place(corner.index(), bw, bh, w, h);
+            panel(g, at[0], at[1], bw, bh);
+            for (int i = 0; i < lines.size(); i++) {
+                int y = at[1] + 4 + i * 11;
+                Draw.text(g, lines.get(i), at[0] + 7, y, Accent.DIM);
+                int c = counts.get(i);
+                Draw.textRight(g, Integer.toString(c), at[0] + bw - 5, y, c == 0 ? 0xFFFF7A86 : Accent.TEXT);
+            }
+        }
+
+        private static void add(List<String> lines, List<Integer> counts, boolean on, String name, int n) {
+            if (!on) return;
+            lines.add(name);
+            counts.add(n);
+        }
+    }
+}

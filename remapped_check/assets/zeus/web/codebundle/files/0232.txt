@@ -1,0 +1,177 @@
+/* Zeus Client website: polish layer. Loaded last. It flattens the glow-heavy look (solid surfaces, one thin border, small radii, no neon
+   shadows) and makes every page work properly on a phone. Nothing here removes a feature; it only restyles. */
+
+:root{
+  --r:12px;
+  --surface:#0a1426;--surface2:#0e1a30;--edge:#1c2e4d;--edge2:#2b4470;
+  --card:#0a1426;
+  --accent:#2f7df0;
+}
+
+/* ---------- flatter surfaces ---------- */
+.card,.strip,.mod,.steps li,.mcard,.tool-card,.gh-card,.band,.modal,.faq details,.ctl,.upd,.people>*,.kcard{
+  background:var(--surface)!important;
+  box-shadow:none!important;
+  border-color:var(--edge)!important;
+  backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+}
+.card::before,.band::before,.tool-card::before{display:none!important}
+.card{border-radius:var(--r)}
+.strip{border-radius:var(--r)}
+.strip a:first-child{border-radius:var(--r) 0 0 var(--r)}.strip a:last-child{border-radius:0 var(--r) var(--r) 0}
+.strip .i,.card-title .i{filter:none!important}
+.mod,.steps li,.mcard,.tool-card{border-radius:10px}
+.mod:hover,.tool-card:hover{transform:none;border-color:var(--edge2)!important}
+.steps li::before{background:var(--accent);box-shadow:none;border-radius:10px;font-style:normal}
+
+/* ---------- buttons: flat, no glow ---------- */
+.btn{border-radius:10px}
+.btn:hover{transform:none}
+.btn-primary,.btn-help{background:var(--accent);border-color:var(--accent);box-shadow:none!important;color:#fff}
+.btn-primary:hover,.btn-help:hover{background:#4590ff;box-shadow:none!important}
+.btn-outline{background:transparent;border-color:var(--edge2);box-shadow:none}
+.btn-outline:hover{background:rgba(47,125,240,.12);border-color:#5b95e8}
+.chip{background:transparent;border-color:var(--edge)}
+.chip.on{background:var(--accent);border-color:var(--accent);box-shadow:none}
+.note{border-radius:10px;background:rgba(60,40,0,.28)}
+
+/* ---------- type: quieter ---------- */
+.eyebrow{letter-spacing:.14em;font-size:12px;color:#6fa8ff}
+.wordmark i,.wordmark b,.title,h1,h2,h3{text-shadow:none!important}
+.tagline em{color:#6fa8ff;font-style:normal}
+.lead{color:#a9bad9}
+
+/* ---------- navigation ---------- */
+.nav{background:rgba(4,8,18,.94)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:none!important}
+.links>a.on{background:rgba(47,125,240,.14)}
+.links .ind{display:none}
+
+/* ---------- background: calmer ---------- */
+#bg .bl{opacity:0}
+#bg .bl.on{opacity:.55}
+
+/* ---------- helper button: small, out of the way ---------- */
+.hlp-fab{box-shadow:0 4px 14px rgba(0,0,0,.45)!important;border-radius:14px!important;background:var(--accent)!important;animation:none!important}
+.hlp-fab::before,.hlp-fab::after{display:none!important}
+
+/* ================================================================== PHONES */
+@media(max-width:760px){
+  html{-webkit-text-size-adjust:100%}
+  body{font-size:16px}
+  .wrap,.nav-inner{padding-left:max(16px,env(safe-area-inset-left,0px))!important;padding-right:max(16px,env(safe-area-inset-right,0px))!important}
+  main,#app{padding-bottom:84px}
+
+  /* top bar: logo left, actions right, menu button always reachable */
+  .nav-inner{gap:8px}
+  .nav-inner .btn,.burger{min-width:44px;min-height:44px}
+  .burger{border-radius:10px}
+  .links>a{height:52px;font-size:16px}
+
+  /* hero: art becomes a banner, text below it */
+  .hero{min-height:0;overflow:visible}
+  .hero-art{position:relative!important;width:100%!important;height:230px;opacity:1!important;margin:0 -16px 0;left:0;right:auto;
+            -webkit-mask-image:linear-gradient(180deg,#000 55%,transparent);mask-image:linear-gradient(180deg,#000 55%,transparent)}
+  .hero-art img{object-position:60% 22%;animation:none!important;transform:none!important}
+  .hero-in{padding:0 0 10px;max-width:none;margin-top:-54px}
+  .hero-id{flex-direction:row!important;align-items:center;gap:14px}
+  .hero-id .zlogo{--zs:84px}
+  .hero-rule{display:none}
+  .wordmark b{font-size:clamp(46px,16vw,64px)}
+  .wordmark i{font-size:clamp(20px,7vw,28px);letter-spacing:.3em}
+  .tagline{font-size:22px;line-height:1.25;margin:20px 0 8px}
+  .hero p.lead{font-size:16px;margin:0 0 18px}
+  .cta{flex-direction:column;align-items:stretch;gap:10px}
+  .cta .btn{width:100%;justify-content:flex-start;min-height:56px}
+
+  /* generic: buttons go full width in their groups */
+  .btns,.actions,.row-btns{flex-direction:column;align-items:stretch}
+  .btn{max-width:100%;white-space:normal;text-align:left}
+  .btn-outline,.btn-primary{min-height:48px}
+
+  /* strip and cards */
+  .strip{grid-template-columns:1fr;margin:16px 0 24px}
+  .strip a{padding:14px 16px;gap:14px}
+  .strip a+a::before{display:none}
+  .strip a+a{border-top:1px solid var(--edge)}
+  .strip a:first-child,.strip a:last-child{border-radius:0}
+  .strip b{font-size:16px}.strip small{font-size:14px}
+  .strip .i{width:30px;height:30px;flex:none}
+  .card{padding:18px 16px}
+  .card-title{font-size:19px}
+  .cards3,.g2,.g3,.g4,.mcards,.people{grid-template-columns:1fr!important;gap:12px}
+
+  /* page headers */
+  .eyebrow{margin-top:6px}
+  h1.title,.title{font-size:clamp(30px,9.4vw,40px);line-height:1.08}
+  .lead{font-size:16px}
+
+  /* filters and chip rows scroll sideways instead of wrapping into a wall */
+  .chips{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;margin-left:-16px;margin-right:-16px;padding:2px 16px 6px;scrollbar-width:none}
+  .chips::-webkit-scrollbar{display:none}
+  .chip{flex:none;min-height:40px;scroll-snap-align:start}
+  .src-chips,.src-filters{flex-wrap:wrap}
+
+  /* forms: 16px text stops iOS zooming in, bigger targets */
+  input,select,textarea{font-size:16px!important}
+  .fctl,.fbar{flex-wrap:wrap}
+  .fctl>*{min-height:44px}
+  .fctl .srch,.fctl input[type=search]{flex:1 1 100%}
+
+  /* tables and code scroll inside their own box */
+  table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  pre,code.block{overflow-x:auto}
+
+  /* source browser: tree above, file below, nothing cramped */
+  .src-grid,.src-layout{grid-template-columns:1fr!important}
+  .src-tree{max-height:46vh;overflow:auto}
+  .src-actions{flex-wrap:wrap}
+
+  /* helper chat: full screen sheet */
+  .hlp-panel,.helper-panel{left:0!important;right:0!important;bottom:0!important;width:100%!important;max-width:none!important;height:86vh!important;border-radius:14px 14px 0 0!important}
+  .hlp-fab{right:max(14px,env(safe-area-inset-right,0px))!important;bottom:max(14px,env(safe-area-inset-bottom,0px))!important;padding:11px!important}
+  .fab-hint{display:none!important}
+
+  /* footer */
+  .foot-inner{gap:12px;align-items:flex-start;padding-bottom:calc(18px + 56px)}
+  .foot-right{gap:18px}
+
+  /* modals */
+  .modal{width:calc(100vw - 24px);max-height:88vh;overflow:auto;border-radius:12px}
+}
+
+/* very small phones */
+@media(max-width:360px){
+  .hero-id .zlogo{--zs:68px}
+  .wordmark b{font-size:42px}
+  .nav-inner>.btn:not(#helpTop){display:none}
+}
+
+/* touch devices: no hover lifts, comfortable taps */
+@media(hover:none){
+  .mod:hover,.btn:hover,.tool-card:hover,.kcard:hover{transform:none}
+  a,button,summary{-webkit-tap-highlight-color:rgba(47,125,240,.18)}
+}
+
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+
+/* ---------- 3D knife viewer (js/knife3d.js) ---------- */
+.k3d{display:flex;flex-direction:column;gap:10px;min-width:0}
+.k3d-view{position:relative;aspect-ratio:4/3.3;border:1px solid var(--edge2);border-radius:12px;overflow:hidden;
+  background:radial-gradient(120% 90% at 50% 25%,#12234a 0%,#0a1428 55%,#060c1a 100%)}
+.k3d-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab}
+.k3d-canvas:active{cursor:grabbing}
+.k3d-anims{display:flex;flex-wrap:wrap;gap:6px}
+.k3d-btn,.k3d-ic,.k3d-sel{font:600 14px/1 var(--font);color:#dbe7ff;background:transparent;border:1px solid var(--edge2);border-radius:8px;padding:10px 12px;min-height:40px;cursor:pointer}
+.k3d-btn:hover,.k3d-ic:hover{border-color:#5b95e8}
+.k3d-btn.on,.k3d-ic.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.k3d-ctl{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.k3d-scrub{flex:1 1 140px;min-width:110px;accent-color:#4590ff;height:28px}
+.k3d-hint{margin:0;color:var(--faint);font-size:13px}
+.k3d-sel{padding-right:6px}
+@media(max-width:760px){
+  .k3d-view{aspect-ratio:1/1.12}
+  .k3d-anims{display:grid;grid-template-columns:repeat(3,1fr)}
+  .k3d-ctl{display:grid;grid-template-columns:auto 1fr auto auto}
+  .k3d-ctl .k3d-scrub{grid-column:1/-1;order:5}
+  .k3d-ctl .k3d-sel{order:3}
+}

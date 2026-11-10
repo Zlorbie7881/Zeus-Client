@@ -1,0 +1,219 @@
+package com.zlorbie788.zeus.mods;
+
+import com.zlorbie788.zeus.core.Category;
+import com.zlorbie788.zeus.core.Module;
+import com.zlorbie788.zeus.core.Setting;
+import com.zlorbie788.zeus.core.Zeus;
+import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.contents.TranslatableContents;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * Screenshot Tweaks. When you take a screenshot the game writes "Saved screenshot as ..." in the chat. This module adds
+ * buttons to the end of that same line: Open (the picture opens), Copy (the picture goes to your clipboard, ready to paste
+ * into Discord or anywhere) and Delete (the file is removed).
+ *
+ * <p>Open is the game's own click action. Copy and Delete cannot be done by the game, so their buttons carry a private
+ * marker that Zeus recognises when you click (see {@code ShotClickMixin}); nothing is sent to the server. The copy is made
+ * by a small helper of your system (PowerShell on Windows, osascript on macOS, wl-copy or xclip on Linux) so the game's own
+ * window is never disturbed.
+ */
+public final class ScreenshotTweaks extends Module {
+    private static final String MARK = "zeus-shot:";
+    private static final Map<Integer, Path> SHOTS = new LinkedHashMap<>();
+    private static final Map<Integer, Long> ARMED = new HashMap<>();
+    private static int next = 1;
+    private static volatile ScreenshotTweaks inst;
+
+    private final Setting.Bool open = add(new Setting.Bool("Open button", "Opens the picture in your picture viewer.", true));
+    private final Setting.Bool copy = add(new Setting.Bool("Copy button", "Puts the picture on your clipboard. Paste it anywhere with Ctrl+V.", true));
+    private final Setting.Bool delete = add(new Setting.Bool("Delete button", "Deletes the screenshot file.", true));
+    private final Setting.Bool confirm = add(new Setting.Bool("Click Delete twice", "The first click only asks, the second one deletes. Stops a slip of the mouse from deleting a picture.", false)).showIf(() -> this.delete.on());
+    private final Setting.Bool ownLine = add(new Setting.Bool("Buttons on their own line", "Puts the buttons under the message instead of at the end of it.", false));
+    private final Setting.Bool autoCopy = add(new Setting.Bool("Copy every screenshot", "Puts each new screenshot on your clipboard by itself, without clicking.", false));
+
+    public ScreenshotTweaks() {
+        super("screenshottweaks", "Screenshot Tweaks", "After a screenshot, the chat line gets buttons: Open, Copy to clipboard and Delete.", Category.UTILITY);
+    }
+
+    @Override
+    protected void onEnable() {
+        inst = this;
+    }
+
+    @Override
+    protected void onDisable() {
+        if (inst == this) inst = null;
+    }
+
+    // ------------------------------------------------------------------ the chat line
+
+    /** Called with every message the game adds to the chat. Returns the same message, or the screenshot message with buttons. */
+    public static Component decorate(Component message) {
+        ScreenshotTweaks t = inst;
+        if (t == null || message == null) return message;
+        try {
+            if (!(message.getContents() instanceof TranslatableContents tc) || !"screenshot.success".equals(tc.getKey())) return message;
+            Object[] args = tc.getArgs();
+            if (args == null || args.length == 0 || !(args[0] instanceof Component name)) return message;
+            if (!(name.getStyle().getClickEvent() instanceof ClickEvent.OpenFile of)) return message;
+            return t.withButtons(message, Path.of(of.path()));
+        } catch (RuntimeException e) {
+            return message; // never lose the game's own message
+        }
+    }
+
+    private Component withButtons(Component message, Path file) {
+        int id;
+        synchronized (SHOTS) {
+            id = next++;
+            SHOTS.put(id, file);
+            if (SHOTS.size() > 200) SHOTS.remove(SHOTS.keySet().iterator().next());
+        }
+        MutableComponent out = Component.empty().append(message);
+        out.append(Component.literal(ownLine.on() ? "\n" : " "));
+        boolean first = true;
+        if (open.on()) {
+            out.append(button("[Open]", ChatFormatting.AQUA, new ClickEvent.OpenFile(file.toFile()), "Open the picture"));
+            first = false;
+        }
+        if (copy.on()) {
+            if (!first) out.append(Component.literal(" "));
+            out.append(button("[Copy]", ChatFormatting.GREEN, new ClickEvent.CopyToClipboard(MARK + "copy:" + id), "Copy the picture to your clipboard"));
+            first = false;
+        }
+        if (delete.on()) {
+            if (!first) out.append(Component.literal(" "));
+            out.append(button("[Delete]", ChatFormatting.RED, new ClickEvent.CopyToClipboard(MARK + "delete:" + id), "Delete the picture"));
+        }
+        if (autoCopy.on()) copyAsync(file);
+        return out;
+    }
+
+    private static MutableComponent button(String label, ChatFormatting colour, ClickEvent click, String tip) {
+        return Component.literal(label).withStyle(s -> s.withColor(colour).withClickEvent(click).withHoverEvent(new HoverEvent.ShowText(Component.literal(tip))));
+    }
+
+    // ------------------------------------------------------------------ the clicks
+
+    /** Called for every click event the game is about to run. True: it was one of ours and is handled, so the game skips it. */
+    public static boolean click(ClickEvent event) {
+        try {
+            if (!(event instanceof ClickEvent.CopyToClipboard c)) return false;
+            String v = c.value();
+            if (v == null || !v.startsWith(MARK)) return false;
+            String[] parts = v.substring(MARK.length()).split(":");
+            if (parts.length != 2) return true;
+            int id = Integer.parseInt(parts[1]);
+            Path file;
+            synchronized (SHOTS) {
+                file = SHOTS.get(id);
+            }
+            if (file == null) {
+                Zeus.toast("That screenshot is not remembered any more", false);
+                return true;
+            }
+            if (parts[0].equals("copy")) copyAsync(file);
+            else if (parts[0].equals("delete")) deleteFile(id, file);
+        } catch (RuntimeException e) {
+            return true;
+        }
+        return true;
+    }
+
+    private static void deleteFile(int id, Path file) {
+        ScreenshotTweaks t = inst;
+        if (t != null && t.confirm.on()) {
+            long now = System.currentTimeMillis();
+            Long armed = ARMED.get(id);
+            if (armed == null || now - armed > 5000) {
+                ARMED.put(id, now);
+                Zeus.toast("Click Delete again to remove it", true);
+                return;
+            }
+            ARMED.remove(id);
+        }
+        try {
+            Path dir = FabricLoader.getInstance().getGameDir() == null ? null : FabricLoader.getInstance().getGameDir().resolve("screenshots").toAbsolutePath().normalize();
+            Path f = file.toAbsolutePath().normalize();
+            // only ever delete a picture that sits in the game's screenshots folder
+            if (dir == null || !f.startsWith(dir) || !f.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".png")) {
+                Zeus.toast("That file is not in the screenshots folder", false);
+                return;
+            }
+            if (Files.deleteIfExists(f)) {
+                synchronized (SHOTS) {
+                    SHOTS.remove(id);
+                }
+                Zeus.toast("Screenshot deleted", true);
+            } else {
+                Zeus.toast("The screenshot is already gone", false);
+            }
+        } catch (IOException | RuntimeException e) {
+            Zeus.toast("Could not delete the screenshot", false);
+        }
+    }
+
+    // ------------------------------------------------------------------ the clipboard
+
+    private static void copyAsync(Path file) {
+        Thread th = new Thread(() -> copyNow(file), "zeus-shot-copy");
+        th.setDaemon(true);
+        th.start();
+    }
+
+    private static void copyNow(Path file) {
+        String p = file.toAbsolutePath().toString();
+        if (!Files.isRegularFile(file)) {
+            Zeus.toast("The screenshot file is gone", false);
+            return;
+        }
+        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+        List<List<String>> tries = new ArrayList<>();
+        if (os.contains("win")) {
+            String ps = "Add-Type -AssemblyName System.Windows.Forms,System.Drawing; $i=[System.Drawing.Image]::FromFile('" + p.replace("'", "''")
+                + "'); [System.Windows.Forms.Clipboard]::SetImage($i); $i.Dispose()";
+            tries.add(List.of("powershell", "-NoProfile", "-STA", "-Command", ps));
+        } else if (os.contains("mac")) {
+            String q = p.replace("\\", "\\\\").replace("\"", "\\\"");
+            tries.add(List.of("osascript", "-e", "set the clipboard to (read (POSIX file \"" + q + "\") as «class PNGf»)"));
+        } else {
+            if (System.getenv("WAYLAND_DISPLAY") != null) tries.add(List.of("sh", "-c", "wl-copy --type image/png < \"$1\"", "sh", p));
+            tries.add(List.of("xclip", "-selection", "clipboard", "-t", "image/png", "-i", p));
+            tries.add(List.of("sh", "-c", "wl-copy --type image/png < \"$1\"", "sh", p));
+        }
+        boolean ok = false;
+        for (List<String> cmd : tries) {
+            try {
+                Process pr = new ProcessBuilder(cmd).redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
+                // xclip and wl-copy stay alive in the background to serve the clipboard; that counts as done
+                if (!pr.waitFor(6, TimeUnit.SECONDS) || pr.exitValue() == 0) {
+                    ok = true;
+                    break;
+                }
+            } catch (IOException e) {
+                // that helper is not installed, try the next one
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+        if (ok) Zeus.toast("Screenshot copied to the clipboard", true);
+        else Zeus.toast(os.contains("win") || os.contains("mac") ? "Could not copy the screenshot" : "Install xclip or wl-clipboard to copy pictures", false);
+    }
+}

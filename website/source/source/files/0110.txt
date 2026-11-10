@@ -1,0 +1,238 @@
+package com.zlorbie788.zeus.mods;
+
+import com.zlorbie788.zeus.core.Category;
+import com.zlorbie788.zeus.core.Module;
+import com.zlorbie788.zeus.core.Setting;
+import com.zlorbie788.zeus.core.Zeus;
+import com.zlorbie788.zeus.ui.Accent;
+import com.zlorbie788.zeus.ui.Draw;
+import com.zlorbie788.zeus.ui.Logo;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+
+/** What Zeus puts on the game screen. These work anywhere and are harmless. */
+public final class Interface {
+    private Interface() {}
+
+
+    /** Always-visible launcher for the global HUD layout editor. */
+    public static final class HudEditorLauncher extends Module {
+        public HudEditorLauncher() {
+            super("hudeditor", "HUD Editor", "Open the global editor to move, scale, hide and arrange Zeus HUD widgets.", Category.INTERFACE);
+            panelOnly();
+            add(new Setting.Action("Open HUD editor", "Opens the live HUD layout editor.", () -> {
+                Minecraft mc = Minecraft.getInstance();
+                mc.setScreen(new com.zlorbie788.zeus.ui.HudEditorScreen(mc.screen));
+            }));
+        }
+    }
+
+    public static final class Watermark extends Module {
+        public Watermark() {
+            super("watermark", "Watermark", "The Zeus logo and name in the corner.", Category.PANELS);
+            anywhere().onByDefault();
+        }
+
+        private com.zlorbie788.zeus.ui.Tex.Img logo;
+        private boolean logoTried;
+
+        @Override
+        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            int x = 6;
+            int y = 6;
+            String text = "ZEUS";
+            int tw = Draw.widthBold(text);
+            // The box is 20 high; the real Zeus Z sits inside a 16 x 16 square with a 2 pixel margin, so it can never touch or pass the edge.
+            int boxH = 20;
+            int slot = 16;
+            int bw = 2 + slot + 5 + tw + 7;
+            Hud.record(x, y, bw, boxH);
+            Draw.rrect(g, x, y, bw, boxH, Hud.round(5), Hud.bg());
+            Draw.rrectLine(g, x, y, bw, boxH, 5, Draw.rgba(com.zlorbie788.zeus.mods.Hud.accent(), 0.5f));
+            if (!logoTried) {
+                logoTried = true;
+                logo = com.zlorbie788.zeus.ui.Tex.resource("textures/gui/logo_z.png");
+            }
+            if (logo != null) logo.draw(g, x + 2, y + 2, slot, slot, 0xFFFFFFFF);
+            else Logo.bolt(g, x + 2, y + 3, 14, com.zlorbie788.zeus.mods.Hud.accent());
+            g.fill(x + 2 + slot + 2, y + 5, x + 2 + slot + 3, y + boxH - 5, Draw.rgba(com.zlorbie788.zeus.mods.Hud.accent(), 0.35f));
+            Draw.bold(g, text, x + 2 + slot + 5, y + 6, 0xFFF2F6FF);
+        }
+    }
+
+    public static final class ModuleList extends Module {
+        private final Setting.Bool glow = add(new Setting.Bool("Colour bar", "A coloured bar at the edge of every entry.", true));
+        private final Setting.Bool details = add(new Setting.Bool("Show details", "Extra information after the name, like the speed.", true));
+        private final Setting.Bool cost = add(new Setting.Bool("Show what each costs", "A small percentage after each name: how much of your frame time that module uses. Needs \"Show what each module costs\" in the Interface settings (on by default).", false));
+
+        public ModuleList() {
+            super("modulelist", "Module List", "The list of what is switched on, top right.", Category.PANELS);
+            anywhere().onByDefault();
+        }
+
+        private Module[] rows = new Module[0];
+        private String[] infos = new String[0];
+        private int[] widths = new int[0];
+        private int[] nameWidths = new int[0];
+        private int count;
+        private int version = -1;
+        private long builtAt;
+        private boolean builtDetails;
+
+        /** Rebuilds the sorted rows only when a module switched on or off, or a few times a second for the changing details. */
+        private void rebuild() {
+            long now = System.nanoTime();
+            boolean det = details.on() || cost.on();
+            if (version == Zeus.activeVersion() && det == builtDetails && (!det || now - builtAt < 250_000_000L)) return;
+            version = Zeus.activeVersion();
+            builtDetails = det;
+            builtAt = now;
+            List<Module> on = new ArrayList<>();
+            for (Module m : Zeus.all()) {
+                if (m.enabled() && m.toggleable() && m != this && m.category != Category.INTERFACE && m.category != Category.PANELS) on.add(m);
+            }
+            count = on.size();
+            if (rows.length < count) {
+                rows = new Module[count + 8];
+                infos = new String[count + 8];
+                widths = new int[count + 8];
+                nameWidths = new int[count + 8];
+            }
+            String[] in = new String[count];
+            int[] w = new int[count];
+            int[] nw = new int[count];
+            Integer[] order = new Integer[count];
+            for (int i = 0; i < count; i++) {
+                Module m = on.get(i);
+                String info = details.on() ? m.info() : null;
+                if (cost.on() && m.costPct >= 0.1f) {
+                    String c = String.format(java.util.Locale.ROOT, "%.1f%%", m.costPct);
+                    info = info == null ? c : info + " " + c;
+                }
+                in[i] = info;
+                nw[i] = Draw.width(m.name);
+                w[i] = nw[i] + (in[i] != null ? 4 + Draw.width(in[i]) : 0);
+                order[i] = i;
+            }
+            java.util.Arrays.sort(order, (a, b) -> Integer.compare(w[b], w[a]));
+            for (int i = 0; i < count; i++) {
+                int k = order[i];
+                rows[i] = on.get(k);
+                infos[i] = in[k];
+                widths[i] = w[k];
+                nameWidths[i] = nw[k];
+            }
+        }
+
+        @Override
+        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            rebuild();
+            if (count == 0) {
+                Hud.listHeight = 0;
+                return;
+            }
+            int y = 6;
+            int widest = 0;
+            for (int i = 0; i < count; i++) widest = Math.max(widest, widths[i] + 12);
+            Hud.record(w - 6 - widest, 6, widest, count * 14 - 2);
+            boolean bar = glow.on();
+            int a1 = com.zlorbie788.zeus.mods.Hud.accent();
+            int a2 = Accent.second();
+            for (int i = 0; i < count; i++) {
+                int tw = widths[i];
+                int x2 = w - 6;
+                int x1 = x2 - tw - 12;
+                int c = Draw.mix(a1, a2, (i % 8) / 7f);
+                Draw.rrect(g, x1, y, x2 - x1, 12, 3, Draw.rgba(0xFF111827, 0.82f), Draw.rgba(0xFF0A0F1C, 0.82f));
+                if (bar) {
+                    g.fill(x2 - 2, y + 2, x2, y + 10, c);
+                    if (!Draw.cheap) g.fill(x2 - 3, y + 3, x2 - 2, y + 9, Draw.rgba(c, 0.35f));
+                }
+                Draw.text(g, rows[i].name, x1 + 5, y + 2, c);
+                if (infos[i] != null) Draw.text(g, infos[i], x1 + 5 + nameWidths[i] + 4, y + 2, 0xFF8B97B3);
+                y += 14;
+            }
+            Hud.listHeight = y - 6;
+        }
+    }
+
+    public static final class InfoHud extends Module {
+        private final Setting.Bool coords = add(new Setting.Bool("Coordinates", "Where you are.", true));
+        private final Setting.Bool facing = add(new Setting.Bool("Direction", "Which way you face.", true));
+        private final Setting.Bool speed = add(new Setting.Bool("Speed", "How fast you move, in blocks per second.", true));
+        private final Setting.Bool fps = add(new Setting.Bool("Frames per second", "How smooth the game runs.", true));
+        private final Setting.Bool ping = add(new Setting.Bool("Ping", "Round trip time to the server (0 in singleplayer).", true));
+        private long last;
+        private float smooth = 60f;
+        private double lx;
+        private double lz;
+        private double bps;
+
+        public InfoHud() {
+            super("infohud", "Info", "Coordinates, direction, speed and frame rate at the bottom left.", Category.PANELS);
+            anywhere().onByDefault();
+        }
+
+        @Override
+        protected void onTick(Minecraft mc) {
+            if (mc.player == null) return;
+            bps = Math.sqrt(sq(mc.player.getX() - lx) + sq(mc.player.getZ() - lz)) * 20.0;
+            lx = mc.player.getX();
+            lz = mc.player.getZ();
+        }
+
+        private static double sq(double v) {
+            return v * v;
+        }
+
+        @Override
+        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            if (mc.player == null) return;
+            long now = System.nanoTime();
+            if (last != 0) smooth += ((1e9f / Math.max(1, now - last)) - smooth) * 0.05f;
+            last = now;
+            if (now - linesAt > 100_000_000L || cached.isEmpty()) {
+                linesAt = now;
+                cached = buildLines(mc);
+                int widest = 0;
+                for (String s : cached) widest = Math.max(widest, Draw.width(s));
+                boxW = widest;
+            }
+            List<String> lines = cached;
+            if (lines.isEmpty()) return;
+            int bw = boxW;
+            int bh = lines.size() * 11 + 6;
+            int x = 6;
+            int y = h - bh - 6 - 40;
+            Hud.record(x, y, bw + 12, bh);
+            Draw.rrect(g, x, y, bw + 12, bh, Hud.round(4), Hud.bg());
+            g.fill(x, y + 3, x + 2, y + bh - 3, com.zlorbie788.zeus.mods.Hud.accent());
+            for (int i = 0; i < lines.size(); i++) Draw.text(g, lines.get(i), x + 7, y + 4 + i * 11, 0xFFD6DEF2);
+        }
+
+        private List<String> cached = List.of();
+        private long linesAt;
+        private int boxW;
+
+        private List<String> buildLines(Minecraft mc) {
+            List<String> lines = new ArrayList<>(5);
+            if (coords.on()) lines.add(String.format(Locale.ROOT, "XYZ  %.1f  %.1f  %.1f", mc.player.getX(), mc.player.getY(), mc.player.getZ()));
+            if (facing.on()) {
+                float yaw = ((mc.player.getYRot() % 360f) + 360f) % 360f;
+                String[] names = {"South", "South-west", "West", "North-west", "North", "North-east", "East", "South-east"};
+                lines.add("Facing  " + names[Math.round(yaw / 45f) % 8]);
+            }
+            if (speed.on()) lines.add(String.format(Locale.ROOT, "Speed  %.1f b/s", bps));
+            if (fps.on()) lines.add("FPS  " + Math.round(smooth));
+            if (ping.on() && mc.getConnection() != null) {
+                var info = mc.getConnection().getPlayerInfo(mc.player.getUUID());
+                if (info != null && mc.getSingleplayerServer() == null) lines.add("Ping  " + info.getLatency() + " ms");
+            }
+            return lines;
+        }
+    }
+}

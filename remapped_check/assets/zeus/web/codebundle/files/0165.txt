@@ -1,0 +1,513 @@
+package com.zlorbie788.zeus.mods;
+
+import com.zlorbie788.zeus.core.Category;
+import com.zlorbie788.zeus.core.Env;
+import com.zlorbie788.zeus.core.Module;
+import com.zlorbie788.zeus.core.Setting;
+import com.zlorbie788.zeus.core.Zeus;
+import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * See ores through the stone. While it is on, the game leaves every block out of the chunk meshes except the ones picked
+ * here, so you look straight through the ground. The mixin on the chunk builder calls {@link #hide}; the chunk builder
+ * runs on worker threads, so everything read there is a plain volatile value.
+ *
+ * <p>Sodium and Embeddium build their chunks from their own view of the world, so there is a second hook on theirs. Two
+ * things can still stop it from working: a version of those mods that renamed the class, and a game update that moves the
+ * game's own hook. A watchdog notices when the hook has not been
+ * called a few seconds after switching on and falls back to Block ESP, which scans the loaded chunks itself and draws the
+ * ores through the stone without touching the chunk builder at all. The lighting is a hidden night vision effect rather
+ * than a patch on the light engine, so it works in every renderer.</p>
+ */
+public final class XRay extends Module {
+    private static volatile boolean on;
+    private static volatile boolean bright = true;
+    private static volatile int mask = -1;
+    private static final ConcurrentHashMap<Block, Boolean> KEEP = new ConcurrentHashMap<>();
+    private static volatile boolean seen;
+    private static XRay self;
+    private int sinceOn;
+    private boolean fallback;
+    private boolean forcedEsp;
+    private boolean glowFallback;
+    private String why;
+
+    static final String[] KINDS = {"Coal", "Iron", "Copper", "Gold", "Redstone", "Lapis", "Diamond", "Emerald", "Nether ores and quartz", "Ancient debris", "Lava", "Chests and spawners", "Other ores (modded)"};
+
+    private final Setting.Bool[] kinds = new Setting.Bool[KINDS.length];
+    private static volatile int opacity;
+    private final Setting.Num seeThrough = add(new Setting.Num("Opacity of other blocks", "How visible the ordinary blocks (stone, dirt, water...) are. 0%: invisible, only the ores you picked. 15%: a faint ghost of the ground so you can see where the caves are. 100%: the normal world. The ores themselves are always fully solid.", 0, 0, 100, 1, "%"));
+    private static volatile int look;
+    private static volatile int method;
+    private static volatile boolean inner;
+    private static volatile BlockState ghost = Blocks.LIGHT_GRAY_STAINED_GLASS.defaultBlockState();
+    private static final String[] GLASS_NAMES = {"Light gray", "Gray", "White", "Light blue", "Cyan", "Purple", "Green"};
+    private final Setting.Choice methodOf = add(new Setting.Choice("How they are drawn", "Auto: see-through blocks with the game's own renderer, ghost glass with Sodium. See-through: the blocks are blended by the opacity above (the way Meteor does it). Ghost glass: the blocks become glass. Scattered: a share of the real blocks is kept. If one does not work on your setup, Zeus switches to the next by itself and says so in the Status box.", 0, "Auto", "See-through", "Ghost glass", "Scattered")).showIf(() -> this.seeThrough.i() > 0);
+    private final Setting.Bool innerFaces = add(new Setting.Bool("Show faces between faint blocks", "Off: only the skin of the ground is drawn faintly (clean). On: every face is drawn, so thick rock looks denser the deeper you look.", false)).showIf(() -> this.seeThrough.i() > 0);
+    private final Setting.Choice lookOf = add(new Setting.Choice("Ghost glass or scattered", "Only for the Ghost glass method: Ghost glass draws the blocks that stay as glass; Real blocks scatters real ones.", 0, "Ghost glass", "Real blocks (scattered)")).showIf(() -> this.seeThrough.i() > 0 && this.methodOf.index() == 2);
+    private final Setting.Choice glassTint = add(new Setting.Choice("Glass colour", "The colour of the ghost glass.", 0, GLASS_NAMES)).showIf(() -> this.seeThrough.i() > 0 && this.methodOf.index() == 2 && this.lookOf.index() == 0);
+    private final Setting.Bool light = add(new Setting.Bool("Light everything up", "Lights what you see like daylight, so ores deep underground are not black.", true));
+    private final Setting.Bool brute = add(new Setting.Bool("Brute-force anti-xray", "Servers hide ores by rewriting the block data of a chunk section, but leave the section's palette alone. The palette still says \"diamond ore is in this 16x16x16 box\" while showing you stone, so the hidden ores can be read straight out of the packet. Each section is read many times and only an ore that leaks in most readings is drawn, which also beats plugins that re-randomise per send.", true));
+    private final Setting.Bool onJoin = add(new Setting.Bool("On when I join a world", "Turn X-Ray on by itself as soon as a world or a server finishes loading, so it is already working when you land.", false));
+    private final XrayLeak leak = new XrayLeak(this);
+
+    public XRay() {
+        super("xray", "X-Ray", "See ores and treasure through the stone.", Category.WORLD);
+        for (int i = 0; i < KINDS.length; i++) {
+            boolean def = i != 0 && i != 1 && i != 2; // coal, iron and copper off by default: they are everywhere
+            kinds[i] = add(new Setting.Bool(KINDS[i], "Keep " + KINDS[i].toLowerCase() + " visible.", def));
+            kinds[i].onChange(this::refresh);
+        }
+        light.onChange(this::refresh);
+        seeThrough.onChange(this::refresh);
+        lookOf.onChange(this::refresh);
+        methodOf.onChange(this::refresh);
+        innerFaces.onChange(this::refresh);
+        glassTint.onChange(this::refresh);
+        add(new Setting.Info("Status", this::status));
+        add(new Setting.Action("Save a hook report", "Writes config/zeus-xray-report.txt: which of the X-Ray hooks ran on your setup, the game and renderer mods. If Opacity does not look right, send me that file.", XRay::report));
+        self = this;
+    }
+
+    public static boolean active() {
+        return on;
+    }
+
+    /** The chunk builder hook calls this each time it runs, so the watchdog knows it works. */
+    public static void saw() {
+        saw(HOOK_REGION);
+    }
+
+    public static final int HOOK_REGION = 0;
+    public static final int HOOK_SODIUM = 1;
+    public static final int HOOK_STATE = 2;
+    public static final int HOOK_LAYER = 3;
+    public static final int HOOK_FACE = 4;
+    public static final int HOOK_ALPHA = 5;
+    private static final java.util.concurrent.atomic.AtomicLongArray HITS = new java.util.concurrent.atomic.AtomicLongArray(6);
+
+    /** A hook ran; remembers which one, so the Status box can say what really is working. */
+    public static void saw(int which) {
+        if (!seen) seen = true;
+        if (which >= 0 && which < 6 && HITS.get(which) == 0) HITS.set(which, 1); // a flag, not a counter: these run millions of times a second
+    }
+
+    /** True on the helper threads that build chunk meshes (not the game's own thread, not the world's). */
+    public static boolean onMeshThread() {
+        String n = Thread.currentThread().getName();
+        return !n.equals("Render thread") && !n.equals("Server thread") && !n.startsWith("Server");
+    }
+
+    public static boolean fullbright() {
+        return on && bright;
+    }
+
+    @Override
+    public String info() {
+        return fallback ? "Block ESP" : null;
+    }
+
+    /** What the module is doing right now, shown on its card so a problem can be told apart from a bug. */
+    private java.util.List<String> status() {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        String r = rendererMod();
+        out.add(enabled() ? (fallback ? "Method: Block ESP (see below why)" : seen ? "Method: chunk hook, working" : "Method: chunk hook, waiting for chunks") : "Switched off");
+        out.add("Renderer: " + (r == null ? "vanilla" : r + " (supported)"));
+        if (enabled() && fallback) out.add(why == null ? "The chunk hook did not run" : why);
+        out.add("Light hooks that ran: " + (enabled() && bright ? (Fullbright.lightHookRan() ? "yes, ores are lit" : glowFallback ? "none, ores are outlined instead" : "waiting") : "not needed"));
+        out.add("Hooks that ran: game chunk view " + (HITS.get(HOOK_REGION) > 0 ? "yes" : "no") + ", Sodium view " + (HITS.get(HOOK_SODIUM) > 0 ? "yes" : "no") + ", block states " + (HITS.get(HOOK_STATE) > 0 ? "yes" : "no"));
+        if (enabled() && opacity > 0) {
+            out.add("Opacity method now: " + modeName());
+            out.add("See-through hooks that ran: layer " + (HITS.get(HOOK_LAYER) > 0 ? "yes" : "no") + ", faces " + (HITS.get(HOOK_FACE) > 0 ? "yes" : "no") + ", alpha " + (HITS.get(HOOK_ALPHA) > 0 ? "yes" : "no"));
+        }
+        out.add("Only the ores you picked stay. If the world just looks empty, there is no such ore near you: turn on Coal / Iron, or dig down.");
+        return out;
+    }
+
+    private void refresh() {
+        int m = 0;
+        for (int i = 0; i < kinds.length; i++) if (kinds[i].on()) m |= 1 << i;
+        mask = m;
+        bright = light.on();
+        opacity = seeThrough.i();
+        look = lookOf.index();
+        method = methodOf.index();
+        inner = innerFaces.on();
+        modeNow = mode();
+        ghost = (switch (glassTint.index()) {
+            case 1 -> Blocks.GRAY_STAINED_GLASS;
+            case 2 -> Blocks.WHITE_STAINED_GLASS;
+            case 3 -> Blocks.LIGHT_BLUE_STAINED_GLASS;
+            case 4 -> Blocks.CYAN_STAINED_GLASS;
+            case 5 -> Blocks.PURPLE_STAINED_GLASS;
+            case 6 -> Blocks.GREEN_STAINED_GLASS;
+            default -> Blocks.LIGHT_GRAY_STAINED_GLASS;
+        }).defaultBlockState();
+        KEEP.clear();
+        if (enabled()) {
+            rebuild();
+            if (fallback) mirror();
+            lightUp();
+        }
+    }
+
+    private void mirror() {
+        BlockEsp be = Zeus.get(BlockEsp.class);
+        if (be != null) be.mirrorKinds(mask);
+    }
+
+    private void lightUp() {
+        if (bright) Env.effect("night_vision", 0);
+        else if (!otherLight()) Env.effectOff("night_vision");
+    }
+
+    private static boolean otherLight() {
+        Fullbright f = Zeus.get(Fullbright.class);
+        return f != null && f.enabled();
+    }
+
+    private void startFallback(String why) {
+        if (fallback) return;
+        this.why = why;
+        fallback = true;
+        BlockEsp be = Zeus.get(BlockEsp.class);
+        if (be != null) {
+            be.mirrorKinds(mask);
+            if (!be.enabled()) {
+                be.setEnabled(true);
+                forcedEsp = be.enabled();
+            }
+        }
+        Zeus.toast("X-Ray: " + why + ". Using Block ESP instead", false);
+    }
+
+    private static String rendererMod() {
+        FabricLoader fl = FabricLoader.getInstance();
+        for (String id : new String[] {"sodium", "embeddium", "rubidium", "nvidium"}) {
+            if (fl.isModLoaded(id)) return id.substring(0, 1).toUpperCase() + id.substring(1);
+        }
+        return null;
+    }
+
+    private static void rebuild() {
+        Minecraft mc = Minecraft.getInstance();
+        try {
+            if (mc.levelRenderer != null && mc.level != null) mc.levelRenderer.allChanged();
+        } catch (RuntimeException | LinkageError ignored) {
+            // the world is rebuilt the next time the chunks reload anyway
+        }
+    }
+
+    /** Called for every module when a world opens, whether it is on or not. */
+    @Override
+    protected void cleanSlate() {
+        leak.reset();
+        if (false && !enabled()) setEnabledQuiet(true);
+    }
+
+    @Override
+    protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+        if (brute.on()) leak.draw(g, mc, partial, w, h);
+    }
+
+    @Override
+    protected void onEnable() {
+        leak.reset();
+        seen = false;
+        for (int i = 0; i < 6; i++) HITS.set(i, 0);
+        transparentDead = false;
+        armed = false;
+        waitedForAlpha = 0;
+        sinceOn = 0;
+        fallback = false;
+        forcedEsp = false;
+        glowFallback = false;
+        why = null;
+        on = true;
+        degraded = false;
+        modeNow = mode();
+        waitedForHook = 0;
+        refresh();
+        // Sodium and Embeddium are hooked directly. If their hook does not run either, the watchdog below switches to Block ESP.
+    }
+
+    @Override
+    protected void onTick(Minecraft mc) {
+        if (brute.on()) leak.tick(mc);
+        sinceOn++;
+        if (sinceOn % 200 == 0) lightUp();
+        // the chunk hook runs but no light hook did: ores would be black, so outline them with Block ESP as well
+        if (!fallback && !glowFallback && seen && bright && sinceOn >= 160 && !Fullbright.lightHookRan() && mc.level != null) {
+            glowFallback = true;
+            BlockEsp be = Zeus.get(BlockEsp.class);
+            if (be != null) {
+                be.mirrorKinds(mask);
+                if (!be.enabled()) {
+                    be.setEnabled(true);
+                    forcedEsp = be.enabled();
+                }
+            }
+            Zeus.toast("X-Ray: the light hook did not run, ores are outlined", false);
+        }
+        // opacity needs the hooks that know where a block is (the game's or Sodium's chunk view); when neither has run, the
+        // block-state hook scatters the blocks instead and the Status box says so
+        if (mode() == M_SEE && mc.level != null && !transparentDead && armed && HITS.get(HOOK_ALPHA) == 0 && ++waitedForAlpha >= 200) {
+            transparentDead = true;
+            modeNow = mode();
+            rebuild();
+            Zeus.toast("X-Ray: the see-through hooks did not run here, so Zeus uses " + modeName(), false);
+        }
+        if (mode() == M_GLASS && !degraded && mc.level != null && HITS.get(HOOK_REGION) == 0 && HITS.get(HOOK_SODIUM) == 0 && ++waitedForHook >= 40) {
+            degraded = true;
+            modeNow = mode();
+            rebuild();
+            Zeus.toast("X-Ray: the position hook did not run here, so opacity scatters real blocks instead", false);
+        }
+        if (!fallback && !seen && sinceOn >= 100 && mc.level != null) {
+            String r = rendererMod();
+            startFallback((r == null ? "The game's chunk hook did not run" : r + "'s chunk hook did not run (version not supported)"));
+        }
+    }
+
+    @Override
+    protected void onDisable() {
+        leak.reset();
+        on = false;
+        rebuild();
+        if (!otherLight()) Env.effectOff("night_vision");
+        if (forcedEsp) {
+            BlockEsp be = Zeus.get(BlockEsp.class);
+            if (be != null && be.enabled()) be.setEnabled(false);
+        }
+        forcedEsp = false;
+        glowFallback = false;
+        fallback = false;
+    }
+
+    private static volatile boolean degraded;
+    private static volatile boolean transparentDead;
+    private int waitedForHook;
+    private int waitedForAlpha;
+
+    private static final int M_ORES = 0;
+    private static final int M_SEE = 1;
+    private static final int M_GLASS = 2;
+    private static final int M_SCATTER = 3;
+    /** Ordinary blocks are rendered normally at 100% opacity; do not route them through a translucent layer. */
+    private static final int M_NORMAL = 4;
+    private static volatile int modeNow;
+    private static volatile boolean armed;
+    private static final ThreadLocal<float[]> ALPHA = ThreadLocal.withInitial(() -> new float[] {-1f});
+
+    /** Which way the other blocks are drawn right now. */
+    private static int mode() {
+        if (opacity <= 0) return M_ORES;
+        // 100% means fully opaque, not alpha=255 in the translucent layer. Keeping opaque blocks in the
+        // translucent pass causes sorting artifacts and can make caves look patchy.
+        if (opacity >= 100) return M_NORMAL;
+        int c = method;
+        if (c == 0) c = rendererMod() == null ? 1 : 2;
+        if (c == 3) return M_SCATTER;
+        if (c == 1 && !transparentDead) return M_SEE;
+        return degraded ? M_SCATTER : M_GLASS;
+    }
+
+    private static String modeName() {
+        return switch (mode()) {
+            case M_SEE -> "see-through (" + opacity + "%)";
+            case M_GLASS -> look == 0 ? "ghost glass" : "scattered real blocks (position hook)";
+            case M_SCATTER -> degraded ? "scattered blocks (the position hook did not run)" : "scattered blocks";
+            case M_NORMAL -> "normal opaque world (100%)";
+            default -> "ores only";
+        };
+    }
+
+    /** True while the other blocks are blended by the chosen opacity. */
+    public static boolean transparent() {
+        return on && modeNow == M_SEE;
+    }
+
+    public static boolean innerFaces() {
+        return inner;
+    }
+
+    /** The block-state hook tells which block is about to be written: its opacity, or -1 for an ordinary full block. */
+    public static void aboutToDraw(BlockState state) {
+        float a = transparent() && hide(state) ? opacity / 100f : -1f;
+        ALPHA.get()[0] = a;
+        if (a >= 0f) armed = true;
+    }
+
+    /** The last step of every renderer: the alpha of a corner colour, capped at the opacity of the block being written. */
+    public static int capAlpha(int alpha) {
+        if (modeNow != M_SEE || !on) return alpha;
+        float t = ALPHA.get()[0];
+        if (t < 0f) return alpha;
+        saw(HOOK_ALPHA);
+        return Math.min(alpha, Math.round(t * 255f));
+    }
+
+    public static int capArgb(int argb) {
+        if (modeNow != M_SEE || !on) return argb;
+        float t = ALPHA.get()[0];
+        if (t < 0f) return argb;
+        saw(HOOK_ALPHA);
+        int a = Math.min(argb >>> 24, Math.round(t * 255f));
+        return (a << 24) | (argb & 0xFFFFFF);
+    }
+
+    /** Called by the quad writer with the alpha the game wanted; returns the alpha to use. */
+    public static float alphaFor(float original) {
+        if (!on || modeNow != M_SEE || !onMeshThread()) return original;
+        float a = ALPHA.get()[0];
+        if (a < 0f) return original;
+        saw(HOOK_ALPHA);
+        return a * original;
+    }
+
+    /** True when hidden blocks must also stop being occluders and solid (the blocks are left out); not when they are drawn faintly. */
+    public static boolean holeHooks() {
+        return stateHooks() && modeNow != M_SEE;
+    }
+
+    /** The state hooks (invisible, no occlusion, full light) that make a hole in the world for the ores. */
+    public static boolean stateHooks() {
+        int m = modeNow;
+        return opacity < 100 && (opacity <= 0 || m == M_SEE || m == M_SCATTER);
+    }
+
+    /** True when ordinary blocks are partly drawn by the hooks that know the position (they decide for each place). */
+    public static boolean partial() {
+        return modeNow == M_GLASS;
+    }
+
+    /** True when the block-state hook scatters the blocks. */
+    public static boolean scatterByState() {
+        return modeNow == M_SCATTER;
+    }
+
+    /** True when the shape check should answer "invisible" for a hidden block (not when it is drawn see-through). */
+    public static boolean invisibleShape() {
+        return modeNow != M_SEE && modeNow != M_NORMAL;
+    }
+
+    private static void report() {
+        StringBuilder b = new StringBuilder();
+        b.append("Zeus ").append(Zeus.VERSION).append(" X-Ray report\n");
+        FabricLoader fl = FabricLoader.getInstance();
+        for (String id : new String[] {"minecraft", "fabricloader", "fabric-api", "sodium", "embeddium", "rubidium", "iris", "indium", "nvidium", "lithium", "moreculling", "entityculling"}) {
+            fl.getModContainer(id).ifPresent(m -> b.append("Mod ").append(id).append(' ').append(m.getMetadata().getVersion().getFriendlyString()).append('\n'));
+        }
+        b.append("Opacity ").append(opacity).append("%, method setting ").append(method).append(", mode now ").append(modeName()).append('\n');
+        String[] names = {"game chunk view", "Sodium view", "block states", "layer (translucent)", "faces (skip/occlusion)", "vertex alpha"};
+        for (int i = 0; i < names.length; i++) b.append("Hook ").append(names[i]).append(": ").append(HITS.get(i) > 0 ? "ran" : "did NOT run").append('\n');
+        b.append("transparentDead=").append(transparentDead).append(" degraded=").append(degraded).append(" armed=").append(armed).append('\n');
+        try {
+            java.nio.file.Path p = fl.getConfigDir().resolve("zeus-xray-report.txt");
+            java.nio.file.Files.writeString(p, b.toString());
+            Zeus.toast("Saved config/zeus-xray-report.txt", true);
+        } catch (java.io.IOException | RuntimeException e) {
+            Zeus.toast("Could not write the report", false);
+        }
+    }
+
+    private static final ThreadLocal<int[]> DICE = ThreadLocal.withInitial(() -> new int[] {(int) (System.nanoTime() | 1)});
+
+    /**
+     * For the block-state hook: should this ordinary block stay in the picture this time? A share of them, chosen by a small
+     * random number on the mesh thread, since this hook is not told where the block is.
+     */
+    public static boolean keepScattered() {
+        int[] d = DICE.get();
+        int x = d[0];
+        x ^= x << 13;
+        x ^= x >>> 17;
+        x ^= x << 5;
+        d[0] = x;
+        return (x & 0x7fffffff) % 100 < opacity;
+    }
+
+    /**
+     * What the chunk builder should see at this place instead of the real block: air (the block is left out), the ghost glass
+     * (the block stays, see-through), or null (the real block stays). With the opacity above 0 a share of the ordinary blocks
+     * stays, a fixed pattern chosen from the position, so the same block is always either drawn or not, from every side.
+     */
+    public static BlockState swap(BlockState state, int x, int y, int z) {
+        if (!hide(state)) return null;
+        if (modeNow != M_GLASS && modeNow != M_ORES) return null;
+        int o = modeNow == M_GLASS ? opacity : 0;
+        if (o <= 0) return AIR;
+        if (o < 100) {
+            int h = x * 73856093 ^ y * 19349663 ^ z * 83492791;
+            h ^= h >>> 13;
+            h *= 0x5bd1e995;
+            h ^= h >>> 15;
+            if ((h & 0x7fffffff) % 100 >= o) return AIR;
+        }
+        return look == 0 ? ghost : null;
+    }
+
+    private static final BlockState AIR = Blocks.AIR.defaultBlockState();
+
+    /** Should this block be left out of the picture? Called from the chunk-building threads. */
+    public static boolean hide(BlockState state) {
+        if (state == null) return false;
+        Block b = state.getBlock();
+        Boolean keep = KEEP.get(b);
+        if (keep == null) {
+            keep = decide(b, mask);
+            KEEP.put(b, keep);
+        }
+        return !keep;
+    }
+
+    private static boolean decide(Block b, int m) {
+        String path;
+        try {
+            String id = BuiltInRegistries.BLOCK.getKey(b).toString();
+            path = id.substring(id.indexOf(':') + 1);
+        } catch (RuntimeException e) {
+            return true;
+        }
+        if (path.equals("air") || path.equals("cave_air") || path.equals("void_air")) return true;
+        int kind = classify(path);
+        return kind >= 0 && (m & (1 << kind)) != 0;
+    }
+
+    /** The index in {@link #KINDS} of a block, or -1 for an ordinary block. */
+    static int classify(String path) {
+        if (path.endsWith("_ore")) {
+            if (path.contains("coal")) return 0;
+            if (path.contains("iron")) return 1;
+            if (path.contains("copper")) return 2;
+            if (path.contains("nether_gold")) return 8;
+            if (path.contains("gold")) return 3;
+            if (path.contains("redstone")) return 4;
+            if (path.contains("lapis")) return 5;
+            if (path.contains("diamond")) return 6;
+            if (path.contains("emerald")) return 7;
+            if (path.contains("quartz")) return 8;
+            return 12;
+        }
+        switch (path) {
+            case "ancient_debris":
+                return 9;
+            case "lava":
+                return 10;
+            case "gilded_blackstone":
+                return 8;
+            case "spawner", "trial_spawner", "vault", "chest", "trapped_chest", "ender_chest", "end_portal_frame", "end_portal", "budding_amethyst":
+                return 11;
+            default:
+                return -1;
+        }
+    }
+}

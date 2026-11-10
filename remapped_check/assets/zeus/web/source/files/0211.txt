@@ -1,0 +1,301 @@
+{
+  "defaults": {
+    "version": "0.9.9.0",
+    "minecraft": "1.21.11",
+    "discordUrl": "https://discord.gg/GcbryFXgcR",
+    "downloadUrl": "",
+    "youtubeUrl": "",
+    "twitterUrl": "",
+    "tutorialUrl": "",
+    "siteName": "Zeus Client",
+    "siteUrl": "",
+    "sha256": "",
+    "contactEmail": "",
+    "githubUrl": ""
+  },
+  "tagline": "A cheat client for Minecraft 1.21.11.",
+  "subtitle": "Over 170 modules for Fabric, from combat and movement to ESP and base finding.",
+  "about": "Zeus is a client-side Fabric mod for Minecraft 1.21.11. It adds combat, movement, ESP and base-finding modules, and a menu where you switch them on and change their settings. It is a cheat client, so use it where cheats are allowed.",
+  "strip": [
+    {
+      "icon": "bolt",
+      "title": "Combat and movement",
+      "sub": "Auras, aim help, flight, speed",
+      "page": "features"
+    },
+    {
+      "icon": "puzzle",
+      "title": "170+ modules",
+      "sub": "Each one has settings you can change",
+      "page": "features"
+    },
+    {
+      "icon": "palette",
+      "title": "Your own layout",
+      "sub": "Themes, a HUD editor and profiles",
+      "page": "help"
+    },
+    {
+      "icon": "shield",
+      "title": "Panic button",
+      "sub": "Switches every module off at once",
+      "page": "help"
+    },
+    {
+      "icon": "search",
+      "title": "Base finding",
+      "sub": "Scanners for chunks and bases",
+      "page": "features"
+    },
+    {
+      "icon": "gift",
+      "title": "Free to download",
+      "sub": "Every release is in the timeline",
+      "page": "information"
+    }
+  ],
+  "requirements": [
+    {
+      "title": "Minecraft",
+      "text": "Java Edition 1.21.11"
+    },
+    {
+      "title": "Loader",
+      "text": "Fabric Loader 0.18 or newer"
+    },
+    {
+      "title": "Dependency",
+      "text": "Fabric API for 1.21.11"
+    },
+    {
+      "title": "Java",
+      "text": "Java 21 or newer"
+    }
+  ],
+  "install": [
+    {
+      "title": "Install Fabric",
+      "text": "Download the Fabric installer from fabricmc.net and create a 1.21.11 profile."
+    },
+    {
+      "title": "Add Fabric API",
+      "text": "Put the Fabric API jar for 1.21.11 into your .minecraft/mods folder."
+    },
+    {
+      "title": "Add Zeus",
+      "text": "Copy the Zeus jar (not the -sources one) into the same mods folder."
+    },
+    {
+      "title": "Start the game",
+      "text": "Launch the Fabric 1.21.11 profile. Zeus loads automatically."
+    },
+    {
+      "title": "Open the menu",
+      "text": "Press Z in a world to open the Zeus menu (you can rebind it in Minecraft's controls)."
+    }
+  ],
+  "warning": "Many servers ban cheat clients, and your account can be punished for using one. Only use Zeus where cheats are allowed, and read the server's rules first. What you do with it is your responsibility.",
+  "disclaimer": "Zeus is an independent project. It is not affiliated with Mojang Studios or Microsoft. It is a client-side mod, so it only changes your own game.",
+  "tutorial": [
+    {
+      "title": "Open the menu",
+      "text": "Join a world or server and press Z. The modules are grouped into categories such as Combat, Movement, Visuals and Base Finding."
+    },
+    {
+      "title": "Find a module",
+      "text": "Type in the search box at the top. It matches names, descriptions and categories, and it copes with small typos."
+    },
+    {
+      "title": "Switch it on",
+      "text": "Click a module's switch. Click the rest of the row to open its settings."
+    },
+    {
+      "title": "Place your HUD",
+      "text": "Type /zeus hud, then drag the widgets where you want them. They snap to the screen edges, the centre lines and each other."
+    },
+    {
+      "title": "Open the control center",
+      "text": "Run /zeus website and open the link it prints in chat. You can also switch on Web Dashboard in the Interface category. The Settings page then lets you change modules from your browser."
+    },
+    {
+      "title": "Panic when you need to",
+      "text": "Panic switches every module off at once. Use the button in the menu, the Settings page or /zeus panic."
+    }
+  ],
+  "commands": [
+    {
+      "cmd": "/zeus",
+      "text": "Opens the Zeus panel. Same as pressing Z."
+    },
+    {
+      "cmd": "/zeus hud",
+      "text": "Opens the HUD editor, where you move and scale widgets."
+    },
+    {
+      "cmd": "/zeus on <module>",
+      "text": "Switches a module on. Press Tab to see the module IDs."
+    },
+    {
+      "cmd": "/zeus off <module>",
+      "text": "Switches a module off."
+    },
+    {
+      "cmd": "/zeus toggle <module>",
+      "text": "Switches a module on or off, whichever it is not."
+    },
+    {
+      "cmd": "/zeus list",
+      "text": "Lists the modules and shows which are on."
+    },
+    {
+      "cmd": "/zeus panic",
+      "text": "Switches every module off."
+    },
+    {
+      "cmd": "/zeus tutorial",
+      "text": "Replays the animated tour of the categories."
+    },
+    {
+      "cmd": "/zeus website",
+      "text": "Starts the website and prints a clickable link in chat."
+    },
+    {
+      "cmd": "/zeus website status",
+      "text": "Says whether the website is running and on which port."
+    },
+    {
+      "cmd": "/zeus website stop",
+      "text": "Stops the website."
+    },
+    {
+      "cmd": "/zeus waypoint add <x> <y> <z> [name]",
+      "text": "Saves a waypoint at those coordinates."
+    }
+  ],
+  "credits": [
+    {
+      "icon": "bolt",
+      "name": "Zlorbie788",
+      "role": "Creator and developer",
+      "text": "Wrote the client, the code, the website and the images.",
+      "tag": "Client, code, website, images"
+    },
+    {
+      "icon": "puzzle",
+      "name": "mitko_pandata",
+      "role": "Ideas",
+      "text": "Suggested modules and features.",
+      "tag": "Modules and feature ideas"
+    },
+    {
+      "icon": "play",
+      "name": "NikiTheFacter",
+      "role": "Animations",
+      "text": "Made the animations.",
+      "tag": "Animations"
+    },
+    {
+      "icon": "users",
+      "name": "The community",
+      "role": "Testing",
+      "text": "Tests builds, reports bugs and shares configs on Discord.",
+      "tag": "Testing and feedback"
+    }
+  ],
+  "references": [
+    {
+      "icon": "cube",
+      "name": "Meteor Client",
+      "kind": "Base mod style",
+      "text": "The general layout of a cheat client (module list, settings, categories, HUD) follows how Meteor Client does it.",
+      "url": "https://meteorclient.com"
+    },
+    {
+      "icon": "puzzle",
+      "name": "Fabric",
+      "kind": "Toolchain",
+      "text": "Zeus is built on Fabric Loader, Fabric API and Loom.",
+      "url": "https://fabricmc.net"
+    },
+    {
+      "icon": "cube",
+      "name": "Litematica",
+      "kind": "Schematic workflow",
+      "text": "The schematic library and builder read .litematic files and look in Litematica's schematics folder.",
+      "url": "https://github.com/maruohon/litematica"
+    },
+    {
+      "icon": "palette",
+      "name": "Inter and Exo 2",
+      "kind": "Website fonts",
+      "text": "The website uses these typefaces, under the SIL Open Font License.",
+      "url": "https://fonts.google.com"
+    },
+    {
+      "icon": "palette",
+      "name": "Cinzel Decorative and GFS Didot",
+      "kind": "Menu lettering",
+      "text": "Used for the lettering on the Zeus main menu and the news scroll, under the SIL Open Font License.",
+      "url": "https://fonts.google.com"
+    },
+    {
+      "icon": "shield",
+      "name": "DonutSMP",
+      "kind": "Server context",
+      "text": "A few helpers (Region Map, Goliath RTP, Media Base Finder) are written around how that server works. Zeus is not affiliated with it."
+    }
+  ],
+  "safe": {
+    "title": "Is Zeus safe?",
+    "lead": "Yes, if you download it from an official place. Here is what you can check yourself.",
+    "checks": [
+      {
+        "icon": "code",
+        "title": "You can read the code",
+        "text": "Every file of this release is on the Source code page. You, or someone you trust, can read what it does before you run it."
+      },
+      {
+        "icon": "lock",
+        "title": "No accounts, no passwords",
+        "text": "Zeus never asks for your Minecraft or Microsoft login. If something calling itself Zeus asks for a password, it is not Zeus."
+      },
+      {
+        "icon": "eye",
+        "title": "No tracking",
+        "text": "There is no Zeus server and no telemetry. Three optional modules do connect out: Discord Webhook (to the address you type in), Staff Live (to YouTube, TikTok and Twitch) and Update Checker (to the version address you set)."
+      },
+      {
+        "icon": "shield",
+        "title": "A jar, not an installer",
+        "text": "Zeus is a Fabric mod .jar that goes in your mods folder. Be wary of any copy that comes as an .exe or tells you to turn off your antivirus."
+      },
+      {
+        "icon": "check",
+        "title": "Check the file",
+        "text": "The Download page shows the SHA-256 of the official jar. Hash your download and compare the two. If they differ, do not run it."
+      }
+    ],
+    "github": "If you would rather not download from this site, get the same jar from the project's GitHub page, or build it yourself from the source, and compare the checksum.",
+    "risk": "The bigger risk is on the game side. Many servers ban cheat clients, so read the rules of every server before you use Zeus."
+  },
+  "home": {
+    "about2": [
+      "Combat, movement, ESP and base finding",
+      "A menu with a HUD editor",
+      "Profiles, favourites and a web control center"
+    ],
+    "disc": [
+      "Ask for help",
+      "Share configs and setups",
+      "Report bugs and suggest modules",
+      "Hear about new releases first"
+    ]
+  },
+  "banner": {
+    "on": false,
+    "kind": "info",
+    "text": "",
+    "label": "",
+    "href": ""
+  }
+}

@@ -1,0 +1,18 @@
+package com.zlorbie788.zeus.mixin;
+
+import com.zlorbie788.zeus.mods.AntiVanish;
+import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.network.protocol.game.ClientboundBlockDestructionPacket;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+/** Anti Vanish: a "someone is breaking this block" packet from a player id you cannot see is a tell. */
+@Mixin(ClientPacketListener.class)
+public abstract class VanishDestroyMixin {
+    @Inject(method = "handleBlockDestruction", at = @At("HEAD"), require = 0)
+    private void zeus$destroy(ClientboundBlockDestructionPacket packet, CallbackInfo ci) {
+        AntiVanish.leak(packet.getId(), packet.getPos());
+    }
+}

@@ -1,0 +1,327 @@
+package com.zlorbie788.zeus.mods;
+
+import com.zlorbie788.zeus.core.Aim;
+import com.zlorbie788.zeus.core.Category;
+import com.zlorbie788.zeus.core.Env;
+import com.zlorbie788.zeus.core.Hits;
+import com.zlorbie788.zeus.core.Inv;
+import com.zlorbie788.zeus.core.Module;
+import com.zlorbie788.zeus.core.Setting;
+import net.minecraft.client.Minecraft;
+import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * The two mace modules.
+ *
+ * <p><b>How the mace works.</b> A smash attack needs the attacker to have fallen more than 1.5 blocks and not to be gliding. The
+ * damage is then the normal hit plus 4 for each of the first 3 blocks fallen, 2 for each of the next 5 and 1 for every block
+ * after that, the fall damage of that fall is cancelled, and Density adds more per block. The fall distance that counts is the
+ * one the <i>server</i> keeps, which it adds up from the downward steps of the movement packets you send.</p>
+ *
+ * <p><b>Mace Aura</b> does the legitimate part by itself: it watches for you being in the air near a target, takes the mace out,
+ * hits at the right moment and goes back to your slot after landing. <b>Mace Damage</b> adds a fall to the packets just before
+ * a hit with a mace, so the server counts a fall from much higher than you really fell.</p>
+ */
+public final class MaceMods {
+    private MaceMods() {}
+
+    private static boolean ready(Minecraft mc) {
+        return mc.player != null && mc.level != null && mc.gameMode != null && mc.getConnection() != null && mc.screen == null;
+    }
+
+    /** The player is in a state where the game allows a smash attack at all. */
+    private static boolean mayFall(Player p) {
+        return !p.isFallFlying() && !p.getAbilities().flying && !p.isPassenger() && !p.isInWater() && !p.isInLava() && !p.onClimbable();
+    }
+
+    // ================================================================== Mace Damage
+
+    /** Makes the server count a fall from a great height for a hit with a mace, which is what turns the hit into a smash. */
+    public static final class MaceDamage extends Module {
+        private static volatile boolean on;
+        private static volatile boolean sending;
+        private static double height = 22;
+        private static boolean reachOnly = true;
+        private static boolean fullSwing = true;
+        private static int lastBoost;
+
+        private final Setting.Num fall = add(new Setting.Num("Fall height", "How many blocks of fall the server is told about. 22 is about 64 damage a hit. The game's own limits cap it near twenty without lag, and the module keeps to free air above you.", 22, 4, 50, 1, " blocks"));
+        private final Setting.Bool reach = add(new Setting.Bool("Only when the hit can land", "Only boost a hit when the target is inside your reach. A boosted hit that misses would leave the fall on you.", true));
+        private final Setting.Bool charged = add(new Setting.Bool("Wait for full swing", "Do not spend a boost on a half-charged swing.", true));
+
+        public MaceDamage() {
+            super("macedamage", "Mace Damage", "Makes every mace hit count as a fall from a great height. Hold a mace and hit.", Category.COMBAT);
+            alias("macedmg", "smash", "mace boost");
+            fall.onChange(() -> height = fall.get());
+            reach.onChange(() -> reachOnly = reach.on());
+            charged.onChange(() -> fullSwing = charged.on());
+        }
+
+        public static boolean isOn() {
+            return on;
+        }
+
+        /** True while this module is sending its own packets, so No Fall, Anti Hunger and Fake Lag leave them alone. */
+        public static boolean sending() {
+            return sending;
+        }
+
+        @Override
+        protected void onEnable() {
+            on = true;
+            height = fall.get();
+            reachOnly = reach.on();
+            fullSwing = charged.on();
+        }
+
+        @Override
+        protected void onDisable() {
+            on = false;
+        }
+
+        @Override
+        public String info() {
+            return lastBoost > 0 ? lastBoost + " blocks" : null;
+        }
+
+        /** Free height above the player, in steps, so no fake position is inside a block. */
+        private static double clearance(Minecraft mc, Player p, double wanted) {
+            double free = 0;
+            AABB box = p.getBoundingBox();
+            for (double h = 0.5; h <= wanted + 0.001; h += 0.5) {
+                if (!mc.level.noCollision(p, box.move(0, h, 0))) break;
+                free = h;
+            }
+            return free;
+        }
+
+        /**
+         * Called by the game's attack method just before the attack packet leaves. Sends a few position packets that go up and
+         * come back down, each one inside the distance the server allows for a single move, so the server adds the drops up as
+         * a fall. The attack packet that follows is then a smash.
+         */
+        public static void beforeAttack(Player p, Entity target) {
+            if (!on || sending) return;
+            Minecraft mc = Minecraft.getInstance();
+            if (p != mc.player) return;
+            if (mc.getConnection() == null || mc.level == null) return;
+            if (!p.getMainHandItem().is(Items.MACE) || !(target instanceof LivingEntity) || !mayFall(p)) return;
+            if (reachOnly && !p.isWithinEntityInteractionRange(target, 0.0)) return;
+            if (fullSwing && p.getAttackStrengthScale(0.5f) < 0.9f) return;
+            double need = height - p.fallDistance;
+            if (need < 1.0) return;
+            double free = clearance(mc, p, 8.5);
+            if (free < 1.0) {
+                lastBoost = 0;
+                return;
+            }
+            // one step must stay under the server's "moved too quickly" limit (10 blocks in one packet)
+            double step = Math.min(8.5, free);
+            int cycles = (int) Math.min(10, Math.ceil(need / step));
+            double x = p.getX();
+            double y = p.getY();
+            double z = p.getZ();
+            sending = true;
+            try {
+                for (int i = 0; i < cycles; i++) {
+                    mc.getConnection().send(new ServerboundMovePlayerPacket.Pos(x, y + step, z, false, false));
+                    mc.getConnection().send(new ServerboundMovePlayerPacket.Pos(x, y, z, false, p.horizontalCollision));
+                }
+                lastBoost = (int) Math.round(cycles * step + p.fallDistance);
+            } finally {
+                sending = false;
+            }
+        }
+    }
+
+    // ================================================================== Mace Aura
+
+    /**
+     * Watches for you being in the air next to a target, takes the mace out, hits it as soon as the swing is charged and keeps
+     * doing that for as long as there is a target, then puts your slot back.
+     */
+    public static final class MaceAura extends Module {
+        private final Targets.Pick who = Targets.pick(this::add, true, true, false);
+        private final Setting.Num detect = add(new Setting.Num("Notice from", "How close a target has to be before the mace is taken out.", 6.0, 3.0, 12.0, 0.5, " blocks"));
+        private final Setting.Num reach = add(new Setting.Num("Hit from", "How far away the hit is made. The game's own reach is 3 blocks.", 3.0, 2.5, 4.5, 0.1, " blocks"));
+        private final Setting.Num minFall = add(new Setting.Num("Fall at least", "A smash needs more than 1.5 blocks of fall. A little extra keeps a slow server from refusing it.", 1.8, 1.6, 8.0, 0.2, " blocks"));
+        private final Setting.Choice priority = add(new Setting.Choice("Pick the target by", "Closest, or the one with the least health.", 0, "Closest", "Lowest health"));
+        private final Setting.Bool full = add(new Setting.Bool("Wait for full swing", "Only hit with a full attack bar, which is what the smash damage needs.", true));
+        private final Setting.Bool silent = add(new Setting.Bool("Silent rotation", "Send a look packet at the target right before the hit, without turning your camera.", true));
+        private final Setting.Bool los = add(new Setting.Bool("Line of sight only", "Skip targets behind walls.", true));
+        private final Setting.Bool back = add(new Setting.Bool("Switch back", "Go back to your own slot after landing.", true));
+        private final Setting.Bool assist = add(new Setting.Bool("Mace assistant", "Line yourself up for the hit: closes the gap to the target and holds you just above its head, so the smash comes down on it instead of sailing past. Only your own movement is touched, and only while this is on.", true));
+        private final Setting.Num hover = add(new Setting.Num("Hover above", "How far above the target's head the assistant holds you before it lets you drop.", 0.9, 0.4, 3.0, 0.1, " blocks").showIf(() -> assist.on()));
+        private final Setting.Num glide = add(new Setting.Num("Correction speed", "How far it pulls you into line each tick.", 0.45, 0.15, 1.2, 0.05, " blocks/tick").showIf(() -> assist.on()));
+        private final Setting.Num hitDelay = add(new Setting.Num("Hit delay", "Ticks between hits on the same target, so the server's answers arrive instead of being drowned out. With Mace Damage on it is best left short.", 2, 0, 8, 1, " ticks").showIf(() -> false));
+        private final Setting.Bool confirmHits = add(new Setting.Bool("Stop on misses", "When recent swings at a target are not landing, stop hitting it and pick another.", true));
+        private int previous = -1;
+        private int lost;
+        private String shown;
+        private boolean warned;
+        private final Map<Integer, Long> lastHit = new java.util.HashMap<>();
+        private long lookedAt;
+        private boolean looked;
+
+        public MaceAura() {
+            super("maceaura", "Mace Aura", "In the air near a target: takes out the mace, smashes it, and keeps going.", Category.COMBAT);
+            alias("mace bot", "macebot", "mace killaura");
+        }
+
+        @Override
+        protected void onTick(Minecraft mc) {
+            shown = null;
+            if (!ready(mc)) return;
+            var me = mc.player;
+            boolean boosted = MaceDamage.isOn();
+
+            LivingEntity best = pick(mc);
+            if (best == null) {
+                settle(me);
+                return;
+            }
+            // the assistant lines the smash up before the fall is judged: gap closed, held over the head, then let go
+            if (assist.on() && !me.onGround() && mayFall(me)) lineUp(me, best);
+
+            boolean airborne = !me.onGround() && me.fallDistance > minFall.get() && mayFall(me);
+            boolean falling = airborne && me.getDeltaMovement().y < 0.05;
+            if (!(falling || boosted && mayFall(me))) {
+                settle(me);
+                return;
+            }
+            shown = best.getName().getString();
+
+            int mace = Inv.hotbar(s -> s.is(Items.MACE));
+            if (mace < 0) {
+                if (!warned) {
+                    warned = true;
+                    com.zlorbie788.zeus.core.Zeus.toast("Mace Aura: no mace in your hotbar", false);
+                }
+                return;
+            }
+            warned = false;
+            if (!me.getMainHandItem().is(Items.MACE)) {
+                if (previous < 0) previous = Inv.selected();
+                Inv.select(mace);
+            }
+            lost = 0;
+
+            // do not keep pounding a target the server is ignoring, or one we just hit
+            if (Hits.cold(best.getId())) return;
+            if (confirmHits.on() && Hits.ratio(best.getId()) < 0.25f && Hits.swings(best.getId()) >= 3) return;
+            long now = System.currentTimeMillis();
+            long since = now - lastHit.getOrDefault(best.getId(), 0L);
+            int delay = Math.max(0, hitDelay.i() - 1);
+            if (delay > 0 && since < delay * 50L) return;
+
+            // the hit itself
+            AABB box = best.getBoundingBox();
+            double eyeDist = box.distanceToSqr(me.getEyePosition());
+            if (eyeDist > reach.get() * reach.get()) return;
+            if (full.on() && me.getAttackStrengthScale(0f) < 0.97f) return;
+            if (best.invulnerableTime > 10) return;
+
+            // a silent look packet needs a tick to leave the client before the attack reads it
+            if (silent.on()) {
+                if (!looked) {
+                    Aim.look(best.position().add(0, best.getBbHeight() * 0.5, 0));
+                    lookedAt = now;
+                    looked = true;
+                    return;
+                }
+                if (now - lookedAt < 30L) return;
+                looked = false;
+            } else {
+                looked = false;
+            }
+
+            Hits.attempt(best);
+            mc.gameMode.attack(me, best);
+            me.swing(InteractionHand.MAIN_HAND);
+            lastHit.put(best.getId(), now);
+        }
+
+        /**
+         * The mace assistant: puts you where the smash actually lands. The gap to the target is closed horizontally with an ease
+         * that never overshoots, you are held a little above its head while you are still climbing, and once you are up there the
+         * fall is capped so you do not swing straight past it. Only the local player's own movement is touched.
+         */
+        private void lineUp(Player me, LivingEntity t) {
+            double dx = t.getX() - me.getX();
+            double dz = t.getZ() - me.getZ();
+            double flat = Math.sqrt(dx * dx + dz * dz);
+            double step = glide.get();
+            double mx = 0;
+            double mz = 0;
+            if (flat > 0.10) {
+                // the last part of a block is a fine correction, not a jump, so it settles instead of shaking
+                double pull = Math.min(Math.min(step, flat), flat * 0.55 + 0.03);
+                mx = dx / flat * pull;
+                mz = dz / flat * pull;
+            }
+            double wantY = t.getY() + t.getBbHeight() + hover.get();
+            double vy = me.getDeltaMovement().y;
+            if (me.getY() < wantY - 0.05) {
+                if (vy > -0.02) vy = Math.min(0.40, (wantY - me.getY()) * 0.45);
+            } else if (me.getY() > wantY + 0.15) {
+                // you climbed past the hover point: drop in gently so the smash lands on the target instead of sailing over it
+                vy = Math.min(vy, -0.22);
+            } else if (vy < -0.42) {
+                // an existing fast fall would carry you past before the hit lands: ease it off a little
+                vy = -0.42;
+            }
+            me.setDeltaMovement(mx, vy, mz);
+        }
+
+        private LivingEntity pick(Minecraft mc) {
+            var me = mc.player;
+            LivingEntity best = null;
+            double bestD = Double.MAX_VALUE;
+            double d2 = detect.get() * detect.get();
+            Vec3 eye = me.getEyePosition();
+            for (Entity e : Env.entities(mc, detect.get() + 1.0)) {
+                if (!Targets.accepts(mc, who, e)) continue;
+                LivingEntity le = (LivingEntity) e;
+                double dist = le.getBoundingBox().distanceToSqr(eye);
+                if (dist > d2) continue;
+                double rank = priority.index() == 1 ? le.getHealth() + le.getAbsorptionAmount() + dist * 0.001 : dist;
+                if (rank >= bestD) continue;
+                if (los.on() && !me.hasLineOfSight(e)) continue;
+                best = le;
+                bestD = rank;
+            }
+            return best;
+        }
+
+        /** Nothing to hit: after you have landed and nothing came back for a few ticks, your own slot returns. */
+        private void settle(Player me) {
+            if (previous < 0) return;
+            if (!me.onGround()) return;
+            if (++lost < 6) return;
+            if (back.on()) Inv.select(previous);
+            previous = -1;
+            lost = 0;
+        }
+
+        @Override
+        protected void onDisable() {
+            previous = -1;
+            lost = 0;
+            warned = false;
+        }
+
+        @Override
+        public String info() {
+            return shown;
+        }
+    }
+}

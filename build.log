@@ -1,0 +1,29 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.5.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+
+> Configure project :
+Fabric Loom: 1.17.21
+
+> Task :compileJava
+> Task :processResources
+> Task :classes
+> Task :jar
+> Task :processIncludeJars UP-TO-DATE
+> Task :compileTestJava NO-SOURCE
+> Task :processTestResources NO-SOURCE
+> Task :testClasses UP-TO-DATE
+> Task :test NO-SOURCE
+> Task :validateAccessWidener NO-SOURCE
+> Task :check UP-TO-DATE
+Cannot remap update because it does not exist in any of the targets [net/minecraft/client/Camera]
+Cannot remap putQuadWithTint because it does not exist in any of the targets [net/minecraft/client/renderer/block/ModelBlockRenderer]
+Cannot remap putQuadWithTint because it does not exist in any of the targets [net/minecraft/client/renderer/block/ModelBlockRenderer]
+Cannot remap isStayingOnGroundSurface because it does not exist in any of the targets [net/minecraft/world/entity/Entity]
+> Task :remapJar
+> Task :remapSourcesJar SKIPPED
+> Task :assemble
+> Task :build
+
+BUILD SUCCESSFUL in 31s
+5 actionable tasks: 4 executed, 1 up-to-date
+EXIT:0

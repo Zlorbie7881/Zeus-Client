@@ -1,0 +1,12 @@
+NOTICE (legal, not shown in the game or on the website)
+
+Parts of Zeus (the Goliath region table, the staff-name matching rules and the media-account
+finding flow, and the look of the tracers and of the flat chunk marking: the Y=63 tiles with a
+rounded edge, their grow and shrink, and the tracer to the middle of each area) were derived from "Anubis Client 1.0" by Horus and 4ldenz, which is published under
+the GNU General Public License version 3 (https://github.com/4ldenz/Anubis-client).
+
+The GPL-3.0 therefore applies to Zeus as a whole when it is distributed. If you pass Zeus on, keep
+this notice and the LICENSE file and make the corresponding source code available.
+
+To distribute Zeus WITHOUT these obligations, the derived parts must first be removed or rewritten
+from a description of the behaviour alone, by someone who has not read the original source.

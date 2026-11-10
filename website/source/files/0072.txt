@@ -1,0 +1,291 @@
+package com.zlorbie788.zeus.mods;
+
+import com.zlorbie788.zeus.core.Category;
+import com.zlorbie788.zeus.core.Module;
+import com.zlorbie788.zeus.core.Names;
+import com.zlorbie788.zeus.core.Setting;
+import com.zlorbie788.zeus.core.Zeus;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.item.ItemStack;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * AH Sniper: buys an auction house listing the moment it is at or under a price you set. It lives inside Auction House
+ * Tweaks. It does what you would do with the mouse (click the listing, click the confirm button), and it always stops by
+ * itself at a spending limit and a purchase limit that you set, so a wrong price can never empty your balance.
+ *
+ * <p>It does nothing until "Auto-buy" is switched on, and it needs at least one rule such as {@code elytra=2m}.</p>
+ */
+public final class AhSniper extends Module {
+    private static final Pattern PRICE_LINE = Pattern.compile("(?i)price\\W{0,6}\\$?\\s*([0-9][0-9,]*(?:\\.[0-9]+)?)\\s*([kmbt])?");
+    private static final Pattern DOLLAR = Pattern.compile("\\$\\s*([0-9][0-9,]*(?:\\.[0-9]+)?)\\s*([kmbt])?");
+
+    private final Setting.Bool armed = add(new Setting.Bool("Sniper: auto-buy", "Buys listings that match a rule below by itself. Off: the sniper does nothing. It switches itself off again when a limit is reached.", false));
+    private final Setting.Text rules = add(new Setting.Text("Sniper: items and highest price", "Item = highest price you will pay, separated by commas. For example: elytra=2m, mace=500k, netherite ingot=300k. A listing is bought only when its name contains the words and its price is at or under that number. Short forms k, m, b work.", "", 200));
+    private final Setting.Choice per = add(new Setting.Choice("Sniper: the price is", "Whole listing: the price on the listing. Per item: the price divided by the number of items in the stack.", 0, "For the whole listing", "Per item"));
+    private final Setting.Text spendLimit = add(new Setting.Text("Sniper: spending limit", "It stops buying once it has spent this much since you switched it on. 0 means no limit (not recommended).", "1m", 16));
+    private final Setting.Num maxBuys = add(new Setting.Num("Sniper: most purchases", "It stops after this many purchases.", 3, 1, 50, 1, ""));
+    private final Setting.Num pause = add(new Setting.Num("Sniper: pause after a purchase", "Seconds it waits after a purchase before it looks again.", 2, 0.5, 30, 0.5, " s"));
+    private final Setting.Num refresh = add(new Setting.Num("Sniper: look again every", "Seconds between two looks at a window that has nothing to buy.", 1.5, 0.5, 30, 0.5, " s"));
+    private final Setting.Bool reopen = add(new Setting.Bool("Sniper: open the auction house for me", "When no window is open, types the command below to open it again. Off: it only works on a window you opened yourself.", false));
+    private final Setting.Text openCommand = add(new Setting.Text("Sniper: open command", "The command (without the slash) that opens the auction house, used when the setting above is on.", "ah", 30));
+    private final Setting.Text windowNames = add(new Setting.Text("Sniper: auction window title", "Words that appear in the title of the listing window, separated by commas.", "auction,ah,market", 80));
+    private final Setting.Text confirmNames = add(new Setting.Text("Sniper: confirm window title", "Words that appear in the title of the window that asks you to confirm a purchase.", "confirm,purchase,buy", 80));
+    private final Setting.Info report = addSetting(new Setting.Info("Sniper: status", this::lines));
+
+    private enum Phase { LOOK, CONFIRM, REST }
+
+    private final Set<String> tried = new HashSet<>();
+    private Phase phase = Phase.LOOK;
+    private int waited;
+    private int rest;
+    private int idle;
+    private int bought;
+    private double spent;
+    private double pendingPrice;
+    private String pendingName = "";
+    private String note = "Off.";
+
+    public AhSniper() {
+        super("ah_sniper", "AH Sniper", "Buys auction listings that are at or under a price you set, with a spending limit and a purchase limit.", Category.UTILITY);
+        alias("auction sniper", "ah buy", "snipe");
+    }
+
+    @Override
+    protected void onEnable() {
+        reset();
+    }
+
+    private void reset() {
+        phase = Phase.LOOK;
+        waited = rest = idle = bought = 0;
+        spent = 0;
+        tried.clear();
+        note = armed.on() ? "Armed. Open the auction house." : "Off. Switch \"Sniper: auto-buy\" on to start.";
+    }
+
+    @Override
+    public String info() {
+        return armed.on() && bought > 0 ? Integer.toString(bought) : null;
+    }
+
+    private List<String> lines() {
+        List<String> out = new ArrayList<>();
+        out.add(note);
+        out.add("Bought " + bought + " of " + maxBuys.i() + ", spent " + MarketHunter.money(spent) + (limit() > 0 ? " of " + MarketHunter.money(limit()) : ""));
+        List<Rule> rs = parseRules();
+        out.add(rs.isEmpty() ? "No rules yet. Example: elytra=2m, mace=500k" : rs.size() + " rule" + (rs.size() == 1 ? "" : "s"));
+        return out;
+    }
+
+    private double limit() {
+        double v = MarketHunter.parsePrice(spendLimit.get());
+        return v < 0 ? 0 : v;
+    }
+
+    /** One "words = highest price" rule. */
+    record Rule(String words, double max) {}
+
+    List<Rule> parseRules() {
+        List<Rule> out = new ArrayList<>();
+        for (String part : rules.get().split(",")) {
+            int eq = part.indexOf('=');
+            if (eq < 1) continue;
+            String words = part.substring(0, eq).trim().toLowerCase(Locale.ROOT);
+            double max = MarketHunter.parsePrice(part.substring(eq + 1));
+            if (!words.isEmpty() && max > 0) out.add(new Rule(words, max));
+        }
+        return out;
+    }
+
+    /** The price written on a listing, or -1 when it cannot be read with certainty. */
+    static double priceOf(ItemStack stack) {
+        String lore = MarketHunter.loreText(stack);
+        Matcher m = PRICE_LINE.matcher(lore);
+        if (m.find()) return value(m.group(1), m.group(2));
+        m = DOLLAR.matcher(lore);
+        if (m.find()) return value(m.group(1), m.group(2));
+        return -1;
+    }
+
+    private static double value(String number, String suffix) {
+        try {
+            double v = Double.parseDouble(number.replace(",", ""));
+            if (suffix != null) {
+                v *= switch (suffix.toLowerCase(Locale.ROOT)) {
+                    case "k" -> 1e3;
+                    case "m" -> 1e6;
+                    case "b" -> 1e9;
+                    case "t" -> 1e12;
+                    default -> 1;
+                };
+            }
+            return v;
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
+    private static boolean titled(String title, String words) {
+        for (String w : words.toLowerCase(Locale.ROOT).split(",")) {
+            String k = w.trim();
+            if (!k.isEmpty() && title.contains(k)) return true;
+        }
+        return false;
+    }
+
+    private void stop(String why) {
+        armed.set(false);
+        phase = Phase.LOOK;
+        note = why;
+        Zeus.toast("AH Sniper: " + why, true);
+    }
+
+    @Override
+    protected void onTick(Minecraft mc) {
+        if (!armed.on()) {
+            if (!note.startsWith("Off")) note = "Off. Switch \"Sniper: auto-buy\" on to start.";
+            return;
+        }
+        if (mc.player == null || mc.gameMode == null) return;
+        if (bought >= maxBuys.i()) {
+            stop("reached the limit of " + maxBuys.i() + " purchases");
+            return;
+        }
+        if (limit() > 0 && spent >= limit()) {
+            stop("reached the spending limit of " + MarketHunter.money(limit()));
+            return;
+        }
+        List<Rule> rs = parseRules();
+        if (rs.isEmpty()) {
+            note = "Add a rule first, for example: elytra=2m";
+            return;
+        }
+        if (rest > 0) {
+            rest--;
+            return;
+        }
+        String title = mc.screen == null ? "" : mc.screen.getTitle().getString().toLowerCase(Locale.ROOT);
+        AbstractContainerMenu menu = mc.player.containerMenu;
+
+        if (phase == Phase.CONFIRM) {
+            if (++waited > 50) {
+                phase = Phase.LOOK;
+                note = "No confirm window came. Looking again.";
+                mc.setScreen(null);
+                rest = 10;
+                return;
+            }
+            if (menu == null || mc.screen == null || !titled(title, confirmNames.get())) return;
+            int slot = confirmSlot(menu);
+            if (slot < 0) return;
+            mc.gameMode.handleInventoryMouseClick(menu.containerId, slot, 0, ClickType.PICKUP, mc.player);
+            bought++;
+            spent += pendingPrice;
+            note = "Bought " + pendingName + " for " + MarketHunter.money(pendingPrice) + ".";
+            Zeus.toast("AH Sniper bought " + pendingName + " for " + MarketHunter.money(pendingPrice), true);
+            phase = Phase.LOOK;
+            rest = Math.max(1, (int) Math.round(pause.get() * 20));
+            return;
+        }
+
+        if (mc.screen == null || !titled(title, windowNames.get()) || menu == null) {
+            if (mc.screen == null && reopen.on() && !openCommand.get().isBlank() && ++idle >= Math.round(refresh.get() * 20) && mc.getConnection() != null) {
+                idle = 0;
+                String cmd = openCommand.get().trim();
+                while (cmd.startsWith("/")) cmd = cmd.substring(1);
+                mc.getConnection().sendCommand(cmd);
+            }
+            note = "Armed. Waiting for the auction house window.";
+            return;
+        }
+
+        int listingSlots = Math.max(0, menu.slots.size() - 36);
+        double spendLeft = limit() > 0 ? limit() - spent : Double.MAX_VALUE;
+        int bestSlot = -1;
+        double bestPrice = Double.MAX_VALUE;
+        String bestName = "";
+        for (int i = 0; i < listingSlots; i++) {
+            ItemStack st = menu.slots.get(i).getItem();
+            if (st == null || st.isEmpty()) continue;
+            String name = st.getHoverName().getString();
+            String lower = (name + " " + Names.item(st).replace('_', ' ')).toLowerCase(Locale.ROOT);
+            double max = -1;
+            for (Rule r : rs) {
+                if (lower.contains(r.words())) {
+                    max = Math.max(max, r.max());
+                }
+            }
+            if (max <= 0) continue;
+            double price = priceOf(st);
+            if (price < 0) continue;
+            double compare = per.index() == 1 ? price / Math.max(1, st.getCount()) : price;
+            if (compare > max || price > spendLeft) continue;
+            String key = menu.containerId + "|" + i + "|" + name + "|" + price;
+            if (tried.contains(key)) continue;
+            if (price < bestPrice) {
+                bestSlot = i;
+                bestPrice = price;
+                bestName = name;
+            }
+        }
+        if (bestSlot >= 0) {
+            tried.add(menu.containerId + "|" + bestSlot + "|" + bestName + "|" + bestPrice);
+            if (tried.size() > 400) tried.clear();
+            mc.gameMode.handleInventoryMouseClick(menu.containerId, bestSlot, 0, ClickType.PICKUP, mc.player);
+            pendingPrice = bestPrice;
+            pendingName = bestName;
+            phase = Phase.CONFIRM;
+            waited = 0;
+            note = "Found " + bestName + " for " + MarketHunter.money(bestPrice) + ". Confirming...";
+            return;
+        }
+
+        note = "Watching " + listingSlots + " slots, nothing at your prices.";
+        if (++idle >= Math.round(refresh.get() * 20)) {
+            idle = 0;
+            for (int i = 0; i < listingSlots; i++) {
+                ItemStack st = menu.slots.get(i).getItem();
+                if (st != null && !st.isEmpty() && st.getHoverName().getString().toLowerCase(Locale.ROOT).contains("refresh")) {
+                    mc.gameMode.handleInventoryMouseClick(menu.containerId, i, 0, ClickType.PICKUP, mc.player);
+                    tried.clear();
+                    return;
+                }
+            }
+            if (reopen.on() && mc.getConnection() != null && !openCommand.get().isBlank()) {
+                mc.setScreen(null);
+                String cmd = openCommand.get().trim();
+                while (cmd.startsWith("/")) cmd = cmd.substring(1);
+                mc.getConnection().sendCommand(cmd);
+                tried.clear();
+            }
+        }
+    }
+
+    /** The confirm button: a slot named confirm / accept / buy, or the green pane. */
+    private static int confirmSlot(AbstractContainerMenu menu) {
+        int n = Math.max(0, menu.slots.size() - 36);
+        for (int i = 0; i < n; i++) {
+            ItemStack st = menu.slots.get(i).getItem();
+            if (st == null || st.isEmpty()) continue;
+            String name = st.getHoverName().getString().toLowerCase(Locale.ROOT);
+            if (name.contains("confirm") || name.contains("accept") || name.contains("buy")) return i;
+        }
+        for (int i = 0; i < n; i++) {
+            ItemStack st = menu.slots.get(i).getItem();
+            if (st == null || st.isEmpty()) continue;
+            String id = Names.item(st);
+            if (id.equals("lime_stained_glass_pane") || id.equals("green_stained_glass_pane") || id.equals("lime_wool") || id.equals("green_wool")) return i;
+        }
+        return -1;
+    }
+}

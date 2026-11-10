@@ -1,0 +1,646 @@
+package com.zlorbie788.zeus.ui;
+
+import com.zlorbie788.zeus.core.Category;
+import com.zlorbie788.zeus.core.Module;
+import com.zlorbie788.zeus.core.Zeus;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.network.chat.Component;
+import org.lwjgl.glfw.GLFW;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+
+/**
+ * The HUD editor. The game's widgets stay live underneath; every widget gets an outline you can click, drag, scale with the
+ * wheel and nudge with the arrow keys. Dragging snaps to the screen edges, the centre lines and the other widgets (with guide
+ * lines), and optionally to a grid. A floating, movable panel edits the selected widget (position, scale, opacity, colour) and
+ * lists every widget so a switched-off one can be turned on and placed.
+ */
+public final class HudEditorScreen extends Screen {
+    private static final int PW = 224;
+    private static final int PAD = 8;
+    private static final int SNAP_DISTANCE = 5;
+    private static final int GRID = 8;
+    private static final int LIST_ROWS = 8;
+    private static final int[] SWATCH = {0, 0xFF4DA3FF, 0xFFB77BFF, 0xFFFFC857, 0xFF5EE6A0, 0xFFFF5C6C, 0xFFFFFFFF};
+
+    private static final int PANEL_BG = 0xF2101826;
+    private static final int PANEL_EDGE = 0xFF2B4A78;
+    private static final int TEXT = 0xFFE6EDFA;
+    private static final int DIM = 0xFF8FA0BE;
+    private static final int GOOD = 0xFF5EE6A0;
+
+    /** One clickable rectangle of the panel, rebuilt every frame. */
+    private static final class Hit {
+        int x, y, w, h;
+        Runnable click;
+        Slider slider;
+        boolean title;
+
+        boolean contains(double mx, double my) { return mx >= x && mx < x + w && my >= y && my < y + h; }
+    }
+
+    private static final class Slider {
+        float min, max;
+        Supplier<Float> get;
+        Consumer<Float> set;
+    }
+
+    private record Snapshot(String id, HudLayout.Entry entry) {}
+
+    private final Screen parent;
+    private final List<Module> widgets = new ArrayList<>();
+    private final List<Hit> hits = new ArrayList<>();
+    private final List<Snapshot> undo = new ArrayList<>();
+    private final long opened = System.nanoTime();
+
+    private String selectedId;
+    private String hoverId;
+    private boolean selectionChosen;
+    private int panelX = -1;
+    private int panelY = -1;
+    private boolean collapsed;
+    private int tab;
+    private float listScroll;
+    private boolean snap = true;
+    private boolean grid;
+    private boolean guides = true;
+
+    private int mouseX;
+    private int mouseY;
+    private Hit activeSlider;
+    private boolean draggingPanel;
+    private int panelGrabX;
+    private int panelGrabY;
+    private boolean draggingWidget;
+    private boolean moved;
+    private double grabX;
+    private double grabY;
+    private int startX;
+    private int startY;
+    private int[] startRect;
+    private float guideX = -1;
+    private float guideY = -1;
+    private long guideAt;
+    private long lastNudge;
+
+    public HudEditorScreen(Screen parent) {
+        super(Component.literal("Zeus HUD Editor"));
+        this.parent = parent;
+        for (Module module : Zeus.all()) if (module.isHudWidget() && module.toggleable()) widgets.add(module);
+        widgets.sort(Comparator.comparing(m -> m.name));
+        for (Module module : widgets) if (module.enabled()) { selectedId = module.id; break; }
+    }
+
+    @Override public boolean isPauseScreen() { return false; }
+    @Override public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) { }
+
+    // ------------------------------------------------------------------ helpers
+
+    private Module selected() {
+        if (selectedId == null) return null;
+        for (Module m : widgets) if (m.id.equals(selectedId)) return m;
+        return null;
+    }
+
+    private int[] rectOf(String id) { return HudLayout.screenRect(id, width, height); }
+
+    private float seconds() { return (System.nanoTime() - opened) / 1e9f; }
+
+    private static float ease(float t) {
+        t = Math.max(0f, Math.min(1f, t));
+        return 1f - (1f - t) * (1f - t) * (1f - t);
+    }
+
+    private int accent() { return Accent.main(); }
+
+    private int panelHeight() {
+        if (collapsed) return 18;
+        return 18 + 16 + (tab == 0 ? 138 : LIST_ROWS * 13 + 8) + 24;
+    }
+
+    private void clampPanel() {
+        panelX = Math.max(2, Math.min(width - PW - 2, panelX));
+        panelY = Math.max(2, Math.min(height - panelHeight() - 2, panelY));
+    }
+
+    private void pushUndo() {
+        if (selectedId == null) return;
+        undo.add(new Snapshot(selectedId, HudLayout.copyOf(selectedId)));
+        if (undo.size() > 60) undo.remove(0);
+    }
+
+    private void undoLast() {
+        if (undo.isEmpty()) return;
+        Snapshot s = undo.remove(undo.size() - 1);
+        HudLayout.put(s.id(), s.entry());
+        selectedId = s.id();
+    }
+
+    // ------------------------------------------------------------------ drawing
+
+    @Override
+    public void render(GuiGraphics g, int mx, int my, float partialTick) {
+        mouseX = mx;
+        mouseY = my;
+        hits.clear();
+        Minecraft mc = Minecraft.getInstance();
+        boolean world = mc.level != null;
+        float intro = ease(seconds() / 0.28f);
+        if (panelX < 0) {
+            panelX = 8; // the middle of the left edge is usually free of widgets
+            panelY = Math.max(24, height / 2 - panelHeight() / 2);
+        }
+        clampPanel();
+
+        if (world) Zeus.hud(g, mc, partialTick, width, height);
+        else g.fill(0, 0, width, height, 0xFF080D18);
+        g.fill(0, 0, width, height, Draw.rgba(0xFF04070D, 0.30f * intro));
+
+        drawGrid(g, intro);
+        if (selectedId != null && rectOf(selectedId) == null && !selectionChosen) {
+            for (Module m : widgets) if (rectOf(m.id) != null) { selectedId = m.id; break; }
+        }
+        hoverId = widgetAt(mx, my);
+        drawOutlines(g, intro);
+        drawGuides(g);
+        if (!world) Draw.textCenter(g, "Join a world to see your widgets here. You can still switch them on in the list.", width / 2, 14, DIM);
+        drawHint(g, intro);
+        drawPanel(g, intro);
+        super.render(g, mx, my, partialTick);
+    }
+
+    private void drawGrid(GuiGraphics g, float intro) {
+        int a = Math.round(0x1C * intro);
+        if (grid) {
+            for (int x = 0; x < width; x += GRID) g.fill(x, 0, x + 1, height, (a << 24) | 0x6FA8FF);
+            for (int y = 0; y < height; y += GRID) g.fill(0, y, width, y + 1, (a << 24) | 0x6FA8FF);
+        }
+        int c = (Math.round(0x34 * intro) << 24) | 0x6FA8FF;
+        for (int y = 0; y < height; y += 6) g.fill(width / 2, y, width / 2 + 1, Math.min(height, y + 3), c);
+        for (int x = 0; x < width; x += 6) g.fill(x, height / 2, Math.min(width, x + 3), height / 2 + 1, c);
+    }
+
+    private void drawOutlines(GuiGraphics g, float intro) {
+        float pulse = 0.5f + 0.5f * (float) Math.sin(seconds() * 3.2f);
+        for (Module m : widgets) {
+            int[] r = rectOf(m.id);
+            if (r == null) continue;
+            boolean sel = m.id.equals(selectedId);
+            boolean hov = m.id.equals(hoverId);
+            int col = sel ? 0xFF72C8FF : hov ? 0xFFFFFFFF : accent();
+            float alpha = (sel ? 0.55f + 0.45f * pulse : hov ? 0.9f : 0.42f) * intro;
+            int c = Draw.rgba(col, alpha);
+            int x0 = r[0] - 1, y0 = r[1] - 1, x1 = r[2] + 1, y1 = r[3] + 1;
+            if (sel) g.fill(x0, y0, x1, y1, Draw.rgba(0xFF72C8FF, 0.10f * intro));
+            g.fill(x0, y0, x1, y0 + 1, c);
+            g.fill(x0, y1 - 1, x1, y1, c);
+            g.fill(x0, y0, x0 + 1, y1, c);
+            g.fill(x1 - 1, y0, x1, y1, c);
+            if (sel) {
+                int hc = Draw.rgba(0xFFFFFFFF, intro);
+                int[][] corners = {{x0, y0}, {x1, y0}, {x0, y1}, {x1, y1}};
+                for (int[] k : corners) {
+                    g.fill(k[0] - 2, k[1] - 2, k[0] + 3, k[1] + 3, 0xFF0B1220);
+                    g.fill(k[0] - 1, k[1] - 1, k[0] + 2, k[1] + 2, hc);
+                }
+            }
+            if (sel || hov) {
+                String label = m.name + (sel && draggingWidget ? "  " + r[0] + ", " + r[1] : "");
+                int lw = Draw.width(label) + 10;
+                int lx = Math.max(2, Math.min(width - lw - 2, x0));
+                int ly = y0 - 14 >= 2 ? y0 - 14 : y1 + 3;
+                Draw.rrect(g, lx, ly, lw, 12, 3, Draw.rgba(0xFF0B1220, 0.95f));
+                g.fill(lx, ly + 2, lx + 2, ly + 10, col);
+                Draw.text(g, label, lx + 6, ly + 2, TEXT);
+            }
+        }
+    }
+
+    private void drawGuides(GuiGraphics g) {
+        if (!guides) return;
+        float fade = draggingWidget ? 1f : Math.max(0f, 1f - (System.nanoTime() - guideAt) / 4.0e8f);
+        if (fade <= 0f) return;
+        int c = Draw.rgba(0xFFFF5CA8, 0.9f * fade);
+        if (guideX >= 0) g.fill(Math.round(guideX), 0, Math.round(guideX) + 1, height, c);
+        if (guideY >= 0) g.fill(0, Math.round(guideY), width, Math.round(guideY) + 1, c);
+    }
+
+    private void drawHint(GuiGraphics g, float intro) {
+        String hint = "Drag a widget  |  Wheel: scale  |  Arrows: nudge  |  R: reset  |  Tab: next  |  ESC: done";
+        int w = Draw.width(hint) + 16;
+        int x = (width - w) / 2;
+        int y = height - 15;
+        Draw.rrect(g, x, y, w, 12, 4, Draw.rgba(0xFF0B1220, 0.78f * intro));
+        Draw.text(g, hint, x + 8, y + 2, Draw.rgba(0xFFB8C5D8, intro));
+    }
+
+    // ---- panel
+
+    private Hit addHit(int x, int y, int w, int h) {
+        Hit hit = new Hit();
+        hit.x = x; hit.y = y; hit.w = w; hit.h = h;
+        hits.add(hit);
+        return hit;
+    }
+
+    private boolean hover(int x, int y, int w, int h) { return mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + h; }
+
+    private void button(GuiGraphics g, int x, int y, int w, int h, String label, boolean on, Runnable click) {
+        boolean hot = hover(x, y, w, h);
+        int base = on ? Draw.mix(0xFF1B3A66, accent(), 0.35f) : 0xFF18233A;
+        Draw.rrect(g, x, y, w, h, 3, hot ? Draw.lighten(base, 0.12f) : base);
+        if (on) Draw.rrectLine(g, x, y, w, h, 3, Draw.rgba(accent(), 0.6f));
+        Draw.textCenter(g, Draw.fit(label, w - 4), x + w / 2, y + (h - 8) / 2, on ? 0xFFFFFFFF : 0xFFC6D2E8);
+        addHit(x, y, w, h).click = click;
+    }
+
+    private void slider(GuiGraphics g, int x, int y, int w, String label, String value, float min, float max, Supplier<Float> get, Consumer<Float> set) {
+        Draw.text(g, label, x, y, DIM);
+        Draw.textRight(g, value, x + w, y, TEXT);
+        int ty = y + 12;
+        float t = (get.get() - min) / (max - min);
+        t = Math.max(0f, Math.min(1f, t));
+        Draw.rrect(g, x, ty, w, 4, 2, 0xFF1C2A44);
+        int fillW = Math.max(3, Math.round(w * t));
+        Draw.rrect(g, x, ty, fillW, 4, 2, accent());
+        int kx = x + Math.round((w - 6) * t);
+        boolean hot = activeSlider != null || hover(x, ty - 4, w, 12);
+        Draw.rrect(g, kx, ty - 2, 6, 8, 3, hot ? 0xFFFFFFFF : 0xFFDCE8FF);
+        Hit hit = addHit(x - 2, ty - 5, w + 4, 14);
+        Slider s = new Slider();
+        s.min = min; s.max = max; s.get = get; s.set = set;
+        hit.slider = s;
+    }
+
+    private void applySlider(Hit hit, double mx) {
+        float t = (float) ((mx - (hit.x + 2)) / Math.max(1, hit.w - 4));
+        t = Math.max(0f, Math.min(1f, t));
+        hit.slider.set.accept(hit.slider.min + (hit.slider.max - hit.slider.min) * t);
+    }
+
+    private void drawPanel(GuiGraphics g, float intro) {
+        int h = panelHeight();
+        int x = panelX;
+        int y = panelY + Math.round((1f - intro) * 10f);
+        Draw.shadow(g, x, y, PW, h, 6, 8, 0.35f * intro);
+        Draw.rrect(g, x, y, PW, h, 6, Draw.rgba(PANEL_BG, intro));
+        Draw.rrectLine(g, x, y, PW, h, 6, Draw.rgba(PANEL_EDGE, intro));
+        g.fill(x + 6, y + 1, x + PW - 6, y + 2, Draw.rgba(accent(), 0.8f * intro));
+
+        // title bar (drag to move)
+        Hit title = addHit(x, y, PW - 64, 18);
+        title.title = true;
+        Logo.bolt(g, x + 6, y + 3, 12, accent());
+        Draw.bold(g, "HUD EDITOR", x + 22, y + 5, 0xFFFFFFFF);
+        button(g, x + PW - 62, y + 3, 14, 12, collapsed ? "+" : "-", false, () -> { collapsed = !collapsed; clampPanel(); });
+        button(g, x + PW - 46, y + 3, 40, 12, "Done", true, this::onClose);
+        if (collapsed) return;
+
+        // tabs
+        int ty = y + 20;
+        int half = (PW - PAD * 2 - 4) / 2;
+        button(g, x + PAD, ty, half, 13, "Widget", tab == 0, () -> tab = 0);
+        button(g, x + PAD + half + 4, ty, half, 13, "List (" + widgets.size() + ")", tab == 1, () -> tab = 1);
+
+        int top = y + 38;
+        if (tab == 0) drawInspector(g, x + PAD, top, PW - PAD * 2);
+        else drawList(g, x + PAD, top, PW - PAD * 2);
+
+        // footer
+        int fy = y + h - 20;
+        g.fill(x + PAD, fy - 4, x + PW - PAD, fy - 3, 0xFF1E2E4A);
+        int fw = (PW - PAD * 2 - 12) / 5;
+        button(g, x + PAD, fy, fw, 14, "Snap", snap, () -> snap = !snap);
+        button(g, x + PAD + (fw + 3), fy, fw, 14, "Grid", grid, () -> grid = !grid);
+        button(g, x + PAD + (fw + 3) * 2, fy, fw, 14, "Guides", guides, () -> guides = !guides);
+        button(g, x + PAD + (fw + 3) * 3, fy, fw, 14, "Undo", false, this::undoLast);
+        button(g, x + PAD + (fw + 3) * 4, fy, fw, 14, "All", false, () -> { pushUndo(); resetAll(); });
+    }
+
+    private void resetAll() {
+        for (Module m : widgets) HudLayout.reset(m.id);
+    }
+
+    private void drawInspector(GuiGraphics g, int x, int y, int w) {
+        Module m = selected();
+        if (m == null) {
+            Draw.text(g, "Click a widget on the screen,", x, y + 8, DIM);
+            Draw.text(g, "or pick one in the list.", x, y + 20, DIM);
+            return;
+        }
+        HudLayout.Entry e = HudLayout.get(m.id);
+        Draw.bold(g, Draw.fit(m.name, w - 40), x, y, 0xFFFFFFFF);
+        String state = m.enabled() ? "ON" : "OFF";
+        Draw.textRight(g, state, x + w, y, m.enabled() ? GOOD : 0xFFFF7A88);
+        Draw.text(g, Draw.fit(m.desc, w), x, y + 11, DIM);
+
+        int ry = y + 25;
+        // position
+        int[] where = rectOf(m.id);
+        Draw.text(g, "X", x, ry + 2, DIM);
+        Draw.text(g, String.valueOf(where == null ? e.x : where[0]), x + 10, ry + 2, TEXT);
+        button(g, x + 40, ry, 12, 12, "-", false, () -> nudge(-1, 0));
+        button(g, x + 54, ry, 12, 12, "+", false, () -> nudge(1, 0));
+        Draw.text(g, "Y", x + 84, ry + 2, DIM);
+        Draw.text(g, String.valueOf(where == null ? e.y : where[1]), x + 94, ry + 2, TEXT);
+        button(g, x + 124, ry, 12, 12, "-", false, () -> nudge(0, -1));
+        button(g, x + 138, ry, 12, 12, "+", false, () -> nudge(0, 1));
+        String sizeText = null;
+        int[] r = rectOf(m.id);
+        if (r != null) sizeText = (r[2] - r[0]) + "x" + (r[3] - r[1]);
+        if (sizeText != null) Draw.textRight(g, sizeText, x + w, ry + 2, 0xFF6E819F);
+
+        final String id = m.id;
+        slider(g, x, y + 43, w, "Scale", String.format(Locale.ROOT, "%.2fx", e.scale), 0.5f, 2.5f, () -> HudLayout.get(id).scale, v -> HudLayout.setScale(id, v));
+        slider(g, x, y + 63, w, "Opacity", Math.round(e.opacity * 100) + "%", 0.15f, 1f, () -> HudLayout.get(id).opacity, v -> HudLayout.setOpacity(id, v));
+
+        int sy = y + 86;
+        Draw.text(g, "Colour", x, sy + 2, DIM);
+        for (int i = 0; i < SWATCH.length; i++) {
+            int sx = x + 40 + i * 17;
+            int col = SWATCH[i] == 0 ? accent() : SWATCH[i];
+            boolean on = e.accent == SWATCH[i];
+            g.fill(sx - 1, sy - 1, sx + 13, sy + 13, on ? 0xFFFFFFFF : 0xFF22314E);
+            g.fill(sx, sy, sx + 12, sy + 12, col);
+            if (SWATCH[i] == 0) Draw.text(g, "T", sx + 3, sy + 2, 0xFF0B1220);
+            final int pick = SWATCH[i];
+            addHit(sx - 1, sy - 1, 14, 14).click = () -> { pushUndo(); HudLayout.setAccent(id, pick); };
+        }
+
+        int by = y + 104;
+        int bw = (w - 9) / 4;
+        button(g, x, by, bw, 13, "Reset", false, () -> { pushUndo(); HudLayout.reset(id); });
+        button(g, x + bw + 3, by, bw, 13, "Centre X", false, () -> centre(true));
+        button(g, x + (bw + 3) * 2, by, bw, 13, "Centre Y", false, () -> centre(false));
+        button(g, x + (bw + 3) * 3, by, bw, 13, e.visible ? "Shown" : "Hidden", e.visible, () -> { pushUndo(); e.visible = !e.visible; Zeus.markDirty(); });
+        button(g, x, by + 16, w, 13, m.enabled() ? "Module is on  (click to switch off)" : "Module is off  (click to switch on)", m.enabled(), m::toggle);
+    }
+
+    private void drawList(GuiGraphics g, int x, int y, int w) {
+        int rows = widgets.size();
+        float maxScroll = Math.max(0, rows - LIST_ROWS);
+        listScroll = Math.max(0f, Math.min(maxScroll, listScroll));
+        int first = (int) listScroll;
+        for (int i = 0; i < LIST_ROWS && first + i < rows; i++) {
+            Module m = widgets.get(first + i);
+            int ry = y + i * 13;
+            boolean sel = m.id.equals(selectedId);
+            boolean hot = hover(x, ry, w, 12);
+            if (sel) Draw.rrect(g, x, ry, w, 12, 3, 0xFF1B3A66);
+            else if (hot) Draw.rrect(g, x, ry, w, 12, 3, 0xFF142238);
+            int dot = m.enabled() ? GOOD : 0xFF5A667D;
+            g.fill(x + 4, ry + 4, x + 8, ry + 8, dot);
+            Draw.text(g, Draw.fit(m.name, w - 52), x + 13, ry + 2, sel ? 0xFFFFFFFF : 0xFFC6D2E8);
+            boolean drawn = HudLayout.screenRect(m.id, width, height) != null;
+            String tag = !m.enabled() ? "off" : drawn ? "" : "hidden";
+            if (!tag.isEmpty()) Draw.textRight(g, tag, x + w - 2, ry + 2, 0xFF6E819F);
+            final Module mod = m;
+            addHit(x, ry, w, 12).click = () -> {
+                if (mouseX < x + 12) mod.toggle();
+                else { selectedId = mod.id; selectionChosen = true; tab = 0; }
+            };
+        }
+        if (maxScroll > 0) {
+            int trackH = LIST_ROWS * 13;
+            int knob = Math.max(12, Math.round(trackH * LIST_ROWS / (float) rows));
+            int ky = y + Math.round((trackH - knob) * (listScroll / maxScroll));
+            g.fill(x + w - 2, y, x + w, y + trackH, 0xFF1C2A44);
+            g.fill(x + w - 2, ky, x + w, ky + knob, accent());
+        }
+    }
+
+    // ------------------------------------------------------------------ editing
+
+    private void nudge(int dx, int dy) {
+        Module m = selected();
+        if (m == null) return;
+        long now = System.nanoTime();
+        if (now - lastNudge > 600_000_000L) pushUndo();
+        lastNudge = now;
+        HudLayout.Entry e = HudLayout.get(m.id);
+        HudLayout.setPos(m.id, e.x + dx, e.y + dy);
+    }
+
+    private void centre(boolean horizontal) {
+        Module m = selected();
+        int[] r = m == null ? null : rectOf(m.id);
+        if (r == null) return;
+        pushUndo();
+        HudLayout.Entry e = HudLayout.get(m.id);
+        if (horizontal) HudLayout.setPos(m.id, e.x + Math.round(width / 2f - (r[0] + r[2]) / 2f), e.y);
+        else HudLayout.setPos(m.id, e.x, e.y + Math.round(height / 2f - (r[1] + r[3]) / 2f));
+    }
+
+    private String widgetAt(double x, double y) {
+        if (overPanel(x, y)) return null;
+        String best = null;
+        long bestArea = Long.MAX_VALUE;
+        for (Module m : widgets) {
+            int[] r = rectOf(m.id);
+            if (r == null || x < r[0] - 2 || x > r[2] + 2 || y < r[1] - 2 || y > r[3] + 2) continue;
+            long area = (long) (r[2] - r[0]) * (r[3] - r[1]);
+            if (m.id.equals(selectedId)) area -= 1_000_000L;
+            if (area < bestArea) { bestArea = area; best = m.id; }
+        }
+        return best;
+    }
+
+    private boolean overPanel(double x, double y) {
+        return x >= panelX && x < panelX + PW && y >= panelY && y < panelY + panelHeight();
+    }
+
+    /** Moves the dragged widget, snapping its edges and centre to the screen, the centre lines and the other widgets. */
+    private void dragWidget(double mx, double my) {
+        Module m = selected();
+        if (m == null || startRect == null) return;
+        int dx = (int) Math.round(mx - grabX);
+        int dy = (int) Math.round(my - grabY);
+        int w = startRect[2] - startRect[0];
+        int h = startRect[3] - startRect[1];
+        float[] gx = {-1};
+        float[] gy = {-1};
+        if (snap) {
+            List<Integer> xs = new ArrayList<>(List.of(0, 6, width / 2, width - 6, width));
+            List<Integer> ys = new ArrayList<>(List.of(0, 6, height / 2, height - 6, height));
+            for (Module o : widgets) {
+                if (o.id.equals(m.id)) continue;
+                int[] r = rectOf(o.id);
+                if (r == null) continue;
+                xs.add(r[0]); xs.add(r[2]); xs.add((r[0] + r[2]) / 2);
+                ys.add(r[1]); ys.add(r[3]); ys.add((r[1] + r[3]) / 2);
+            }
+            dx = snapAxis(dx, startRect[0], w, xs, gx);
+            dy = snapAxis(dy, startRect[1], h, ys, gy);
+            if (grid) {
+                if (gx[0] < 0) dx = Math.round((startRect[0] + dx) / (float) GRID) * GRID - startRect[0];
+                if (gy[0] < 0) dy = Math.round((startRect[1] + dy) / (float) GRID) * GRID - startRect[1];
+            }
+        } else if (grid) {
+            dx = Math.round((startRect[0] + dx) / (float) GRID) * GRID - startRect[0];
+            dy = Math.round((startRect[1] + dy) / (float) GRID) * GRID - startRect[1];
+        }
+        // keep a corner of the widget on the screen
+        dx = Math.max(8 - startRect[2], Math.min(width - 8 - startRect[0], dx));
+        dy = Math.max(8 - startRect[3], Math.min(height - 8 - startRect[1], dy));
+        guideX = gx[0];
+        guideY = gy[0];
+        guideAt = System.nanoTime();
+        if (dx != 0 || dy != 0) moved = true;
+        HudLayout.setPos(m.id, startX + dx, startY + dy);
+    }
+
+    /** Pulls the moved box (left edge, centre or right edge) onto the nearest target within a few pixels. */
+    private static int snapAxis(int delta, int start, int size, List<Integer> targets, float[] guide) {
+        int[] edges = {start + delta, start + delta + size / 2, start + delta + size};
+        int bestAdjust = 0;
+        int bestDist = SNAP_DISTANCE + 1;
+        int bestTarget = -1;
+        for (int edge : edges) {
+            for (int t : targets) {
+                int d = t - edge;
+                if (Math.abs(d) < bestDist) { bestDist = Math.abs(d); bestAdjust = d; bestTarget = t; }
+            }
+        }
+        if (bestTarget >= 0) {
+            guide[0] = bestTarget;
+            return delta + bestAdjust;
+        }
+        return delta;
+    }
+
+    // ------------------------------------------------------------------ input
+
+    @Override
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        double x = event.x();
+        double y = event.y();
+        if (event.button() == 1) {
+            String id = widgetAt(x, y);
+            if (id != null) { selectedId = id; pushUndo(); HudLayout.reset(id); return true; }
+            return super.mouseClicked(event, doubleClick);
+        }
+        if (event.button() != 0) return super.mouseClicked(event, doubleClick);
+        for (int i = hits.size() - 1; i >= 0; i--) {
+            Hit hit = hits.get(i);
+            if (!hit.contains(x, y)) continue;
+            if (hit.slider != null) {
+                pushUndo();
+                activeSlider = hit;
+                applySlider(hit, x);
+            } else if (hit.title) {
+                draggingPanel = true;
+                panelGrabX = (int) x - panelX;
+                panelGrabY = (int) y - panelY;
+            } else if (hit.click != null) {
+                hit.click.run();
+            }
+            return true;
+        }
+        if (overPanel(x, y)) return true;
+        String id = widgetAt(x, y);
+        if (id != null) {
+            selectedId = id;
+            selectionChosen = true;
+            tab = 0;
+            draggingWidget = true;
+            moved = false;
+            grabX = x;
+            grabY = y;
+            HudLayout.Entry e = HudLayout.get(id);
+            startX = e.x;
+            startY = e.y;
+            startRect = rectOf(id);
+            pushUndo();
+        } else {
+            selectedId = null;
+        }
+        return true;
+    }
+
+    @Override
+    public boolean mouseDragged(MouseButtonEvent event, double dragX, double dragY) {
+        if (activeSlider != null) {
+            applySlider(activeSlider, event.x());
+            return true;
+        }
+        if (draggingPanel) {
+            panelX = (int) event.x() - panelGrabX;
+            panelY = (int) event.y() - panelGrabY;
+            clampPanel();
+            return true;
+        }
+        if (draggingWidget) {
+            dragWidget(event.x(), event.y());
+            return true;
+        }
+        return super.mouseDragged(event, dragX, dragY);
+    }
+
+    @Override
+    public boolean mouseReleased(MouseButtonEvent event) {
+        if (draggingWidget && !moved && !undo.isEmpty()) undo.remove(undo.size() - 1); // a plain click changed nothing
+        draggingWidget = false;
+        draggingPanel = false;
+        activeSlider = null;
+        return super.mouseReleased(event);
+    }
+
+    @Override
+    public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
+        if (scrollY == 0) return super.mouseScrolled(x, y, scrollX, scrollY);
+        if (overPanel(x, y)) {
+            if (!collapsed && tab == 1) listScroll -= (float) Math.signum(scrollY);
+            return true;
+        }
+        String id = widgetAt(x, y);
+        if (id == null) id = selectedId;
+        if (id != null) {
+            if (!id.equals(selectedId)) selectedId = id;
+            long now = System.nanoTime();
+            if (now - lastNudge > 600_000_000L) pushUndo();
+            lastNudge = now;
+            HudLayout.setScale(id, HudLayout.get(id).scale + (float) Math.signum(scrollY) * 0.05f);
+        }
+        return true;
+    }
+
+    @Override
+    public boolean keyPressed(KeyEvent event) {
+        int key = event.key();
+        if (key == GLFW.GLFW_KEY_ESCAPE) { onClose(); return true; }
+        if (key == GLFW.GLFW_KEY_LEFT) { nudge(-1, 0); return true; }
+        if (key == GLFW.GLFW_KEY_RIGHT) { nudge(1, 0); return true; }
+        if (key == GLFW.GLFW_KEY_UP) { nudge(0, -1); return true; }
+        if (key == GLFW.GLFW_KEY_DOWN) { nudge(0, 1); return true; }
+        if (key == GLFW.GLFW_KEY_R && selected() != null) { pushUndo(); HudLayout.reset(selectedId); return true; }
+        if (key == GLFW.GLFW_KEY_G) { grid = !grid; return true; }
+        if (key == GLFW.GLFW_KEY_S) { snap = !snap; return true; }
+        if (key == GLFW.GLFW_KEY_H && selected() != null) { HudLayout.Entry e = HudLayout.get(selectedId); pushUndo(); e.visible = !e.visible; Zeus.markDirty(); return true; }
+        if (key == GLFW.GLFW_KEY_U) { undoLast(); return true; }
+        if (key == GLFW.GLFW_KEY_TAB && !widgets.isEmpty()) {
+            int index = -1;
+            for (int i = 0; i < widgets.size(); i++) if (widgets.get(i).id.equals(selectedId)) index = i;
+            for (int step = 1; step <= widgets.size(); step++) {
+                Module next = widgets.get((index + step) % widgets.size());
+                if (next.enabled() && rectOf(next.id) != null) { selectedId = next.id; break; }
+            }
+            return true;
+        }
+        return super.keyPressed(event);
+    }
+
+    @Override
+    public void onClose() {
+        Zeus.save();
+        if (minecraft != null) minecraft.setScreen(parent);
+    }
+}

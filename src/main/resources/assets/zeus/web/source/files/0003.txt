@@ -1,0 +1,967 @@
+# Zeus 0.9.9.0
+
+A thunder client for Minecraft **1.21.11** (Fabric, Java 21): about 178 modules, a Zeus main menu, an intro film, a full-screen storm panel, world scanners, waypoint tools, movement assistance, a schematic builder and a local website with a live control center. Press **Z** in a world (or type `/zeus`) to open the panel.
+
+This README is the single document for the whole project. It replaces the 49 separate release-note, build-status and review files that used to sit next to it; everything they said is kept below (see "Version history" and "Third-party attribution").
+
+**Client-side behaviour and server limits.** Zeus draws overlays and controls your local client. Multiplayer servers are authoritative for movement, combat and blocks, and can correct or punish what Zeus does. The world scanners only read chunk data that Minecraft has already delivered to your client; nothing here can reveal unloaded terrain, server-hidden blocks or players the server never sent. Check the rules of every server before you use a module on it (see "What a server accepts").
+
+**Not run in real Minecraft.** Every version of Zeus so far, 0.9.7.0 included, was compiled and logic-tested against hand-written stand-ins for the game's classes, never launched in a real Minecraft. Read "Honest limits" before you rely on anything.
+
+---
+
+## Contents
+
+1. Setup, step by step
+2. What is new in 0.9.9.0, 0.9.8.0, 0.9.7.0, 0.9.6.0, 0.9.5.0, 0.9.4.0, 0.9.3.0, 0.9.2.0 and 0.9.1.0
+3. What Zeus deliberately does not do
+4. Version history (0.9.9.0 down to 0.3.0)
+5. What a server accepts
+6. Crystal Aura and Anchor Aura
+7. The modules
+8. The interface, HUD editor, dashboard and commands
+9. Building it
+10. Honest limits and what is not built
+11. Third-party attribution and licence
+12. Build-status history
+
+---
+
+## Setup, step by step
+
+1. Install **Java 21**. Check with `java -version` in a terminal; it must say 21 or higher.
+2. Install the **Fabric Loader** for Minecraft **1.21.11** (from fabricmc.net) and start that profile once, so the `mods` folder exists.
+3. Download **Fabric API 0.141.6+1.21.11** (or newer for 1.21.11) and put its jar in the `mods` folder (`.minecraft/mods`).
+4. Unzip this project. The archive has exactly one top-level folder, `zeus/`. In that folder run `gradlew.bat build --no-daemon --console=plain` (Windows, or double-click `build.bat`) or `./gradlew build` (Mac / Linux). The first build downloads Gradle 0.9.5.1, Minecraft and the mappings, so give it a few minutes and an internet connection.
+5. Copy `build/libs/zeus-0.9.9.0.jar` (not the `-sources` one) into the same `mods` folder.
+6. Start the game with the Fabric 1.21.11 profile. When loading ends, the **intro film** plays (any key or click skips it) and then the **Zeus main menu** appears. The first time you enter a world a short animated tour shows every category; replay it with `/zeus tutorial`.
+7. In a world press **Z** to open the panel. Click a module row to open its settings, click its switch to turn it on, click the **None** chip and press a key to give it a key. **Panic** (bottom right) switches everything off.
+8. If something looks wrong: open **Zeus Customs** from the menu (or the panel in a world), go to the **Panel** page and check **Zeus main menu**, **Intro film at start-up** and **Intro animation**. The **Classic menu** link in the corner of the menu goes back to the game's own title screen.
+9. If the build fails, send the first red lines of the Gradle output. If a module does nothing in game, send its Status text and the "Zeus" lines of `logs/latest.log`.
+
+Settings save to `config/zeus.json`. Waypoints are in `config/zeus-waypoints.json`. Schematics go in `config/zeus/schematics` (Litematica's own `schematics` folder is scanned too).
+
+---
+
+## What is new in 0.9.9.0
+
+- **Vanilla Spoof.** A new module tells the server it is talking to the ordinary game: the brand line is rewritten to `vanilla`, the mod channel list is not sent at all, and other mod payloads can be held back too. It never adds anything to the stream, because a client that sends something vanilla never sends is easier to spot than one that says "fabric". Its panel shows exactly what a server sees.
+- **Fake Lag, for real.** The old module only drew a ping graph. The new Fake Lag holds the packets you send for a moment and then releases them, in order and never dropped. Five modes: Constant, Jitter, Pulse, Spike and Adaptive (the delay follows the server's own answer time). Scope is movement only by default, with movement and actions or everything-but-answers if you want it. Keep-alives, pings, client information, resource-pack answers and custom payloads are never delayed, the queue is capped, and everything waiting is released when you take damage, leave the world or switch it off. It shows how many packets are in flight. The old card is now Fake Lag Monitor.
+- **AH Sniper, rebuilt.** It reads every listing on the page (name, count, price from the lore, several price formats), pages through the auction house, refreshes, and can run a search command to put the auction house on the item you are hunting. It buys the biggest discount rather than the cheapest thing, can take a ceiling from the prices the client has learned for that item (buy below market by a percent you choose), can shift-click for servers that buy instantly, and after confirming it counts the item in your inventory before it counts the money as spent. Failed attempts are remembered for three minutes so nothing is clicked in a loop, a confirm window that asks more than your remaining budget is refused, and both limits still switch it off by itself.
+- **Visuals that follow the real camera.** Every overlay (ESP boxes, name tags, tracers, edge arrows, ghost markers, block outlines) is now projected from the game's own camera and the renderer's own field of view instead of your eye and the FOV option. That is what fixes third person (the camera is behind you), freecam, a tilted camera, sprinting and zooming all at once. Tracers also gained "My body" as a start point, which is the one that looks right in third person.
+- **Zoom, rebuilt.** Smooth slide in and out at your frame rate, mouse sensitivity scaled while zoomed (so a high zoom can still be aimed), an optional switch to first person while zoomed, and both the field of view and the sensitivity restored exactly when it switches off.
+- **Discoveries only after a base.** The "ZEUS / DISCOVERIES" card no longer appears for any chest you walk past. It needs either a base the finders have already recorded here, or a spot that is unmistakably a base (four or more containers, or two or more with machines or displays). Its footer says which base was found and whether it is intact or looted.
+- **Accessibility.** `/zeus find <text>` searches every module by name, description and alias from the chat box, and `/zeus settings <module>` prints the current value of every visible setting, so the whole client can be read and changed without the mouse.
+- **Honest note:** compiled, not launched in a real Minecraft. The packet hook names (brand, channels, fake lag) were checked against the real 1.21.11 mappings with `javap`, and every mixin target uses `require = 0`, but the behaviour in game is unproven.
+
+---
+
+## What is new in 0.9.8.0
+
+Update, same version (0.9.8.0) — hits that come back, and ESP that cannot lose anything:
+
+- **Hit confirmation.** Every swing is written down before it leaves, and the server's answer (the damage packet, the hurt flash, an entity being removed) is matched back to it. Kill Aura stops swinging at a target after four unanswered hits, and every module that attacks now shows landed/total and the server's confirmation delay, which is the real limit on hit rate. Nothing is guessed any more: a target that is out of the server's reach is visibly ignored instead of silently wasting packets.
+- **Silent rotation in Kill Aura.** A look packet goes to the target immediately before each hit, so the server sees you facing what you hit while your camera stays where you put it. Multi Aura, Auto Combo and the crystal aura use the same trick.
+- **ESP cannot lose a target.** Invisible entities are marked, a marked entity that disappears (vanish, teleport, despawn, out of range) leaves a fading marker at its last known spot with a countdown, and anything behind you or off the edge of the screen gets an arrow on the edge with its distance instead of being dropped.
+- **Modern tracers.** The new default draws a thin tail that swells into a bright head, a glint that travels along the line, a diamond bracket on the target and an optional distance pill. Beam gives a soft glow around a white-hot core; Classic is the old clean stroke. Every ESP shares the renderer, so blocks, items, storage, spawners, clues and amethyst all improved together.
+
+Update, same version (0.9.8.0) — anti-xray and hidden players:
+
+- **Brute-force X-Ray is now part of X-Ray.** A server hides ore by rewriting the block data of a chunk section but leaves the section's palette alone, so the packet still says a 16x16x16 box holds diamond ore while showing stone. X-Ray reads that palette, reads each section again and again, and draws only an ore kind that leaks in most readings, which also beats plugins that re-randomise per send; sections whose leak keeps changing are marked unstable. It is on by default, and X-Ray turns itself on when you join a world. A server in replace mode never sends the ore, so nothing is claimed there.
+- **Suspicious Chunks and the clearance scanner are one module.** Suspicious Chunks now also counts plants that should have grown and did not (kelp short of the top, ripe crops, tall cane, long vines). A chunk that was never ticked proves nobody has been near, and a chunk inside a ring of untouched ones is reported as a cleared area. Anti-xray cannot fake that without growing the plants for real. Sus Chunks (Clearance) is gone; Advanced Base Finder and Tunnel Base Finder inherit the proof.
+- **Player Bypass** finds vanished players (entity gone while the player is still in the tab list) and hidden activity (lit air with no visible light source, blocks changing with nobody in sight).
+- **Ghost** watches the tab list for rank words and star markers, switches off the modules you told it to while staff are there, gives them back afterwards, and holds back the odd aura swing so your rhythm is not perfect.
+- **Trident Util** takes the trident out when you use anything, holds the riptide long enough to count, gives your sword back, and can riptide you upward out of a fall.
+- **Spawner Protect** refuses to break spawners (and containers if you choose) and lists nearby spawners that are too bright to spawn.
+- **Chunk Scanner** counts one block per chunk across the loaded chunks and lists the richest ones with a direction and a distance.
+- **Hover Totem** moves a totem from any open container to your offhand by hovering it, with a new mixin reading the hovered slot.
+- **Goliath RTP** now reports the area, the size in grid cells, the distance to each edge and the Goliaths next door, and GoliathGrid gained regions, cells, edges, neighbours and per-region listing.
+- **Removed as filler:** Atmosphere, Jump Circles, Weather Notifier and Self Trap.
+
+- **Seven new modules.** Target Strafe (Combat) circles the player or mob you fight at a set distance. Auto Farm (World) breaks ripe crops, nether wart, pumpkins and melons around you and plants the crops again. Chest Stealer (Tools) takes the contents of an open chest, barrel, shulker box or hopper, all of it or only valuables. Inventory Cleaner (Player) throws junk out of your inventory. Loot Walker (World) walks to the nearest dropped item. Entity Speed (Movement) makes the horse, boat or other mount you ride go faster. Ore Compass (HUD & Info) is a small panel listing the nearest ore of each kind with distance, direction and height. It only reads blocks the game has been sent.
+- **Kill Aura** can attack players (friends are always spared) and can pick the target with the lowest health instead of the nearest.
+- **No more single-player locks.** MultiAura, Tunnel Miner, Tree Bot and the Schematic Builder's auto-place used to refuse to run on a server. They now work everywhere, and breaking goes through the game's own hold-to-break so a server sees ordinary digging. The setting "Auto-place (single-player)" is now "Auto-place".
+- **Knife gallery.** In the Butterfly & Karambit settings, "Open the knife gallery" opens a menu with every knife on the left and every finish of the chosen knife on the right. Each picture is drawn by the same code that draws the knife in your hand. A click changes the setting at once.
+- **Inspect.** Every knife has its own Inspect trick (six styles, mirrored and doubled across the twenty knives), in the trick list of the butterfly and of the karambit and the other knives.
+- **Website.** A Knife preview page shows every knife in every finish, using pictures rendered by the mod's own knife code, and a Performance monitor page shows a gauge and a bar for every module's estimated cost. The site text was rewritten to read plainly.
+- **What I did not add.** Amethyst Bypass and Netherite Finder. They exist to get around a server's anti-xray, and that is a line I keep.
+- **Honest note:** none of this has been run in real Minecraft. The new modules compile against stand-ins and pass a smoke test that switches each one on and runs ticks and HUD draws, which proves they do not crash on the stand-ins, not that they behave right on a real server. Target Strafe, Entity Speed and Loot Walker move you by setting your own velocity, which a server with movement checks can object to.
+
+---
+
+## What is new in 0.9.7.0
+
+- **What each module costs, right in the list.** Every module row in the panel now shows its measured cost (a share of Zeus's own time per frame, green, amber or red) next to its switch, so you can see what eats frames without opening the Performance Monitor. Switch it off in the UI settings (Show what each costs). The Module list on your HUD can show the same figure (Interface > Module list > Show what each costs). The website's Features page marks the heaviest modules with a Heavy badge.
+- **Performance monitor on the website.** A new page (More menu, /monitor) shows a gauge, a bar for every module and a split by game tick, screen drawing, world drawing and scanning. Pick a playstyle or tick modules and it adds up their estimated cost. It is an estimate worked out from what each module does every frame, not a measurement. The site text was also rewritten to read plainly.
+- **Performance Guard.** A new module that switches the costliest ESPs and scanners off by itself when your FPS stays under a limit you set, waits, and switches them back on once the frame rate has recovered. You choose the limit, how many it switches off at a time, whether it only touches scanners or everything, and it tells you in chat what it did. It will not touch anything you switched off yourself.
+- **`/zeus website`.** The website command is now just `/zeus website` (with `stop` and `status`), and its chat message is a designed card: a header, the address as a clickable line, buttons to open or copy the link, and a short note on what the page can do.
+- **Keybinds screen.** `/zeus keybinds` (or the Keybinds module) opens one list of every module with its key. Click a key box, press a key, done; Backspace or right click clears it; keys that two modules share are marked. The keys are the same ones Options > Controls shows.
+- **Update checker.** When you join a server, Zeus asks the address you set (a small `version.json` that `tools/build_website.py` writes next to your site) whether a newer Zeus exists. If so you get a chat line and a pop notification at the top of the screen for about five seconds. It is off until you set the address.
+- **Death marker.** When you die, Zeus remembers the place and shows a marker with the distance, so you can find your things. It lives in memory only and is cleared when you leave the game.
+- **Staff Live.** The channel list is now editable in the menu (add a name, pick YouTube, TikTok or Twitch, remove with one click) and Twitch is supported. The check is a best-effort page read, so a channel may show as unknown.
+- **Knives.** Every trick now blends into the next without a jump (the worst frame-to-frame change in the measured tricks fell by about two thirds), flicks start softer and snaps end softer. There are eighteen new knives modelled on CS2 shapes: Bayonet, M9 Bayonet, Huntsman, Flip, Gut, Falchion, Bowie, Navaja, Stiletto, Talon, Ursus, Classic, Paracord, Survival, Nomad, Skeleton, Kukri and Shadow Daggers. Each has its own blade, guard and handle, and twelve finishes (Stainless, Blue steel, Fade, Slaughter, Crimson web, Doppler, Case hardened, Night, Forest, Gamma Doppler, Gold, Damascus, plus Rainbow). They use the karambit's tricks. The designs are drawn from scratch, the motion is mine, and nothing was copied from another client.
+- **The website.** Features page weight badges, new help answers, a timeline entry and the documentation for all of the above.
+- **The jar.** The news scroll picture on the main menu now uses a 256-colour palette. On its parchment it looks the same, and the file went from about 5.6 MB to 0.8 MB. No feature was removed. By my measurement of the resources and the compiled classes the jar should come to about 18 to 19 MB, under your 20 MB goal, but I cannot build the real jar here, so check `build/libs/zeus-0.9.9.0.jar`.
+
+## What is new in 0.9.6.0
+
+### Performance first
+- **Idle modules cost nothing.** The tick and draw loops only walk the modules that are switched on, and the list is rebuilt only when a module is switched on or off. Heavy scanners and ESPs are marked light: in Light mode they run every second tick and in Minimal mode every fourth.
+- **Game mode (Interface): Balanced, Light, Minimal.** Light is the default. It flattens rounded boxes, drops glows and shadows, skips outline halos and uses fewer pieces per box. **Auto-lighten** steps one level lighter when the frame rate falls under 45 and two levels under 30, and back when it recovers.
+- **Cached lists.** The Module List and Info HUD rebuild their rows a few times a second instead of every frame; the ESP helpers no longer allocate while drawing.
+- **Performance page and Performance Monitor.** The page (Interface) shows the current mode and has buttons to pick one, to show what costs the most, and to switch off the three costliest modules. The Monitor (Panels) is a small HUD list of the modules that take the most of the game thread, with percentages. It only measures while it is on, so it costs nothing when it is off.
+- **Honest note:** none of this could be measured here (see "Honest limits"). Use the Monitor to see what costs the most on your computer.
+
+### The module windows
+Each category window is smaller (narrower, four or five rows before it scrolls). **Recently used** is gone from the windows and only appears in the panel layout.
+
+### New modules
+- **Crystal PvP Bot and Sword PvP Bot (Combat).** Fighting bots. The Sword Bot closes in, strafes, jumps and hits on the way down for critical hits, taps forward off between hits, keeps out of reach while the swing recharges, eats golden apples, mends armour with experience bottles when nobody is close, refills the hotbar from the inventory and throws an ender pearl to close a gap. The Crystal Bot keeps the right distance, knocks the enemy up with a sword, guards you with Surround and steers Crystal Aura and Anchor Aura. Both switch the helper modules they need on and put them back. They never target friends.
+- **Crystal Optimizer, Spear Swap (with a key for the lunge), FastXP, Fast Use (Combat/Utility), Click TP, No Jump Delay (Movement), Anti Ghost Block, Anti Trap, Auto Reconnect and Skin Change.**
+- **AH Sniper** inside Auction House Tweaks: off by default, rules like `item=maxprice`, a spending limit, a purchase limit and pauses; it stops itself at the limits.
+- **Staff Live:** alerts when a channel in your list goes live on YouTube or TikTok (a toast, a chat line, a chime and a HUD box). It starts with a list of channels you should edit.
+- **Atmosphere:** a night sky with stars and an aurora painted on your screen, plus a clock lock and clear weather. It is an overlay, not a replaced sky.
+- **Discord Rich Presence:** shows what you are playing on your Discord profile. It needs the Discord app and an Application ID from discord.com/developers.
+
+### Not built
+- **Amethyst Bypass and Netherite Finder.** Both work by seeing through a server's anti-xray, which Zeus does not do. Amethyst ESP, Block ESP and X-Ray show blocks the server actually sent.
+
+### Versions
+Every version number now starts with 0 (0.9.6.0, 0.9.5.0, ... 0.3.0), including the update timeline and the news scroll in the menu.
+
+---
+
+## What is new in 0.9.5.0
+
+### Boat NoClip and Boat Fly, rewritten
+Both now work with boats and rafts (including chest versions) and use the vehicle you are riding. Boat NoClip stops the boat being pushed out of blocks, can ignore the server's position corrections (a new setting) and no longer fights Boat Fly. Not tested on a real server.
+
+### A tidier module list in game
+Category windows are smaller, scroll inside once they pass eight rows, and a **Tidy** button packs them again. Window sizes are remembered.
+
+### The website, as a published site
+The site no longer describes itself as a page from your computer. It has a rebuilt header (five main pages plus a **More** menu), opening animations and a different background for every page, a small thunder cursor, an animated Z on the home page, a floating **Ask the helper** button, and an **Is Zeus safe?** dialog that points to the GitHub page for people who prefer not to download from the site. The control center still works the same way, from the link `/zeus website` prints.
+- **Motion** has a Full / Calm switch in the footer. Full is the default and is no longer tied to the system's reduced-motion setting (that setting used to switch the typing animation off for everyone who had it enabled).
+- **Helper:** it now shows a thinking indicator and types its answer, gives a differently worded answer when you repeat a question, and understands many more phrasings.
+- **Build a config:** answer yes or no questions, or pick a playstyle, and get a pack of modules with the reason for each, a ban-risk meter and warnings; cheats-off, single-player and low-end answers filter the pack. Download `zeus.json`, copy `/zeus on` commands or save it to your profile.
+- **Administration:** one administrator account (no email) can edit page text, links, a banner, the FAQ and the update timeline, and read the helper log. Changes are a browser-local draft that is exported as `overrides.json` and published with the site (`tools/site/overrides.json`, or `build_website.py --overrides <file>`). The sign-in is checked in the browser against a salted PBKDF2 hash, which keeps casual visitors out but is not server-side security. The credentials are not stored anywhere in the project.
+
+## What is new in 0.9.4.0
+
+### Favourites, recently used and sorting
+- **Star any module** (the star on its card, or at the left of its row in the Windows layout). A new **Favourites** page in the left rail lists your starred modules, then a **Recently used** row with the last modules you switched on.
+- **Sort the list** with the new Sort chip next to the page title (and in the Windows header): *Category order*, *Most used first* or *A to Z*. "Most used" ranks by how often you switch each module on and, until you have a history, uses a built-in order of the modules people reach for most. The same option is **Sort modules** in the Interface settings.
+- Favourites, recent modules and use counts are saved in `zeus.json` (under `usage`) and are left out of share codes.
+
+### A tidier Windows layout
+The header buttons no longer overlap (the search field now fits between the brand and the buttons), window widths follow the longest module name, windows are packed into columns instead of leaving gaps, long names get a tooltip, and the HUD no longer shows through the panel.
+
+### Per-server profiles
+The Profiles module has **Switch profile per server**. Join a server and press **Use it on the server I am on** to link the active profile to it; that profile loads automatically whenever you join. **Stop switching on this server** removes the link. Single-player counts as its own place.
+
+### Water Walk (was Jesus)
+The module is now called **Water Walk**. Its id and settings are unchanged, and *Jesus*, *Jesus Walk*, *Waterwalk* and *Liquid Walk* still find it everywhere: the panel search, `/zeus on jesus`, the website search and the helper.
+
+### The knife, rebuilt
+Spins now wind up, flick, overshoot and settle; moves blend into each other (no more pops between tricks); the hand follows through. New tricks: butterfly knife **Helicopter, Double toss, Latch flip, Cascade**; karambit **Wrist orbit, Cross spin, Double toss, Ring storm**. The knife only slashes when you press attack (or choose a slash trick); the old stabbing is gone and *Stab flurry* became *Spin stop*.
+
+### The watermark
+The Watermark module draws the real Zeus logo in a fixed 16x16 slot inside its box, so it can never spill out of it.
+
+### Website
+- **Source code page** (`/source`): every file of the release in a tree with a filter and language chips, a viewer with line numbers and colouring, Copy / Raw / Download, and a GitHub repository button that says "coming in a future update" until you give the build a link (`--github https://github.com/you/zeus`). The page is filled by `tools/make_source_manifest.py` (see the release checklist below) and marks the files that changed since the previous release.
+- **Profile page** (`/account`): create a profile, sign in with email and password, saved modules, configs, helper history, export/import. **It is not an online account**: there is no Zeus server, so the profile lives only in the browser, passwords are stored as salted PBKDF2 hashes and cannot be recovered, and the Google / Discord / GitHub buttons are disabled until a server exists.
+- **Build a config** (`/config`): eight playstyles, an editable module list, and a `zeus.json` download (modules switched on at launch) or a list of `/zeus on` commands. Share codes are not offered because Zeus ignores on/off states inside share codes on purpose.
+- **Troubleshooter** (`/troubleshoot`): yes/no wizard that ends at the right FAQ answer and the lines to look for in `latest.log`.
+- **FAQ categories**, a **Most used first** sort on the Features page, module aliases in the search, a star to save modules, and **screenshot and clip slots** on every module drawer (see `src/main/resources/assets/zeus/web/media/README.txt` and `tools/add_media.py`).
+- **Helper**: a thinking and typing animation of one to three seconds that follows the answer's length, and a **Did that help?** button. Answers and unanswered questions are kept in the browser only and shown on the profile page.
+- **Update timeline** entries link to the modules they added or changed and list the settings that changed; the module drawer shows which releases touched it.
+- More motion (press ripples, tilt on cards, softer page changes) that the Full / Calm switch in the website footer turns down.
+
+### Release checklist (every update)
+1. Raise the version in `Zeus.VERSION`, `fabric.mod.json`, `gradle.properties` and `defaults.version` in `src/main/resources/assets/zeus/web/site.json`.
+2. Add the release to `tools/site/timeline_data.py` (`TIMELINE` and `EXTRA` with the modules and settings it touched) and any new questions to `tools/site/help_*.py`.
+3. Refresh `features.json` from the game's module list (`FeatureCatalog.json()`, also served at `/api/features` by the in-game site), then run `python3 tools/site/features_extra.py <web folder>` and `python3 tools/site/gen_site_data.py <web folder>`.
+4. **Last step before building: `python3 tools/make_source_manifest.py`.** It copies the current source into the website's Source code page and marks what changed since the previous release (it compares with the bundle already in the folder, so keep that folder between releases). `tools/build_website.py` refuses to build if the bundle is for another version.
+5. Build the jar, then `python3 tools/build_website.py --url ... --jar build/libs/zeus-<version>.jar --github <repo link> --out website`.
+
+---
+
+## What is new in 0.9.3.0
+
+### More of your panels in the HUD editor
+`/zeus hud` now lists **27 movable and scalable widgets** instead of only the HUD & Info panels. Modules from other categories can opt in with one call (`hudCard()`), and the editor picks them up on its own:
+- **Media Base Finder**: the info card moves; the text it draws on the screen follows the same layout.
+- **Suspicious Chunks** (radar card), **Advanced Base Finder** and **Tunnel Base Finder** (they share the Suspicious Chunks code): the card moves and scales. The markers drawn on the world itself stay where the base is.
+- **Zeus Sense**, **Friends Panel**, **Fake Lag Monitor**, **Fake Scoreboard**, **Auction House Tweaks**, **Sword PvP Coach** and **Advanced Elytra Autopilot** report their real box to the editor too.
+- A widget only shows in the editor while its module is on and has something to draw (Zeus Sense, the Fake Lag Monitor and the Market graph only when they are showing something).
+- Freecam and Anti Vanish only print short messages, so there is nothing to place.
+
+### A much smarter website helper
+Still an offline search engine over the site's own content (no language model, nothing sent anywhere), but with far more to search and more ways to ask:
+- It reads the **full module and settings list** (158 modules, 1,301 settings with their descriptions, ranges, options and defaults) and about **190 written answers**. In a self-test of about 2,000 questions (every module, every setting, every FAQ question) it picked the right module, setting or answer for all but a handful of deliberately odd phrasings.
+- Ask "what does the range setting do in Kill Aura", "what is the default of Wait for full swing", "what are the settings of Crystal Aura", "Kill Aura vs Reach", "can I move the Media Base Finder HUD", "which HUD widgets can I move", "which module finds spawners", "does Zeus have X" (it says plainly when something does not exist), "how many settings does Zeus have".
+- It understands about 140 nicknames (ka, sus chunks, abf, xray, nofall, ah...), forgives typos, and follows up ("and what is the default?").
+- **It thinks, then types.** A "Thinking / Searching the guides / Writing the answer" indicator, then the reply is typed out. The whole thing takes between 1 and 2.8 seconds. Click a message to finish it at once; with reduced motion on it is instant.
+- **Ctrl+K search** (or the Search button in the header) finds pages, modules, settings and answers.
+
+### A tidier Features page
+- A **category rail** with counts, modules grouped under their category, and a sticky search that also finds **setting names and descriptions** (matches are highlighted, and a card says which setting matched).
+- Grid or list view, sort (by category, A to Z, most settings), a "HUD widgets only" filter.
+- Click a module for a **detail drawer**: description, where to find it in the panel, and every setting with its type, range, options and default, with its own filter. Previous and next with the arrow keys, Esc to close, and a copyable link (`/features?m=killaura&s=Range`).
+
+### Credits and references
+- Client, all code, website and images: **Zlorbie788**. Modules and feature ideas: **mitko_pandata**. Animations: **NikiTheFacter**.
+- **References and inspiration** (website Credits page and in-game): Meteor Client for the base mod style, Fabric, Litematica (schematic format and workflow), the Inter, Exo 2, Cinzel Decorative and GFS Didot typefaces, and DonutSMP as the context for the server-specific helpers. A reference is not an affiliation.
+- The Discord link now defaults to https://discord.gg/GcbryFXgcR (website header and footer, the Web Dashboard setting, the helper and the FAQ).
+
+## What is new in 0.9.2.0
+
+### A rebuilt HUD editor
+Open it with `/zeus hud` or Interface settings → **Open HUD editor**. The game's widgets stay live underneath and every one gets an outline you can click.
+- **Move:** drag a widget. It snaps to the screen edges, the centre lines and the other widgets, with guide lines and a readout of where it will land. **G** toggles a grid, **S** toggles snapping.
+- **Scale:** mouse wheel over a widget (0.50x to 2.50x). Widgets now scale around the corner nearest the screen edge, so a scaled widget stays where you put it instead of growing off-screen. Layouts saved by 0.9.1.0 and older with a scale other than 1.0 shift slightly once; drag them back once.
+- **Fine control:** arrow keys nudge by one pixel, **Tab** selects the next widget, **R** resets, **H** hides or shows, **U** undoes (a stack of snapshots), **Esc** is done.
+- **Floating panel** (drag it by its title): the widget list with on/off switches (so a switched-off widget can be turned on and placed), and an inspector for exact position, scale, opacity and accent colour.
+- Widgets report their real size to the editor, so outlines fit the actual box instead of a guess.
+
+### A redesigned website
+Smooth page transitions and scroll animations, an animated Z emblem (a halo that breathes, a light sweep clipped to the emblem's own shape, a one-time shock ring, a soft 3D tilt that follows the cursor and drifting embers), a letter-by-letter wordmark in the new display font (Exo 2, SIL Open Font License), a sliding navigation indicator, card spotlights that follow the pointer, and a layout that works on phones. Everything respects the operating system's "reduce motion" setting.
+- **Help page** (button at the top right of every page): a guide for every part of the client (getting started, the panel, each module category, the HUD editor, the website, servers and safety, troubleshooting), a searchable FAQ of 80+ questions, and **the Zeus Helper**.
+- **The Zeus Helper** is a small assistant that answers questions about Zeus and the website: install, any of the modules (including the typo-tolerant "what does kill arua do", "how do I bind fly to a key", "can it get me banned"), the HUD editor, the website, safety, privacy, bans, troubleshooting and the update history. It follows up ("and its settings?"), splits two questions in one message, and says so when it does not know. **It is not an AI model.** It is a search engine plus rules over the site's own texts, runs entirely in the browser, and nothing you type is sent anywhere. Click a module on the Features page to ask about it.
+- **Update timeline** on the Information page, from the first version to today, newest first.
+- **Clean addresses** (`/help`, `/features`...) instead of `#/help`. Old `#/page` links still work.
+
+### Publish it on your own domain
+`python3 tools/build_website.py --url https://zeus.example.com --download <link> --discord <invite> --jar build/libs/zeus-0.9.9.0.jar --out website` writes a ready-to-upload folder: a real page for every address with its own title, description and canonical link, `404.html`, `robots.txt`, `sitemap.xml`, security headers (`_headers`, `vercel.json`, nginx, Caddy and Apache examples), a `CNAME` for GitHub Pages, the jar's SHA-256 on the Download page, and `DEPLOY.md` with the steps for Cloudflare Pages, Netlify, GitHub Pages, Vercel or your own server. The public site never touches anyone's game: its Settings page only explains that the control center runs inside Minecraft. It must be served from the root of a domain or subdomain.
+
+### Names and licence
+Every reference to the client Zeus took ideas from was removed from the game, the website and the docs. Renaming does not change licences: parts of Zeus were derived from a GPL-3.0 client, so the root `NOTICE` file keeps the required attribution and licence text, and you should read it before you distribute Zeus (see "Third-party attribution and licence").
+
+## What is new in 0.9.1.0
+
+### The Zeus website (optional)
+A full website for the client, designed from your mockup: dark blue, Home / Download / Features / Tutorial / Credits / Information / Settings, the Z emblem and ZEUS CLIENT wordmark, a feature strip, About / Latest Updates / Discord cards and a footer with social links. It is branded as what it is, **"The ultimate Minecraft cheat client"**.
+- **It is only an option.** It lives in the module **Web Dashboard** (Interface category) and is off by default; Zeus behaves identically without it. Its settings: *Port* (default 8765), *Keep the same access token*, and the Discord, download, YouTube, X and tutorial links the site shows. Buttons: *Open the website*, *Copy the access token*, *Show the link and token in chat*. `/zeus website|stop|status` still work.
+- **Pages.** Home, Download (requirements and install steps), Features (all modules, searchable, filtered by category), Tutorial, Credits, Help (guides, FAQ and the helper), Information (at a glance and the update timeline) and Settings.
+- **Settings is a control center** for the running game: connect with the access token, live status (health, food, position, FPS, ping, server), every module with a switch, search, category filter, favourites and a settings sheet that edits *every* setting type (switches, sliders, choices, text, action buttons and live info panels); presets (save which modules are on and apply them later, kept in your browser); the delayed on/off scheduler; auction market alerts; an activity feed; and a panic button.
+- **Safety.** It listens on 127.0.0.1 only, refuses any other Host or Origin, serves no inline scripts (strict Content-Security-Policy), and anything that reads or changes the game needs the private token (compared in constant time). Only the module list and the website's own texts are public.
+- **Static copy.** The folder `website/` in the zip is the same site built for hosting (see 0.9.2.0). Opened from a normal web host it shows the public pages; the control center says it must be opened from inside Minecraft.
+
+### Lighter client
+The module search used to score every module against your text on every drawn frame. It now builds a normalised index once, caches the scores and the result list per query, and draws only the cards that are on screen; cards that have settled off screen cost almost nothing. No module, setting or visual was removed.
+
+### Media Base Finder
+Strict matching by default (wide matching is off; see the 0.9.0.1 diagnostics note below).
+
+## What is new in 0.9.0.0
+
+0.9.0.0 was the big merge release: a stricter Media Base Finder, a rebuilt Staff HUD, richer ESPs and nineteen new modules.
+
+### Media Base Finder: strict flow plus an estimated base area
+- It looks at scoreboard teams whose name starts with `09-` (or whose tab text contains the camera sign), counts a player as a media candidate when they are **not in the tab list**, or when a **game-mode change packet** proved they are in the game. It waits 60 ticks for the scoreboard to settle after a join or a Goliath change, rescans every 10 ticks, announces newly found players ("joined") and, after an `/rtp`, shows a big on-screen alert with a pling.
+- **Estimated base area (new, Zeus only).** From the Goliath grid cell you are standing in, Zeus works out the X and Z range of that cell, its centre, and your distance and compass direction to it. If the media player's body is loaded, the exact coordinates are used instead. Sightings are remembered per server. The status card has **waypoint** and **copy** buttons. The estimate is a search area, not a location; see "Honest limits".
+- New helpers in the Goliath grid: cell bounds, label and block area (the 36 x 36 region table).
+- **Diagnostics (0.9.0.1).** The finder only works where media accounts sit in `09-` scoreboard teams, which is DonutSMP; on any other server it correctly finds nothing. The card now says why ("No teams on this server", "No media teams here (DonutSMP only)"), the settings page has a **Why nothing shows** panel, **List the scoreboard teams in chat** and **Copy diagnostics** buttons, and **Wide matching** (off by default since 0.9.1.0, so the finder stays strict) can also accept a `09-` team name after a colour code and a camera sign in a team prefix or suffix. The two text settings were renamed (**Media sign**, **Media team prefix**) so values saved by 0.8.3.x cannot override the defaults.
+
+### Staff HUD: rebuilt (Zeus only)
+- A new `StaffMatcher` reads each player's tab text and team name and recognises ranks (owner, co-owner, manager, admin, developer, sr-mod, moderator, trial-mod, helpers, support, staff) even when written in small capitals or with accents, star and icon marker glyphs, **team ranks** (`01-` to `NN-`, you choose how high), and a built-in list of known DonutSMP staff names. Your own ignored names are always skipped.
+- Every row shows a confidence and the reasons ("rank Mod in tab", "team 03-", "marker"), how long the player has been online, whether they are near you, and optionally their head.
+- Detects **vanished staff** (removed from the tab list but still in the world), **spectators / creative** players, and keeps a **remembered staff** list between sessions.
+- **Watching alert:** when a staff member switches into spectator mode (proved by a game-mode packet) while you are in range, Zeus raises a screen alert and an alarm (Guardian, Beep, Bell or Siren, with length and volume settings). A test button plays it.
+- Add names from the clipboard or by typing; forget names in one click. Settings for how confident a match must be before it is shown.
+
+### Richer ESPs
+- ESP has a **Shape** (Custom, Glow, Box, Fill, Both), a hard cap on entities, ignore spectators / yourself, friend colours, a separate custom tracer, a fill opacity and **Reveal**, which fades boxes in as targets come into range.
+- Item ESP works from a list of `item:colour` pairs (diamond, netherite, elytra, totems...), only listed items by default, with glow outlines through walls.
+- Block ESP has a range up to 256 blocks and an "Extra blocks" list with custom kinds.
+- Villager ESP and Item ESP also feed the game's glow outline.
+
+### Nineteen new modules
+Combat: **Triggerbot, W Tap, Jump Reset, Shield Breaker, Mace Swap, Key Throw**. Movement: **Air Stuck**. Utility: **Weather Notifier, Block Notifier, Coord Snapper, Chat Macro 1, 2 and 3**. Visuals: **Low Health Warning, Nametags, Target ESP, Jump Circles, Custom Crosshair** (hides the vanilla crosshair through a mixin). HUD: **Region Map** (the Goliath map with a dot where you are).
+
+### Main menu and docs
+- The news scroll in the main menu now lists every update since 0.6.3.0.
+- All release notes are merged into this README.
+
+---
+
+## What Zeus deliberately does not do
+
+These were left out on purpose, either because they work by attacking or evading server protections or because they would be unsafe or misleading:
+- **Fake Lag packet holding.** Zeus has a Fake Lag *Monitor* (measured ping, average, jitter; the simulated value is display-only). It never holds, delays or spoofs packets.
+- **Player Bypass.**
+- **Block Entity Debug leak exploitation**, and **anti-xray bypasses** for Storage and Amethyst ESP. Zeus's Storage ESP and Amethyst Finder only show blocks the server actually sent.
+- Server-specific shop and purchase automation, auto-buying, junk selling, disconnect policies and anti-cheat related behaviour. Since 0.9.6.0 the AH Sniper in Auction House Tweaks can buy by itself, but only when you arm it, only for the items and prices you typed, and only up to its spending and purchase limits.
+
+**A short caution.** Many of the modules above (aimbots, triggerbots, flight, speed, Reach, Auto Clicker, Boat Fly on multiplayer, staff and vanish detection) are against the rules of most multiplayer servers and are noticed by anti-cheats. A ban is the server's call. Use them in your own worlds or where the rules explicitly allow it.
+
+---
+
+## Version history
+
+Newest first. Versions 0.6.3.0 and older are the original write-ups; the rest are merged from the release-note files.
+
+### 0.9.9.0
+
+Vanilla Spoof, real Fake Lag, a rebuilt AH Sniper, camera-accurate visuals for third person and zoom, smooth zoom, Discoveries that waits for a real base, and /zeus find and /zeus settings. See "What is new in 0.9.9.0".
+
+### 0.9.8.0
+
+Seven new modules (Target Strafe, Auto Farm, Chest Stealer, Inventory Cleaner, Loot Walker, Entity Speed, Ore Compass), Kill Aura can attack players and pick the weakest target, the single-player locks are gone, a knife gallery and a per-knife Inspect trick, and a Knife preview and Performance monitor page on the website. See "What is new in 0.9.8.0".
+
+### 0.9.7.0
+Cost per module in the list, Performance Guard, `/zeus website`, the Keybinds screen, an update checker, a death marker, Staff Live with an editable list and Twitch, smoother knife tricks and eighteen new CS2-style knives. See "What is new in 0.9.7.0".
+
+### 0.9.6.0
+A much lighter client (Light mode by default, idle modules cost nothing, cached lists, cheaper outlines, a Performance page), two fighting bots and sixteen other new modules, smaller module windows, and every version number now starts with 0. See "What is new in 0.9.6.0".
+
+### 0.9.5.0
+Boat NoClip and Boat Fly rewritten, a tidier in-game module list, and a website that reads like a published site: new header, page backgrounds and opening animations, thunder cursor, animated Z, a floating helper that types and varies its answers, an Is Zeus safe dialog, a config builder, and an administrator panel.
+
+### 0.9.4.0
+Favourites and a Recently used page, sorting by most used, a tidier Windows layout, per-server profiles, Jesus renamed Water Walk (the old name still works), a rebuilt knife with new tricks and no stabbing, the real logo in the watermark, and on the website a Source code page, a local profile page, Build a config, a Troubleshooter, FAQ categories, helper feedback buttons, module media slots and linked release notes.
+
+### 0.9.3.0
+More movable HUD widgets (Media Base Finder, Suspicious Chunks, Advanced and Tunnel Base Finder, Zeus Sense and more: 27 in all), a far smarter offline website helper (every module and setting, about 190 written answers, nicknames, comparisons, thinking and typing animation, Ctrl+K search), a redesigned Features page with a settings drawer, expanded credits and references, the Discord link set to the official invite, and a new news scroll.
+
+### 0.9.2.0
+A rebuilt HUD editor (outlines, snapping with guides, grid, nudging, undo, floating inspector, corner-pivot scaling), a redesigned animated website with an animated emblem, a Help page with guides, FAQ and the offline Zeus Helper, an update timeline, clean URLs, a publishable build (`tools/build_website.py`), the Exo 2 display font, every reference to the other client removed, and a refreshed news scroll. Logic tests pass; not run in real Minecraft.
+
+### 0.9.1.0
+The Zeus website (optional **Web Dashboard** module, mockup-style pages, a full control center in Settings, a static `website/` copy), cheat-client branding, a much lighter module search (cached index and scores, off-screen card culling), a stricter Media Base Finder, a new news scroll. Logic tests pass; not run in real Minecraft.
+
+### 0.9.0.1
+Compile fix for the alarm sound (`SoundEvents.NOTE_BLOCK_PLING` is a `Holder` in 1.21.11) and Media Base Finder diagnostics, wide matching and renamed text settings (see 0.9.0.0 notes above).
+
+### 0.9.0.0
+See "What is new in 0.9.0.0" above: a strict Media Base Finder with an estimated base area, a rebuilt Staff HUD, richer ESPs, nineteen new modules, Region Map, crosshair hider, updated news scroll, and this merged README. Logic tests pass with 160 modules registered; not run in real Minecraft.
+
+### 0.8.3.18 — Media Base Finder upgrade and compile fix
+- The finder waits for the scoreboard and player list to settle after joining or changing Goliath squares (default 60 ticks) and scans scoreboard teams, not only tab-list display names.
+- Recognises configurable media display markers (default the camera sign), team prefixes (default `09-`) and a literal `?` display fallback.
+- Player-info `UPDATE_GAME_MODE` packets are used as a confirmation signal for UUIDs and correlated with matching scoreboard-team members. A matching team member still listed in tab is only included once a game-mode packet was seen, unless "Include unconfirmed team matches" is on.
+- Bounded, per-server Goliath sighting history with first / last seen times; optional alerts for new matches; the card shows the Goliath, packet state, team, tab state, game mode and coordinates when the player entity is loaded.
+- Compile fix: removed the invalid `ui.Hud` import in `AdvancedFeatures` (the class is `mods.Hud`) and replaced the removed `SwordItem` check in `KnifeSwing` with a registry-id check for ids ending in `_sword`.
+- Limits: the Goliath is inferred from a coordinate grid, not a server shard id; a game-mode packet is a heuristic, not proof that someone is a content creator; nothing is modified, cancelled, spoofed or sent.
+
+### 0.8.3.17 — Boat NoClip, Anti Vanish, staff marker, dashboard scheduler
+- New separate `boatnoclip` module (toggles local vehicle no-physics, configurable horizontal / vertical speed). Boat Fly no longer contains a no-clip toggle and is no longer locked to single-player. Servers stay authoritative: rubber-banding or kicks are possible, and Zeus does not cancel corrections or spoof packets.
+- Anti Vanish gets a client packet hook for tab-list removal, correlates a removal with a player entity that stays loaded after a short grace period, and has a minimum-confidence setting with the evidence shown. Spectator and unseen-digger clues are heuristics. A player the server sends nothing about cannot be detected.
+- Staff HUD gets a configurable staff marker (default a star; clear it to hide it).
+- Dashboard: the access token in chat is clickable to copy; Show and Copy token controls; a task scheduler for delayed module enable / disable (1 second to 24 hours) that runs only while the client and dashboard are running.
+
+### 0.8.3.16 — Media, privacy and presentation
+- `/zeus website` prints the dashboard URL as a clickable link and a `[Copy link]` action; the token stays private and is printed separately.
+- Media Base Finder adds Goliath grid / region context, records RTP commands you send, correlates a later grid transition, shows game modes, tracks how long matching players stay visible and optionally shows coordinates for loaded players. An RTP correlation is not a server-confirmed shard.
+- KnifeSwing adds **Replace any sword**: the first-person hand / item is replaced by the custom knife when you hold a sword. Visual only.
+- **Streamer Privacy**: hides the tab list and scoreboard sidebar locally. It does not change your account name or redact chat, screenshots or logs.
+
+### 0.8.3.15 — Compile and packaging fix
+`SchematicBuilder` calls `Zeus.toast` fully qualified, `TunnelMiner.status` is declared before the `Setting.Info` that captures it (illegal forward reference), and the ZIP has exactly one top-level folder, `zeus/`.
+
+### 0.8.3.14 — Tunnel Miner and the auction workflow
+- **Tunnel Miner:** opt-in, single-player only, clears a one-wide, two-high passage in the direction you face, optionally advances through the cleared passage after checking collision and floor support. Stops at fluids, block entities, unbreakable blocks, obstructions, open screens, damage and multiplayer. No inventory sorting, selling, buying or disconnecting.
+- **Market Hunter:** a user-triggered "Open best bargain listing" re-validates the window and slot and clicks the best visible bargain. On its own it never clicks a confirmation or buys. Since 0.9.6.0 the separate, off-by-default AH Sniper (inside Auction House Tweaks) can buy by itself within the rules and limits you set. Auction Bot (selling) stays separate.
+
+### 0.8.3.13 — Underground scanner update
+Tunnel Base Finder gets a bounded geometry pass over loaded chunk sections for enclosed two-high horizontal passages and narrow vertical shafts. The score is capped and only supports player-build clues; a natural cave alone is never a base. Bee nests and hives join the weak maturity clues (crops, kelp, bamboo, vines, amethyst). Reports include the tunnel / shaft sample counts.
+
+### 0.8.3.12 — Dashboard UX
+The local dashboard became a responsive two-column layout with module search, category filters, name / active sorting, connection state, accessible labels, Enter-to-connect, an eight-second refresh while visible, validated auction-alert inputs and a confirmation before "disable all". The feature is named **Auction market alerts**: monitoring, not an automatic buyer.
+
+### 0.8.3.11 — Local control dashboard
+Run `/zeus website`, open `http://127.0.0.1:8765`, paste the one-time token printed in chat, and stop it with `/zeus website stop` (it also stops when the client exits; `/zeus website status` reports the state). It shows live client, player, server and module status; enables / disables toggleable modules; has an emergency disable-all; configures auction alerts (watched keywords, maximum price, bargain threshold); and has quick task presets. The server binds only to `127.0.0.1`, every request needs a random 256-bit bearer token, there is no CORS, responses disable caching, and the token lives in `sessionStorage` for that tab only. Market scanning covers only the Auction House window you have open; nothing is bought automatically.
+
+### 0.8.3.10 — Remaining features
+Tunnel Base Finder as its own scanner (underground only by default, loaded chunks only); an "open schematics folder" action in Schematic Builder; Boat no-clip (later split into its own module in 0.8.3.17). Confirmed existing systems: Advanced Base Finder and Suspicious Chunks share the `BaseBrain` scoring engine; Anti Vanish already checks visible-but-tab-absent players, nearby spectators and block breaks by unseen entities; Area Clearer is the old Nuker with radius and category filters.
+
+### 0.8.3.9 — Performance, controls and quality
+Editable waypoint name and X/Y/Z with **Add waypoint at coordinates** and `/zeus waypoint add <x> <y> <z> [name]`; gentler Aim Assist; a HUD-editor drag ghost with guides; a prominent **Open Schematics Folder** button; Auto Clicker mines blocks as well as attacking; lighter Item ESP (smaller range, hard cap, tracers off); one search field in the Windows layout; cleaner bottom-centre tracers; an opt-in mode that analyses multiplayer chunks already loaded by the client (Fast pace by default); **Zeus Brain**, a locally stored playstyle profile built from input / state signals only (it never reads chat); the radius-clearing module renamed **Area Clearer**; and the first news-scroll entry.
+
+### 0.8.3.8 and 0.8.3.8.1 — Schematics, Goliath grid, compile fix
+- Bounded NBT import for gzip or plain Sponge v2 / v3 `.schem` and Litematica `.litematic` (64 MB and one million blocks cap); a browser over `config/zeus/schematics` and the game's `schematics` folder; isometric preview (up to 6,000 blocks), dimensions, material totals and inventory counts.
+- **Schematic Builder:** origin anchor, ordered queue, next-block highlight, wait state when a material is missing, and optional automatic placement (off by default, single-player only, normal placement calls; check stairs, logs, signs, rails, containers and redstone by hand).
+- The decoded **36 x 36 Goliath grid**, current-cell detection and a clickable region map for Goliath RTP (the server still picks the landing point).
+- Media Base Finder appends coordinates for loaded players; Fake Lag Monitor reports rolling ping average and jitter (display-only simulated latency).
+- 0.8.3.8.1 fixed `SchematicLibraryScreen.inventoryCount` to use `getContainerSize()` / `getItem()` instead of the private `Inventory.items`.
+
+### 0.8.3.7 — MultiAura, Goliath RTP, first Media Base Finder
+MultiAura (single-player practice), Goliath RTP (EU Central, EU West, Europe, NA West, NA East, Asia, Oceania with a one-shot request and cooldown), the first Media Base Finder (visible tab text against markers), Schematic Library indexing, Fake Lag Monitor, and a clarified Storage ESP boundary. Not included then: packet withholding or spoofing, hidden-storage bypass, automatic server RTP hopping.
+
+### 0.8.3.6 — HUD access and module-state persistence
+**Remember enabled modules** option (enabled modules restored after the world loads on the next launch, including ones shut down by the server-switch handler), a **HUD Editor** launcher under Interface and a shortcut in the main header, `/zeus hud` defers until chat releases focus, and Elytra altitude control (follow destination Y or hold a fixed cruise Y). The CaveFinder keeps its stable `caveesp` id.
+
+### 0.8.3.5 — Global HUD editor
+Added in 0.8.3.5 and rebuilt in 0.9.2.0 (see \"What is new in 0.9.2.0\"). Layout is stored under `hudLayout` in `config/zeus.json` and is included in profile snapshots. It covers the **HUD & Info** screen widgets, not world-space ESP.
+
+### 0.8.3.4 — Interaction and utility repair
+Boat Fly uses collision-aware entity movement; Advanced Elytra destination X / Y / Z are typed text fields and automatic fireworks default on; the Modules menu search focus is fixed in both layouts; Auction Bot and Market Hunter became one **Auction House Tweaks** module (listing workflow plus read-only visible-listing scanning, price history, bargain alerts and a price graph, no automatic purchase or pagination); **Item ESP** was added; Cave ESP was renamed **CaveFinder** (id kept). Not included: packet-injected Criticals, VanillaSpoof, and AutoReconnect after a kick.
+
+### 0.8.3.3 — Boat Fly, Advanced Elytra, geode clues
+**Boat Fly** (Full Flight, Hover, Glide; horizontal and vertical speed; collision checks; gravity restored on pause) and **Advanced Elytra Autopilot** (multi-angle route choice, three-ray body-width corridor, loaded-chunk checks, terrain clearance, landing approach, rocket interval, crosshair destination capture, emergency stop; the id `elytrawaypoint` is kept so saved settings load). Suspicious Chunks and Base Finder get a **mined geode clues** section (calcite / smooth-basalt shell, budding amethyst, exposed faces, buds). A geode hint never adds to base confidence. Target versions: Fabric Loader 0.19.5+, Fabric API 0.141.6+1.21.11.
+
+### 0.8.3.2 — Modules menu and search
+Search is focused when the Windows-style Modules menu opens; results are ranked by relevance with typo tolerance and subsequence matching across names, ids, descriptions, categories and setting labels. The default server / world reconnect policy became **Everything** (Interface → Server Switch Persistence).
+
+### 0.8.3.1 — Integration pass
+Optional crop maturity / diversity evidence (capped; cannot flag a crop field by itself); Elytra Waypoint gained smooth yaw / pitch steering, altitude guidance, short-range obstacle sampling, optional firework assistance, pause on screens and an emergency stop; Attribute Swap Simple mode refuses identical or empty slots; GPL-3.0 adopted for the combined project.
+
+### 0.8.3.0 — Integration review
+A review of the scanners, flight and builder modules and the list of Zeus-native adaptations.
+
+### 0.8.2.0 — Ultimate client update
+First-run animated category tour (Combat, Movement, Player, Visuals, Base Finding, World, HUD, Tools, Profiles). Finish / Skip is stored in `config/zeus.json`; replay with `/zeus tutorial`. Includes everything from 0.8.1.0.
+
+### 0.8.1.0 — Feature bundle
+- **Sword PvP Coach** (Combat): attack-strength cooldown percentage and an optional sprint-reset hint. Feedback only.
+- **Tree Bot** (World): experimental single-player log harvesting; refuses to run on servers; does not fell canopies, path-find, collect drops or manage durability.
+- **Elytra Waypoint** (Movement): X / Y / Z destination with distance, bearing and altitude difference.
+- Not included then: autonomous obstacle-safe flight, combat macros, a brute-force hidden-block scanner.
+
+### 0.8.0.10 — Crystal / Anchor coordination
+A shared coordinator makes Crystal Aura and Anchor Aura take turns claiming a short interaction window instead of overlapping actions. Target selection, damage thresholds, anti-suicide, reach checks and delays are unchanged.
+
+### 0.8.0.9 — Attribute Swap
+**Attribute Swap** (Combat): Smart mode alternates between a sword and a mace in the hotbar; Simple mode alternates between two slots. Keybind `key.zeus.attribute_swap` (unbound by default). Staff HUD portraits get a subtle animated confidence ring.
+
+### 0.8.0.8, 0.8.0.7 and 0.8.0.6 — Server Switch Persistence
+After a server or world switch, modules are always shut down against the old world first and then re-enabled in the new one. Policies: **Safe only** (modules marked `anywhere()`), **None**, **Everything**, **Customize** (per-module "Keep across servers" switches). 0.8.0.7 moved the selector to the top of the Interface settings; 0.8.0.8 gave it its own entry **Server Switch Persistence** under Interface (a settings-only page). No policy makes a module undetectable or bypasses server rules.
+
+### 0.8.0.5 — Interface organisation and menu motion
+Categories renamed to **Visuals**, **Base Finding**, **HUD & Info** and **Tools** (next to Combat, Movement, Player, World, Friends, Profiles and Interface). Anti Vanish and Market Hunter moved to Tools. Both layouts share one category registry. Main-menu tablets reveal with a staggered cubic ease-out and a settle; hover and pointer parallax use frame-rate-independent damping; frame delta is capped. Effects quality and Calm mode still work.
+
+### 0.8.0.4 — Animated GUI and scanner polish
+Floating category windows animate in and ease between folded and expanded, module rows slide in with a stagger, settings popups ease into place (reduced-motion settings still suppress the stagger). Suspicious Chunks gets **Activity Memory** (15 / 30 / 60 / 120 seconds half-life).
+
+### 0.8.0.3 — ESP and HUD polish
+Optional player health on ESP name labels (heart glyph choice, current / max, current only or percent) and an optional breathing animation for tracer brightness and width.
+
+### 0.8.0.2 — Tracer rendering
+Restrained dark outline and narrow colour halo, a subtle highlight pass, compact outlined crosshair end markers and outlined off-screen chevrons. A small fixed number of draw calls per tracer.
+
+### 0.8.0.0 — Core overhaul
+Settings are restored before modules start; saves go through a temporary file and atomic replace and stay queued if they fail; the config records its schema and client version and stays backward compatible; invalid individual settings and malformed window entries are skipped with a warning; numeric settings reject NaN / infinity and are clamped and stepped; module registry and category lists are cached immutable snapshots; duplicate module ids are reported; initialisation is guarded against double calls.
+
+### 0.7.1.4, 0.7.1.3 and 0.7.1.2 — Search shortcuts, scan pace, knife tuning
+- 0.7.1.4: Ctrl+K reads the Control modifier from the incoming `KeyEvent` (`event.modifiers()`).
+- 0.7.1.3: Ctrl+K no longer uses the removed `Window#getWindow()`; the Suspicious Chunks status text uses the selected `Choice` value.
+- 0.7.1.2: Suspicious Chunks scan pace **Fast / Balanced / Thorough** (the per-tick queue budget, not the confidence model; included in the copied report); KnifeSwing **Trail strength**, **Ghost opacity** and **Flash intensity** (defaults keep the old look).
+
+### 0.7.1.1 and 0.7.1.0 — Search and performance
+0.7.1.1: the Suspicious Chunks queue advances by index instead of removing the first list element; Knife Swing uses a quintic smoothstep for full rotations with less shake. 0.7.1.0: module search also matches module ids, setting names and help text; **Ctrl+K** focuses the search field from anywhere in the panel.
+
+### 0.7.0.0 — X-Ray opacity and analysis
+At 100% opacity ordinary blocks use the normal opaque render path instead of the translucent layer (no sorting artefacts); the model-renderer alpha hook is guarded so a stale thread-local value cannot leak into unrelated calls. Loaded-chunk-only analysis, explainable scores, natural-structure handling, feedback controls and sensitivity are unchanged. No anti-X-ray bypass.
+
+### 0.6.6.0 — Panel layout and singleplayer-only analysis
+The Zeus panel keeps its layout (storm artwork, logo, category rail, searchable module cards, settings expansion, footer status and Panic) and scales to the game resolution. Suspicious Chunks and Base Finder run only in local singleplayer worlds. The reference artwork is a feathered header at `assets/zeus/textures/gui/panel_header.png` blended by `PanelArt` into the procedural background; the panel is still the interactive `ZeusScreen`, not a screenshot, and the procedural background is the fallback. The default layout is Panel (`UiSettings.LAYOUT`, index 0); Windows is the alternative.
+
+---
+
+## Older versions (0.6.3.0 and before)
+
+### 0.6.3.0 — a new panel, the Auction Bot, and a clickable logo
+
+- **A new panel.** The Zeus panel now fills the screen like your picture: the big **Z** with **ZEUS — CLIENT** on the left, a pixel-art stone head of Zeus with glowing eyes and broken ruins in the stormy sky of the header, and the search, layout and close buttons on the right. The categories sit in their own **glass card** on the left (Combat to Utility, a thin line, then Interface, Friends, Profiles, Panels, Active, Panel) and the modules in a second card with the title and count (*Combat | 22 modules*). Switched-on modules glow with a blue wash. The status bar is a pill (*Client side | singleplayer*, the number of active modules) with a separate red **Panic** button. The counts on the left show the switched-on modules, and for **Friends** and **Profiles** how many friends and profiles you have. Everything else (keys, search, the Windows layout) works as before.
+- **The logo in the Zeus main menu opens the Zeus settings.** Click the **Z and the "Zeus Client" lettering** in the top right corner of the main menu: it lights up, says *Zeus settings*, and opens the same panel as *Zeus Customs*.
+- **Auction Bot replaces Auction Helper.** I read the DonutSMP Automation project you sent (a C# service plus a React dashboard that steers an outside Minecraft Console Client) file by file before using any of it: it only starts the MCC program you configure and listens on 127.0.0.1, with no downloads, uploads, hidden or encoded code, and it never touches passwords or tokens. Its idea is now built into the client, with no second program, no console client and no second login: the bot **lists an item on the auction house over and over**.
+  - **Choose the item to sell** opens the item menu with the search bar (one item). **Items per listing** (1 to 64) and **Price of one listing** (500, 1.5k, 2m, 3b), the **command** (`ah sell`), and whether the price is typed short (`1.5m`) or in full.
+  - Every round it looks in your inventory. If a stack holds exactly the amount, it swaps it into your hotbar; if the stack is bigger it **splits it like a player would** (pick it up, right-click one item at a time into an empty hotbar slot, put the rest back), selects that slot and types `/ah sell <price>`.
+  - It then waits for the **confirmation**: a chat line that matches the *Confirmation pattern* (the bot's own default, `listed|auctioned|sold` and a number), or the items leaving your hand. If a confirm window opens it presses the confirm button. After *Wait for the confirmation* seconds without any it types the command again, up to *Tries per listing*, and then counts a **failure**.
+  - **Statistics** (sales, items, listed value, failures) are kept in `config/zeus-auctionbot.json`; the last log lines and the status are in the panel; *Stop after* switches it off after a number of listings; *Reset statistics* and *Clear the log* are buttons. The auto-reconnect, MCC login and web dashboard of the original have no use inside the game and were left out.
+  - **The old buying and hunting Auction Helper is gone** (as you asked). It is still in the 0.6.2.0 zip if you need it back. The item menu is the same one (now with a one-item mode).
+- **Honest note:** I cannot run Minecraft here. The panel, the menu logo click and the full bot loop (splitting a stack, typing the command, retrying, counting a failure, counting a sale) were tested on a test screen and a test inventory; how DonutSMP words its confirmation and whether `/ah sell <price>` takes this form there was not tested. If listings do not count, tell me what the server prints after a listing and I will set the pattern. Check the server's rules about automation first: that is your decision and your account.
+
+---
+
+### 0.6.2.0 — Auction Helper: pick items from a menu and hunt them (replaced by the Auction Bot in 0.6.3.0)
+
+- **A menu with a search bar.** In *Auction Helper* press **Choose items to hunt**. A menu opens with a search bar and a grid of every item in the game. Type `diamond sword` (or a part of the name, or the id), click an item to pick it, click again to drop it. The picked items show on top as small icons (click one to remove it) and there is a **Clear** button. There is no save button: every click counts at once. **Done**, Enter or Esc takes you back to the panel.
+- **It hunts what you picked.** With items picked, switching the module on makes it type `/ah <item>` (for example `/ah diamond sword`), read the offers in the window, work out the price of one item, and compare it with the typical price (or with *My price*). Only the picked item counts, so an unrelated result that the server mixes in never causes a false alarm. With several items picked it asks for them one after the other.
+- **It refreshes until it finds a good offer.** After each look it closes the window, waits **Refresh every** (3 s by default) and asks again, over and over. When a good offer shows up it stops with the window open and tells you in a message on screen **and** in your chat, with the page, the row and the slot of the listing, the typical price and how much you save. With *Buy it* and a budget it makes the two clicks itself instead.
+- **No offers yet is fine.** If an item has nothing listed and the server opens no window, it does not stop, it tries again after the pause (it only stops if the auction never opened at all, which means `/ah` is not the right command there).
+- **Smarter learning.** The same listing seen again on the next refresh no longer counts as a new price sample, so refreshing every few seconds does not bend the typical price.
+- **How the item is typed** can be changed (words `diamond sword`, title `Diamond Sword`, or id `diamond_sword`) in case your server reads one of them better.
+- With nothing picked, Auction Helper works as before: it browses the whole `/ah`.
+- **Honest note:** I cannot run Minecraft here. The picker menu, the search and the hunting logic were tested on a test screen; the real `/ah` window on your server (how its prices are written, whether `/ah <item>` is what it expects) was not. If it says it cannot read prices or the auction did not open, tell me what the item text looks like.
+
+---
+
+### 0.6.1.0.1 — a plainer Fake Scoreboard
+
+- **The custom line is gone from the Fake Scoreboard.** The *Line under the title* (with its custom text and colour) and the two *Extra line* settings were removed completely, so there is no such row and no space for one: the board is the title and the five picture rows (and the optional ping), exactly like your picture.
+
+---
+
+### 0.6.1.0 — friends, profile IDs, a solid karambit and fewer false alarms
+
+- **New page: Friends.** A list of up to 30 friends (page *Friends* in the panel) and a **Friends Panel** box for the screen. Add a friend by typing the name, from your clipboard, with *Add the player I am looking at*, or by pressing the **middle mouse button** on a player. Pick a friend in the list and set how you want to see *that* friend: a **glow outline** in a colour (through walls), a **box** (3D or 2D), a **line** that points to them, a **bigger name tag** (60% to 400%, with its own colour, a badge ★ ♥ ✔ ✚, health, distance, and whether it shows through walls), and a **tag above the head** of your own, for example *Team* (plain, [brackets] or a coloured badge, above or under the name). *Use this look for every friend* copies a look to the whole list. *Spare friends* makes every Zeus module that aims at players skip them. The list is kept in its own file (`config/zeus-friends.json`), so it is not part of a profile or a share code. Everything is drawn on your own screen only.
+- **Profile IDs.** Every profile can have its own ID (letters, digits, - and _, up to 16, never the same for two profiles), set from the clipboard or typed. The ID shows next to the name in the list, travels inside the share code (it is kept on the other side only if no other profile already has it) and *Load the profile with that ID* switches by ID.
+- **The karambit is solid now.** It is built from slices at different depths: the ring and handle are rounded like a real grip, the blade has a bevelled cutting edge on its inside and a thick spine, the handle has a diamond grip and two pins, the blade has a groove, and the slopes facing the light are lighter. Seen from the front only the visible bands are painted (so it is as cheap as before), seen from the side the whole stack is drawn, so it shows real thickness when it flips.
+- **"Someone is changing blocks there" no longer fires on the world's own changes.** The cause: Activity counted almost every block update the server sends from far away, and only skipped a short list of new blocks. But the world changes by itself all the time, and most of it ends in air or looks like building: leaves decaying (the new block is air, so it was counted), water and lava flowing away, fire burning out, villagers opening doors and harvesting crops, farmland drying, sand falling, ice melting, lava turning into stone, grass and moss spreading, sculk, trees growing. Six of those in half a minute made a chunk "active" with nobody there. Now a change counts only when it looks like a player's work: a solid block taken away, or a solid block put where there was air, water or something buildable. A block that only changes its state never counts, and a group of changes that arrives in one packet (an explosion, a big edit) counts as at most four. Your own work within 12 blocks was already left out. Real players far outside your view (digging, building) are still found, which is what the module is for.
+- **Honest note:** I cannot run the real game here. The panel logic, the friend list, the IDs and the karambit were tested on a test screen. The two hooks that are new in the real game (hiding the game's own name tag for a friend, and the glow colour) are written from the game's own names; if a friend's own tag still shows twice, tell me.
+
+---
+
+### 0.5.9.0 — the exact scoreboard, and screenshot buttons
+
+- **Fake Scoreboard is now a copy of your picture.** Your name (or any text) as a plain white title in the darker bar, then only the small pictures and white numbers: green $ **2.2B**, purple star **8.4K**, red sword **260**, orange skull **342**, yellow clock **11d 19h**. The five pictures were redrawn pixel by pixel from your screenshot, the numbers sit where they sit in your picture, the panel is as wide as the title plus its margins, and the title bar is 40% black against 30% for the rest. The old extras are still there but off: *Words next to the numbers*, *Coloured numbers*, *Show ping*, a custom title. *Title is* picks your own name or your own text; *Icons* can switch to the game font characters.
+- **New module: Screenshot Tweaks (Utility).** Take a screenshot (F2) and open the chat: the "Saved screenshot as ..." line now ends with **[Open]**, **[Copy]** and **[Delete]**. Open opens the picture, Copy puts the picture itself on your clipboard (paste with Ctrl+V into Discord and so on), Delete removes the file (it only ever deletes a .png inside your `screenshots` folder). Settings: each button on or off, *Click Delete twice*, buttons on their own line, and *Copy every screenshot* (automatic). The copy uses a helper of your system, so the game window is never disturbed: PowerShell on Windows, osascript on macOS, and `wl-copy` or `xclip` on Linux (install one of them if Copy says so).
+- **Honest note:** I cannot run the real game here. The scoreboard was rendered on a test screen and compared with your picture; the buttons were tested as logic, and the three hooks (the chat line, and the two places the game handles a click on chat text) are written from the game's own names. If a button does nothing in your game, tell me which one.
+
+---
+
+### 0.5.8.0 — faster and sharper
+
+- **X-Ray opacity fixed (for the game's own renderer, with or without Fabric's default renderer).** Your report showed what went wrong: the translucent layer was looked up by a development name that does not exist in the real game, so it never worked, and the hook on the old alpha step is not used by Fabric's own renderer. Now the layer is named directly, the faint blocks are written into the translucent layer, and the opacity is applied at the very last step every renderer shares (the colour of each corner). Faces between two faint blocks are hidden, and the faces of an ore next to faint stone are drawn. Water is faint too. The Status box and the report now name the new hooks (*layer (translucent)*, *faces (skip/occlusion)*, *vertex alpha*). If one still does not run on your setup, save the report again and send it; with Sodium, Auto still uses ghost glass.
+- **Smooth Aim Assist (Combat).** Eases your own view toward the target nearest to your crosshair while you hold attack (or always). It covers only a share of the angle left each tick, never turns faster than *Top speed*, rests inside a *Dead zone*, drifts a little like a hand, and *gives way to the mouse* when you turn yourself. *Aim at*: nearest part of the body, chest or head. Also: range, field of view, up and down strength, lead for moving targets, line of sight, weapon only, keep the same target, pause in menus. It never attacks for you. Many servers forbid aim help, so use it where it is allowed.
+- **Knives are faster and more dynamic.** Everything plays about 30% faster, the whole hand now jolts on hard moves, and there are more tricks. **Karambit:** Triple spin, Catch flip, Figure eight, Side flip, Slash combo (three cuts in different directions, the last one a stab), Stab flurry, Hyper spin (six turns, ending in a flash) and Juggle (two tosses). **Butterfly:** Speed fan, Hyper whirl (five turns) and Flip frenzy (three flips and a roll at once). *Chaos combo* uses them all. The karambit swirl is brighter and wider.
+- **Honest note:** I cannot run the real game here, so the X-Ray fix is built from the game's and Fabric's own source rather than tested in your game. Please try it, and send the report again if the Status box still says a hook did not run.
+
+---
+
+### 0.5.7.0 — the karambit
+
+- **A karambit joins the knife.** *Knife type* in the Butterfly & Karambit card switches between the butterfly knife and the karambit, copied from your video: a dark body, a curved claw blade that glows, a ring at the end of the handle and a thin glowing outline. It is drawn as a pixel-art cut-out with a little thickness, so it still looks right when it turns.
+- **The hold is the one from the video.** The ring sits on your finger (the first finger of the blocky fist goes through it), the other fingers wrap the handle and the thumb rests on the spine; it is held in the same Minecraft arm that wears your own skin, with the colour of the knife thrown on the hand as a glow.
+- **Karambit tricks:** *Ring spin* and *Reverse spin* (the knife turns about your finger with a wide swirl of light), *Ring flurry* (forward, back, then fast), *Pinwheel* (the hand circles while it spins), *Backflip* (end over end), *Toss and catch*, *Showcase* (the slow display turn) and *Slash*. *Chaos combo* links them, *Random* picks one. Right click or the trick key plays the trick of the knife type you chose (*Trick (karambit)*); attacking cuts across the screen as before.
+- **Variants.** *Karambit colours*: Voidbloom (the purple one in the video), Crimson claw, Frost, Toxic, Gold rush, Zeus blue, Rainbow. *Karambit blade*: Claw, Wide hook, Talon. Hand, size, speed, place, trail, motion blur and sparks work for both knives. *Show fingers* (off by default) brings back the blocky fingers on the handle. The butterfly settings are now called *Trick (butterfly)* and *Butterfly colours*.
+- **Honest note:** I cannot run the real game here. I checked the drawing by rendering it on a test screen; the in-game feel (the position on your screen, the hook that hides the game's own hand) is untested, so tell me what looks off.
+
+---
+
+### 0.5.6.0 — the balisong
+
+- **Butterfly Knife rebuilt from your video.** It is now a real 3D balisong: two slotted red handles that turn about their own pins, a blade between them, pins, and a fist of blocky fingers. The knife is held by a **Minecraft arm that wears your own skin** (slim or wide, with the sleeve layer), slides in from the corner and sways when you turn the camera.
+- **Shows with an empty hand by default.** *When it shows*: *Empty hand* (it slides away when you hold something), *Both hands empty*, or *Always*. *Hide the game's own hand* stops the game's arm and held item being drawn at the same time (it needs a small hook; if that hook does not apply, the knife still works and the game's arm is just visible behind it).
+- **Tricks copied from the video:** Flick open, Fan (the free handle whips round), Showcase (the slow display turn), Handle whirl (both handles spin round the pivot), Rollover and Reverse rollover (the knife turns about its length), Twirl (propeller), Gunslinger (end-over-end flips), Aerial toss (thrown up and caught) and Snap shut. *Chaos combo* links them all, *Random* picks one. Right click or the trick key plays it; press again while it plays to chain the next. Attack still cuts across the screen.
+- **Variants.** *Knife*: Crimson anodized (the one in the video), Steel, Zeus blue, Gold, Black ops, Neon green, Violet, Rose gold, Ice, Rainbow. *Blade shape*: Tanto (video), Drop point, Clip point, Wharncliffe, Spear point, Sheepsfoot. *Blade finish*: satin, black coated, mirror, gold plated, blue titanium, rainbow titanium. *Handle design*: Slotted, Grooved, Skeleton, Plain. *Hand*: My skin, Light, Tan, Dark, Black glove, Zeus glove.
+- **Lighter on weak computers:** the blade is drawn at half detail and with fewer ghost images when *Effects quality* is Fast (or Auto and the frame rate is low).
+- No picture of the video's hand or background, and no TikTok logo, are used. Everything is drawn in the game.
+- I cannot run a real Minecraft here: the skin on the arm, the hook that hides the game's hand and the exact feel of the tricks are checked only with my own test renderer. If the arm shows the wrong part of your skin, or the game's hand still shows, tell me.
+
+### 0.5.5.0 — lighter and wiser
+
+- **Chest Memory** (Utility): remembers what was inside every chest, barrel and shulker box you open, per world, and keeps it between sessions (`config/zeus-chests.json`). Type an item in *Find item* and it tells you where it is; *Waypoint the nearest match* drops a waypoint. *Forget this world's chests* clears it.
+- **Pop Counter** (Panels): counts every totem pop you see, per player, and lists the busiest. Optional message on each pop, forgets players after a while.
+- **Effects quality** (Interface): Auto, Quality or Fast. Fast (chosen by Auto when the game runs below about 40 fps) makes thunder, rain, the menu and the radar lighter. Gradients are drawn in bands instead of every row, and Block ESP caps its boxes.
+- Everything above is untested in a real game; I could only compile and run the logic tests here.
+
+### 0.5.4.0 — eyes and ears
+
+- **Net Info** (Panels): ping now, low/average/high, jitter and a graph of the last minute; tints red when the connection is bad.
+- **Session** (Panels): time played, distance, speed and top speed since you joined.
+- **Base finder:** a chunk that already shows signs of a player is judged more likely a base while others are changing blocks in it ("someone is working here right now"). Activity alone proves nothing. The setting *Activity counts as evidence* turns it off.
+
+### 0.5.3.0 — the sharper storm
+
+- **Main menu really sharp:** the picture was being zoomed by fractions of a pixel every frame, which makes the graphics card blur it. It is now built at the exact pixel size of your screen and only ever moved by whole pixels. The source picture is also sharper.
+- **X-Ray opacity, Meteor style.** Opacity now means how visible the other blocks are: 0% invisible, 15% a faint ghost, 100% normal. Three hooks do it (render layer, which faces are drawn, alpha of each face). Only the skin of the ground is drawn faintly, so caves read clearly and ores stay solid. *How they are drawn* can be Auto, See-through, Ghost glass or Scattered; Zeus falls back by itself if a hook does not run and says so in the Status box. **Save a hook report** writes `config/zeus-xray-report.txt` with the game and renderer versions and which hooks ran: if opacity still looks wrong, send me that file.
+  With Sodium, Auto uses Ghost glass (Sodium writes its own vertices). I cannot test any of this in a real game here.
+- **Suspicious Chunks: activity.** Counts block changes made far from you (digging, building, chests) and tells you where someone is working right now, with a pulsing ring on the map, an alert and a list. Also **Save finds as waypoints**.
+- **HUD boxes:** opacity, corner roundness and the accent stripe are set in the Panel page and apply to Info, Armor, Potion, Keystrokes, Radar, Compass, Item Counter and the module list.
+
+### 0.5.2.1 — real scoreboard icons, Profiles page, more thunder
+
+- **Fake Scoreboard icons** are now the real characters the Donut SMP board uses (★ ☠ ⌚ and the sword), drawn by the game's own font, with a bold `$`. On Donut SMP with its resource pack loaded they are the server's own pictures. The setting **Icons** can switch back to Zeus's drawn ones.
+- **Profiles** has its own page in the sidebar.
+- **More thunder:** thicker, forking bolts crawling around menu buttons with a glint where they strike, thunder around the Z logo, faint thunder along a module card when you point at it, a burst of bolts from the switch when you turn a module on, and menu lightning strikes twice as often. Calm mode turns all of it down.
+
+### 0.5.2.0 — the new face
+
+- **Main menu:** the scene is sharp again (no blur), the six stone tablets sit centred like your picture, and **Zeus Client** with its Z logo is in the top right. Point at a tablet and small thunders crawl around its edge. The news scroll rolls up into one clean roll (the line is gone).
+- **Fake Scoreboard** rebuilt from the real Donut SMP board: blue gradient bold title, blank line, coloured icon + white label + coloured value (Money, Shards, Kills, Deaths, Playtime), blank line, grey "Ping:" with your real ping in blue. It sits where the real sidebar sits and uses the real darkness (title a little darker). The name line is off by default because the real board has none.
+- **Typing instead of the clipboard:** next to every "from clipboard" button there is now a box to type or paste into (profile name, share code, Discord webhook, staff names) and a button that uses it.
+- **Shorter share codes** (`ZEUS2-`): window positions are no longer shared and the packing is tighter. Old `ZEUS1-` codes still load.
+- **Panels** is a page of its own: Info, Armor, Potion, Keystrokes, Target, Radar, Compass, Item Counter, Staff HUD, Watermark, Module List, Threat Radar.
+- **Accessibility (Panel page):** *High contrast* and *Calm mode* (no shake, no bright flashes, no slide-in).
+- **Animations:** module cards slide up one after another when you change page; hover thunder in the menu.
+- **X-Ray opacity:** a fallback that scatters real blocks if the position hooks never run (the X-Ray status box shows which hooks ran).
+- Nothing here has been run in a real Minecraft, only in my test harness.
+
+### 0.5.1.0.1 — X-Ray opacity that really is see-through
+
+- **X-Ray opacity reworked.** Before, the slider only scattered some real blocks and left holes in the rest, which looked like "all or nothing" and did nothing at all if the chunk hook did not run. Now the blocks that stay are drawn as **ghost glass** (you pick its colour), so you see the ores inside and the shape of the ground around them through a see-through shell. *Other blocks look like* can still be set to the old scattered real blocks. 0% is unchanged: only the ores.
+- If the chunk hook that opacity needs does not run on your setup, X-Ray now says so in a message and shows ores only (0%) instead of switching to Block ESP.
+- I cannot see the real game here, so the glass look is untested in a real world. If it is not what you meant, tell me what you see at 50%.
+
+### 0.5.1.0 — the thunder update
+
+**Version numbers from now on:** a big update raises the first number (5.x.x), a medium one the second (x.1.x), a small one the third (x.x.1) and something really small a fourth (0.5.1.0.1).
+
+> Honest note: all of this compiles and the logic tests pass, but I can only run Zeus against stand-ins for Minecraft here, never inside the real game. The parts that talk to the server or hook into the game's own code (the auras, the macros, Multi Use, Auto Sell, the scoreboard hooks) are written carefully but not yet seen working in a real world. If one of them does nothing, tell me what you saw.
+
+**Menu, made over.**
+- The dark band behind the buttons is gone. The soft dark pool and the shaded sides are now part of the background picture itself, so there are no boxes or edges. The title's glow is part of its picture too (`tools/make_title_glow.py`), so no rectangles are laid over it any more.
+- The repaired background (smeared middle replaced with a stormy sky and mist; `tools/make_menu_background.py` and `tools/grade_menu_background.py`) is installed.
+- **The news scroll is new.** It is real aged parchment with burnt edges, a Greek key border and wooden rods with turned ends, written in Greek-style lettering (GFS Didot and Cinzel Decorative, both under the SIL Open Font License). The text is part of a long picture and a window of it slides over the paper one screen pixel at a time, so the wheel scrolling is smooth at every window size. Click the title to roll it up. To change the news, edit `NEWS` in `tools/make_news_scroll.py` and run `python3 tools/make_news_scroll.py <google fonts ofl folder> src/main/resources/assets/zeus/textures/gui/menu 0.5.1.0`; copy the sizes it prints into the top of `MenuNews.java`.
+
+**Profiles (Utility).** Twenty profile slots that keep every setting and which modules are on, even after you close the game. Each slot can save your current settings, load them back, take a name (copy a name, then press the button), and be emptied. The active profile can follow your changes automatically. **Share codes:** every profile (and your current settings) can be turned into a code starting with `ZEUS1-`. Paste a friend's code to copy their settings into a slot. Private values (the Discord webhook address) are never put in a code, and a code someone edited by hand cannot set one either.
+
+**Fake Scoreboard (Interface).** The Donut SMP sidebar, drawn by Zeus: your name as the title, then Money, Shards, Kills, Deaths, Playtime and Ping. It replaces whatever scoreboard the server shows. Every line is yours to change (title, money, shards, kills, deaths, playtime, ping, and whether each row shows), and so are its height on the screen, size and background strength. The ping is your real ping. It is only drawn on your own screen. **Hide Scoreboard** simply removes every sidebar scoreboard. (Since 0.5.9.0 the default look is the plain one from your picture: white title, pictures and white numbers only.)
+
+**Fake Pay.** I looked it up. In the Glazed addon the module is described as one that "fakes /pay instead of sending it": the command is not sent but something that looks like a payment is shown. Its only use is to produce believable "I paid you" screenshots for someone else, so I did not build it. What I can build instead, if you want it: a **Pay Guard** that stops a `/pay` and asks you to confirm the name and amount first, so a typo cannot send the wrong sum.
+
+**Auto Sell (Utility).** Sells for you with the command you choose (default `ah sell`): price in `$`, thousand, million, billion or trillion (typed the way Donut SMP reads it, for example `1.5m`, or as a full number), one hotbar slot or the whole hotbar, and a delay in ticks between two commands. It clicks the confirm button if the server shows one. When nothing is left to sell it says so and either looks again after a pause or switches itself off, as you set.
+
+**Auction helper, smarter.** It remembers steady prices and ignores one-off spikes, subtracts the auction fee, ranks finds by profit after the fee and lets you set a minimum profit.
+
+**X-Ray opacity.** A new slider: at 0 the other blocks are hidden as before; raise it and the rest of the world comes back faintly, so you can see ore in its surroundings.
+
+**Combat**
+- **Crystal Aura mended.** The obsidian step looked one block too low, so on normal ground it never placed anything; it now places obsidian at the target's feet level (or in a hole). It also tells the server you look at the crystal or block before you hit or place (switch *Look at it* off if a server dislikes it).
+- **Anchor Aura mended.** It no longer forgets an anchor it just placed when the server is a moment slow, reads the real charge from the block, and also looks at the anchor.
+- **Crystal Macro (new).** Hold right click while looking at obsidian or bedrock: a crystal is placed and hit, over and over, with delays you set and a self-damage safety.
+- **Anchor Macro (new).** Hold right click on a block: an anchor is placed, charged with glowstone and set off.
+- **Auto Combo (new).** A trigger bot that hits what is under your crosshair only when the hit does full damage: attack bar full, optional critical hits (wait for the fall or jump by itself), axe swap against shields, and optional aiming at a target in reach.
+- **Multi Use (Player, new).** Eat and attack at the same time, hold a shield and attack, mine while eating, right click while mining. Each of the three can be switched off.
+
+**ESP.** New **Villager ESP** (profession tags and a colour per job; wandering traders and zombie villagers optional). The ESP for mobs, players and items now has a colour for each group, opacity, tag size, tracer width and a "hide closer than" distance; Hole ESP has colours, line width and opacity; every box ESP already had style, colour, opacity and tracers.
+
+**Rainbow panel.** Panel accent colour can be rainbow, with its own speed.
+
+### 0.4.5.4 — a nicer main menu
+
+- The picture behind the buttons now drifts in and out very slowly and leans a little towards your mouse, so the menu is never a still image.
+- The blurry grey patches the artwork has around the button column are hidden by a soft dark band behind the buttons. The far edges of the screen are darkened a little as well, so the buttons stand out and the picture frames them.
+- The title "Zeus Client" now stands above Singleplayer, drawn as blue lightning lettering with a transparent background (the picture is `assets/zeus/textures/gui/menu/title.png`; replace it to change the title). It glows a little brighter whenever lightning strikes. The small logo in the corner is gone because the title replaces it.
+- A news scroll sits in the bottom right corner. It lists what changed in the latest versions; use the mouse wheel over it to read more, and click its title to roll it up or open it again. The news text is the `NEWS` list in `MenuNews.java`.
+- The buttons are a little smaller to make room for the title.
+- The six stone tablets slide up into place one after another when the menu opens, cast a soft shadow, and lift slightly when you point at them.
+- Pictures the client makes while running (menu art, icons) are now freed a second after they are given up instead of at once. The game draws in two steps, so freeing a picture too early could leave the graphics card showing something else in its place. This may be the cause of the white hotbar icons; I cannot confirm that without seeing it in a real game.
+
+### 0.4.5.3 — Freecam made safe, and a base finder that shows its doubts
+
+**Freecam.** I went through it for anything that could send the server something odd, and found real holes:
+- **Holding attack or use** while the camera flew still mined or placed on the block your *body* was facing. Held attack and use are now held back too (with *Block attacks and use* on, the default).
+- **A screen opening with a key held** (for example E with W down) could leave the camera flying away by itself. The keys are now cleared whenever a screen is open.
+- **The camera survived a world change or reconnect** and could show the old position in the new world. It now ends itself when the world changes.
+- **New safety switches:** Freecam turns itself off if you die, if you take damage, or if your body is pushed or teleported more than *Stop if my body is moved* (default 6 blocks), so the picture never shows a place your player is not.
+- Unchanged by design: your player never turns or moves, the mouse and movement keys act only on the camera, and the game sends what it would send if you stood still. I do not rewrite or invent any packet for Freecam. Freecam still has not been run in a real game; if the camera does not move, its Status text tells you which hook did not attach.
+
+**Base finder.**
+- **Unsure chunks.** Chunks that almost made it (20 % or more, under the cut-off) are tinted amber on the map ("Unsure" in the legend) and the top three are listed on the card with why. *Show near misses* turns it off. If a base is nearly found you can see it, and what is missing.
+- **Neighbours vouch for each other.** Bases are rarely one chunk. A chunk that already has some evidence now gets up to +1.2 evidence when the chunks around it also show signs of a player. Not in hubs or spawn areas, and never for an empty chunk.
+- **Copy report** (on the card): copies what Zeus sees in the twelve best chunks (counts of beds, storage, workstations, hoppers, lights, portals, kinds of blocks, structure, confidence). If a base is still missed, stand near it, press this and paste it to me; it shows exactly what Zeus saw there.
+
+---
+
+### 0.4.5.2 — base hunting, with what the other clients do
+
+I looked at how the well-known base hunters work: Meteor's Stash Finder and Stash Hunter, the Trouser-Streak Base Finder, and Wurst's Base Finder. They mostly use a handful of ideas, and 0.4.5.2 now uses every one of them that works from what your own game holds:
+
+- **Many kinds of player-made blocks (new).** Wurst flags every block that is not natural. Zeus now counts how many *different kinds* of player-made blocks a chunk holds (doors, planks, glass, signs, ladders, fences, beds, furnaces, torches, wool, concrete, bricks and so on, each colour counted once). Nature almost never makes four kinds in one chunk outside a village, so 4, 6, 7, 9 and 13 kinds add more and more evidence. A cabin with no chest at all is now caught.
+- **Storage and workstations** (Stash Finder): kept, and scored per chunk, as in 0.4.5.1.
+- **Ender pearls parked in a chunk** (Trouser-Streak entity checks): a stasis chamber. Strong evidence.
+- **Name-tagged mobs**, **villagers outside a village** (a trading hall) and **big animal herds** (an animal pen, 9 or more of one kind in a chunk).
+- **A lit Nether portal** outside a natural structure: someone went through it.
+- **Natural structures** are recognised so villages, mineshafts and the like do not count, and surface fences or rails are no longer mistaken for a mineshaft (0.4.5.1).
+- **Scan distance** now defaults to 14 chunks (it only ever covers chunks your game has loaded). **How sure to be** now starts at **High** for both Suspicious Chunks and Base Finder; set it to Very high for the most, or Medium for fewer false alarms. The settings were renamed so your old saved values do not override the new defaults.
+- The **The chunk you are in** box now also lists the kinds of blocks, pearls, named mobs, villagers and herd size it sees.
+
+**What I did not build, and why.** *New-chunk / old-chunk trails* (Meteor's NewerNewChunks, Wurst NewChunks) mark chunks nobody has visited versus chunks somebody already explored. They work by reading how the server sends chunk data and fluids, which needs lower-level access than Zeus has and is easy to get wrong without a real game to test in, so I left it out rather than ship a guess. *Tunnel and shaft detectors* and *reading the text on signs* are also not in. And **a server's anti-xray (Paper) can hide chests that are completely enclosed in rock**; Zeus cannot see what the server does not send, so a fully sealed underground stash may stay invisible on such a server. Zeus never probes the server to get around that.
+
+**The white item icons in your picture.** Nothing in Zeus draws or recolours the hotbar or the items in it: its Armor HUD only draws items you are wearing, in a corner box, and its X-Ray and Fullbright hooks do nothing unless those modules are on. The picture shows flat white icons where the items should be, with a row of empty armor-slot symbols on the left. Please tell me which other mods or resource packs you had on, and whether the icons are normal with the Zeus jar taken out; that tells me where to look.
+
+---
+
+### 0.4.5.1 — small bases are found now
+
+You built a test base and Suspicious Chunks missed it. That was a real flaw, not bad luck, and it had four causes:
+1. **The score was too strict for small bases.** A hut with a bed, a couple of chests, a furnace and a crafting table scored about 46 %, but Medium needed 64 %. Outside a natural structure those blocks can only have been placed by a player, so they now count fully: a bed, storage and workstations each add evidence and the three together add more. The same hut now scores about 99 %, a bed with one chest about 77 %, and one lonely chest stays low. Inside a village or mineshaft they still count for little, so villages are not flagged.
+2. **A rule demanded "two blocks no structure places"** before a chunk could be flagged. Beds, furnaces and crafting tables did not count towards it. That rule is gone; the judge decides.
+3. **Fences, rails and farmland on the surface were being read as a mineshaft or a village**, which then hid the base. Mineshafts, strongholds, ancient cities, trial chambers and dungeons now count only when their blocks are mostly underground, and a mineshaft needs more blocks (18 instead of 10).
+4. **Base Finder ignored finds smaller than two chunks.** The setting is now *Smallest find size* and starts at 1.
+
+Also new: **Sensitivity: Very high** (flags anything a player could have placed), and an Info box on the card, **The chunk you are in**, that says how sure Zeus is about the chunk under your feet, what it found there (beds, storage, workstations...), what it needs, and whether that chunk looks like a natural structure. If a base is still missed, stand in it and send me that box.
+
+Limits: a bed and a chest in the open can also be a lone traveller's camp, so at High and Very high expect a few small camps flagged. A one-chunk find is only as good as the blocks in it, and chunks your game has not loaded are not scanned.
+
+---
+
+### 0.4.5.0 — it looks at the whole situation
+
+"100 times more intelligent" is not something I can measure, so I did the concrete things that make Zeus react to what is actually happening, and that learn from you.
+
+- **Zeus Sense** (Utility, on by default). Watches your own state and your surroundings and keeps a short list of what needs attention, most urgent first (red, orange, yellow, blue): low health and whether you have a totem, hunger, armor about to break, a nearly full inventory, a dangerous player coming, a spectator watching you, no totem while someone dangerous is near, falling into the void, lava and fire, a base you flagged nearby (and whether it looks raided), and the game lagging. Every group can be switched off. Urgent ones also pop up once every 30 seconds per thing. It reads only what your game already knows.
+- **Threat Radar** (Interface). Rates every player within range from 0 to 100 using their armor, what they hold (swords, axes, mace, trident, bows, explosives, a totem in the offhand), how close they are, **how fast they are coming at you**, whether they are **looking at you**, flying or invisible. Levels: Low, Medium, High, Danger. The box lists the most dangerous first, with the reasons. *Show from*, *Range*, *Most rows*, *Include spectators*, *Show reasons*, size and background are settings. It warns once when someone first reaches Danger. It is a rating from what is visible, not a prediction: it cannot see their hotbar, potions or enchantments.
+- **Teach the base brain.** On Suspicious Chunks and Base Finder: **Not a base (nearest find)** and **This is a base (nearest find)**. A "not a base" chunk is never flagged again and Zeus becomes a little stricter on that server (up to +12 points); a "this is a base" chunk stays flagged and Zeus becomes a little more willing (down to -6). Your answers are kept in `config/zeus-feedback.json`, per server and dimension. *Forget what I taught it* removes them.
+
+---
+
+### 0.4.4.0 — the smarter one
+
+**Why Brute-force X-Ray against Paper is still not here.** Paper's anti-xray swaps hidden ores for fake blocks **on the server, before the data is sent**. The real ore is not in your game, so there is nothing to display. The only way past it is to make the server tell you things you are not supposed to learn (probing it with block updates, digging or timing tricks), and that is attacking the server, not a client setting. Zeus keeps to what your game already holds. X-Ray, Block ESP and the finders show every real block the server sends (singleplayer and servers without anti-xray work fully).
+
+**The base brain (Suspicious Chunks and Base Finder)**
+- Every chunk is now **judged**, not just counted. The scanner turns a chunk into evidence (blocks only players place, bed + storage, workstations, redstone machines, valuables, lit rooms underground, a mix of block kinds, item frames) and subtracts what nature explains (villages, mineshafts, strongholds and other generated structures, more strictly in the Nether). The result is a **confidence in percent**, a **type** (Base, Storage room, Farm / machine, Tunnels / mine, Build, Natural structure) and the **reasons**, shown on the map and in the world label.
+- **One kind of clue alone never flags a chunk.** A pile of chests or beds with nothing else is capped.
+- **Hubs and crowded servers are judged harder.** If a large part of the surrounding area looks built (a spawn, a hub), only the clearest finds count. Zeus also learns how built-up each server normally is (see Zeus Brain) and raises the cut-off on busy servers.
+- **Neighbouring finds are merged**, so a base spread over several chunks is one find with a slightly higher confidence.
+- **Only the top of a flagged chunk is outlined** (a frame at the surface, not the whole column). *Outline* can still be switched to the full chunk.
+- **Smaller, optional map.** *Map detail* (Full, Compact, Tiny), *Map size* and *Tile size* are settings for both Suspicious Chunks and Base Finder, so the map can be as small as you like or off.
+- **Raid check.** Zeus remembers every base it flagged (`config/zeus-bases.json`, per server) together with the key blocks it saw (storage, beds, workstations, hoppers). When you come back and **the chunk is loaded and those blocks are gone or the chunk is torn up**, the base is marked **Raided**; a few missing blocks mark it **Damaged**; if it is intact it says when it was last seen intact. **Limits:** it can only judge chunks that are loaded in your game right now, a base that was never seen is not in the list, and **emptying your own chests or taking your own base down looks the same as a raid**. Treat it as a hint.
+
+**Zeus Brain (Utility, on by default).** It watches the frame rate and **slows the scanners down when your game lags** (down to a floor you set), learns how built-up each server normally is, and keeps that in `config/zeus-brain.json`. Its Info box says what it currently understands (dimension, server, frame rate, how many chunks it can afford to scan).
+
+**Customisation.** Every ESP built on the shared look now has **Colour** (a list of colours), **Opacity**, **Label size** and **Tracer width**. The Staff HUD has **Size**, **Background**, **Accent** and a row limit. Storage ESP and the other block finders have a **Where** choice (Everything, Surface, Below the surface, Deep (20+ below), Above the surface) with a *Surface band* and height limits, so **Storage ESP can show only the surface, only below it, or everything**. It uses the real ground height at each spot; in the Nether and the End there is no ground, so everything counts there.
+
+**Cave ESP v2.** Rebuilt: it only counts open space that is **mostly empty with ground above it** (*How open*, *Rock above*, no sky overhead, in your loaded chunks), joins touching cells into **caves** and drops small pockets (*Smallest cave*), draws boxes on the edge cells and a size tag on the big ones, and colours by depth. Mineshafts, big rooms you dug yourself and ravines still look like caves, so it says "open space" and not more.
+
+**Butterfly Knife and Karambit (0.5.7.0).** *Knife type* picks a **karambit** (ring spin, reverse spin, ring flurry, pinwheel, backflip, toss and catch, showcase, slash, chaos combo, random) or the butterfly knife below. The butterfly knife is a 3D balisong in a Minecraft arm that wears your skin, shown when your hand is empty. Tricks: **Chaos combo, Flick open, Fan, Showcase, Handle whirl, Rollover, Reverse rollover, Twirl, Gunslinger, Aerial toss, Snap shut** and **Random**. *Trick* is the one used by the trick key, **R** performs it (right click can too), and a second key (unbound, set it in Controls) cycles to the next trick. Settings: size, speed, number of spins, hand, position, trail, blur and sparks. A *Play* button for each trick is on the card. It is modelled on the red slotted balisong of your video.
+
+**Staff HUD.** Now works with **confidence**. Each player collects evidence: a rank word in the name tag or the tab-list team name (strong), a tag worn by someone who is already known to be staff (medium, "same tag as other staff"), creative or spectator mode (weak), a tag only one or two people wear on a busy server (weak). Words like VIP or MVP cancel a rank. Anyone seen as staff stays listed, join and leave messages, the distance, and a red mark for a **spectator close to you**. *Show from confidence* sets the cut-off, *Show reasons* writes why under each name. It still reads only what your Tab list shows.
+
+**Auction Helper.** **Variants** are separate items (Sharpness V is not Sharpness III; price, seller and time left are ignored). A **market memory per server** is kept in `config/zeus-market.json`, decays with a half-life of three days and is used from the first page of the next session. The typical price is a **median**, so a few absurd listings cannot move it, and it says how much evidence is behind it. Deals are **ranked by how much money they save you**, not by percentage, and *Worth at least* hides the tiny ones. The same listing is never raised twice, the pace slows down by itself when the server is slow to turn pages, and *Careful with too-good deals* announces but never buys a listing priced under 12 % of typical.
+
+**Panel.** The **intro film is now stretched by default** (*Panel > Intro film shape*; the old Fit + glow and Fill are still there). The module list and the HUD boxes use the same rounded style.
+
+---
+
+### 0.4.3.0
+
+**Fixed and changed**
+- **Storage and block outlines** now follow the real shape of the block: a chest is lower and narrower than a full block, a slab is half high, a spawner is its cage. The outline sits only around the block itself. Every ESP shares one look (*Style*: Outline, Outline + fill, Fill, Corners; *Line width*, *Glow*, *Fade with distance*, *Pulse*).
+- **Tracers on every ESP.** Block ESP, every finder, Invis ESP and the entity ESP have a *Tracers* switch and a *Tracer from* choice (crosshair, bottom, top). A tracer is a line from there straight to the find, and it turns into an arrow at the edge of the screen when the find is behind you.
+- **X-Ray ores were black** because the blocks that X-Ray hides still counted as solid for the game's light and shading maths, so an ore next to them was lit by "stone" (light 0, shade 0.2). X-Ray now makes hidden blocks count as see-through for that maths, forces full light and shade on the chunk-building threads, and also hooks the light engine. If none of these hooks runs in your setup, X-Ray switches on a fallback: it copies its kinds into Block ESP and turns that on, so you still see ores (as outlines) instead of black blocks. The Status box on the X-Ray card says which hooks ran.
+- **Butterfly Knife** was rebuilt from scratch: a hand holds the handle, the blade swings on a real arc with a wrist flick and a follow-through, the two handles open and close, and the trick (flip, spin, catch) runs for about three seconds. Hand: *Black glove, Zeus glove, Light, Tan, Dark skin*. I still do not have your reference picture, so it is not a copy of one; send it and I will match it.
+- **Intro film fit.** The film frames were cut again so nothing of the picture (the title) is cropped. *Panel > Intro film fit*: **Fit + glow** (the whole picture, with the lightning carried across the rest of the screen), **Fill (crop)**, **Stretch**.
+- **Kill Aura** has an *Attack mode*: **Spam** (hits as fast as *Hits per second*, ignoring the attack bar), **Crit** (hits only on the way down; *Jump for crits* jumps for you) and **Cooldown** (one full-power hit when the bar is full).
+- **Suspicious Chunks / Base Finder map** redesigned like your second picture: rounded numbered tiles (numbers are the finds, nearest first), tiles coloured by what the chunk is made of, a red arrow that points the way you face, a *Coordinate* line, the nearest find and distance, and a **legend that lists only kinds that are on the map**: with nothing found there is no legend at all. *Map size* and *Corner* are settings. A line on the screen can point at the nearest find.
+- **More ways to recognise a base.** The scanner now also counts iron doors and trapdoors, player heads, lodestones, respawn anchors, conduits, jukeboxes, crafters, slime and honey blocks and weighted pressure plates, besides what it had (storage, workstations, redstone, lights, metal blocks, building blocks, item frames, armor stands and minecart chests).
+- **Storage ESP** has a **Discoveries card** like your first picture: how long ago the nearest storage was seen, how many chests, machines and displays are around it, the items in frames and on stands, and what was in the chests you opened yourself ("Loaded objects / not proof of a base").
+- **Kelp Finder and Amethyst Finder** are now **Kelp ESP** and **Amethyst ESP**.
+- **Module list, boxes and header.** The module list at the top right uses rounded rows, and boxes placed in that corner now start below it so they never overlap. The panel title sits on a dark plate so the lightning does not run through the letters.
+
+**New modules**
+- **Cave ESP** (Scanner). Divides the loaded chunks into small cells and marks the cells that are mostly open air with rock around them and no sky above (so, caves). Teal near the surface, violet deep down. *Look*: Dots, Boxes or Both. Tracers available.
+- **Light Detector** (Scanner). Finds torches, lanterns, lit lamps, glowstone, sea lanterns, froglights, campfires and optionally lit candles, and by default only those with no open sky above them: lights that nature does not put underground. In the Nether and the End every light counts.
+- **Base Clues** (Scanner). Marks the small things bases leave behind: workstations, glass, signs and banners, iron doors, concrete and glazed terracotta, blocks of valuables, powered rails and ladders, pressure plates and tripwire hooks, plus item frames, paintings and armor stands.
+- **Invis ESP** (Render). Marks invisible players, and optionally spectators, with a box, a name and tracers. The server still sends an invisible player to you; your game just does not draw the body, so the box comes from the player's real position.
+- **Anti Vanish** also warns about **spectators near you** (the server sends them to your game like any player). **Staff HUD** (Interface, compact list with heads) shows who on the server is staff. It reads the same list your Tab key shows: rank words in a team or tab-list prefix/suffix (owner, admin, mod, helper, support, staff, developer and similar, whole words only), creative or spectator mode, and any names you add with *Add name from clipboard*. A server that hides its ranks cannot be read this way.
+- **Anti Hunger** (Movement). Does not report sprinting to the server and reports "in the air" while you are on the ground, so sprinting and jumping cost far less food. **A server's anticheat may flag this** because it changes what your client sends; I added no option to hide it.
+- **Auction Bot** (Utility), made for DonutSMP. Pick the item from a menu, set how many go into a listing and the price, and it lists it on the auction house over and over with `/ah sell <price>`, splitting stacks for you, checking the confirmation, retrying, and keeping statistics (see 0.6.3.0 above). It is off until you turn it on. Check the server's rules about automation first; that is your decision and your account.
+
+**Not built**
+- **Brute-force X-Ray against anti-xray: declined.** Anti-xray on a server (Paper's engine mode and similar) replaces hidden ores with fake blocks **before the data reaches you**, so the information is not in your game to find. Getting around it means asking the server for blocks you should not see (probing, or timing tricks), which is exploiting the server, not a display setting. Zeus keeps to what your game already holds. What it does do: normal X-Ray works as far as the server sends real blocks (singleplayer, and servers without anti-xray), and Block ESP / the finders show whatever real blocks have been sent to you.
+
+---
+
+### 0.4.2.0
+
+**New modules**
+- **Freecam** and **Free Look.** Freecam moves only the camera: your body stays put, the movement keys, mouse and attack/use are held back from the player while it is on, and ESP/tracers follow the camera. Free Look turns the camera around you without turning your body. Both are purely visual on your own screen. Nothing extra is sent to the server; a camera that looks elsewhere is not something a server can see. That is as far as I will say about "undetectable" (see below).
+- **Finders** (Scanner page): **Storage ESP** (chests, barrels, ender chests, shulker boxes and other storage blocks), **Spawner ESP**, **Amethyst Finder** (grown clusters, pink), **Kelp Finder** (grown kelp), **Crop Finder** (fully grown crops), **Ancient City Finder**, **Trial Chamber Finder**, **Portal Finder**, **Farm Finder** (hoppers, observers, pistons, comparators), **Bed Finder** (beds and respawn anchors), **Bee Finder**. They scan loaded chunks nearest first inside a small time budget per tick, so they do not cost frames.
+- **Base Finder** (finds player bases and reports how big they are; natural structures are named and left out).
+- **Discord Webhook** (Utility). Spawners, big bases and storage rooms go to a Discord channel as clean embeds (title, coordinates, dimension, server, your name, a time stamp). Setup: in Discord open *Channel settings > Integrations > Webhooks > New Webhook > Copy Webhook URL*, then in Zeus open the module and press **Paste webhook from clipboard**, then **Send a test message**. The address is checked (it must be a discord.com webhook), the messages go out on a side thread, `@everyone` and pings are switched off in every message, and there is a pause setting so Discord does not rate-limit you. The address is stored in plain text in `config/zeus.json`, so do not share that file.
+- **Anti Vanish** (Scanner). Looks for the small tells a vanished player leaves behind, with two checks: a player body you can see that is **missing from the tab list**, and an **unseen digger** (the server tells everyone nearby when a player breaks a block; if the player doing it is not one you can see, someone invisible is mining close to you). When it triggers, a card slides in with the player's head, "NAME is watching you" and "Good luck, Zeus user" below it. A good vanish plugin leaks nothing, and then no client can see the player, so this catches careless setups only. It only reads what your game already received and sends nothing.
+- **Butterfly Knife.** A first-person butterfly knife that flips and swings when you attack or use it. I built it from scratch because the reference picture you wanted to attach never reached me; send it and I will match it.
+- **Parkour** (edge hopping) and a new, much stronger **Fullbright**.
+
+**Fixed**
+- **No Fall** now rewrites the "on ground" flag of your outgoing movement packets once you have fallen far enough (setting: *From a fall of*, and *Skip over water*), instead of only zeroing the counter. A second fallback reports the fall as a harmless status packet if the main hook does not run.
+- **Safe Walk** now uses the same edge rule as sneaking, so you do not fall off edges but also do not slow down.
+- **Jesus** now uses the game's own "can stand on this fluid" rule (the one strider mobs use) instead of pushing you around every tick, which is what made it jerky. Water, lava or both; sinks while you sneak.
+- **Fullbright** now sets light to full brightness at the point where the game calculates it, so it works with Sodium and without it, and **X-Ray ores are no longer dark**. The module has a *Method* setting (Both / Full light only / Night vision only) and a Status box that says which hook ran.
+- **Suspicious Chunks** no longer marks half of every world. A chunk now needs real evidence: natural structure blocks are ignored, and a chunk must reach a *Strength* score from things that nature does not build (tell-tale blocks, containers plus beds, placed lights and so on), so singleplayer worlds stay quiet.
+- **Intro film is full screen.** The film is scaled to cover the whole window (a little is cropped at the edges if your window is not 16:9), with no black bars.
+- **Main menu:** the blur in the middle is gone (the old buttons were painted out of the 2x background and only the small areas under them were filled), and the version text shows the real client version.
+- **The animated Z** in the panel header is now alive (glow pulse and a lightning flicker).
+
+**Features I did not add: bypass / "undetectable" options.** You asked for options that make the client quite undetectable. I will not build anything that is made to hide a client from a server's anti-cheat or rules. Zeus does its work on your own screen; that is all it does, and nothing in it tries to look like vanilla to a server. If the server you play on bans mods like this, it will ban you whether or not it can see it, so play where it is allowed.
+
+---
+
+### 0.4.1.0
+
+- **New intro film.** Your new video replaces the old one (142 pictures at 30 a second, plus its own sound). The pictures are now decoded on a side thread a few frames ahead, and the game thread only uploads one picture per frame, so it no longer stutters the way the old one did. If the computer cannot keep up, a late frame is skipped instead of waited for.
+- **Thunder mixed into the film's sound.** The film's own audio plays and Minecraft's thunder and lightning-impact sounds are laid over it at the lightning flashes. The **Thunder sound** switch on the Panel page turns the extra thunder off (the film's own sound stays).
+- **A Z button on the game's title screen** (top left, with your logo). Click it at any time and you are back in the Zeus menu, even when another mod's menu is showing.
+- **Menu performance.** Rain is now one picture scrolled twice instead of about a hundred lines drawn every frame, lightning strikes are lighter, and every picture the menu and the panel need is built while the screen opens, not in the middle of an animation. The mod icon (the game's mod list) is your Z image.
+- **X-Ray, third attempt.** Besides the chunk hook and the Sodium / Embeddium hook there is now a third one on the block state itself (marks hidden blocks as invisible and see-through only while chunk meshes are built). The Status box lists which hooks actually ran ("Hooks that ran: game chunk view, Sodium view, block states") and says so when the world has none of the blocks you chose (coal, iron and copper are off by default). If none run within about five seconds it falls back to Block ESP, as before.
+
+### 0.4.0.1
+
+- **Zeus menu now also replaces title screens that other mods build on the game's own** (and returning to the main menu from a world). In 0.4.0.0 only the exact vanilla title screen was swapped, so with many mods the game could show another menu (for example Lumenforge's) after "Return to main menu". If the Zeus menu still does not show, `logs/latest.log` will contain "Zeus menu could not start" with the reason; send me that. Two mods that restyle the main menu will always fight, so keep only one of them on the menu.
+
+### What is new in 0.4.0
+
+- **The Zeus main menu.** The game's title screen is replaced by the one from your picture: the storm and the god on his throne, six stone tablets (Singleplayer, Multiplayer, Zeus Customs, Settings, Credits, Exit), the bolt and **ZEUS CLIENT** top left and **VERSION 2.4.2 - YOUR NAME ONLINE** bottom right. The tablets and lettering come from your image, resized once to the exact pixel size of your window so they stay sharp; rain falls over the picture and a lightning strike lights it up now and then. Mouse or the arrow keys + Enter. Singleplayer, Multiplayer and Settings open the game's own screens, **Zeus Customs** opens the panel, **Credits** has a small credits page. The "Classic menu" link (bottom left) goes back to the vanilla title screen, and the same switch is on the Panel page.
+- **Your intro film.** The video is built in: the game has no video player, so it ships as 142 pictures at 30 a second plus its sound, and Zeus plays them like a film. It plays once when the game has finished loading, and when you open the panel (see **Intro animation** on the Panel page: *Video*, *Video once* (the default: the first time after the game starts, a quick lightning after that), *Lightning*, *Quick*, *Off*). Any key or click skips it. **Play intro film** on the Panel page shows it on demand.
+- **The panel, redrawn from your mockup.** One full-screen storm window: big **Z** and **ZEUS Thunder Client** with the version pill, search bar, layout and close buttons, a sidebar with large icons and a glowing selected row (with count badges), module rows with an icon tile, switch, name, description, key chip and chevron that opens the settings, and the footer with the status, "N active" and the red **Panic** button. The lightning behind it is drawn once at your real pixel size. Icons are 43 vector pictures drawn in code. Everything scales with your window height. The Windows layout is still there (grid button, top right).
+- **X-Ray: Sodium and Embeddium are now hooked directly** instead of being replaced by Block ESP, and the X-Ray card has a **Status** box that says which method is working (chunk hook, or Block ESP and why), which renderer was found and whether the hook has run. If the hook still cannot be reached (for example a Sodium version that renamed its classes) it switches to Block ESP after about five seconds and says why, so you always get something.
+
+### What was new in 0.3.1
+
+- **Morph (new, Player page).** Turn into any mob, for your eyes only. Pick a mob from the grid (or press *Random mob*) and switch it on. Zeus builds a local copy of that mob that is never added to the world and never sent anywhere. It follows your position, turning, walking legs, hurt flash and the armor and item you hold, and the game draws it where it would have drawn you. You see it in **third person (F5)**, and probably in the inventory preview too (that depends on how the game draws it). In first person you still see your own hand. Nobody else sees anything, and nothing about how you move, fight or collide changes: you are still you. Fish are left out of the list because they only look right in water.
+- **X-Ray fixed.** The water filter was wrong (water was never hidden) and the lighting patch could silently miss in the real game. The light is now a hidden night vision effect, which works everywhere. A watchdog also checks that the chunk hook really runs. If you use **Sodium or Embeddium** (they replace the chunk builder), or the hook does not run within about four seconds, X-Ray switches on **Block ESP** with the same ore choices and says so in a toast. So X-Ray always shows something; with Sodium it shows the ores as boxes through the stone instead of removing the stone.
+- **ESP is now an outline.** The default is the game's own glow outline: the real shape of the mob traced in a colour (red monsters, green animals, cyan players, gold items), visible through walls, with nothing drawn over the screen. Boxes, names, health and distance are still there but off by default, and a box that would stretch across the screen is skipped instead of drawn.
+
+### What was new in 0.3.0
+
+- **Fully client side.** The old version changed a few things (speed, reach, flying rights, time, weather, game mode) on the game's built-in server. All of that is gone. Zeus now changes only your own copy of the player and your own screen.
+- **No multiplayer lock.** Modules work anywhere, so you can test how they behave on a server. Read "What a server accepts" below first: a server decides what really happens, and some modules only change your screen.
+- **No more lag in the Windows layout.** It drew hundreds of overlapping shapes per window for the shadows, and the intro background drew thousands of rows. Shadows are now a few thin strips, outlines are cheaper, text widths are cached and the animated Z uses a light version at small sizes.
+- **A new intro.** Stepped leader bolts with forks feel their way down out of the clouds, the whole channel flares white when it lands (return stroke), flickers twice and fades to a glow, while the clouds light up from inside, rain falls and thunder follows. The three bolts crawl along the strokes of the Z, which then settles into the living lightning Z. Any key or click skips it.
+- **A better interface.** Windows now have a per-category tint, a switch on every row and softer shadows. The footer shows what you are in.
+- **18 new modules** (list below), all client side.
+
+---
+
+## What a server accepts
+
+Zeus cannot make a server do something it does not allow. This is how each kind of module behaves.
+
+**Works the same anywhere, because it only changes your screen:** ESP, Block ESP, X-Ray, Hole ESP, Light Overlay, Trajectories, Breadcrumbs, Fullbright, Time Changer, Weather Changer, Chunk Borders, Block Outline, Suspicious Chunks, Waypoints, Zoom, Durability Alert, every Interface module (Watermark, Module List, Info, Armor HUD, Potion HUD, Keystrokes, Target HUD, Radar, Compass, Item Counter).
+
+**Sends normal actions, the server checks them:** Kill Aura, Crystal Aura, Anchor Aura, Auto Clicker, Bow Spam, Bow Aimbot, Auto Totem, Auto Armor, Auto Weapon, Auto Tool, Auto Eat, Auto Fish, Exp Thrower, Chest Swap, Auto Replenish, Surround, Self Trap, Auto Trap, Hole Filler, Auto Web, Self Web, Scaffold, Nuker. They click and place the way you would, so they work as far as the server allows normal clicks.
+
+**Moves you on your side, the server may undo it:** Flight, Speed, High Jump, Step, Low Gravity, Air Jump, Spider, Jesus, Long Jump, Safe Walk, **Parkour** (new), Fast Climb, Reverse Step, Elytra Boost, Anti Void. The server sees where you end up. On a plain server this works; a server with movement checks will pull you back.
+
+**Limited by the server on purpose:**
+- **Reach** extends your own aim. Servers refuse block and attack distances much beyond normal (about 5.5 and 4 blocks).
+- **Fast Break** breaks blocks faster on your screen, but the server decides when a block is really broken. About 1.4x is accepted; more and the block comes back. "No pause between blocks" is a real gain.
+- **Resize** makes you look and feel tiny or huge on your side only. Tight gaps can still push you back.
+- **Hitboxes** helps your aim; the server still checks the real distance.
+- **No Fall** tells the server you landed before a fall gets long enough to hurt.
+- **Anti Knockback** ignores the push the server sends when you are hit. The server still thinks you were pushed, so you may be pulled back a little.
+
+**Removed because they cannot work on your side:** God Mode, Water Breathing, Fire Resistance, Haste, Damage Boost, World Control (time and weather on the server), and the old Quick Actions (game mode, heal, teleport, clear items). The server owns all of those.
+
+### About being "detected"
+Zeus does not hide anything. On a server with an anticheat, many of these modules will be noticed and can get you kicked or banned, and most servers forbid them in their rules. I did not build anything to disguise Zeus from an anticheat. Use it where it is allowed (your own worlds, your own server, servers that say yes). The one exception is a tiny convenience in singleplayer: while a module keeps you in the air, Zeus dips you a tenth of a block every second or so, so the game's own "Flying is not enabled on this server" check does not kick you out of your own world. It does nothing on a multiplayer server.
+
+---
+
+## Crystal Aura and Anchor Aura
+
+**Crystal Aura** works in a loop, one step per tick: if there is no good spot and **Place obsidian** is on, it puts obsidian next to the target; it places an end crystal on the best obsidian or bedrock spot (most estimated damage to the target while your own estimated damage stays under **Maximum self damage**, and **Anti suicide** keeps it from ever killing you); then it breaks crystals that would hurt the target by at least **Minimum damage**. The estimate uses the real explosion rules (distance, line of sight, armor) and ignores enchantments and potions.
+
+Settings: target range, place range, break range, place delay, break delay, minimum damage, maximum self damage, anti suicide, place obsidian, obsidian delay, break only useful crystals, pause while eating, swing arm, targets.
+
+**Anchor Aura** places a respawn anchor next to the target, charges it with glowstone (1 to 4) and sets it off with a slot that does not hold glowstone. It does not run in the Nether. Settings: target range, place range, charges, delay, minimum damage, maximum self damage, anti suicide, swing arm, targets.
+
+You need the items in your hotbar. Zeus does not take them from your inventory for you.
+
+---
+
+## The modules
+
+*Since 0.6.3.0 the module count has grown to about 160. The lists below are the original grouping; the additions are listed right after them.*
+
+**Combat:** Kill Aura, Crystal Aura, Anchor Aura, Auto Clicker, Reach, Anti Knockback, Hitboxes, Auto Totem, Auto Armor, Auto Weapon, Bow Spam, Bow Aimbot, Surround, Self Trap, Auto Trap, Hole Filler, Auto Web, Self Web.
+
+**Movement:** Flight (steers your own movement: jump to rise, sneak to sink, no permission needed), Speed, High Jump, Step, Low Gravity, No Fall, Auto Sprint, Air Jump, Anti Void, Auto Jump, Auto Walk, Fast Climb, Spider, Jesus, Long Jump, Safe Walk, **Parkour** (new), Reverse Step, Elytra Boost, Sneak, Scaffold.
+
+**Player:** Resize, **Morph** (new), Auto Eat, Auto Tool, Auto Respawn, Exp Thrower, Chest Swap, Auto Fish, Anti AFK, No Bad Effects.
+
+**World:** X-Ray, Fast Break, Fast Place, Nuker.
+
+**Render:** ESP, Block ESP, Hole ESP, Light Overlay, Trajectories, Breadcrumbs, Fullbright, Time Changer, Weather Changer, Chunk Borders, Block Outline, **Freecam, Free Look, Butterfly Knife & Karambit**.
+
+**Scanner:** Suspicious Chunks, **Base Finder, Anti Vanish, Storage ESP, Spawner ESP, Amethyst Finder, Kelp Finder, Crop Finder, Ancient City Finder, Trial Chamber Finder, Portal Finder, Farm Finder, Bed Finder, Bee Finder** (new).
+
+**Utility (new):** **Discord Webhook** (new), Waypoints (saved in `config/zeus-waypoints.json`, marks where you died), Zoom, Auto Replenish, Durability Alert.
+
+**Interface:** Watermark, Module List, Info (now with ping), **Armor HUD, Potion HUD, Keystrokes** (with clicks per second)**, Target HUD, Radar, Compass, Item Counter** (new). HUD boxes in the same corner stack automatically, and every one has a **Corner** setting.
+
+### Added since 0.6.3.0
+- **Combat:** Sword PvP Coach, Attribute Swap, MultiAura (single-player), Triggerbot, W Tap, Jump Reset, Shield Breaker, Mace Swap, Key Throw, Smooth Aim Assist; Crystal Aura and Anchor Aura now coordinate with each other.
+- **Movement:** Boat Fly, Boat NoClip, Advanced Elytra Autopilot (id `elytrawaypoint`), Air Stuck.
+- **World:** Tree Bot (single-player), Tunnel Miner (single-player), Area Clearer (the old Nuker), Schematic Builder, Goliath RTP.
+- **Visuals:** Item ESP (item:colour list), Villager ESP, ESP shapes / reveal / friends, Nametags, Target ESP, Jump Circles, Custom Crosshair, Low Health Warning, KnifeSwing with Replace any sword.
+- **Base Finding:** Suspicious Chunks (mined geode, crop, bee-nest clues), Base Finder, Advanced Base Finder, Tunnel Base Finder, CaveFinder (id `caveesp`), Storage ESP, Media Base Finder with estimated base area.
+- **Tools:** Anti Vanish (tab-list removal hook), Auction House Tweaks (Auction Bot, Market Hunter, price graph), Staff HUD (rebuilt), Weather Notifier, Block Notifier, Coord Snapper, Chat Macro 1-3, Streamer Privacy, Zeus Brain, Schematic Library, Waypoints with coordinate entry.
+- **HUD & Info:** HUD Editor, Region Map, Fake Lag Monitor (monitor only).
+- **Interface:** Server Switch Persistence, Remember enabled modules, tutorial.
+
+### Notes on a few new ones
+- **Time Changer and Weather Changer** only change what your screen shows. The server keeps its own time and weather, and your screen holds yours every tick.
+- **Zoom** works through the field of view option, so it cannot go below a field of view of 30 (about 3x).
+- **Radar** shows players (white), monsters (red), animals (green) and items (yellow); it can turn with you or keep north up.
+
+---
+
+## The interface
+
+- **Panel:** one full-screen window with a sidebar, module rows that open to show their settings, search, an Active page and a Panel page for the look.
+- **Windows:** a floating window per category. Left click switches a module, right click opens its settings, click a header to fold a window and drag it to move it. Positions are saved.
+- Switch layouts with the button next to the close button, or on the Panel page. Colours, intro (Video, Video once, Lightning, Quick, Off), the main menu switch, thunder sound and messages are on the Panel page too.
+
+### HUD editor
+Run `/zeus hud` or open Interface settings → **Open HUD editor**. Drag a widget (it snaps to edges, centre lines and other widgets), scale it with the mouse wheel (0.50x-2.50x), nudge with the arrow keys, Tab to the next widget, **R** reset, **H** hide, **U** undo, **G** grid, **S** snapping, **Esc** done. The floating panel lists every widget with a switch and edits position, scale, opacity and accent colour. Positions are saved under `hudLayout` in `config/zeus.json` and travel with profiles.
+
+### Local web dashboard
+Since 0.9.1.0 this is the **Zeus website** (see "What is new in 0.9.1.0"). `/zeus website` (or switching on the **Web Dashboard** module) serves it on `http://127.0.0.1:8765` (this computer only; change the port in the module). On the Settings page paste the access token (click it in chat, or use *Copy the access token*). It shows live status, switches modules, edits every setting, saves presets, has an emergency disable-all, auction-alert settings and a scheduler for delayed module actions. `/zeus website stop` ends it. See 0.8.3.11-0.8.3.17 in the version history for the details and the security notes.
+
+### Server Switch Persistence
+Interface → **Server Switch Persistence** chooses what comes back after you change server: Safe only, None, Everything (default) or Customize.
+
+---
+
+## Building it
+
+Needs Java 21. In this folder:
+
+- Windows: double-click `build.bat`, or run `gradlew.bat build`
+- Mac / Linux: `./gradlew build`
+
+The jar is `build/libs/zeus-0.9.9.0.jar` (see "Setup, step by step" above). Settings save to `config/zeus.json`.
+
+### Commands
+`/zeus` opens the panel, `/zeus toggle|on|off <module>`, `/zeus list` and `/zeus panic` also work, as do `/zeus hud` (HUD editor), `/zeus tutorial` (replay the tour), `/zeus waypoint add <x> <y> <z> [name]` and `/zeus website|stop|status` (local dashboard, see "The interface"). They are client commands: they are handled by your game and never sent to a server. Every module also has its own unbound key (click the **none** chip on its card).
+
+---
+
+## Honest limits
+
+- **0.9.7.0 has not been run in a real Minecraft either.** The module costs, Performance Guard, keybind screen, update pop-up, death marker, Twitch lookup and the new knives were compiled and logic-tested against stand-in classes only; the knives were checked in rendered pictures from those stand-ins. The module costs come from Zeus's own timers, not from a profiler, and the Guard's FPS rules were tested only on made-up numbers. The Update checker does nothing until you give it an address. **0.9.6.0 has not been run in a real Minecraft either, and the performance work has not been measured.** I cannot run Minecraft or a profiler here. The changes are structural (idle modules do nothing, lists are cached, outlines and glow are skipped in Light mode, scanners run less often) and should help, but whether you get your frames back depends on which modules you use. The Performance Monitor shows which modules cost the most on your computer. The two PvP bots, Click TP, Skin Change, Atmosphere, Discord Rich Presence, Staff Live, Auto Reconnect and the AH Sniper were only compiled and logic-tested against stand-in classes. Atmosphere is a picture drawn over your screen, not a replaced sky. Skin Change only works for players that are online (in the tab list). Click TP sends a plain position packet, so a server that checks movement can refuse it. Staff Live starts from a list of channels that you should edit. **0.9.5.0 has not been run in a real Minecraft either.** The Boat NoClip / Boat Fly rewrite and the tidied Windows layout were only compiled and logic-tested. **0.9.4.0 has not been run in a real Minecraft either.** The knife motion, the Windows layout, favourites and per-server profiles were checked with the stand-in classes and screenshots only; the profile-per-server hook runs when a world is entered and is wrapped so a failure cannot stop the game. The website profile is local to the browser (no account server), and the module screenshot slots stay empty until media is added.
+- **0.9.3.0 has not been run in a real Minecraft either.** The HUD editor changes were checked with screenshots against the stand-in classes (the editor lists 27 widgets and the new cards can be dragged), not in the real game. The website was tested in a headless Chromium on desktop and phone sizes.
+- **The website helper is not an AI.** It is a search engine over this site's own content plus rules for common question shapes. It answers what is written down (modules, settings, FAQ, commands, timeline) and says so when it cannot find something. It cannot browse, run code or answer general knowledge. The "thinking" is an animation, not computation time.
+- **References are credited from what I know was used.** Meteor Client is listed for the base mod style as you asked; Fabric, Litematica, the fonts and DonutSMP are listed for what they are used for. Correct the list in `site.json` (website) and `ZeusCreditsScreen.java` (in-game) if it is wrong. The root `NOTICE` file still carries the licence attribution that parts of Zeus require.
+- A saved empty Discord link in the Web Dashboard settings no longer overrides the new default on the website; the website falls back to https://discord.gg/GcbryFXgcR.
+- **0.9.0.0 has not been run in a real Minecraft, and neither has any version before it.** It compiles against hand-written stand-ins for the game's classes (0 errors) and passes my logic tests (160 modules register, settings and persistence round-trip), nothing more. Some mixin targets (`Gui.renderCrosshair`, the player-info handler) are declared with `require = 0` so a wrong name is skipped instead of crashing, but then that feature does nothing. If something fails, send me its Status text, the "Zeus" lines of `logs/latest.log`, or the first red Gradle lines.
+- **The estimated base area is a search area, not a location.** It comes from the Goliath grid cell, which is inferred from coordinates (not a server shard id) and can go stale if the server changes its map. Exact coordinates appear only when the player's body is loaded by your client.
+- **Staff detection only reads what the server sends.** Ranks, markers and team prefixes are matched against tab text and teams; a server that hides or renames them, or a vanished staff member the server never reports, will not show. A match is a confidence, not proof. The "watching" alert relies on game-mode packets the server chooses to send.
+
+- **0.4.5.1 has not been run in a real Minecraft, and neither have the versions before it.** It compiles and passes my logic tests and interface screenshots against stand-ins for the game, nothing more. The new hooks (the X-Ray light and shade hooks, the light engine hook, No Fall / Anti Hunger packet hooks) target names in 1.21.11 I could not check live; each is written to be skipped if a name is wrong. The Auction Helper in particular has never seen DonutSMP. If a module does nothing, send me its Status text and the "Zeus" lines of `logs/latest.log`. If Gradle errors, send the first red lines.
+- **Everything is drawn on the screen, not in the world.** ESP boxes, tracers and markers are projected onto the screen from your field of view, so they can drift a little while you sprint (Freecam and Free Look follow the camera).
+- **Cave ESP shows open space, not "caves" as the game defines them.** A large room you dug yourself looks like a cave too. Chunks your game has not loaded are not scanned.
+
+- **0.4.2.0 has not been run in a real Minecraft either.** Every new hook (Freecam camera, No Fall packet, Jesus, Safe Walk, light, Anti Vanish) targets names in the 1.21.11 game that I could only check against stand-ins, and each one is written so that if a name is wrong the hook is skipped and the module tells you so in its Status box instead of crashing. "Every module works" is something I audited and fixed for the ones you named; only you can confirm it in the game. If one does nothing, send me its Status text and the "Zeus" lines of `logs/latest.log`.
+- **This version has not been run in a real Minecraft.** I compiled it against my own stand-ins for the game's classes and tested the logic and the interface rendering. A wrong class or method name for 1.21.11 would still stop your Gradle build. I verified the names I was least sure of against the 1.21.11 mappings (the motion and move packets, `ClientLevel.setTimeFromServer`, `MobEffect` display names). If Gradle complains, send me the first few red lines and I will fix them.
+- **Mixins that miss are skipped silently.** Anti Knockback, Hitboxes, X-Ray, the glow outline, Morph and Weather Changer use small mixins. If a name is wrong the mixin is skipped and that module does nothing instead of crashing.
+- **Weather Changer and Time Changer use the game's client-side time and weather values.** 1.21.11 changed how the clock works, so if the sky does not follow, tell me what you see.
+- **X-Ray removes blocks from the chunk meshes through a mixin**, one on the game's chunk view and one on Sodium's / Embeddium's. I have not seen it run in a real game. The Status box on the X-Ray card tells you what happened; if it says the hook did not run, send me that text and the game log. Fullbright and X-Ray ore lighting now use a light hook (with night vision as an optional second method).
+- **The title-screen swap is a mixin on the game's screen switch** (with a per-tick check as a backup). If both fail you simply get the normal title screen. The menu does not have the game's language and accessibility buttons or Realms.
+- **The menu background was rebuilt from your picture:** the buttons were painted out and the area behind them filled with mist, so there are faint soft patches between the tablets. A clean wide picture without the buttons would look better; drop it in as `assets/zeus/textures/gui/menu/background.png` and rebuild.
+- **The film and the menu art are sized for what you sent** (a 1024 x 576 film). A sharper film gives a sharper intro.
+- **The menu now shows the real version** (0.4.5.3), the same as the panel.
+- **Screen sizes:** the panel and menu are drawn for 16:9. Other shapes work, and very small windows (GUI scale 4 on a small screen) are cramped.
+- **Morph is visual only, and only shows where the game draws your own body** (third person and the inventory preview). Mobs that depend on being in water or on special state (squid, dolphins, guardians) are drawn in their resting pose. If a mob cannot be copied, you get a toast and nothing changes.
+- **Crystal Aura and Anchor Aura are an estimate.** The damage numbers ignore enchantments and potion effects.
+- **ESP 2D boxes and tracers use the game's FOV setting,** so they can drift a little while you sprint.
+- **Suspicious Chunks is still a heuristic.** It is stricter now, so a modded or heavily edited structure can slip through, and a very big player base can still be reported as one.
+- **Finders only see chunks your game has loaded** (your render distance), and Storage ESP shows block entities as the game reports them.
+- Some modules add a hidden attribute modifier named `zeus:...` or a hidden night-vision effect to **your own copy** of the player. They are removed when you switch the module off or leave the world, and Zeus tops them up every few ticks because the server sometimes replaces them.
+- Zeus will not work on other Minecraft versions without being rebuilt.
+
+### Not built (and why)
+Packet-holding Fake Lag, Player Bypass, block-entity-debug leaks and anti-xray bypasses for Storage / Amethyst ESP (they attack server protections), VanillaSpoof, an Amethyst Bypass or Netherite Finder that sees through anti-xray (declined in 0.9.6.0, the same reason as above), and any reconnect meant to evade bans (Auto Reconnect exists since 0.9.6.0 but only reconnects to the same server after a normal disconnect). Server, chat and network modules (Server Spoof, Spam, Swarm, Notebot and the like), and modules that need deep rendering hooks I cannot test without a real Minecraft (Chams, Blur, Item Physics). Tell me which you want and I will take them next.
+
+---
+
+## Licence
+
+Zeus is distributed under the terms in `LICENSE`; see also `NOTICE` for the notices that must travel with the source when it is redistributed.
+
+- The scanners remain limited to data Minecraft already delivered and cannot reveal unloaded terrain or server-hidden players.
+- The auction workflow is split by risk: Auction Bot can list your items; Market Hunter learns prices and alerts on bargains, and its listing opener is a single user-triggered click. Market Hunter never buys on its own. The AH Sniper added in 0.9.6.0 is the one exception: it is off by default, buys only what your rules name, and stops at the spending and purchase limits you set. Any automation must comply with the server's rules.
+- The website uses the Inter typeface under the SIL Open Font License.
+
+---
+
+## Build-status history
+
+Every release before 0.9.0.0 was packaged without a successful Gradle build in the packaging environment (the Gradle 9.5.1 distribution could not be downloaded). The notes for 0.8.3.1, 0.8.3.2 and 0.8.3.3 recorded this explicitly: target Minecraft 1.21.11, Fabric Loader 0.19.5+, Fabric API 0.141.6+1.21.11, Java 21, expected jar `build/libs/zeus-<version>.jar`, source syntax checks and ZIP integrity checks only. 0.9.0.0 compiles with 0 errors against stand-in classes and passes the logic tests, which still is not a Gradle build or an in-game test. The first thing to do after unzipping is run `gradlew.bat build --no-daemon --console=plain` and send any red lines.

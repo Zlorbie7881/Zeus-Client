@@ -1,0 +1,713 @@
+package com.zlorbie788.zeus.mods;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.zlorbie788.zeus.core.Category;
+import com.zlorbie788.zeus.core.Env;
+import com.zlorbie788.zeus.core.Module;
+import com.zlorbie788.zeus.core.Setting;
+import com.zlorbie788.zeus.core.Zeus;
+import com.zlorbie788.zeus.render.EspKit;
+import com.zlorbie788.zeus.render.Projector;
+import com.zlorbie788.zeus.render.Wire;
+import com.zlorbie788.zeus.ui.Accent;
+import com.zlorbie788.zeus.ui.Draw;
+import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.phys.AABB;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
+/**
+ * Friends. Keep a list of players and choose, for every one of them, how you want to see them: a glowing outline in a colour
+ * (through walls), a box, a line to them, a bigger name tag that you can colour, a badge before the name, health and
+ * distance, and a tag of your own above the head (for example Team). Friends can also be spared by every Zeus module that
+ * aims at players. The list is kept in its own file ({@code zeus-friends.json}), so it is not part of a profile or a share
+ * code and survives resets of the settings.
+ *
+ * <p>Everything is drawn on your own screen only. Nothing is sent to the server and no player is told.
+ */
+public final class Friends {
+    /** How many friends are in the list (for the count shown on the panel). */
+    public static int friendCount() {
+        int n = 0;
+        for (Look l : LOOKS) if (l != null) n++;
+        return n;
+    }
+
+    private Friends() {}
+
+    public static final int SLOTS = 30;
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    static final int FRIEND_GREEN = 0xFF4DFF88;
+    private static final String[] BADGES = {"", "★", "♥", "✔", "✚"};
+
+    /** How one friend is shown. */
+    static final class Look {
+        String name = "";
+        boolean glow = true;
+        int glowColour = 0;
+        int box = 0;
+        boolean tracer = false;
+        boolean tag = true;
+        int tagSize = 150;
+        int nameColour = 0;
+        boolean through = true;
+        boolean health = false;
+        boolean distance = true;
+        int badge = 1;
+        boolean hideVanilla = true;
+        String note = "";
+        int noteColour = 0;
+        int noteStyle = 2;
+        int notePos = 0;
+
+        void copyLookFrom(Look o) {
+            glow = o.glow;
+            glowColour = o.glowColour;
+            box = o.box;
+            tracer = o.tracer;
+            tag = o.tag;
+            tagSize = o.tagSize;
+            nameColour = o.nameColour;
+            through = o.through;
+            health = o.health;
+            distance = o.distance;
+            badge = o.badge;
+            hideVanilla = o.hideVanilla;
+            note = o.note;
+            noteColour = o.noteColour;
+            noteStyle = o.noteStyle;
+            notePos = o.notePos;
+        }
+
+        JsonObject toJson() {
+            JsonObject o = new JsonObject();
+            o.addProperty("name", name);
+            o.addProperty("glow", glow);
+            o.addProperty("glowColour", glowColour);
+            o.addProperty("box", box);
+            o.addProperty("tracer", tracer);
+            o.addProperty("tag", tag);
+            o.addProperty("tagSize", tagSize);
+            o.addProperty("nameColour", nameColour);
+            o.addProperty("through", through);
+            o.addProperty("health", health);
+            o.addProperty("distance", distance);
+            o.addProperty("badge", badge);
+            o.addProperty("hideVanilla", hideVanilla);
+            o.addProperty("note", note);
+            o.addProperty("noteColour", noteColour);
+            o.addProperty("noteStyle", noteStyle);
+            o.addProperty("notePos", notePos);
+            return o;
+        }
+
+        static Look fromJson(JsonObject o) {
+            Look l = new Look();
+            l.name = str(o, "name", "");
+            l.glow = bool(o, "glow", l.glow);
+            l.glowColour = num(o, "glowColour", l.glowColour, 0, EspKit.COLOR_NAMES.length - 1);
+            l.box = num(o, "box", l.box, 0, 2);
+            l.tracer = bool(o, "tracer", l.tracer);
+            l.tag = bool(o, "tag", l.tag);
+            l.tagSize = num(o, "tagSize", l.tagSize, 60, 400);
+            l.nameColour = num(o, "nameColour", l.nameColour, 0, EspKit.COLOR_NAMES.length - 1);
+            l.through = bool(o, "through", l.through);
+            l.health = bool(o, "health", l.health);
+            l.distance = bool(o, "distance", l.distance);
+            l.badge = num(o, "badge", l.badge, 0, BADGES.length - 1);
+            l.hideVanilla = bool(o, "hideVanilla", l.hideVanilla);
+            l.note = cleanNote(str(o, "note", ""));
+            l.noteColour = num(o, "noteColour", l.noteColour, 0, EspKit.COLOR_NAMES.length - 1);
+            l.noteStyle = num(o, "noteStyle", l.noteStyle, 0, 2);
+            l.notePos = num(o, "notePos", l.notePos, 0, 1);
+            return l;
+        }
+
+        private static String str(JsonObject o, String k, String d) {
+            return o.has(k) && o.get(k).isJsonPrimitive() ? o.get(k).getAsString() : d;
+        }
+
+        private static boolean bool(JsonObject o, String k, boolean d) {
+            return o.has(k) && o.get(k).isJsonPrimitive() ? o.get(k).getAsBoolean() : d;
+        }
+
+        private static int num(JsonObject o, String k, int d, int lo, int hi) {
+            return o.has(k) && o.get(k).isJsonPrimitive() ? Math.max(lo, Math.min(hi, o.get(k).getAsInt())) : d;
+        }
+    }
+
+    private static final Look[] LOOKS = new Look[SLOTS];
+    private static volatile Map<String, Look> byName = Map.of();
+    private static boolean loaded;
+    private static volatile Main main;
+
+    // ------------------------------------------------------------------ the file
+
+    private static Path file() {
+        return FabricLoader.getInstance().getConfigDir().resolve("zeus-friends.json");
+    }
+
+    private static void load() {
+        if (loaded) return;
+        loaded = true;
+        try {
+            if (!Files.isRegularFile(file())) return;
+            JsonElement root = JsonParser.parseString(Files.readString(file(), StandardCharsets.UTF_8));
+            if (!root.isJsonObject() || !root.getAsJsonObject().has("friends")) return;
+            int i = 0;
+            for (JsonElement e : root.getAsJsonObject().getAsJsonArray("friends")) {
+                if (i >= SLOTS) break;
+                if (e.isJsonObject()) {
+                    Look l = Look.fromJson(e.getAsJsonObject());
+                    LOOKS[i] = cleanName(l.name) == null ? null : l;
+                    if (LOOKS[i] != null) LOOKS[i].name = cleanName(l.name);
+                }
+                i++;
+            }
+        } catch (IOException | RuntimeException e) {
+            Zeus.LOG.warn("Could not read the friends", e);
+        }
+        reindex();
+    }
+
+    private static void write() {
+        reindex();
+        try {
+            JsonObject o = new JsonObject();
+            JsonArray a = new JsonArray();
+            for (int i = 0; i < SLOTS; i++) a.add(LOOKS[i] == null ? new JsonObject() : LOOKS[i].toJson());
+            o.add("friends", a);
+            Files.createDirectories(file().getParent());
+            Path tmp = file().resolveSibling("zeus-friends.json.tmp");
+            Files.writeString(tmp, GSON.toJson(o), StandardCharsets.UTF_8);
+            Files.move(tmp, file(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException | RuntimeException e) {
+            Zeus.LOG.warn("Could not save the friends", e);
+        }
+    }
+
+    private static void reindex() {
+        Map<String, Look> m = new HashMap<>();
+        for (Look l : LOOKS) if (l != null) m.put(l.name.toLowerCase(Locale.ROOT), l);
+        byName = m;
+    }
+
+    /** A player name: letters, digits and _ , 1 to 16 long (a leading . is allowed, as Bedrock players have one). Anything else is refused. */
+    static String cleanName(String s) {
+        if (s == null) return null;
+        String t = s.trim();
+        return t.matches("\\.?[A-Za-z0-9_]{1,16}") ? t : null;
+    }
+
+    static String cleanNote(String s) {
+        if (s == null) return "";
+        StringBuilder b = new StringBuilder();
+        for (char c : s.toCharArray()) {
+            if (b.length() >= 16) break;
+            if (c >= 32 && c != 127 && c != '§') b.append(c);
+        }
+        return b.toString().trim();
+    }
+
+    // ------------------------------------------------------------------ asked by the rest of Zeus
+
+    private static Look lookOf(Entity e) {
+        Main m = main;
+        if (m == null || !m.enabled() || !(e instanceof Player) || e == Minecraft.getInstance().player) return null;
+        try {
+            return byName.get(e.getName().getString().toLowerCase(Locale.ROOT));
+        } catch (RuntimeException ex) {
+            return null;
+        }
+    }
+
+    public static boolean isFriend(Entity e) {
+        return lookOf(e) != null;
+    }
+
+    /** True when this player is a friend and the aim modules must leave them alone. */
+    public static boolean protects(Entity e) {
+        Main m = main;
+        return m != null && m.spare.on() && lookOf(e) != null;
+    }
+
+    public static boolean outlines(Entity e) {
+        Look l = lookOf(e);
+        if (l == null || !l.glow || !inRange(e)) return false;
+        return true;
+    }
+
+    public static int outlineColor(Entity e) {
+        Look l = lookOf(e);
+        if (l == null || !l.glow || !inRange(e)) return 0;
+        return colour(l.glowColour, FRIEND_GREEN) & 0xFFFFFF;
+    }
+
+    /** True when the game's own name tag of this player must not be drawn (Zeus draws the friend's own). */
+    public static boolean hideNameTag(Entity e) {
+        Look l = lookOf(e);
+        return l != null && l.tag && l.hideVanilla;
+    }
+
+    private static boolean inRange(Entity e) {
+        Main m = main;
+        Minecraft mc = Minecraft.getInstance();
+        return m != null && mc.player != null && mc.player.distanceToSqr(e) <= m.range.get() * m.range.get();
+    }
+
+    private static int colour(int index, int auto) {
+        return index <= 0 || index >= EspKit.COLOR_VALUES.length ? auto : EspKit.COLOR_VALUES[index];
+    }
+
+    // ------------------------------------------------------------------ the module
+
+    public static final class Main extends Module {
+        private final String[] ids = new String[SLOTS];
+        private final String[] labels = new String[SLOTS];
+        private boolean syncing;
+
+        final Setting.Bool spare = add(new Setting.Bool("Spare friends", "Zeus modules that aim at players (auras, aim assist, bows, traps) never pick a friend.", true));
+        final Setting.Bool middle = add(new Setting.Bool("Middle click adds a friend", "Look at a player and press the middle mouse button (the pick-block key) to add them to the list, or to take them off it.", true));
+        final Setting.Num range = add(new Setting.Num("Range", "Furthest distance at which friends are marked.", 128, 16, 256, 8, " blocks"));
+        private final Setting.Pick slot;
+        private final Setting.Text typed;
+
+        // the look of the picked friend
+        private final Setting.Bool glow;
+        private final Setting.Choice glowColour;
+        private final Setting.Choice box;
+        private final Setting.Bool tracer;
+        private final Setting.Bool tag;
+        private final Setting.Num tagSize;
+        private final Setting.Choice nameColour;
+        private final Setting.Choice badge;
+        private final Setting.Bool health;
+        private final Setting.Bool distance;
+        private final Setting.Bool through;
+        private final Setting.Bool hideVanilla;
+        private final Setting.Text note;
+        private final Setting.Choice noteColour;
+        private final Setting.Choice noteStyle;
+        private final Setting.Choice notePos;
+        private boolean wasPick;
+
+        public Main() {
+            super("friends", "Friends", "A list of friends. Choose for each one how you see them: a glow, a bigger name tag, a tag above the head and more.", Category.FRIENDS);
+            for (int i = 0; i < SLOTS; i++) ids[i] = String.valueOf(i + 1);
+            load();
+            refreshLabels();
+            main = this;
+            slot = add(new Setting.Pick("Friend", "Which friend the settings below are for.", "1", ids, labels).notSaved());
+            slot.onChange(this::pull);
+            add(new Setting.Info("This friend", this::details));
+            typed = add(new Setting.Text("Add a friend by name", "Type the exact player name here, then press the button under it.", "", 16).temporary());
+            add(new Setting.Action("Add the typed name", "Puts the typed player in the first free place of the list.", this::addTyped));
+            add(new Setting.Action("Add the name from my clipboard", "Copy a player name anywhere, then press this.", this::addClipboard));
+            add(new Setting.Action("Add the player I am looking at", "Adds the player in your crosshair.", this::addLooked));
+            add(new Setting.Action("Remove this friend", "Takes the friend picked above off the list.", this::removeHere));
+
+            glow = add(new Setting.Bool("Glow outline", "The friend gets a glowing outline in a colour, visible through walls.", true).notSaved());
+            glowColour = add(new Setting.Choice("Glow colour", "Automatic is a friendly green.", 0, EspKit.COLOR_NAMES).notSaved());
+            box = add(new Setting.Choice("Box", "A box drawn around the friend, through walls.", 0, "None", "3D box", "2D box").notSaved());
+            tracer = add(new Setting.Bool("Line to the friend", "A line from your crosshair that points at the friend, even when they are behind you.", false).notSaved());
+            tag = add(new Setting.Bool("Bigger name tag", "Zeus draws this friend's name tag itself, in the size and colour you choose.", true).notSaved());
+            tagSize = add(new Setting.Num("Name tag size", "How big the name is. 100% is about the game's own size.", 150, 60, 400, 10, "%").showIf(() -> this.tag.on()).notSaved());
+            nameColour = add(new Setting.Choice("Name colour", "Colour of the name. Automatic is white.", 0, EspKit.COLOR_NAMES).showIf(() -> this.tag.on()).notSaved());
+            badge = add(new Setting.Choice("Badge before the name", "A small sign in front of the name.", 1, "None", "★ star", "♥ heart", "✔ tick", "✚ cross").showIf(() -> this.tag.on()).notSaved());
+            health = add(new Setting.Bool("Show health", "Their health after the name.", false).showIf(() -> this.tag.on()).notSaved());
+            distance = add(new Setting.Bool("Show distance", "How many blocks away they are.", true).showIf(() -> this.tag.on()).notSaved());
+            through = add(new Setting.Bool("Show through walls", "The tag is seen even when a wall is in between. Off: only when you can see them.", true).showIf(() -> this.tag.on()).notSaved());
+            hideVanilla = add(new Setting.Bool("Hide the game's own name tag", "So only the Zeus name tag shows.", true).showIf(() -> this.tag.on()).notSaved());
+            note = add(new Setting.Text("Tag above the head", "A word shown with the name, for example Team, Base or Trade. Empty: none.", "", 16).notSaved());
+            noteColour = add(new Setting.Choice("Tag colour", "Colour of the tag. Automatic is the friendly green.", 0, EspKit.COLOR_NAMES).notSaved());
+            noteStyle = add(new Setting.Choice("Tag style", "Plain text, text in [brackets] or a coloured badge.", 2, "Plain", "[Brackets]", "Badge").notSaved());
+            notePos = add(new Setting.Choice("Tag place", "Above the name or under it.", 0, "Above the name", "Under the name").notSaved());
+            add(new Setting.Action("Use this look for every friend", "Copies the look shown here (not the name) to all friends in the list.", this::lookForAll));
+            for (Setting s : List.of(glow, glowColour, box, tracer, tag, tagSize, nameColour, badge, health, distance, through, hideVanilla, note, noteColour, noteStyle, notePos)) {
+                s.onChange(this::push);
+            }
+            pull();
+        }
+
+        // ---------------------------------------------------------- the list
+
+        private int chosen() {
+            return slot == null ? 0 : slot.index();
+        }
+
+        private Look here() {
+            return LOOKS[chosen()];
+        }
+
+        private void refreshLabels() {
+            for (int i = 0; i < SLOTS; i++) labels[i] = (i + 1) + " " + (LOOKS[i] == null ? "Empty" : LOOKS[i].name);
+        }
+
+        private List<String> details() {
+            Look l = here();
+            List<String> out = new ArrayList<>();
+            if (l == null) {
+                out.add("This place is empty.");
+                out.add("Add a friend with the buttons below, then set their look.");
+            } else {
+                Minecraft mc = Minecraft.getInstance();
+                boolean near = false;
+                if (mc.level != null) {
+                    for (Entity e : Env.entities(mc, 256)) {
+                        if (e instanceof Player && e != mc.player && e.getName().getString().equalsIgnoreCase(l.name)) near = true;
+                    }
+                }
+                out.add(l.name + (online(l.name) ? "  (online)" : "  (not in the list of players)"));
+                out.add(near ? "Loaded near you right now." : "Not near you right now.");
+            }
+            out.add(count() + " of " + SLOTS + " places used.");
+            return out;
+        }
+
+        static int count() {
+            int n = 0;
+            for (Look l : LOOKS) if (l != null) n++;
+            return n;
+        }
+
+        static boolean online(String name) {
+            try {
+                Minecraft mc = Minecraft.getInstance();
+                if (mc.getConnection() == null) return false;
+                for (PlayerInfo pi : mc.getConnection().getOnlinePlayers()) if (pi.getProfile().name().equalsIgnoreCase(name)) return true;
+            } catch (RuntimeException ignored) {
+                // no connection
+            }
+            return false;
+        }
+
+        /** Copies the picked friend's look into the settings shown. */
+        private void pull() {
+            syncing = true;
+            try {
+                Look l = here();
+                Look d = l != null ? l : new Look();
+                glow.set(d.glow);
+                glowColour.set(d.glowColour);
+                box.set(d.box);
+                tracer.set(d.tracer);
+                tag.set(d.tag);
+                tagSize.set(d.tagSize);
+                nameColour.set(d.nameColour);
+                badge.set(d.badge);
+                health.set(d.health);
+                distance.set(d.distance);
+                through.set(d.through);
+                hideVanilla.set(d.hideVanilla);
+                note.set(d.note);
+                noteColour.set(d.noteColour);
+                noteStyle.set(d.noteStyle);
+                notePos.set(d.notePos);
+            } finally {
+                syncing = false;
+            }
+        }
+
+        /** Copies the settings shown into the picked friend and saves the list. */
+        private void push() {
+            if (syncing) return;
+            Look l = here();
+            if (l == null) return;
+            l.glow = glow.on();
+            l.glowColour = glowColour.index();
+            l.box = box.index();
+            l.tracer = tracer.on();
+            l.tag = tag.on();
+            l.tagSize = tagSize.i();
+            l.nameColour = nameColour.index();
+            l.badge = badge.index();
+            l.health = health.on();
+            l.distance = distance.on();
+            l.through = through.on();
+            l.hideVanilla = hideVanilla.on();
+            l.note = cleanNote(note.get());
+            l.noteColour = noteColour.index();
+            l.noteStyle = noteStyle.index();
+            l.notePos = notePos.index();
+            write();
+        }
+
+        private void lookForAll() {
+            Look l = here();
+            if (l == null) {
+                Zeus.toast("Pick a friend first", false);
+                return;
+            }
+            for (Look o : LOOKS) if (o != null && o != l) o.copyLookFrom(l);
+            write();
+            Zeus.toast("Every friend now has this look", true);
+        }
+
+        /** Adds a friend; returns false (with a message) when it cannot. */
+        boolean addFriend(String raw) {
+            String n = cleanName(raw);
+            if (n == null) {
+                Zeus.toast("That is not a player name", false);
+                return false;
+            }
+            if (byName.containsKey(n.toLowerCase(Locale.ROOT))) {
+                Zeus.toast(n + " is already a friend", false);
+                return false;
+            }
+            int free = -1;
+            for (int i = 0; i < SLOTS && free < 0; i++) if (LOOKS[i] == null) free = i;
+            if (free < 0) {
+                Zeus.toast("The list is full (" + SLOTS + ")", false);
+                return false;
+            }
+            Look l = new Look();
+            // a new friend starts with the look of the friend picked now, so a style you like carries over
+            Look model = here();
+            if (model != null) l.copyLookFrom(model);
+            l.name = n;
+            LOOKS[free] = l;
+            write();
+            refreshLabels();
+            slot.set(free);
+            pull();
+            Zeus.toast(n + " is now a friend", true);
+            return true;
+        }
+
+        private void addTyped() {
+            addFriend(typed.get());
+            typed.set("");
+        }
+
+        private void addClipboard() {
+            String clip = "";
+            try {
+                clip = Minecraft.getInstance().keyboardHandler.getClipboard();
+            } catch (RuntimeException ignored) {
+                // no clipboard
+            }
+            addFriend(clip);
+        }
+
+        private void addLooked() {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.crosshairPickEntity instanceof Player p && p != mc.player) addFriend(p.getName().getString());
+            else Zeus.toast("Look at a player first", false);
+        }
+
+        private void removeHere() {
+            int i = chosen();
+            if (LOOKS[i] == null) {
+                Zeus.toast("This place is empty", false);
+                return;
+            }
+            String n = LOOKS[i].name;
+            LOOKS[i] = null;
+            write();
+            refreshLabels();
+            pull();
+            Zeus.toast(n + " is not a friend any more", true);
+        }
+
+        private void toggleFriend(Player p) {
+            String n = p.getName().getString();
+            for (int i = 0; i < SLOTS; i++) {
+                if (LOOKS[i] != null && LOOKS[i].name.equalsIgnoreCase(n)) {
+                    slot.set(i);
+                    removeHere();
+                    return;
+                }
+            }
+            addFriend(n);
+        }
+
+        @Override
+        protected void onTick(Minecraft mc) {
+            boolean down = mc.options.keyPickItem.isDown();
+            if (down && !wasPick && middle.on() && mc.screen == null && mc.crosshairPickEntity instanceof Player p && p != mc.player) toggleFriend(p);
+            wasPick = down;
+        }
+
+        @Override
+        public String info() {
+            int n = count();
+            return n > 0 ? Integer.toString(n) : null;
+        }
+
+        // ---------------------------------------------------------- the screen overlay
+
+        @Override
+        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            if (mc.level == null || mc.player == null || mc.options.hideGui || !Projector.prepare(mc, partial, w, h)) return;
+            for (Entity e : Env.entities(mc, range.get())) {
+                Look l = lookOf(e);
+                if (l == null) continue;
+                double dist = Math.sqrt(mc.player.distanceToSqr(e));
+                double px = lerp(partial, e.xo, e.getX());
+                double py = lerp(partial, e.yo, e.getY());
+                double pz = lerp(partial, e.zo, e.getZ());
+                int base = colour(l.glowColour, FRIEND_GREEN);
+                float alpha = (float) Math.max(0.5, 1.0 - dist / (range.get() * 1.5));
+                if (l.tracer) EspKit.tracerLine(g, w, h, 0, px, py + e.getBbHeight() * 0.5, pz, base, alpha, 1.3f);
+                if (l.box != 0) drawBox(g, e, l, px, py, pz, w, h, base, alpha);
+                if (l.tag || !l.note.isEmpty()) drawTag(g, mc, e, l, px, py, pz, dist, w, h, base, alpha);
+            }
+        }
+
+        private static void drawBox(GuiGraphics g, Entity e, Look l, double px, double py, double pz, int w, int h, int colour, float alpha) {
+            AABB bb = e.getBoundingBox();
+            double sx = px - e.getX();
+            double sy = py - e.getY();
+            double sz = pz - e.getZ();
+            double x1 = bb.minX + sx, y1 = bb.minY + sy, z1 = bb.minZ + sz, x2 = bb.maxX + sx, y2 = bb.maxY + sy, z2 = bb.maxZ + sz;
+            if (l.box == 1) {
+                Wire.box(g, x1, y1, z1, x2, y2, z2, 1.4f, Draw.rgba(colour, alpha), true);
+                return;
+            }
+            float[] r = Wire.bounds(x1, y1, z1, x2, y2, z2);
+            if (r == null || r[2] < -30 || r[0] > w + 30 || r[3] < -30 || r[1] > h + 30 || r[2] - r[0] > w * 1.2 || r[3] - r[1] > h * 1.2) return;
+            int bx1 = Math.round(r[0]);
+            int by1 = Math.round(r[1]);
+            int bx2 = Math.max(Math.round(r[2]), bx1 + 3);
+            int by2 = Math.max(Math.round(r[3]), by1 + 3);
+            Draw.outline(g, bx1 - 1, by1 - 1, bx2 + 1, by2 + 1, Draw.rgba(0xFF000000, 0.45f * alpha));
+            Draw.outline(g, bx1, by1, bx2, by2, Draw.rgba(colour, 0.95f * alpha));
+        }
+
+        private void drawTag(GuiGraphics g, Minecraft mc, Entity e, Look l, double px, double py, double pz, double dist, int w, int h, int base, float alpha) {
+            if (!l.through && !mc.player.hasLineOfSight(e)) return;
+            float[] p = new float[2];
+            if (!Projector.project(px, py + e.getBbHeight() + 0.45, pz, p)) return;
+            if (p[0] < -200 || p[0] > w + 200 || p[1] < -50 || p[1] > h + 50) return;
+            float perspective = (float) Math.max(0.75, Math.min(1.4, 1.5 - dist / 60.0));
+            float sc = (l.tag ? l.tagSize / 100f : 1f) * perspective;
+            float nsc = Math.max(0.5f, sc);
+            int cx = Math.round(p[0]);
+            int bottom = Math.round(p[1]);
+
+            // the name line
+            String name = "";
+            int nameW = 0;
+            int nameCol = colour(l.nameColour, 0xFFFFFFFF);
+            if (l.tag) {
+                StringBuilder b = new StringBuilder();
+                if (l.badge > 0) b.append(BADGES[l.badge]).append(' ');
+                b.append(e.getName().getString());
+                if (l.health && e instanceof net.minecraft.world.entity.LivingEntity le) b.append("  ").append(Math.round(le.getHealth() + le.getAbsorptionAmount())).append("hp");
+                if (l.distance) b.append("  ").append(Math.round(dist)).append("m");
+                name = b.toString();
+                nameW = Draw.widthS(name, nsc);
+            }
+            int lineH = Math.round(11 * nsc);
+            // the tag (the word of your own)
+            String note = l.note;
+            String noteShown = note.isEmpty() ? "" : l.noteStyle == 1 ? "[" + note + "]" : note;
+            float tsc = Math.max(0.5f, nsc * 0.8f);
+            int noteW = noteShown.isEmpty() ? 0 : Draw.widthS(noteShown, tsc);
+            int noteH = noteShown.isEmpty() ? 0 : Math.round(10 * tsc) + (l.noteStyle == 2 ? 3 : 1);
+            int total = (l.tag ? lineH : 0) + noteH;
+            int top = bottom - total - 2;
+            int noteCol = colour(l.noteColour, base);
+
+            int y = top;
+            if (!noteShown.isEmpty() && l.notePos == 0) {
+                drawNote(g, noteShown, noteW, noteH, cx, y, tsc, noteCol, l.noteStyle, alpha);
+                y += noteH;
+            }
+            if (l.tag) {
+                int pad = Math.round(3 * nsc);
+                Draw.rrect(g, cx - nameW / 2 - pad, y - 1, nameW + pad * 2, lineH + 1, 3, Draw.rgba(0xFF000000, 0.45f * alpha));
+                Draw.textS(g, name, cx - nameW / 2 + 1, y + 1, Draw.rgba(0xFF000000, 0.5f * alpha), nsc);
+                Draw.textS(g, name, cx - nameW / 2, y, Draw.rgba(nameCol, alpha), nsc);
+                y += lineH;
+            }
+            if (!noteShown.isEmpty() && l.notePos == 1) drawNote(g, noteShown, noteW, noteH, cx, y, tsc, noteCol, l.noteStyle, alpha);
+        }
+
+        private static void drawNote(GuiGraphics g, String text, int tw, int th, int cx, int y, float sc, int colour, int style, float alpha) {
+            if (style == 2) {
+                int pad = Math.round(3 * sc);
+                Draw.rrect(g, cx - tw / 2 - pad, y, tw + pad * 2, th - 1, 3, Draw.rgba(Draw.darken(colour, 0.35f), 0.9f * alpha));
+                Draw.textS(g, text, cx - tw / 2, y + 2, Draw.rgba(0xFFFFFFFF, alpha), sc);
+            } else {
+                Draw.textS(g, text, cx - tw / 2 + 1, y + 1, Draw.rgba(0xFF000000, 0.5f * alpha), sc);
+                Draw.textS(g, text, cx - tw / 2, y, Draw.rgba(colour, alpha), sc);
+            }
+        }
+
+        private static double lerp(float t, double a, double b) {
+            return a + (b - a) * t;
+        }
+    }
+
+    // ------------------------------------------------------------------ the friends panel
+
+    /** A small box on the screen: your friends, who is online, and who is near you with distance and health. */
+    public static final class Panel extends Module {
+        private final Setting.Choice corner = Hud.corner(this, 0);
+        private final Setting.Bool onlyOnline = add(new Setting.Bool("Only online friends", "Leave out friends who are not in the player list.", false));
+        private final Setting.Bool showDistance = add(new Setting.Bool("Distance and health", "For friends who are near you: how far, and their health.", true));
+
+        public Panel() {
+            super("friendspanel", "Friends Panel", "A box on the screen with your friends, who is online and who is near you.", Category.FRIENDS);
+            hudCard();
+            anywhere();
+        }
+
+        @Override
+        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            if (mc.player == null || mc.level == null || mc.options.hideGui) return;
+            load();
+            List<String> names = new ArrayList<>();
+            List<String> right = new ArrayList<>();
+            List<Integer> cols = new ArrayList<>();
+            for (Look l : LOOKS) {
+                if (l == null) continue;
+                boolean online = Main.online(l.name);
+                Entity near = null;
+                for (Entity e : Env.entities(mc, 256)) {
+                    if (e instanceof Player && e != mc.player && e.getName().getString().equalsIgnoreCase(l.name)) near = e;
+                }
+                if (onlyOnline.on() && !online && near == null) continue;
+                names.add(l.name);
+                String r = online || near != null ? "online" : "away";
+                if (near != null && showDistance.on()) {
+                    r = Math.round(Math.sqrt(mc.player.distanceToSqr(near))) + "m";
+                    if (near instanceof net.minecraft.world.entity.LivingEntity le) r += " " + Math.round(le.getHealth() + le.getAbsorptionAmount()) + "hp";
+                }
+                right.add(r);
+                cols.add(near != null ? colour(l.glowColour, FRIEND_GREEN) : online ? 0xFFBFF5D8 : 0xFF7F8AA8);
+            }
+            if (names.isEmpty()) return;
+            int bw = 70;
+            for (int i = 0; i < names.size(); i++) bw = Math.max(bw, Draw.width(names.get(i)) + Draw.width(right.get(i)) + 22);
+            int bh = names.size() * 11 + 17;
+            int[] at = Hud.place(corner.index(), bw, bh, w, h);
+            Hud.panel(g, at[0], at[1], bw, bh);
+            Draw.text(g, "Friends", at[0] + 7, at[1] + 4, Accent.DIM);
+            for (int i = 0; i < names.size(); i++) {
+                int y = at[1] + 15 + i * 11;
+                Draw.text(g, names.get(i), at[0] + 7, y, cols.get(i));
+                Draw.textRight(g, right.get(i), at[0] + bw - 5, y, Accent.DIM);
+            }
+        }
+    }
+}

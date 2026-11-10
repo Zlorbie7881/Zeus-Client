@@ -1,0 +1,162 @@
+package com.zlorbie788.zeus.ui;
+
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.Minecraft;
+
+/**
+ * The news scroll in the bottom right corner of the Zeus menu: aged parchment between two wooden rods, written in Greek-style
+ * lettering, telling what changed in the client. The three pictures (top rod with the title, the long body with the news, the
+ * bottom rod) are made by {@code tools/make_news_scroll.py}; the body is much taller than the screen and a window of it is
+ * moved over the paper, in steps of one real screen pixel, so the scrolling is smooth at every window size. The wheel moves
+ * the text while the pointer is over the scroll, and a click on the top rolls the scroll up into a small roll and back out.
+ */
+final class MenuNews {
+    // sizes of the pictures, in picture pixels (printed by the generator)
+    private static final float SRC_W = 580f;
+    private static final float HEAD_H = 104f;
+    private static final float FOOT_H = 80f;
+    private static final float BODY_H = 8436f;
+    /** The head and the foot fade out into the body over this many picture pixels, and the body goes under the fade. */
+    private static final float FADE = 16f;
+    /** How much of the top picture is the rod and the title band (the click area). */
+    private static final float HEAD_CLICK = 96f;
+
+    private int x;
+    private int y;
+    private int w;
+    private int total;
+    private float s;
+    private boolean laidOut;
+    private boolean rolled;
+    private float open = 1f;
+    private float scroll;
+    private float scrollTo;
+    private float bodyViewMax;
+    private float bodyNow;
+    private boolean hot;
+
+    /** Works out where the scroll goes; returns false when the window is too small for it. */
+    boolean layout(int width, int height, int leftLimit, int bottomMargin) {
+        w = Math.max(120, Math.min(250, Math.round(width * 0.25f)));
+        s = w / SRC_W;
+        float head = HEAD_H * s;
+        float foot = FOOT_H * s;
+        float fade = FADE * s;
+        float space = height * 0.62f - head - foot;
+        bodyViewMax = Math.max(40f * s, Math.min(BODY_H * s * 0.62f, space));
+        bodyNow = 2f * fade + open * bodyViewMax;
+        total = Math.round(head + bodyNow - 2f * fade + foot);
+        x = width - w - 6;
+        y = height - bottomMargin - total;
+        laidOut = x >= leftLimit + 8 && y > 4;
+        return laidOut;
+    }
+
+    /** Builds the three pictures at the size they will be drawn, so nothing is made in the middle of an animation. */
+    void prepare() {
+        if (!laidOut) return;
+        pictures();
+    }
+
+    private Tex.Img[] pictures() {
+        int gs = Tex.guiScale();
+        int fw = w * gs;
+        Tex.Img head = Tex.fitted("news_head", "textures/gui/menu/scroll_head.png", fw, Math.round(HEAD_H * s * gs), false, 0, 0);
+        Tex.Img body = Tex.fitted("news_body", "textures/gui/menu/scroll_body.png", fw, Math.round(BODY_H * s * gs), false, 0, 0);
+        Tex.Img foot = Tex.fitted("news_foot", "textures/gui/menu/scroll_foot.png", fw, Math.round(FOOT_H * s * gs), false, 0, 0);
+        Tex.Img roll = Tex.fitted("news_roll", "textures/gui/menu/scroll_roll.png", fw, Math.round((HEAD_H + FOOT_H) * s * gs), false, 0, 0);
+        return new Tex.Img[] {head, body, foot, roll};
+    }
+
+    boolean contains(double mx, double my) {
+        return laidOut && mx >= x - 3 && mx < x + w + 3 && my >= y - 4 && my < y + total + 4;
+    }
+
+    private boolean onHeader(double mx, double my) {
+        return laidOut && mx >= x - 3 && mx < x + w + 3 && my >= y - 4 && my < y + HEAD_CLICK * s + 2;
+    }
+
+    /** A click: returns true if the scroll used it. */
+    boolean click(double mx, double my) {
+        if (!contains(mx, my)) return false;
+        if (onHeader(mx, my)) rolled = !rolled;
+        return true;
+    }
+
+    private float maxScroll() {
+        return Math.max(0f, BODY_H - (bodyViewMax + 2f * FADE * s) / s);
+    }
+
+    boolean wheel(double mx, double my, double amount) {
+        if (!contains(mx, my) || rolled) return false;
+        scrollTo = Math.max(0f, Math.min(maxScroll(), scrollTo - (float) amount * 70f));
+        return true;
+    }
+
+    void draw(GuiGraphics g, int mx, int my, float dt, float appear) {
+        if (!laidOut || appear <= 0.01f) return;
+        float goal = rolled ? 0f : 1f;
+        open += (goal - open) * Math.min(1f, dt * 9f);
+        if (Math.abs(goal - open) < 0.004f) open = goal;
+        // re-run the layout numbers for the new height
+        float fade = FADE * s;
+        bodyNow = 2f * fade + open * bodyViewMax;
+        int newTotal = Math.round(HEAD_H * s + bodyNow - 2f * fade + FOOT_H * s);
+        y += total - newTotal;
+        total = newTotal;
+        scrollTo = Math.min(scrollTo, maxScroll());
+        scroll += (scrollTo - scroll) * Math.min(1f, dt * 12f);
+        if (Math.abs(scrollTo - scroll) < 0.05f) scroll = scrollTo;
+
+        Tex.Img[] p = pictures();
+        if (p[0] == null || p[1] == null || p[2] == null || p[3] == null) return;
+        int gs = Tex.guiScale();
+        int px = x + Math.round((1f - appear) * 30f);
+        int tint = Draw.rgba(0xFFFFFFFF, appear);
+        hot = onHeader(mx, my);
+
+        int headH = Math.round(HEAD_H * s);
+        int footH = Math.round(FOOT_H * s);
+        int fd = Math.round(fade);
+        int bodyTop = y + headH - fd;
+        int bodyH = Math.max(1, y + total - footH + fd - bodyTop);
+
+        if (open <= 0.03f) {
+            // fully rolled up: one picture with no seam between the two rods
+            p[3].draw(g, px, y, w, total, hot ? Draw.rgba(0xFFFFFFFF, appear) : Draw.rgba(0xFFF3EEE4, appear));
+        } else {
+            // the body: a window of the long picture
+            int sh = Math.max(1, Math.round(bodyH * (float) gs));
+            int sy = Math.round(scroll * s * gs);
+            sy = Math.max(0, Math.min(p[1].h - sh, sy));
+            p[1].drawPart(g, px, bodyTop, w, bodyH, 0, sy, p[1].w, sh, tint);
+            p[0].draw(g, px, y, w, headH, hot ? Draw.rgba(0xFFFFFFFF, appear) : Draw.rgba(0xFFF3EEE4, appear));
+            p[2].draw(g, px, y + total - footH, w, footH, tint);
+        }
+
+        // a small arrow on the title band: up while the scroll is open, down when it is rolled
+        int ax = px + w - Math.round(70 * s);
+        int ay = y + Math.round(79 * s);
+        int arrow = Draw.rgba(hot ? 0xFF8A1E14 : 0xFF6E2A1E, appear);
+        int half = Math.max(2, Math.round(7 * s));
+        for (int i = 0; i < half; i++) {
+            int len = rolled ? half - i : i + 1;
+            g.fill(ax - len, ay + i, ax + len + 1, ay + i + 1, arrow);
+        }
+
+        // the scroll bar: a thin bronze rod at the right edge of the paper
+        float max = maxScroll();
+        if (open > 0.6f && max > 1f) {
+            int tx = px + w - Math.round(52 * s) - Math.max(2, Math.round(3 * s));
+            int tw = Math.max(2, Math.round(3.2f * s));
+            int top = bodyTop + Math.round(24 * s);
+            int bottom = bodyTop + bodyH - Math.round(24 * s);
+            int track = Math.max(10, bottom - top);
+            int barH = Math.max(10, Math.round(track * (bodyH / s) / BODY_H));
+            int by = top + Math.round((track - barH) * (scroll / max));
+            float oa = Math.min(1f, (open - 0.6f) / 0.4f) * appear;
+            g.fill(tx, top, tx + tw, bottom, Draw.rgba(0xFF6B4A1E, 0.22f * oa));
+            g.fillGradient(tx, by, tx + tw, by + barH, Draw.rgba(0xFFC9923C, 0.95f * oa), Draw.rgba(0xFF7A4E16, 0.95f * oa));
+        }
+    }
+}

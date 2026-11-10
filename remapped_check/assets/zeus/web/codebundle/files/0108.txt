@@ -1,0 +1,161 @@
+package com.zlorbie788.zeus.mods;
+
+import com.zlorbie788.zeus.ui.Accent;
+import com.zlorbie788.zeus.ui.Draw;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.phys.BlockHitResult;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * The "Discoveries" card: what a finder has found around you, shown like a short field report. A title and how long ago it
+ * was first seen, what kind of find it is, a count of clues, the things in it as small item slots with their numbers, a line
+ * per category, and a reminder that loaded objects are not proof of a base. It only reads what your own game has: block
+ * types, item frames and armor stands that are loaded, and the contents of containers <i>you opened yourself</i> (the server
+ * never sends the inside of a chest you have not opened, so nothing else can be shown).
+ */
+public final class Discoveries {
+    private Discoveries() {}
+
+    /** One slot in the card. */
+    public record Slot(Item item, int count, int color) {}
+
+    /** One line of the category list. */
+    public record Cat(String label, int count, int color) {}
+
+    /** Everything the card shows. */
+    public static final class Card {
+        public String kind = "";
+        public String line = "";
+        public String age = "";
+        public final List<Slot> slots = new ArrayList<>();
+        public final List<Cat> cats = new ArrayList<>();
+        public String foot = "Loaded objects / not proof of a base";
+        public int accent = 0xFF35E0D0;
+    }
+
+    private static final int W = 196;
+
+    public static int width() {
+        return W;
+    }
+
+    public static int height(Card c) {
+        int rows = (Math.min(c.slots.size(), 12) + 5) / 6;
+        int catRows = (c.cats.size() + 1) / 2;
+        return 10 + 14 + 14 + 14 + (rows > 0 ? rows * 28 + 4 : 0) + (catRows > 0 ? catRows * 14 + 4 : 0) + 14 + 6;
+    }
+
+    /** Draws the card with its top-left corner at x, y. */
+    public static void draw(GuiGraphics g, int x, int y, Card c, float a) {
+        int h = height(c);
+        Draw.shadow(g, x, y, W, h, 8, 10, 0.5f * a);
+        Draw.rrect(g, x, y, W, h, 8, Draw.rgba(0xFF0C1322, 0.95f * a), Draw.rgba(0xFF080D18, 0.95f * a));
+        Draw.rrectLine(g, x, y, W, h, 8, Draw.rgba(0xFF2A3B5C, 0.9f * a));
+        int px = x + 10;
+        int py = y + 10;
+        // header: an accent bar, the title, and how long ago it was first seen
+        g.fill(px, py, px + 3, py + 11, Draw.rgba(c.accent, a));
+        Draw.bold(g, "ZEUS / DISCOVERIES", px + 8, py + 2, Draw.rgba(0xFFE9F1FF, a));
+        if (!c.age.isEmpty()) Draw.textRight(g, c.age, x + W - 10, py + 2, Draw.rgba(c.accent, a));
+        py += 18;
+        Draw.text(g, Draw.fit(c.kind, W - 20), px, py, Draw.rgba(0xFF5AA2FF, a));
+        py += 15;
+        Draw.text(g, Draw.fit(c.line, W - 20), px, py, Draw.rgba(0xFFE9F1FF, a));
+        py += 16;
+        // item slots, six to a row
+        int n = Math.min(c.slots.size(), 12);
+        for (int i = 0; i < n; i++) {
+            Slot s = c.slots.get(i);
+            int sx = px + (i % 6) * 28;
+            int sy = py + (i / 6) * 28;
+            Draw.rrect(g, sx, sy, 26, 26, 5, Draw.rgba(0xFF111A2D, a), Draw.rgba(0xFF0B1220, a));
+            Draw.rrectLine(g, sx, sy, 26, 26, 5, Draw.rgba(0xFF26344F, a));
+            try {
+                g.renderItem(new ItemStack(s.item(), Math.max(1, s.count())), sx + 5, sy + 4);
+            } catch (RuntimeException ignored) {
+                // a slot without a picture is still a slot
+            }
+            String num = Integer.toString(s.count());
+            Draw.textShadow(g, num, sx + 24 - Draw.width(num), sy + 15, Draw.rgba(0xFFFFFFFF, a));
+            g.fill(sx + 3, sy + 24, sx + 23, sy + 25, Draw.rgba(s.color(), 0.95f * a));
+        }
+        if (n > 0) py += ((n + 5) / 6) * 28 + 4;
+        // categories, two to a row
+        for (int i = 0; i < c.cats.size(); i++) {
+            Cat cat = c.cats.get(i);
+            int cx = px + (i % 2) * 92;
+            int cy = py + (i / 2) * 14;
+            g.fill(cx, cy + 1, cx + 6, cy + 7, Draw.rgba(cat.color(), a));
+            Draw.text(g, Draw.fit(cat.count() + " " + cat.label(), 82), cx + 11, cy, Draw.rgba(0xFFD6E2F7, a));
+        }
+        if (!c.cats.isEmpty()) py += ((c.cats.size() + 1) / 2) * 14 + 4;
+        Draw.text(g, Draw.fit(c.foot, W - 20), px, py + 2, Draw.rgba(Accent.DIM, a));
+    }
+
+    /** "58m", "12s", "2h". */
+    public static String age(long ms) {
+        long s = Math.max(0, ms / 1000);
+        if (s < 60) return s + "s";
+        if (s < 3600) return (s / 60) + "m";
+        return (s / 3600) + "h";
+    }
+
+    // ------------------------------------------------------------------ what you have opened
+
+    /** What was inside the containers you opened: block position to item counts. */
+    private static final Map<Long, Map<Item, Integer>> OPENED = new HashMap<>();
+    private static long pendingPos = Long.MIN_VALUE;
+    private static int lastMenu = -1;
+
+    /** Call every tick: remembers what is in a chest when you open it. */
+    public static void tick(Minecraft mc) {
+        if (mc.player == null) return;
+        if (mc.screen == null) {
+            if (mc.options.keyUse.isDown() && mc.hitResult instanceof BlockHitResult b) pendingPos = b.getBlockPos().asLong();
+            lastMenu = -1;
+            return;
+        }
+        if (pendingPos == Long.MIN_VALUE || !(mc.screen instanceof AbstractContainerScreen<?> s)) return;
+        AbstractContainerMenu menu = s.getMenu();
+        Map<Item, Integer> items = new LinkedHashMap<>();
+        int outside = 0;
+        for (net.minecraft.world.inventory.Slot sl : menu.slots) {
+            if (sl.container == mc.player.getInventory()) continue;
+            outside++;
+            ItemStack st = sl.getItem();
+            if (st == null || st.isEmpty()) continue;
+            items.merge(st.getItem(), st.getCount(), Integer::sum);
+        }
+        // a chest, barrel or shulker box has at least nine slots of its own; a crafting table or a furnace does not count
+        if (outside < 9) return;
+        if (OPENED.size() > 400) OPENED.clear();
+        OPENED.put(pendingPos, items);
+        lastMenu = menu.containerId;
+    }
+
+    /** The remembered contents of the container at a position, or null if it was never opened. */
+    public static Map<Item, Integer> opened(BlockPos p) {
+        return OPENED.get(p.asLong());
+    }
+
+    public static Map<Item, Integer> opened(long packed) {
+        return OPENED.get(packed);
+    }
+
+    public static void forget() {
+        OPENED.clear();
+        pendingPos = Long.MIN_VALUE;
+    }
+}
