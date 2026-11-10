@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Zeus 0.9.9.0
 
 A thunder client for Minecraft **1.21.11** (Fabric, Java 21): about 178 modules, a Zeus main menu, an intro film, a full-screen storm panel, world scanners, waypoint tools, movement assistance, a schematic builder and a local website with a live control center. Press **Z** in a world (or type `/zeus`) to open the panel.
@@ -276,3 +277,7 @@ Zeus is distributed under the terms in `LICENSE`; see also `NOTICE` for the noti
 - The scanners remain limited to data Minecraft already delivered and cannot reveal unloaded terrain or server-hidden players.
 - The auction workflow is split by risk: Auction Bot can list your items; Market Hunter learns prices and alerts on bargains, and its listing opener is a single user-triggered click. Market Hunter never buys on its own. The AH Sniper added in 0.9.6.0 is the one exception: it is off by default, buys only what your rules name, and stops at the spending and purchase limits you set. Any automation must comply with the server's rules.
 - The website uses the Inter typeface under the SIL Open Font License.
+=======
+# Zeus-Client
+Open-source cheat client with unbeatable features.
+>>>>>>> 7cbf78d3045ccbdd1d4bfeaed4fccf7dbed318ae
