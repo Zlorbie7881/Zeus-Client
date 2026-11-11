@@ -7,23 +7,14 @@ import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Who is working where. The server tells your game about every block that changes near you, and a block that changes while
- * you are far away was changed by someone else: a player digging a tunnel, building a wall, emptying a chest into a
- * shulker. This counts those changes per chunk, with the oldest slowly forgotten, so Suspicious Chunks can point at places
- * where something is happening right now, even if no base shows yet. Changes next to you (your own work) and the changes that
- * happen on their own (water, lava, leaves, fire, crops) are not counted.
- */
 public final class Activity {
     private Activity() {}
 
-    /** Per chunk: {recent count (x100, decays), last time ms}. */
     private static final ConcurrentHashMap<Long, long[]> HEAT = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<net.minecraft.world.level.block.Block, Boolean> NOISE = new ConcurrentHashMap<>();
     private static volatile boolean counting;
     private static volatile long halfLifeMs = 30_000L;
 
-    /** Configure how quickly old block-change evidence fades. */
     public static void setMemorySeconds(int seconds) {
         halfLifeMs = Math.max(5_000L, Math.min(120_000L, seconds * 1_000L));
     }
@@ -37,7 +28,6 @@ public final class Activity {
         return ((long) cx << 32) ^ (cz & 0xffffffffL);
     }
 
-    /** While a whole group of changes arrives in one packet (an explosion, a big edit) only the first few count. */
     private static int batchLeft = Integer.MAX_VALUE;
 
     public static void beginBatch() {
@@ -48,20 +38,13 @@ public final class Activity {
         batchLeft = Integer.MAX_VALUE;
     }
 
-    /**
-     * Called for every block update packet (on the game's thread, before the game applies it, so the world still holds the old
-     * block). A change only counts when it looks like a player's work: a solid block taken away, or a solid block put where
-     * there was air, water or something that can be built over. Everything the world does by itself is left out: a block that
-     * only changes its state (a door a villager opens, a crop that grows, a lamp, farmland drying), leaves that decay, fire,
-     * water and lava flowing, sand that falls, ice that melts, lava turning to stone, grass spreading, moss, sculk.
-     */
     public static void note(BlockPos pos, BlockState state) {
         if (!counting || pos == null || state == null) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null) return;
         double dx = pos.getX() + 0.5 - mc.player.getX();
         double dz = pos.getZ() + 0.5 - mc.player.getZ();
-        if (dx * dx + dz * dz < 12 * 12) return; // your own work and what you cause
+        if (dx * dx + dz * dz < 12 * 12) return;
         if (!playerLike(mc.level.getBlockState(pos), state)) return;
         if (batchLeft != Integer.MAX_VALUE) {
             if (batchLeft <= 0) return;
@@ -76,23 +59,20 @@ public final class Activity {
         });
     }
 
-    /** True when going from {@code old} to {@code now} looks like a player breaking or placing a block. */
     static boolean playerLike(BlockState old, BlockState now) {
         if (old == null || now == null) return false;
-        if (old.getBlock() == now.getBlock()) return false; // only a state changed: a door, a crop, a lamp, moisture
+        if (old.getBlock() == now.getBlock()) return false;
         boolean oldFluid = !old.getFluidState().isEmpty();
         boolean newFluid = !now.getFluidState().isEmpty();
         boolean oldGone = old.isAir() || oldFluid || old.canBeReplaced();
         boolean nowGone = now.isAir() || newFluid || now.canBeReplaced();
-        if (oldGone == nowGone) return false; // building over rubbish, or nothing solid either way: the world did it
+        if (oldGone == nowGone) return false;
         if (!oldGone) {
-            // something solid was taken away
             if (noise(old) || old.getBlock() instanceof net.minecraft.world.level.block.FallingBlock) return false;
             return true;
         }
-        // something solid appeared
         if (noise(now) || now.getBlock() instanceof net.minecraft.world.level.block.FallingBlock) return false;
-        if (oldFluid && stoneFromFluid(now)) return false; // lava meeting water
+        if (oldFluid && stoneFromFluid(now)) return false;
         return true;
     }
 
@@ -110,14 +90,12 @@ public final class Activity {
         return Math.round(value * f);
     }
 
-    /** How many counted changes this chunk has had lately (older ones count for less). */
     public static double heat(int cx, int cz) {
         long[] v = HEAT.get(key(cx, cz));
         if (v == null) return 0;
         return decayed(v[0], v[1], System.currentTimeMillis()) / 100.0;
     }
 
-    /** Chunks that are hot, hottest first: {cx, cz, heat x 10}. */
     public static java.util.List<long[]> hot(double min) {
         java.util.List<long[]> out = new java.util.ArrayList<>();
         long now = System.currentTimeMillis();

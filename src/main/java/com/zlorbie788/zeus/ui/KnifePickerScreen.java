@@ -8,20 +8,15 @@ import net.minecraft.network.chat.Component;
 
 import java.util.Locale;
 
-/**
- * The knife gallery: every knife on the left, every finish of the chosen knife on the right, and a big preview. Each picture is
- * drawn by the same code that draws the knife in your hand, so a finish looks here exactly as it will in the game. A click
- * changes the setting at once, so there is no save step.
- */
 public final class KnifePickerScreen extends Screen {
-    /** Receives the knife and finish that were chosen. */
+
     public interface Chosen {
         void pick(int knife, int finish);
     }
 
     private final Screen parent;
     private final Chosen chosen;
-    private final int[] finishOf;      // the finish last used with each knife
+    private final int[] finishOf;
     private int knife;
     private int px, py, pw, ph;
 
@@ -40,7 +35,6 @@ public final class KnifePickerScreen extends Screen {
 
     @Override
     public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-        // drawn in render
     }
 
     @Override
@@ -113,7 +107,6 @@ public final class KnifePickerScreen extends Screen {
         Draw.bold(g, "ZEUS / KNIFE GALLERY", px + 12, py + 10, 0xFFE9F1FF);
         Draw.textRight(g, "The same art the game draws", px + pw - 12, py + 10, 0xFF8EA2CC);
 
-        // the knives
         int tw = kTileW(), th = kTileH(), gx = px + 12, gy = gridTop();
         for (int i = 0; i < knives.length; i++) {
             int x = gx + (i % KCOLS) * (tw + 3), y = gy + (i / KCOLS) * (th + 3);
@@ -126,7 +119,6 @@ public final class KnifePickerScreen extends Screen {
             }
         }
 
-        // the big preview and the finishes
         int rx = rightX(), rw = rightW(), pvh = previewH();
         int fin = Math.min(finishOf[knife], fins.length - 1);
         Draw.rrect(g, rx, gy, rw, pvh, 6, 0xFF08122A);
@@ -176,7 +168,7 @@ public final class KnifePickerScreen extends Screen {
             for (int i = 0; i < fn; i++) {
                 int tx = rx + (i % FCOLS) * (fw + 3), ty = fy0 + (i / FCOLS) * (fh + 3);
                 if (x >= tx && x < tx + fw && y >= ty && y < ty + fh) {
-                    if (knife >= 2) for (int q = 2; q < finishOf.length; q++) finishOf[q] = i;   // the straight knives share one finish
+                    if (knife >= 2) for (int q = 2; q < finishOf.length; q++) finishOf[q] = i;
                     else finishOf[knife] = i;
                     chosen.pick(knife, i);
                     return true;

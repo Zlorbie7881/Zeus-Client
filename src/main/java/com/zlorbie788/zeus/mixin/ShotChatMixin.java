@@ -7,7 +7,6 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 
-/** Every line that goes into the chat passes here; the "Saved screenshot as ..." line gets its buttons (see {@link ScreenshotTweaks}). */
 @Mixin(ChatComponent.class)
 public abstract class ShotChatMixin {
     @ModifyVariable(method = "addMessage(Lnet/minecraft/network/chat/Component;)V", at = @At("HEAD"), argsOnly = true, require = 0)

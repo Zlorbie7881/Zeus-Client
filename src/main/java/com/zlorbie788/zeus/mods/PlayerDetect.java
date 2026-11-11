@@ -28,17 +28,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-/** Finding players the game does not show you plainly: invisible ones, and staff. */
 public final class PlayerDetect {
     private PlayerDetect() {}
 
-    // ------------------------------------------------------------------ Invis ESP
-
-    /**
-     * Invis ESP: marks players who are invisible (the potion, or a plugin). The server still sends an invisible player to
-     * you, your game just does not draw the body, so the box and name come from the player's real position. Armor and held
-     * items that you can see are a good hint too, they are drawn even when the body is not.
-     */
     public static final class InvisEsp extends Module {
         private final Setting.Num range = add(new Setting.Num("Range", "How far it looks.", 96, 16, 256, 8, " blocks"));
         private final Setting.Bool spectators = add(new Setting.Bool("Spectators too", "Also mark players in spectator mode.", true));

@@ -20,23 +20,8 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/**
- * AH Sniper: the auction-house buying bot. It watches the listings, works out what each one is really worth, and buys the
- * one with the biggest discount under your ceiling before anybody else does.
- *
- * <p>What it does, in order: reads every visible listing (name, count, price from the lore), compares the price with your
- * rule and with the price the client has learned for that item, picks the best deal rather than the cheapest thing, opens
- * it, confirms it, and then <i>checks</i> that the item actually arrived in your inventory before counting the money as
- * spent. It pages through the listings when nothing on a page is worth buying, refreshes, and can run a search command to
- * put the auction house on the item you are hunting. A full page of listings nobody wants does not stall it, and a listing
- * that fails to buy is remembered for a few minutes so it is not clicked in a loop.</p>
- *
- * <p>Limits are hard limits: it switches itself off (with a message) at the spending limit and at the purchase limit, and
- * it refuses to confirm when the confirm window shows a total above what is left of the budget. Nothing happens at all
- * until "Sniper: auto-buy" is switched on.</p>
- */
 public final class AhSniper extends Module {
-    /** "Price: 1.2M", "Cost $500k", "Buy: 3,000,000 coins", "⛃ 45k". */
+
     private static final Pattern PRICE_KEYWORD = Pattern.compile(
             "(?i)(?:price|cost|buy(?:\\s*it\\s*now)?|sell(?:ing)?(?:\\s*for)?|amount)\\s*[:=]?\\s*[$\\u26C3]?\\s*([0-9][0-9,]*(?:\\.[0-9]+)?)\\s*([kmbt])?");
     private static final Pattern DOLLAR = Pattern.compile("[$\\u26C3]\\s*([0-9][0-9,]*(?:\\.[0-9]+)?)\\s*([kmbt])?");
@@ -137,7 +122,6 @@ public final class AhSniper extends Module {
         return out;
     }
 
-    /** One "words = highest price" rule. A rule with no price has no ceiling of its own and relies on learned prices. */
     record Rule(String words, double max) {}
 
     List<Rule> parseRules() {
@@ -160,13 +144,11 @@ public final class AhSniper extends Module {
         return out;
     }
 
-    /** The price written on a listing, or -1 when it cannot be read. */
     static double priceOf(ItemStack stack) {
         String text = stack.getHoverName().getString() + " " + MarketHunter.loreText(stack);
         return priceIn(text);
     }
 
-    /** Reads a price out of any auction lore or title text. */
     static double priceIn(String text) {
         if (text == null || text.isEmpty()) return -1;
         String t = text.replace('\u00A0', ' ');
@@ -212,8 +194,6 @@ public final class AhSniper extends Module {
         Zeus.toast("AH Sniper: " + why, true);
     }
 
-    // ------------------------------------------------------------------ the loop
-
     @Override
     protected void onTick(Minecraft mc) {
         if (!armed.on()) {
@@ -241,7 +221,6 @@ public final class AhSniper extends Module {
         Screen screen = mc.screen;
         String title = screen == null ? "" : screen.getTitle().getString().toLowerCase(Locale.ROOT);
 
-        // a purchase was confirmed: check the item is really in the inventory
         if (phase == Phase.VERIFY) {
             verifyTicks++;
             if (verify.on() && pendingItem != null) {
@@ -258,11 +237,8 @@ public final class AhSniper extends Module {
             return;
         }
 
-        // the confirm window: click the button, wait a moment for the GUI to settle, then check
         if (phase == Phase.CONFIRM) {
             confirmTicks++;
-            // a confirm window is either a different window id or a different title; a server that swaps the contents of the
-            // listing window in place changes the id but keeps the title, so both are checked
             boolean sameWindow = screen != null && menu.containerId == listingContainer && titled(title, windowNames.get());
             boolean confirmWindow = screen != null && !sameWindow;
             if (!confirmWindow || screen == null) {
@@ -322,7 +298,6 @@ public final class AhSniper extends Module {
             return;
         }
 
-        // one pass of the page
         String sig = signature(menu, listingSlots);
         if (!sig.equals(pageSig)) {
             pageSig = sig;
@@ -390,8 +365,6 @@ public final class AhSniper extends Module {
             listingContainer = menu.containerId;
             boolean shift = buyClick.index() == 1;
             click(mc, menu, bestSlot, shift);
-            // shift-click buys without a confirm window on most servers, so the item check starts straight away; the other
-            // modes wait for the confirm window and fall back to the item check when none appears
             phase = shift ? Phase.VERIFY : Phase.CONFIRM;
             confirmTicks = 0;
             verifyTicks = 0;
@@ -403,7 +376,6 @@ public final class AhSniper extends Module {
         stepPage(mc, menu, listingSlots, now, rs);
     }
 
-    /** Turns a page, refreshes, or searches when this page had nothing worth buying. */
     private void stepPage(Minecraft mc, AbstractContainerMenu menu, int listingSlots, long now, List<Rule> rs) {
         int next = findNamed(menu, listingSlots, "next page", "next", "\u2192", "\u00BB", "arrow");
         int refresh = findNamed(menu, listingSlots, "refresh", "reload", "new listings");
@@ -437,7 +409,6 @@ public final class AhSniper extends Module {
     private void maybeSearch(Minecraft mc, long now, List<Rule> rs) {
         if (searchCommand.get().isBlank() || searchTerms.get().isBlank()) return;
         if (now - lastSearch < Math.max(5000L, Math.round(searchEvery.f() * 1000))) return;
-        // only search when the rules name something the current page does not show at all
         String words = rs.isEmpty() ? "" : rs.get(0).words();
         String cmd = searchCommand.get().replace("%s", searchTerms.get().isBlank() ? words : searchTerms.get());
         lastSearch = now;
@@ -499,7 +470,6 @@ public final class AhSniper extends Module {
         return n;
     }
 
-    /** The total shown in a confirm window, or -1 when it shows no readable price. */
     private static double confirmTotal(AbstractContainerMenu menu) {
         int n = Math.max(0, menu.slots.size() - 36);
         for (int i = 0; i < n; i++) {
@@ -511,7 +481,6 @@ public final class AhSniper extends Module {
         return -1;
     }
 
-    /** A button in the window found by its name, tooltip words or item. */
     private static int findNamed(AbstractContainerMenu menu, int slots, String... words) {
         for (int i = 0; i < slots; i++) {
             ItemStack st = menu.slots.get(i).getItem();
@@ -527,7 +496,6 @@ public final class AhSniper extends Module {
         return -1;
     }
 
-    /** The confirm button: a slot named confirm / accept / buy, or the green pane. */
     private static int confirmSlot(AbstractContainerMenu menu) {
         int n = Math.max(0, menu.slots.size() - 36);
         for (int i = 0; i < n; i++) {
@@ -545,7 +513,6 @@ public final class AhSniper extends Module {
         return -1;
     }
 
-    /** How many of an item the player carries, used to prove a purchase happened. */
     private static int countOf(Minecraft mc, Item item) {
         if (mc.player == null || item == null) return -1;
         int n = 0;

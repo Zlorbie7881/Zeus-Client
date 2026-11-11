@@ -18,12 +18,6 @@ import java.util.Locale;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/**
- * The HUD editor. The game's widgets stay live underneath; every widget gets an outline you can click, drag, scale with the
- * wheel and nudge with the arrow keys. Dragging snaps to the screen edges, the centre lines and the other widgets (with guide
- * lines), and optionally to a grid. A floating, movable panel edits the selected widget (position, scale, opacity, colour) and
- * lists every widget so a switched-off one can be turned on and placed.
- */
 public final class HudEditorScreen extends Screen {
     private static final int PW = 224;
     private static final int PAD = 8;
@@ -38,7 +32,6 @@ public final class HudEditorScreen extends Screen {
     private static final int DIM = 0xFF8FA0BE;
     private static final int GOOD = 0xFF5EE6A0;
 
-    /** One clickable rectangle of the panel, rebuilt every frame. */
     private static final class Hit {
         int x, y, w, h;
         Runnable click;
@@ -71,7 +64,7 @@ public final class HudEditorScreen extends Screen {
     private int tab;
     private float listScroll;
     private boolean snap = true;
-    /** Draw the selected widget at its true size so real pixels can be judged, not the 60% working scale. */
+
     private boolean actual;
     private boolean grid;
     private boolean guides = true;
@@ -104,8 +97,6 @@ public final class HudEditorScreen extends Screen {
 
     @Override public boolean isPauseScreen() { return false; }
     @Override public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) { }
-
-    // ------------------------------------------------------------------ helpers
 
     private Module selected() {
         if (selectedId == null) return null;
@@ -147,8 +138,6 @@ public final class HudEditorScreen extends Screen {
         selectedId = s.id();
     }
 
-    // ------------------------------------------------------------------ drawing
-
     @Override
     public void render(GuiGraphics g, int mx, int my, float partialTick) {
         mouseX = mx;
@@ -158,7 +147,7 @@ public final class HudEditorScreen extends Screen {
         boolean world = mc.level != null;
         float intro = ease(seconds() / 0.28f);
         if (panelX < 0) {
-            panelX = 8; // the middle of the left edge is usually free of widgets
+            panelX = 8;
             panelY = Math.max(24, height / 2 - panelHeight() / 2);
         }
         clampPanel();
@@ -247,8 +236,6 @@ public final class HudEditorScreen extends Screen {
         Draw.text(g, hint, x + 8, y + 2, Draw.rgba(0xFFB8C5D8, intro));
     }
 
-    // ---- panel
-
     private Hit addHit(int x, int y, int w, int h) {
         Hit hit = new Hit();
         hit.x = x; hit.y = y; hit.w = w; hit.h = h;
@@ -279,7 +266,7 @@ public final class HudEditorScreen extends Screen {
         int kx = x + Math.round((w - 6) * t);
         boolean hot = activeSlider != null || hover(x, ty - 4, w, 12);
         Draw.rrect(g, kx, ty - 2, 6, 8, 3, hot ? 0xFFFFFFFF : 0xFFDCE8FF);
-        Hit hit = addHit(x - 4, ty - 8, w + 8, 18);  // Larger hit area
+        Hit hit = addHit(x - 4, ty - 8, w + 8, 18);
         Slider s = new Slider();
         s.min = min; s.max = max; s.get = get; s.set = set;
         hit.slider = s;
@@ -300,7 +287,6 @@ public final class HudEditorScreen extends Screen {
         Draw.rrectLine(g, x, y, PW, h, 6, Draw.rgba(PANEL_EDGE, intro));
         g.fill(x + 6, y + 1, x + PW - 6, y + 2, Draw.rgba(accent(), 0.8f * intro));
 
-        // title bar (drag to move)
         Hit title = addHit(x, y, PW - 64, 18);
         title.title = true;
         Logo.bolt(g, x + 6, y + 3, 12, accent());
@@ -309,7 +295,6 @@ public final class HudEditorScreen extends Screen {
         button(g, x + PW - 46, y + 3, 40, 12, "Done", true, this::onClose);
         if (collapsed) return;
 
-        // tabs
         int ty = y + 20;
         int half = (PW - PAD * 2 - 4) / 2;
         button(g, x + PAD, ty, half, 13, "Widget", tab == 0, () -> tab = 0);
@@ -319,7 +304,6 @@ public final class HudEditorScreen extends Screen {
         if (tab == 0) drawInspector(g, x + PAD, top, PW - PAD * 2);
         else drawList(g, x + PAD, top, PW - PAD * 2);
 
-        // footer
         int fy = y + h - 20;
         g.fill(x + PAD, fy - 4, x + PW - PAD, fy - 3, 0xFF1E2E4A);
         int fw = (PW - PAD * 2 - 15) / 6;
@@ -349,7 +333,6 @@ public final class HudEditorScreen extends Screen {
         Draw.text(g, Draw.fit(m.desc, w), x, y + 11, DIM);
 
         int ry = y + 25;
-        // position
         int[] where = rectOf(m.id);
         Draw.text(g, "X", x, ry + 2, DIM);
         Draw.text(g, String.valueOf(where == null ? e.x : where[0]), x + 10, ry + 2, TEXT);
@@ -423,8 +406,6 @@ public final class HudEditorScreen extends Screen {
         }
     }
 
-    // ------------------------------------------------------------------ editing
-
     private void nudge(int dx, int dy) {
         Module m = selected();
         if (m == null) return;
@@ -463,7 +444,6 @@ public final class HudEditorScreen extends Screen {
         return x >= panelX && x < panelX + PW && y >= panelY && y < panelY + panelHeight();
     }
 
-    /** Moves the dragged widget, snapping its edges and centre to the screen, the centre lines and the other widgets. */
     private void dragWidget(double mx, double my) {
         Module m = selected();
         if (m == null || startRect == null) return;
@@ -493,7 +473,6 @@ public final class HudEditorScreen extends Screen {
             dx = Math.round((startRect[0] + dx) / (float) GRID) * GRID - startRect[0];
             dy = Math.round((startRect[1] + dy) / (float) GRID) * GRID - startRect[1];
         }
-        // keep a corner of the widget on the screen
         dx = Math.max(8 - startRect[2], Math.min(width - 8 - startRect[0], dx));
         dy = Math.max(8 - startRect[3], Math.min(height - 8 - startRect[1], dy));
         guideX = gx[0];
@@ -503,7 +482,6 @@ public final class HudEditorScreen extends Screen {
         HudLayout.setPos(m.id, startX + dx, startY + dy);
     }
 
-    /** Pulls the moved box (left edge, centre or right edge) onto the nearest target within a few pixels. */
     private static int snapAxis(int delta, int start, int size, List<Integer> targets, float[] guide) {
         int[] edges = {start + delta, start + delta + size / 2, start + delta + size};
         int bestAdjust = 0;
@@ -521,8 +499,6 @@ public final class HudEditorScreen extends Screen {
         }
         return delta;
     }
-
-    // ------------------------------------------------------------------ input
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
@@ -592,7 +568,7 @@ public final class HudEditorScreen extends Screen {
 
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
-        if (draggingWidget && !moved && !undo.isEmpty()) undo.remove(undo.size() - 1); // a plain click changed nothing
+        if (draggingWidget && !moved && !undo.isEmpty()) undo.remove(undo.size() - 1);
         draggingWidget = false;
         draggingPanel = false;
         activeSlider = null;

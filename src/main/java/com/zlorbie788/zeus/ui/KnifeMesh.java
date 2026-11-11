@@ -13,11 +13,6 @@ import java.util.List;
 import java.util.Map;
 import net.minecraft.client.gui.GuiGraphics;
 
-/**
- * The real 3D knives, drawn in the hand. The meshes come from {@code knives/knives_lo.json} (the light version of the models on the website:
- * 200 to 420 triangles each). Every frame the triangles are moved by the knife's frame, culled, sorted far to near and filled flat with one light,
- * so the cost stays low and fixed. If the file cannot be read, {@link #has} says no and the caller uses the classic pixel knife.
- */
 public final class KnifeMesh {
     private static final float D = 90f;
     private static final float LX = -0.40f, LY = -0.55f, LZ = -0.73f;
@@ -47,7 +42,6 @@ public final class KnifeMesh {
         final Map<String, Clip> clips = new HashMap<>();
     }
 
-    /** An authored animation: keyframes for the whole knife and for its parts (the same data the website plays). */
     static final class Clip {
         float d;
         float[] pivot = {0f, 0f, 0f};
@@ -131,20 +125,16 @@ public final class KnifeMesh {
         }
     }
 
-    /** True when a mesh exists for the knife called {@code name} ({@link KnifeArt} names). */
     public static boolean has(String name) {
         load();
         return !broken && models.containsKey(name) && Tex.sprite(TRI) != null;
     }
 
-    /** True when the knife has an authored animation called {@code clip}. */
     public static boolean hasClip(String name, String clip) {
         load();
         Model m = models == null ? null : models.get(name);
         return !broken && m != null && m.clips.containsKey(clip);
     }
-
-    // ------------------------------------------------------------------ the clips' maths (the same as js/knife3d.js)
 
     private static void sample3(float[][] rows, float t, float[] out) {
         out[0] = out[1] = out[2] = 0f;
@@ -177,7 +167,6 @@ public final class KnifeMesh {
         return (rows[j + 1][c] - rows[j - 1][c]) / (rows[j + 1][0] - rows[j - 1][0]);
     }
 
-    /** One transform of the clip: rotation (X first, then Y, then Z) about a pivot, plus a move. p' = pivot + move + R (p - pivot). */
     private static final class Xf {
         final float[] r = new float[9];
         final float[] piv = new float[3];
@@ -188,7 +177,6 @@ public final class KnifeMesh {
             float cx = (float) Math.cos(rotDeg[0] * d), sx = (float) Math.sin(rotDeg[0] * d);
             float cy = (float) Math.cos(rotDeg[1] * d), sy = (float) Math.sin(rotDeg[1] * d);
             float cz = (float) Math.cos(rotDeg[2] * d), sz = (float) Math.sin(rotDeg[2] * d);
-            // R = Rz * Ry * Rx
             r[0] = cz * cy;
             r[1] = cz * sy * sx - sz * cx;
             r[2] = cz * sy * cx + sz * sx;
@@ -213,23 +201,16 @@ public final class KnifeMesh {
     private static final float[] S_ROT = new float[3], S_POS = new float[3], P3 = new float[3];
     private static final Xf ROOT = new Xf(), PART = new Xf();
 
-    // ------------------------------------------------------------------ drawing
-
     private static final float[] SX = new float[MAX_TRIS * 3];
     private static final float[] SY = new float[MAX_TRIS * 3];
     private static final float[] DEPTH = new float[MAX_TRIS];
     private static final int[] COL = new int[MAX_TRIS];
     private static float[] wv = new float[3 * 4096];
 
-    /**
-     * Draws the knife. {@code k} is the knife's frame (the same one the pixel knife uses). {@code a, b, c} are the butterfly's two handles and
-     * blade angles (ignored by the other knives). {@code unit} is the GUI scale of the hand, {@code alpha} the fade.
-     */
     public static void draw(GuiGraphics g, String name, Rig.T k, float a, float b, float c, KnifeArt.Look look, float unit, float alpha, boolean cheap) {
         draw(g, name, k, a, b, c, look, unit, alpha, cheap, null, 0f);
     }
 
-    /** Draws the knife playing an authored animation ({@code clip}, {@code t} seconds into it) instead of the hand-driven angles. */
     public static void drawClip(GuiGraphics g, String name, String clip, float t, Rig.T k, KnifeArt.Look look, float unit, float alpha, boolean cheap) {
         draw(g, name, k, 0f, 0f, 0f, look, unit, alpha, cheap, clip, t);
     }
@@ -304,7 +285,6 @@ public final class KnifeMesh {
                     nx /= len;
                     ny /= len;
                     nz /= len;
-                    // the eye sits at z = -D: a face looks at us when its normal points toward it
                     float mx = (ax + bx + cx) / 3f, my = (ay + by + cy) / 3f, mz = (az + bz + cz) / 3f;
                     if (nx * mx + ny * my + nz * (mz + D) >= 0f) continue;
                     float lam = Math.max(0f, nx * LX + ny * LY + nz * LZ);
@@ -321,7 +301,6 @@ public final class KnifeMesh {
                 }
             }
         }
-        // far to near
         Integer[] idx = new Integer[n];
         for (int i = 0; i < n; i++) idx[i] = i;
         java.util.Arrays.sort(idx, (p, q) -> Float.compare(DEPTH[q], DEPTH[p]));
@@ -330,12 +309,10 @@ public final class KnifeMesh {
             int i = idx[o];
             float x0 = SX[i * 3], y0 = SY[i * 3], x1 = SX[i * 3 + 1], y1 = SY[i * 3 + 1], x2 = SX[i * 3 + 2], y2 = SY[i * 3 + 2];
             float gx = (x0 + x1 + x2) / 3f, gy = (y0 + y1 + y2) / 3f;
-            // a hair bigger, so the seams between neighbours close
             tri(g, grow(x0, gx, grow), grow(y0, gy, grow), grow(x1, gx, grow), grow(y1, gy, grow), grow(x2, gx, grow), grow(y2, gy, grow), COL[i]);
         }
     }
 
-    /** A solid triangle. Own copy of the Stroke one, so the world overlay's per-frame budget can never switch the knife off. */
     private static void tri(GuiGraphics g, float ax, float ay, float bx, float by, float cx, float cy, int color) {
         Tex.Img t = Tex.sprite(TRI);
         if (t == null) return;
@@ -383,7 +360,6 @@ public final class KnifeMesh {
         }
         float t = Math.min(1f, 0.10f + lam * 1.05f);
         int col = t < 0.5f ? Draw.mix(dark, mid, t * 2f) : Draw.mix(mid, light, (t - 0.5f) * 2f);
-        // a thin bright band where the surface faces the light and the viewer: the polish on the steel
         if (!"handle".equals(mat)) {
             float glint = Math.max(0f, 1f - Math.abs(0.5f + nx * 0.9f - ny * 0.6f - 0.62f) * 5f);
             col = Draw.mix(col, 0xFFFFFFFF, 0.28f * glint * lam);

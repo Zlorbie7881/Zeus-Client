@@ -20,13 +20,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * Threat Radar: one shared look at the players around you, rated by how dangerous each one is.
- */
 public final class Sense {
     private Sense() {}
 
-    /** A player rated by {@link Threat}. */
     public record Rated(UUID id, String name, Threat.Result result, double dist, String gear, boolean spectator) {}
 
     private static final Map<UUID, double[]> LAST = new HashMap<>();
@@ -36,7 +32,6 @@ public final class Sense {
 
     private static final int[] LEVEL_COLORS = {0xFF5EE6A0, 0xFFFFC857, 0xFFFFA24D, 0xFFFF4D5E};
 
-    /** Rates every other player within {@code range} blocks. Cached for a fraction of a second. Strongest threat first. */
     public static List<Rated> scan(Minecraft mc, int range) {
         long now = System.nanoTime();
         if (now - cacheAt < 120_000_000L && range <= cacheRange) return cache;
@@ -89,9 +84,6 @@ public final class Sense {
         return w.isEmpty() ? a : a + ", " + w;
     }
 
-    // ------------------------------------------------------------------ Threat Radar
-
-    /** Lists the players around you, the most dangerous first, with how dangerous and why. */
     public static final class ThreatRadar extends Module {
         private final Setting.Choice corner = Hud.corner(this, 3);
         private final Setting.Num range = add(new Setting.Num("Range", "How far away players are rated.", 64, 16, 160, 8, " blocks"));
@@ -173,7 +165,6 @@ public final class Sense {
                 int col = LEVEL_COLORS[indexOf(r.result.level())];
                 int x = at[0] + Math.round(8 * sc);
                 int ty = y + Math.round(2 * sc);
-                // a bar that shows the score
                 g.fill(x - 4, y + 1, x - 2, y + rh - Math.round(3 * sc), Draw.rgba(col, 0.9f));
                 Draw.textS(g, r.name, x, ty, 0xFFFFFFFF, sc);
                 String right = r.result.level() + " " + r.result.score() + "  " + Math.round(r.dist) + "m";

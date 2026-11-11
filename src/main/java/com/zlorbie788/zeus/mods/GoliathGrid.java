@@ -1,6 +1,3 @@
-/*
- * Decompiled with CFR 0.152.
- */
 package com.zlorbie788.zeus.mods;
 
 public final class GoliathGrid {
@@ -81,25 +78,22 @@ public final class GoliathGrid {
         }
         return new double[]{-225000.0 + (double)b[0] * 12500.0, -225000.0 + (double)b[1] * 12500.0, -225000.0 + (double)b[2] * 12500.0, -225000.0 + (double)b[3] * 12500.0};
     }
-    /** The region index of a Goliath code, or -1 when it is not on the map. */
+
     public static int region(int code) {
         int r = code / 1000;
         return code < 0 || r < 0 || r >= REGIONS.length ? -1 : r;
     }
 
-    /** How many grid cells (12,500 blocks each) a Goliath covers. */
     public static int cells(int code) {
         int[] b = bounds(code);
         return b == null ? 0 : (b[2] - b[0]) * (b[3] - b[1]);
     }
 
-    /** How far you are from each side of your Goliath, in blocks: {west, east, north, south}. */
     public static double[] edges(int code, double x, double z) {
         double[] a = blockArea(code);
         return a == null ? null : new double[]{x - a[0], a[2] - x, z - a[1], a[3] - z};
     }
 
-    /** The Goliaths that share a border with this one, so a base sitting on a border is not missed. */
     public static int[] neighbours(int code) {
         int[] b = bounds(code);
         if (b == null) return new int[0];
@@ -117,7 +111,6 @@ public final class GoliathGrid {
         return r;
     }
 
-    /** Every Goliath in one region, in code order. */
     public static int[] inRegion(int region) {
         java.util.TreeSet<Integer> out = new java.util.TreeSet<>();
         for (int z = 0; z < GRID; z++) {

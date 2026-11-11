@@ -8,36 +8,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.BlockHitResult;
 import org.joml.Matrix3x2f;
 
-/**
-
- * The picture sky of the Atmosphere module: the real night-sky picture (Milky Way, northern lights, dark clouds), laid over the
-
- * dome of the sky and moved with the camera, with the picture itself brought to life.
-
- *
-
- * <p>The picture was taken apart ahead of time into layers: the sky without its stars and without its shooting star, two layers
-
- * of stars (so they can twinkle out of step), a glow layer of the lights, and a small map that tells where the aurora and the
-
- * clouds are. The picture is cut into a grid of cells; every frame each cell is moved a little by a slow wave whose strength
-
- * comes from the map, so the aurora curtains sway and flow while the clouds only breathe and drift. The glow layer pulses, the
-
- * stars twinkle, and a new shooting star crosses the sky now and then.</p>
-
- *
-
- * <p>Everything is a handful of textured rectangles, with no per-pixel work on the processor, so it costs very little. The
-
- * picture is placed with the exact camera: the point you look at on the dome is worked out, the picture is fitted around it
-
- * with the local scale and turn of the real projection, and past the edge of the picture it continues as a mirror of itself, so
-
- * the sky is dark cloud all round the horizon.</p>
-
- */
-
 public final class SkyPhoto {
 
     static final int W = 1672;
@@ -46,13 +16,9 @@ public final class SkyPhoto {
 
     private static final String DIR = "textures/atmosphere/";
 
-    // the picture is a view straight up with this vertical field of view; the focal length in picture pixels follows from it
-
     private static final float F = (H / 2f) / (float) Math.tan(Math.toRadians(85.0 / 2.0));
 
     private static final int STRIP = 5;
-
-
 
     private Tex.Img base;
 
@@ -66,17 +32,13 @@ public final class SkyPhoto {
 
     private boolean failed;
 
-    private int[] mAur;     // 209 x 118, the share of aurora in each block of the picture
+    private int[] mAur;
 
     private int[] mCloud;
 
     private static final int MW = W / 8;
 
     private static final int MH = H / 8;
-
-
-
-    // the camera fit
 
     private float ox;
 
@@ -100,17 +62,11 @@ public final class SkyPhoto {
 
     private final float[] tmp = new float[2];
 
-
-
-    // the cut along the land
-
     private int[] cut = new int[512];
 
     private int strips;
 
     private boolean anyLand;
-
-
 
     public boolean ready() {
 
@@ -118,17 +74,11 @@ public final class SkyPhoto {
 
     }
 
-
-
     public boolean failed() {
 
         return failed;
 
     }
-
-
-
-    /** Loads the pictures once. Call from the render thread; false while not ready (or if a picture is missing). */
 
     public boolean load() {
 
@@ -182,10 +132,6 @@ public final class SkyPhoto {
 
     }
 
-
-
-    /** A wide box blur, so neighbouring cells always move almost together and no seams open between them. */
-
     private static int[] blur(int[] src) {
 
         int r = 9;
@@ -226,12 +172,6 @@ public final class SkyPhoto {
 
     }
 
-
-
-    // ------------------------------------------------------------------------------------------------------------ geometry
-
-    /** The picture is a view up the dome: radius from the middle in picture pixels for an angle from the zenith (radians). */
-
     private static float radius(float theta) {
 
         float q = (float) Math.PI / 4f;
@@ -242,8 +182,6 @@ public final class SkyPhoto {
 
     }
 
-
-
     private static float angle(float r) {
 
         float k = r / F;
@@ -253,10 +191,6 @@ public final class SkyPhoto {
         return (float) Math.PI / 4f + (k - 1f) * 0.5f;
 
     }
-
-
-
-    /** The direction of the dome for a picture offset (u right = east, v down = south), in world axes. */
 
     private void texToDir(float u, float v, double[] out) {
 
@@ -285,10 +219,6 @@ public final class SkyPhoto {
         out[2] = -s * v / r;
 
     }
-
-
-
-    /** Fits the picture to the camera of this frame. False when the camera is not ready. */
 
     private boolean fit(int w, int h) {
 
@@ -358,8 +288,6 @@ public final class SkyPhoto {
 
     }
 
-
-
     private void toScreen(float u, float v, float[] out) {
 
         out[0] = ox + u * ex + v * dx;
@@ -368,13 +296,7 @@ public final class SkyPhoto {
 
     }
 
-
-
-    // ------------------------------------------------------------------------------------------------------------ the land cut
-
     private final float[] azel = new float[2];
-
-
 
     private float gap(SkyPhoto.View view, float sx, float sy) {
 
@@ -385,8 +307,6 @@ public final class SkyPhoto {
         return azel[1] - line;
 
     }
-
-
 
     private void computeCut(SkyPhoto.View view, int w, int h) {
 
@@ -438,8 +358,6 @@ public final class SkyPhoto {
 
     }
 
-
-
     private int minCut(int x0, int x1) {
 
         int a = Math.max(0, x0 / STRIP);
@@ -453,8 +371,6 @@ public final class SkyPhoto {
         return m == Integer.MAX_VALUE ? 0 : m;
 
     }
-
-
 
     private int maxCut(int x0, int x1) {
 
@@ -470,23 +386,13 @@ public final class SkyPhoto {
 
     }
 
-
-
-    // ------------------------------------------------------------------------------------------------------------ drawing
-
-    /** One thing to draw, as a rectangle of a picture in picture space, with its own offset and placement transform. */
-
     private interface Op {
 
         void draw(GuiGraphics g);
 
     }
 
-
-
     private void place(GuiGraphics g, float tx, float ty, float sx, float sy) {
-
-        // picture pixel (px, py) of a tile whose corner sits at offset (tx, ty) and which may be mirrored
 
         g.pose().pushMatrix();
 
@@ -500,15 +406,11 @@ public final class SkyPhoto {
 
     }
 
-
-
     private static void done(GuiGraphics g) {
 
         g.pose().popMatrix();
 
     }
-
-
 
     private void bbox(float u0, float v0, float u1, float v1, float[] out) {
 
@@ -544,13 +446,7 @@ public final class SkyPhoto {
 
     }
 
-
-
     private final float[] bb = new float[4];
-
-
-
-    /** Runs {@code op} so that nothing is drawn below the land: directly, not at all, or in thin strips. */
 
     private void clipped(GuiGraphics g, int w, int h, int strip, Op op) {
 
@@ -588,8 +484,6 @@ public final class SkyPhoto {
 
             int xe = Math.min(x1, x + strip);
 
-            // the strip's own cut is the highest cut of the thin columns it covers, so it never reaches over the land
-
             int c = minCut(x, xe - 1);
 
             int ye = Math.min(y1, c);
@@ -610,8 +504,6 @@ public final class SkyPhoto {
 
     }
 
-
-
     private static float smooth(float a, float b, float x) {
 
         float t = Math.max(0f, Math.min(1f, (x - a) / (b - a)));
@@ -619,8 +511,6 @@ public final class SkyPhoto {
         return t * t * (3f - 2f * t);
 
     }
-
-
 
     private static int tint(float alpha, float r, float g, float b) {
 
@@ -636,19 +526,15 @@ public final class SkyPhoto {
 
     }
 
-
-
-    /** Settings of one frame. */
-
     public static final class Look {
 
-        public float gain = 1f;         // overall opacity
+        public float gain = 1f;
 
-        public float motion = 1f;       // how much the cells move (0 = still picture)
+        public float motion = 1f;
 
         public float twinkle = 1f;
 
-        public int cellsX = 19;         // cells across the picture
+        public int cellsX = 19;
 
         public int cellsY = 10;
 
@@ -656,21 +542,14 @@ public final class SkyPhoto {
 
     }
 
-
-
-    /** A simple marker of where the land is, so the sky can go behind hills. Built without the Aurora module. */
-
-        /** How a screen point maps to the sky dome. */
     public interface View {
-        /** Fills azel with the compass bearing (0 north, 90 east) and elevation in degrees. False: no sky here. */
+
         boolean at(float sx, float sy, float[] azel);
 
-        /** True when skyline gives a real horizon. */
         default boolean hasSkyline() {
             return false;
         }
 
-        /** Elevation of the land at a bearing (degrees, 0 = horizon, positive = above). */
         default float skyline(float az) {
             return -90f;
         }
@@ -678,27 +557,16 @@ public final class SkyPhoto {
 
 public interface Skyline {
 
-        /** Reset any cached horizon data. */
-
         void reset();
-
-        /** Sweep the actual horizon from the camera this frame; call before render. */
 
         void sweep(net.minecraft.client.Minecraft mc);
 
-        /** Elevation of the land at a compass bearing (degrees, 0 = horizon, positive = above). */
-
         float at(float az);
 
-            /** True when the horizon data is ready (has been swept since last reset). */
         default boolean ready() {
             return true;
         }
     }
-
-
-
-    /** A Skyline built from the game's chunk render bounds. Cheap and good enough. */
 
     public static final class SimpleSkyline implements Skyline {
 
@@ -706,15 +574,11 @@ public interface Skyline {
 
         private int dirty = 1;
 
-
-
         public void reset() {
 
             dirty = 1;
 
         }
-
-
 
         public void sweep(net.minecraft.client.Minecraft mc) {
 
@@ -774,8 +638,6 @@ public interface Skyline {
 
         }
 
-
-
                 public boolean ready() {
             return dirty == 0;
         }
@@ -800,19 +662,7 @@ public interface Skyline {
 
     }
 
-
-
-    /** The land marker this Atmosphere uses. Replace with your own Skyline to change how the cut works. */
-
     public final Skyline skyline = new SimpleSkyline();
-
-
-
-    /**
-
-     * Draws the sky. {@code w} and {@code h} are the screen in interface units; {@code time} is in seconds.
-
-     */
 
     public void render(GuiGraphics g, int w, int h, SkyPhoto.View view, Look look, float time) {
 
@@ -841,10 +691,6 @@ public interface Skyline {
         float hw = W / 2f;
 
         float hh = H / 2f;
-
-
-
-        // 1. the mirrored copies round the picture, so the sky goes on as dark cloud to the horizon
 
         for (int j = -1; j <= 1; j++) {
 
@@ -884,10 +730,6 @@ public interface Skyline {
 
         }
 
-
-
-        // 2. the picture in cells, each moved a little by a slow wave
-
         int nx = Math.max(4, look.cellsX);
 
         int ny = Math.max(3, look.cellsY);
@@ -926,8 +768,6 @@ public interface Skyline {
 
                 if (m > 0f) {
 
-                    // aurora: curtains sway side to side and ripple up and down, with a slow second wave across
-
                     float a1 = (float) Math.sin(cy * 0.0046f + time * 0.75f + 1.3f * (float) Math.sin(cx * 0.0021f + time * 0.17f));
 
                     float a2 = (float) Math.sin(cx * 0.0034f - time * 0.41f + cy * 0.0018f);
@@ -937,8 +777,6 @@ public interface Skyline {
                     ddx += wa * (15f * a1 + 5f * a3);
 
                     ddy += wa * (9f * a2);
-
-                    // clouds: they swell and drift slowly outward from the middle
 
                     float c1 = (float) Math.sin(time * 0.21f + cx * 0.0039f + cy * 0.0027f);
 
@@ -990,10 +828,6 @@ public interface Skyline {
 
         }
 
-
-
-        // 3. the lights glow and breathe, in two layers out of step with each other
-
         bbox(-hw, -hh, hw, hh, bb);
 
         float tw = look.twinkle;
@@ -1032,10 +866,6 @@ public interface Skyline {
 
         }
 
-
-
-        // 4. the stars twinkle, in two groups
-
         float ta = 1f - tw * (0.42f + 0.42f * (float) Math.sin(time * 1.9f));
 
         float tb = 1f - tw * (0.42f + 0.42f * (float) Math.sin(time * 2.7f + 2.3f));
@@ -1059,4 +889,3 @@ public interface Skyline {
     }
 
 }
-

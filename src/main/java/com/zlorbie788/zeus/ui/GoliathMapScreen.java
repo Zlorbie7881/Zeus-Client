@@ -7,7 +7,6 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import java.util.function.IntConsumer;
 
-/** Interactive 36x36 Donut Goliath grid built from the Goliath region table. */
 public final class GoliathMapScreen extends Screen {
     private final Screen parent; private final IntConsumer selected;
     private int chosen=-1; private int hover=-1; private int gx,gy,cell;

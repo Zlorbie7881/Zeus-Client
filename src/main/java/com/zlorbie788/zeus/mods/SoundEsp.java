@@ -25,31 +25,18 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
-/**
- * Marks where sounds come from. Every sound the client is sent is noted with its position and its id, and the ones you
- * care about are boxed in the world for a few seconds, so a villager through a wall, a lever clicked behind you or a
- * mob shuffling underground is visible instead of just audible.
- *
- * <p>Nothing here guesses: the box sits exactly where the game itself played the sound. Because only ids and positions
- * are read, it works for any server without knowing its plugins, and the filters take plain text, so any sound in the
- * game (or in a mod) can be chosen by typing part of its id.</p>
- */
 public final class SoundEsp extends Module {
 
-    /** A sound that was heard, with everything needed to draw it. */
     private record Sound(Identifier id, SoundSource source, double x, double y, double z,
                          float volume, long at, long block, boolean alert) {}
 
     private static final String[] ARROWS = {"↑", "↗", "→", "↘", "↓", "↙", "←", "↖"};
 
-    /** The live module, so the sound hook can reach it without knowing the module list. */
     public static volatile SoundEsp HOOK;
 
     private static final int MAX_STORED = 600;
 
     private final ConcurrentLinkedDeque<Sound> recent = new ConcurrentLinkedDeque<>();
-
-    // ------------------------------------------------------------------ settings
 
     private final Setting.Num range = add(new Setting.Num("Range",
             "Only sounds this close are marked.", 96, 16, 256, 16, " blocks"));
@@ -158,12 +145,6 @@ public final class SoundEsp extends Module {
         HOOK = this;
     }
 
-    // ------------------------------------------------------------------ capture
-
-    /**
-     * Called from the client the moment a sound is played. Kept deliberately tiny and fully guarded: it runs inside
-     * game code, so nothing here may ever throw.
-     */
     public static void capture(Entity except, double x, double y, double z, Identifier id, SoundSource source,
                                float volume, float pitch) {
         SoundEsp hook = HOOK;
@@ -172,7 +153,6 @@ public final class SoundEsp extends Module {
             if (!hook.enabled()) return;
             hook.note(except, x, y, z, id, source, volume);
         } catch (Throwable ignored) {
-            // a sound that cannot be noted must never break the game
         }
     }
 
@@ -224,7 +204,6 @@ public final class SoundEsp extends Module {
         };
     }
 
-    /** True when any comma separated part of {@code list} appears in {@code path}. */
     private static boolean matches(String list, String path) {
         if (list == null || list.isBlank()) return false;
         for (String part : list.split(",")) {
@@ -258,8 +237,6 @@ public final class SoundEsp extends Module {
         }
     }
 
-    // ------------------------------------------------------------------ lifecycle
-
     @Override
     protected void onDisable() {
         recent.clear();
@@ -274,8 +251,6 @@ public final class SoundEsp extends Module {
     public String info() {
         return live().size() + " sound(s)";
     }
-
-    // ------------------------------------------------------------------ drawing
 
     @Override
     protected void onHudWorld(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
@@ -346,7 +321,6 @@ public final class SoundEsp extends Module {
         };
     }
 
-    /** A single arrow pointing from the player towards a point, using the same direction as the look. */
     private static String arrowTo(Minecraft mc, double x, double z) {
         if (mc.player == null) return "";
         double dx = x - mc.player.getX();
@@ -356,7 +330,6 @@ public final class SoundEsp extends Module {
         return ARROWS[Math.floorMod((int) Math.round(rel / 45.0), 8)];
     }
 
-    /** "entity.villager.ambient" becomes "villager.ambient", which is what fits on screen. */
     private static String shortName(Identifier id) {
         String path = id.getPath();
         if (path.startsWith("entity.")) path = path.substring(7);

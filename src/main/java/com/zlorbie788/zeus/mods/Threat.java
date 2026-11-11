@@ -4,14 +4,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-/**
- * Rates how dangerous another player is to you, from 0 to 100, using only what your own game shows: what they wear and hold,
- * how far away they are, whether they are coming closer and whether they are looking at you. Pure logic, so it can be tested.
- */
 public final class Threat {
     private Threat() {}
 
-    /** What is known about one player. {@code armorRank} is the sum of {@link Gear#armorRank} over their four armor pieces. */
     public record Input(int armorRank, String main, String off, double dist, double closing, boolean aimedAtMe, float health, float maxHealth,
                         boolean invisible, boolean elytra) {}
 
@@ -19,7 +14,6 @@ public final class Threat {
 
     public static final String[] LEVELS = {"Low", "Medium", "High", "Danger"};
 
-    /** How strong a held weapon is: 0 nothing, 1 wooden sword ... 6 netherite, 7 mace. */
     public static int weaponTier(String id) {
         String n = id == null ? "" : id.toLowerCase(Locale.ROOT);
         if (n.equals("mace")) return 7;

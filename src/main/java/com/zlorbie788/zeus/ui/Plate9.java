@@ -2,10 +2,6 @@ package com.zlorbie788.zeus.ui;
 
 import net.minecraft.client.gui.GuiGraphics;
 
-/**
- * The stone plate of the menu drawn at any width and height: the two ends keep their shape and the middle stretches, so a
- * long bar and a short one both look like the same cut stone.
- */
 public final class Plate9 {
     private Plate9() {}
 

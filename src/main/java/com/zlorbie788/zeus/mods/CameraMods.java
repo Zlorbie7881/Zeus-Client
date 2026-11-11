@@ -11,16 +11,9 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.world.phys.AABB;
 
-/** Freecam and Free Look: the camera leaves your player. Only the picture on your own screen changes. */
 public final class CameraMods {
     private CameraMods() {}
 
-    /**
-     * Freecam. The camera flies away from your player, which stays exactly where it is. While it is on, your game sees the
-     * movement keys as released (the camera reads them itself), so what your game sends to a server is what it sends when you
-     * stand still: no movement, no look change. Nothing is sent about the camera, because the camera exists only in your own
-     * picture. Mouse turns the camera, W A S D fly, Space goes up, Sneak goes down, Sprint is faster.
-     */
     public static final class Freecam extends Module {
         private final Setting.Num speed = add(new Setting.Num("Speed", "How fast the camera flies.", 1.0, 0.1, 5.0, 0.1, " b/t"));
         private final Setting.Num boost = add(new Setting.Num("Sprint boost", "How much faster you fly while holding sprint.", 2.5, 1.0, 6.0, 0.25, "x"));
@@ -55,7 +48,6 @@ public final class CameraMods {
             vx = vy = vz = 0;
             ticks = 0;
             failed = false;
-            // the other camera module cannot run at the same time
             FreeLook fl = Zeus.get(FreeLook.class);
             if (fl != null && fl.enabled()) fl.setEnabled(false);
         }
@@ -157,7 +149,6 @@ public final class CameraMods {
         }
     }
 
-    /** Free Look: look around freely without turning your player or your movement. */
     public static final class FreeLook extends Module {
         private final Setting.Bool snap = add(new Setting.Bool("Look back when switched off", "Off: the view jumps back to where your player faces. On: your player turns to where you were looking.", false));
 
@@ -192,7 +183,6 @@ public final class CameraMods {
         protected void onTick(Minecraft mc) {
             CameraControl.snapshot();
             if (!CameraControl.turnHooked() && mc.player != null) {
-                // nothing has turned the camera yet; that is fine until the mouse moves
             }
         }
     }

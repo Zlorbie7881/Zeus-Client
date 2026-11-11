@@ -10,7 +10,6 @@ import net.minecraft.world.entity.TamableAnimal;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
 
-/** Picks what an aura aims at. The three switches are shared by every module that has a target. */
 final class Targets {
     private Targets() {}
 
@@ -33,7 +32,6 @@ final class Targets {
                 add.apply(new Setting.Bool("Target animals", "Aim at passive mobs. Tamed pets are always spared.", animals)));
     }
 
-    /** True when the picked kinds include this thing. Tamed pets, armour stands and the dead never count. */
     static boolean accepts(Minecraft mc, Pick p, Entity e) {
         if (!(e instanceof LivingEntity le) || e == mc.player || !le.isAlive() || e.getType() == EntityType.ARMOR_STAND) return false;
         if (le.getHealth() <= 0f) return false;
@@ -42,7 +40,6 @@ final class Targets {
         return p.animals.on() && !(e instanceof TamableAnimal t && t.isTame());
     }
 
-    /** The nearest living thing that matches, within range, or null. */
     static LivingEntity nearest(Minecraft mc, Pick p, double range) {
         LivingEntity best = null;
         double bestD = range * range;

@@ -16,7 +16,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
-/** Schematic browser, bounded NBT importer, isometric block preview and material breakdown. */
 public final class SchematicLibraryScreen extends Screen {
     private final Screen parent;
     private final Path folder;

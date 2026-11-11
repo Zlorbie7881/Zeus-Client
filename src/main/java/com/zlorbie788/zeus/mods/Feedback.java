@@ -18,11 +18,6 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * What you told Zeus about its own finds: "this is not a base" and "this is a base". Dismissed chunks are never flagged again,
- * confirmed chunks stay flagged, and each answer moves the cut-off for that server: every "not a base" makes Zeus a little
- * stricter there, every "this is a base" a little more willing. Saved in {@code config/zeus-feedback.json}.
- */
 public final class Feedback {
     private Feedback() {}
 
@@ -98,7 +93,6 @@ public final class Feedback {
         return server + "|" + dim;
     }
 
-    /** "Not a base": these chunks are never flagged again, and Zeus gets stricter on this server. */
     public static void dismiss(String server, String dim, long[][] chunks) {
         load();
         Set<Long> set = NO.computeIfAbsent(area(server, dim), k -> new HashSet<>());
@@ -111,7 +105,6 @@ public final class Feedback {
         save();
     }
 
-    /** "This is a base": these chunks stay flagged, and Zeus gets a little more willing on this server. */
     public static void confirm(String server, String dim, long[][] chunks) {
         load();
         Set<Long> set = YES.computeIfAbsent(area(server, dim), k -> new HashSet<>());
@@ -136,7 +129,6 @@ public final class Feedback {
         return s != null && s.contains(pack(cx, cz));
     }
 
-    /** Points added to (or taken from) the confidence a chunk needs on this server. */
     public static double bias(String server) {
         load();
         return BIAS.getOrDefault(server, 0.0);
@@ -156,7 +148,6 @@ public final class Feedback {
         save();
     }
 
-    /** For tests: forget what is loaded so the file is read again. */
     static void reloadForTest() {
         NO.clear();
         YES.clear();

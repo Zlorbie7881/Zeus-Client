@@ -24,19 +24,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/**
- * Zeus Brain: what Zeus knows about where you are and how the game is running, shared by every module.
- *
- * <ul>
- * <li><b>Where you are:</b> which server (or "singleplayer"), which dimension, above or below the ground, near the world's centre.</li>
- * <li><b>How the game runs:</b> frames per second are measured, and every scanner gets a time budget that shrinks when the
- * game lags and grows again when it does not.</li>
- * <li><b>What this server is like:</b> how crowded with builds it is (kept per server in {@code zeus-brain.json}), so a
- * server full of builds is judged more strictly than an empty world.</li>
- * </ul>
- */
 public final class Brain extends Module {
-    /** A snapshot of what Zeus understands right now. */
+
     public static final class Ctx {
         public String server = "singleplayer";
         public boolean multi;
@@ -83,7 +72,6 @@ public final class Brain extends Module {
         return ctx;
     }
 
-    /** A scan time (in nanoseconds) scaled by how well the game is running. */
     public static long budget(long base) {
         return (long) (base * ctx.budget);
     }
@@ -101,7 +89,6 @@ public final class Brain extends Module {
         }
     }
 
-    /** True when the Brain is allowed to learn per server. */
     public static boolean learning() {
         return self == null || self.remember.on();
     }
@@ -183,12 +170,10 @@ public final class Brain extends Module {
             if (mc.getSingleplayerServer() != null) return "singleplayer";
             if (mc.getCurrentServer() != null && mc.getCurrentServer().ip != null) return mc.getCurrentServer().ip.toLowerCase(Locale.ROOT);
         } catch (RuntimeException ignored) {
-            // fall through
         }
         return "unknown";
     }
 
-    /** The y of the ground at a column, or {@code Integer.MIN_VALUE} when this dimension has no open ground (the Nether). */
     public static int surface(Minecraft mc, int x, int z) {
         if (mc.level == null || !ctx.hasSurface) return Integer.MIN_VALUE;
         try {
@@ -197,8 +182,6 @@ public final class Brain extends Module {
             return Integer.MIN_VALUE;
         }
     }
-
-    // ------------------------------------------------------------------ updating
 
     @Override
     protected void onTick(Minecraft mc) {

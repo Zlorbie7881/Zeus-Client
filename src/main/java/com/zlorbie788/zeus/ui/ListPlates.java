@@ -6,7 +6,6 @@ import net.minecraft.client.gui.components.AbstractSelectionList;
 import net.minecraft.client.gui.screens.multiplayer.ServerSelectionList;
 import net.minecraft.client.gui.screens.worldselection.WorldSelectionList;
 
-/** Draws one row of the world list or the server list as a stone plate (see {@code ListPlateMixin}). */
 public final class ListPlates {
     private ListPlates() {}
 

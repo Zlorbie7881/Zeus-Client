@@ -19,11 +19,9 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.entity.vehicle.boat.AbstractBoat;
 import java.util.List;
 
-/** Lightweight local-world automation and navigation helpers. */
 public final class AutomationPlus {
     private AutomationPlus() {}
 
-    /** Tree harvester: finds the nearest trunk, walks to it and breaks it log by log. */
     public static final class TreeBot extends Module {
         private final Setting.Num radius = add(new Setting.Num("Search radius", "How far around you to look for log blocks.", 6, 2, 12, 1, " blocks"));
         private final Setting.Bool walk = add(new Setting.Bool("Walk to tree", "Move carefully toward a nearby trunk.", true));
@@ -49,7 +47,6 @@ public final class AutomationPlus {
             Vec3 center = Vec3.atCenterOf(target);
             double distance = eye.distanceTo(center);
             if (distance <= 4.5) {
-                // the hold-to-break the game itself uses, so it also works on a server
                 mc.gameMode.startDestroyBlock(target, net.minecraft.core.Direction.UP);
                 mc.gameMode.continueDestroyBlock(target, net.minecraft.core.Direction.UP);
                 if (!mc.level.getBlockState(target).is(BlockTags.LOGS)) {
@@ -84,12 +81,6 @@ public final class AutomationPlus {
         }
     }
 
-
-    /**
-     * Experimental boat flight using the ordinary client entity movement API. It does not spoof or cancel vehicle
-     * packets. Multiplayer servers remain authoritative and may correct the boat.
-     */
-    /** True for a boat or a bamboo raft: recent versions call the raft classes "Raft", which has no "boat" in the name. */
     static boolean isBoat(Entity e) {
         if (e == null) return false;
         String n = e.getClass().getSimpleName().toLowerCase(java.util.Locale.ROOT);
@@ -125,7 +116,6 @@ public final class AutomationPlus {
                 originalNoGravity = boat.isNoGravity();
                 originalNoPhysics = boat.noPhysics;
             }
-            // Collision phasing is handled by the separate Boat NoClip module.
             boolean flight = mode.index() != 2;
             boat.setNoGravity(flight);
             double forward = (mc.options.keyUp.isDown() ? 1.0 : 0.0) - (mc.options.keyDown.isDown() ? 1.0 : 0.0);
@@ -148,17 +138,13 @@ public final class AutomationPlus {
             if (collision.on()) {
                 AABB box = boat.getBoundingBox();
                 if (!mc.level.noCollision(boat, box.move(dx, dy, dz))) {
-                    // Try horizontal and vertical movement independently before stopping completely.
                     if (mc.level.noCollision(boat, box.move(dx, 0, dz))) dy = 0;
                     else { dx = 0; dz = 0; }
                     if (!mc.level.noCollision(boat, box.move(dx, dy, dz))) dy = 0;
                 }
             }
-            // Vehicle control ticks can overwrite velocity-only changes. Move the local entity as well,
-            // using the normal collision-aware entity mover; the integrated server remains authoritative.
             Vec3 step = new Vec3(dx, dy, dz);
             boat.move(net.minecraft.world.entity.MoverType.SELF, step);
-            // The boat's own tick moves it by its velocity again, so only the vertical part (which Glide reads back) is kept.
             boat.setDeltaMovement(0.0, mode.index() == 2 ? dy : 0.0, 0.0);
             status = mode.value() + " · " + String.format(java.util.Locale.ROOT, "%.2f m/t", speed.get());
         }
@@ -175,18 +161,8 @@ public final class AutomationPlus {
         @Override public String info() { return status; }
     }
 
-    /**
-     * Boat NoClip: your boat goes where you point and straight through blocks, entities and everything else.
-     *
-     * <p>The boat's own movement is <b>replaced</b>, not added to (see {@code EntityMoveMixin} on
-     * {@code Entity#move}): one planned displacement a tick, with none of the water drag, buoyancy, ground friction
-     * or collision sweep that would otherwise stop the boat at a wall or push it back out. Because the server owns
-     * the real position, the same displacement is also cut into steps of under a block and reported step by step, so
-     * the server follows the boat instead of rejecting one huge jump and putting it back; in singleplayer the
-     * built-in server's copy is placed directly as well, so there is nothing left to roll back.</p>
-     */
     public static final class BoatNoClip extends Module {
-        /** Longest step a single vehicle packet may report; a server rejects moves much bigger than this. */
+
         private static final double STEP = 0.9;
         private static final int MAX_PACKETS = 12;
         private static final double MAX_PER_TICK = 6.0;
@@ -203,7 +179,7 @@ public final class AutomationPlus {
         private boolean oldNoPhysics;
         private boolean oldNoGravity;
         private String state = "Mount a boat";
-        /** Blocks the client copy is ahead of the built-in server's copy, measured in singleplayer. */
+
         private volatile Vec3 serverPos;
         private static volatile BoatNoClip active;
         private static volatile boolean dropCorrections;
@@ -214,10 +190,8 @@ public final class AutomationPlus {
 
         public static BoatNoClip getActive() { return active; }
 
-        /** True while the server's "move the vehicle back" packets should be ignored. */
         public static boolean ignoresCorrections() { return dropCorrections; }
 
-        /** True when this entity is the boat the local player is driving right now. */
         public static boolean owns(Entity e) {
             BoatNoClip m = active;
             if (m == null || m.boat == null || m.boat != e) return false;
@@ -280,7 +254,6 @@ public final class AutomationPlus {
             b.noPhysics = true;
             b.setNoGravity(!gravity.on());
             if (mc.screen != null) {
-                // a menu is open: hold still, but stay without physics so the boat does not drop out of the world
                 b.setDeltaMovement(Vec3.ZERO);
                 state = "Paused: screen open";
                 mirror(mc, b, true, true);
@@ -290,10 +263,6 @@ public final class AutomationPlus {
             mirror(mc, b, true, true);
         }
 
-        /**
-         * The displacement for this tick, called from {@code Entity#move} of the boat you are riding. Any other entity,
-         * any other mover type, and any boat you are not driving are left exactly as they were.
-         */
         public Vec3 drive(Entity entity, Vec3 movement) {
             if (!(entity instanceof AbstractBoat b) || b != boat) return movement;
             Minecraft mc = Minecraft.getInstance();
@@ -303,7 +272,6 @@ public final class AutomationPlus {
             b.noPhysics = true;
             b.setNoGravity(!gravity.on());
             Vec3 plan = plan(mc, b, player);
-            // the boat's own tick would move it again by whatever velocity it left behind
             b.setDeltaMovement(Vec3.ZERO);
             if (plan.lengthSqr() > 1e-9) report(mc, b, plan);
             return plan;
@@ -329,14 +297,12 @@ public final class AutomationPlus {
             return move;
         }
 
-        /** How far the boat may still travel this tick without running away from the server's copy. */
         private double budget() {
             Vec3 sp = serverPos;
             double ahead = sp == null || boat == null ? 0.0 : boat.position().distanceTo(sp);
             return Math.max(0.0, Math.min(MAX_PER_TICK, MAX_LEAD - ahead));
         }
 
-        /** Reports the move to the server in steps it will accept, so its copy follows instead of snapping back. */
         private void report(Minecraft mc, AbstractBoat b, Vec3 plan) {
             var connection = mc.getConnection();
             if (connection == null) return;
@@ -350,7 +316,6 @@ public final class AutomationPlus {
             }
         }
 
-        /** True while any part of the boat is inside something solid, so it can slow down there. */
         private static boolean insideBlocks(Minecraft mc, Entity b) {
             if (mc.level == null) return false;
             try {
@@ -360,7 +325,6 @@ public final class AutomationPlus {
             }
         }
 
-        /** Singleplayer only: place the built-in server's copy of the boat at ours, so nothing can roll it back. */
         private void mirror(Minecraft mc, Entity b, boolean noPhysics, boolean place) {
             var server = mc.getSingleplayerServer();
             if (server == null || b == null) {
@@ -390,11 +354,6 @@ public final class AutomationPlus {
         @Override public String info() { return state; }
     }
 
-    /**
-     * Coordinate-driven Elytra navigation. It steers the local view smoothly, manages pitch against the target altitude,
-     * samples a handful of short forward rays to avoid immediate terrain, and can optionally use a hotbar rocket.
-     * It is deliberately opt-in and stops steering as soon as the player opens a screen or stops gliding.
-     */
     public static final class ElytraWaypoint extends Module {
         private final Setting.Text x = add(new Setting.Text("Destination X", "Type the exact target X coordinate.", "0", 16));
         private final Setting.Text y = add(new Setting.Text("Destination Y", "Type the target altitude.", "120", 8));
@@ -471,7 +430,6 @@ public final class AutomationPlus {
             if (!steering.on()) { status = "Guidance only"; return; }
 
             float desiredYaw = (float) bearing;
-            // Positive Minecraft pitch looks down. A negative pitch gains altitude.
             float desiredPitch = (float) Math.max(-30.0, Math.min(20.0, -Math.toDegrees(Math.atan2(dy, Math.max(1.0, horizontal)))));
             if (landingAssist.on() && horizontal < 36 && Math.abs(dy) < 18) {
                 desiredPitch = (float) Math.max(-8.0, Math.min(12.0, desiredPitch * 0.55));
@@ -507,7 +465,6 @@ public final class AutomationPlus {
             }
         }
 
-        /** Picks the lowest-cost clear corridor from a small yaw/pitch fan. */
         private float[] chooseClearHeading(Minecraft mc, float yaw, float pitch) {
             Vec3 origin = mc.player.getEyePosition();
             float[] yawOffsets = switch (routeStyle.index()) {
@@ -530,7 +487,6 @@ public final class AutomationPlus {
             return best;
         }
 
-        /** Checks a body-width corridor using centre and two lateral rays, not just a single point ray. */
         private boolean clearPath(Minecraft mc, Vec3 origin, float yaw, float pitch) {
             double yr = Math.toRadians(yaw);
             double pr = Math.toRadians(pitch);
@@ -581,7 +537,6 @@ public final class AutomationPlus {
             String tail = String.format(java.util.Locale.ROOT, "ΔY %.0f  ·  %.1f m/s", coordinate(y, mc.player.getY()) - mc.player.getY(), speed);
             int bw = Math.max(Math.round(Draw.widthS(head, sc)), Math.round(Draw.widthS(tail, sc))) + 16;
             int bh = 22;
-            // well above the hotbar, health, armour and hunger rows, and small, so it never fights them for room
             int bx = (w - bw) / 2;
             int by = h - 76;
             Hud.record(bx, by, bw, bh);
@@ -594,7 +549,6 @@ public final class AutomationPlus {
         @Override public String info() { return String.format(java.util.Locale.ROOT, "%.0fm · %.0f°", distance, bearing); }
     }
 
-    /** Timing feedback for practice; it never sends attacks or manipulates movement packets. */
     public static final class SwordPvpCoach extends Module {
         private final Setting.Bool sprintHint = add(new Setting.Bool("Sprint reset hint", "Show a reminder when sprint is active and an attack cooldown is ready.", true));
         private final Setting.Bool cooldownHud = add(new Setting.Bool("Attack cooldown HUD", "Show the current attack-strength percentage.", true));

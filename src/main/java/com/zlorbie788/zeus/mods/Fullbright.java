@@ -8,16 +8,6 @@ import net.minecraft.client.Minecraft;
 
 import java.util.List;
 
-/**
- * Everything is lit like day, in caves, in the Nether and at night. Two methods work together:
- * <ul>
- * <li><b>Full light</b>: the one function that tells the chunk builder how bright a block face is (used by the game and by
- * Sodium alike) answers "full light", so the world itself is bright, and the dark inside caves, behind trees and in
- * corners is gone. Nothing is drawn differently, only the light value.</li>
- * <li><b>Night vision</b>: a hidden night vision effect on your own player, which also brightens mobs, items and the
- * sky, and works in every renderer even when the first method cannot be reached.</li>
- * </ul>
- */
 public final class Fullbright extends Module {
     private static volatile boolean light;
     private static volatile boolean sawLight;
@@ -36,10 +26,6 @@ public final class Fullbright extends Module {
 
     private static volatile boolean sawEngine;
 
-    /**
-     * True when the light of a block position should read 15 on the calling thread: Fullbright is on in a light mode, or
-     * X-Ray's "Light everything up" is on and this is a chunk-building thread. Never on the integrated server's thread.
-     */
     public static boolean engineLight() {
         boolean fb = light;
         if (!fb && !XRay.fullbright()) return false;
@@ -52,7 +38,6 @@ public final class Fullbright extends Module {
         sawEngine = true;
     }
 
-    /** True while the block light hook should answer "full light". */
     public static boolean blockLight() {
         return light;
     }
@@ -61,7 +46,6 @@ public final class Fullbright extends Module {
         sawLight = true;
     }
 
-    /** Did any of the light hooks run? X-Ray asks, to know whether ores will be lit. */
     public static boolean lightHookRan() {
         return sawLight || sawEngine;
     }
@@ -92,7 +76,6 @@ public final class Fullbright extends Module {
         try {
             if (mc.levelRenderer != null && mc.level != null) mc.levelRenderer.allChanged();
         } catch (RuntimeException | LinkageError ignored) {
-            // the chunks pick the change up the next time they reload
         }
     }
 
@@ -108,7 +91,6 @@ public final class Fullbright extends Module {
     protected void onTick(Minecraft mc) {
         ticks++;
         if (ticks % 200 == 0 && nightVision) Env.effect("night_vision", 0);
-        // the light hook never ran (a renderer that does not ask the game for light): night vision takes over
         if (ticks == 80 && light && !sawLight && !sawEngine && !nightVision) apply();
     }
 

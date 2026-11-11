@@ -4,15 +4,9 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.resources.Identifier;
 
-/**
- * The arm and fingers of the hand that holds the knife, drawn the way the game draws a player's arm: a block, 4 (or 3) skin
- * pixels wide, with the picture of your own skin on it. When no skin is wanted (or none can be found) the arm is painted in
- * a skin tone with a sleeve, in the same blocky pixels.
- */
 public final class ArmArt {
     public static final String[] LOOKS = {"My skin", "Light skin", "Tan skin", "Dark skin", "Black glove", "Zeus glove"};
 
-    /** {skin light, skin dark, sleeve light, sleeve dark}. */
     private static final int[][] PALETTES = {
         {0xFFC4916C, 0xFF9C6A48, 0xFF2BA8A8, 0xFF1A7474},
         {0xFFF1C7A5, 0xFFD39F78, 0xFF2BA8A8, 0xFF1A7474},
@@ -22,18 +16,14 @@ public final class ArmArt {
         {0xFF3A5CA0, 0xFF1B2C58, 0xFF1C2A4A, 0xFF0E1630},
     };
 
-    /** What the arm is covered with. */
     public static final class Skin {
-        public Identifier texture;   // null: painted in a tone instead
+        public Identifier texture;
         public boolean slim;
-        public int look;             // index in LOOKS, used when there is no texture
-        public int glow;             // light cast on the hand by the knife (argb, alpha is the strength)
-        public boolean hat = true;   // the sleeve layer of the skin
+        public int look;
+        public int glow;
+        public boolean hat = true;
     }
 
-    // ------------------------------------------------------------------ the arm
-
-    /** Arm box in units: wide arms are 4 skin pixels across, slim ones 3, and the thickness is 4. */
     public static float armWidth(Skin s) {
         return s.slim ? 6f : 8f;
     }
@@ -51,15 +41,14 @@ public final class ArmArt {
         };
     }
 
-    /** {u, v, width, height} of one side of the right arm in a 64x64 skin. */
     private static int[] region(int face, boolean slim) {
         return switch (face) {
-            case 5 -> new int[] {44, 20, slim ? 3 : 4, 12};   // front
-            case 4 -> new int[] {slim ? 51 : 52, 20, slim ? 3 : 4, 12}; // back
-            case 0 -> new int[] {40, 20, 4, 12};              // outer side
-            case 1 -> new int[] {slim ? 47 : 48, 20, 4, 12};  // inner side
-            case 3 -> new int[] {44, 16, slim ? 3 : 4, 4};    // shoulder
-            default -> new int[] {slim ? 47 : 48, 16, slim ? 3 : 4, 4}; // hand end
+            case 5 -> new int[] {44, 20, slim ? 3 : 4, 12};
+            case 4 -> new int[] {slim ? 51 : 52, 20, slim ? 3 : 4, 12};
+            case 0 -> new int[] {40, 20, 4, 12};
+            case 1 -> new int[] {slim ? 47 : 48, 20, 4, 12};
+            case 3 -> new int[] {44, 16, slim ? 3 : 4, 4};
+            default -> new int[] {slim ? 47 : 48, 16, slim ? 3 : 4, 4};
         };
     }
 
@@ -107,9 +96,6 @@ public final class ArmArt {
         g.fill(0, 0, w, h, c.raw(s.glow & 0x00FFFFFF | 0xFF000000, a / 255f));
     }
 
-    // ------------------------------------------------------------------ the fingers
-
-    /** A finger: a small block in the skin tone of the hand end of the arm, with a crease. */
     public static Rig.Painter finger(Skin s) {
         return (g, c, face, w, h) -> {
             if (s.texture != null) {
@@ -121,7 +107,6 @@ public final class ArmArt {
                 g.fill(0, 0, w, h, c.col(p[1]));
                 g.fill(1, 1, w - 1, h - 1, c.col(Draw.mix(p[0], p[1], 0.22f)));
             }
-            // creases and the lit edge
             g.fill(0, 0, w, 1, c.raw(0xFFFFFFFF, 0.14f));
             g.fill(0, h - 1, w, h, c.raw(0xFF000000, 0.30f));
             g.fill(0, 0, 1, h, c.raw(0xFF000000, 0.14f));
@@ -129,7 +114,6 @@ public final class ArmArt {
         };
     }
 
-    /** Reads the skin of the local player (nothing is stored). */
     public static Skin skin(net.minecraft.client.player.AbstractClientPlayer player, int look, int glow) {
         Skin s = new Skin();
         s.look = look <= 0 ? 1 : look;

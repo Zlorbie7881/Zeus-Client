@@ -13,23 +13,15 @@ import net.minecraft.client.multiplayer.PlayerInfo;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * The two scoreboard modules. Hide Scoreboard takes the server's sidebar off the screen. Fake Scoreboard draws a sidebar of
- * its own, made to look exactly like the Donut SMP one, with text you choose. Both only change what your own screen shows:
- * the server is never told, and nothing about your real stats changes.
- */
 public final class Scoreboards {
     private Scoreboards() {}
 
     private static volatile boolean hideHidden;
     private static volatile boolean hideFake;
 
-    /** Asked by the scoreboard hook: true while the server's sidebar must not be shown. */
     public static boolean hiding() {
         return hideHidden || hideFake;
     }
-
-    // ------------------------------------------------------------ Hide Scoreboard
 
     public static final class Hide extends Module {
         public Hide() {
@@ -47,14 +39,11 @@ public final class Scoreboards {
         }
     }
 
-    // ------------------------------------------------------------ Fake Scoreboard
-
     private static final String[] TITLE_NAMES = {"White", "Donut blue", "Blue", "Gold", "Red", "Green", "Aqua", "Purple", "Pink", "Grey", "Rainbow"};
     private static final int DONUT_A = 0xFF007DFC;
     private static final int DONUT_B = 0xFF00C8FC;
     private static final int[] COLOURS = {0xFF00A3FF, 0xFFFFAA00, 0xFFFF5555, 0xFF55FF55, 0xFF55FFFF, 0xFFAA55FF, 0xFFFF77CC, 0xFFFFFFFF, 0xFFAAAAAA, 0};
 
-    // the colours of the board, sampled from its picture
     private static final int GREEN = 0xFF00FF00;
     private static final int PURPLE = 0xFFA800FF;
     private static final int RED = 0xFFFF0000;
@@ -64,17 +53,16 @@ public final class Scoreboards {
     private static final int PING_LABEL = 0xFFA9A9A9;
 
     private static final int LINE = 9;
-    /** Left room before an icon, and the room between an icon and its number. */
+
     private static final int ICON_X = 3;
     private static final int ICON_GAP = 6;
 
-    // the little pictures of the board, one character per pixel
     private static final String[] DOLLAR = {"..#..", ".####", "#....", ".###.", "....#", "####.", "..#.."};
     private static final String[] STAR = {"...#...", "..###..", "#######", "#######", ".#####.", ".#####.", ".##.##."};
     private static final String[] SWORD = {"......##", ".....#.#", "....#.#.", ".#.#.#..", "..#.#...", "..##....", ".#..#...", "#......."};
     private static final String[] SKULL = {".#####.", "#######", "#..#..#", "#..#..#", "###.###", ".##.##.", ".#.#.#."};
     private static final String[] CLOCK = {".#####.", "#..#..#", "#..#..#", "#..##.#", "#.....#", "#.....#", ".#####."};
-    /** How far each picture reaches when the number is placed after it. */
+
     private static final int[] ADVANCE = {5, 7, 7, 7, 7};
     private static final String[][] PICS = {DOLLAR, STAR, SWORD, SKULL, CLOCK};
     private static final int[] PIC_COLOURS = {GREEN, PURPLE, RED, ORANGE, YELLOW};
@@ -126,7 +114,6 @@ public final class Scoreboards {
             hideFake = false;
         }
 
-        // -------------------------------------------------------- colour codes
         private record Seg(String text, int colour, boolean bold) {}
 
         private static int code(char c) {
@@ -151,7 +138,6 @@ public final class Scoreboards {
             };
         }
 
-        /** Splits text with & codes (&6 colour, &#ff8800 hex colour, &l bold, &r reset) into coloured pieces. */
         private static List<Seg> parse(String s, int base, boolean bold0) {
             List<Seg> out = new ArrayList<>();
             StringBuilder cur = new StringBuilder();
@@ -189,13 +175,11 @@ public final class Scoreboards {
             return out;
         }
 
-
         private int pickTitle(float rainbowOffset) {
             int i = titleColour.index();
             if (i == 0) return 0xFFFFFFFF;
             if (i == 1) return DONUT_A;
             if (i == TITLE_NAMES.length - 1) return Accent.rainbowAt(rainbowOffset);
-            // Blue, Gold, Red, Green, Aqua, Purple, Pink are COLOURS 0..6, Grey is 8
             int k = i - 2;
             return COLOURS[k >= 7 ? 8 : k];
         }
@@ -204,7 +188,6 @@ public final class Scoreboards {
             String t = titleMode.index() == 0 ? mc.player.getName().getString() : title.get();
             boolean b = titleBold.on();
             if (titleColour.index() != 1 || t.indexOf('&') >= 0) return parse(t, pickTitle(0f), b);
-            // Donut blue: from deep to light blue, letter by letter
             List<Seg> out = new ArrayList<>();
             int n = Math.max(1, t.length() - 1);
             for (int i = 0; i < t.length(); i++) {
@@ -229,7 +212,6 @@ public final class Scoreboards {
             }
         }
 
-        /** A picture of the board: the colour, and the same picture one pixel down and right in a quarter of the brightness. */
         private void icon(GuiGraphics g, String[] bits, int x, int y, int colour) {
             int drop = 0xFF000000 | (Draw.darken(colour, 0.75f) & 0xFFFFFF);
             for (int pass = shadow.on() ? 0 : 1; pass < 2; pass++) {
@@ -265,7 +247,6 @@ public final class Scoreboards {
                     if (info != null) return Math.max(0, info.getLatency());
                 }
             } catch (RuntimeException ignored) {
-                // no connection yet
             }
             return 0;
         }
@@ -274,13 +255,11 @@ public final class Scoreboards {
             return icons.index() == 1;
         }
 
-        /** The room the picture of a number line takes, from the left edge of the picture to where the number starts. */
         private int iconSpace(Row r) {
             if (!realFont()) return ADVANCE[r.pic] + ICON_GAP;
             return (r.pic == 0 ? Draw.widthBold(GLYPHS[0]) : Draw.width(GLYPHS[r.pic])) + Draw.width(" ");
         }
 
-        /** One line of the board. {@code kind} 0: coloured text, 1: picture + number, 3: ping. */
         private record Row(int kind, List<Seg> text, int pic, String label, String value, int valueColour) {}
 
         @Override
@@ -298,7 +277,6 @@ public final class Scoreboards {
             }
             if (showPing.on()) rows.add(new Row(3, null, 0, "Ping:", ping(mc) + "ms", PING));
 
-            // the widths
             int titleW = width(head);
             int content = 0;
             for (int i = 1; i < rows.size(); i++) {
@@ -317,7 +295,6 @@ public final class Scoreboards {
             int sw = Math.round(pw * sc);
             int sh = Math.round(ph * sc);
             int x = side.index() == 1 ? w - sw - margin.i() : margin.i();
-            // the real board hangs so that its lowest line is a third of its height under the middle of the screen
             int vanilla = Math.round(h / 2f - sh * 2f / 3f);
             int y = vanilla + Math.round(((float) height.get() - 50f) / 100f * h);
             y = Math.max(0, Math.min(h - sh, y));
@@ -328,7 +305,6 @@ public final class Scoreboards {
             g.pose().scale(sc, sc);
             float ba = (float) bg.get() / 100f;
             if (bg.get() > 0) {
-                // the title bar is darker (40% black against 30%), as on the real board; it is not stacked on the body
                 g.fill(0, 0, pw, LINE + 1, Draw.rgba(0xFF000000, Math.min(1f, ba * 4f / 3f)));
                 g.fill(0, LINE + 1, pw, ph, Draw.rgba(0xFF000000, ba));
             }

@@ -3,7 +3,6 @@ package com.zlorbie788.zeus.ui;
 import com.zlorbie788.zeus.core.Category;
 import net.minecraft.client.gui.GuiGraphics;
 
-/** Small vector icons for the pages, drawn from lines so they stay sharp at any size. */
 public final class Icons {
     private Icons() {}
 
@@ -29,7 +28,6 @@ public final class Icons {
         draw(g, cat == null ? -1 : cat.ordinal(), cx, cy, color);
     }
 
-    /** {@code id} is a Category ordinal, or one of ACTIVE, PANEL, WINDOWS, GEAR. */
     public static void draw(GuiGraphics g, int id, float cx, float cy, int c) {
         float t = 1.3f;
         if (id == Category.COMBAT.ordinal()) {

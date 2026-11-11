@@ -1,6 +1,5 @@
 package com.zlorbie788.zeus.core;
 
-/** The pages of the panel. */
 public enum Category {
     COMBAT("Combat", 0xFFFF5C6C),
     MOVEMENT("Movement", 0xFF4DA3FF),

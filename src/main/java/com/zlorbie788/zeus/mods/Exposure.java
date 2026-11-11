@@ -15,33 +15,19 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/**
- * How bannable you are right now, as one number.
- *
- * <p>Nothing here guesses what a specific anti-cheat does. It measures the four things that are true of every check that
- * has ever caught a client user: rotations that no wrist could produce, reach past what vanilla allows, clicks that keep
- * time like a metronome, and modules that announce themselves by name (click teleport, flight, scaffold). Those are
- * observable from the outside, and they are what a staff member or an automated check actually reacts to.</p>
- *
- * <p>The score is a model, not a verdict: 0 is "plays like a person", 100 is "banned on sight". It reacts within seconds,
- * so you can change something and watch the number move.</p>
- */
 public final class Exposure extends Module {
     private static final long ROT_WINDOW_MS = 15_000L;
     private static final long SWING_WINDOW_MS = 30_000L;
     private static final long CLICK_WINDOW_MS = 15_000L;
 
-    // ---- what the rest of the client reports to us
     private static final ArrayDeque<float[]> ROTATIONS = new ArrayDeque<>();
     private static final ArrayDeque<double[]> SWINGS = new ArrayDeque<>();
     private static final ArrayDeque<Long> CLICKS = new ArrayDeque<>();
 
-    /** Big turns start to look like a machine above this many degrees in a single packet. */
     private static final float ROT_FREE = 6f;
-    /** Vanilla reach is three blocks; the risk climbs from there to about 4.2. */
+
     private static final double REACH_FREE = 3.0;
 
-    /** The modules whose mere presence is a signature, and how much each adds. */
     private static final Map<String, Integer> SIGNATURES = Map.ofEntries(
             Map.entry("clicktp", 30), Map.entry("flight", 16), Map.entry("boatnoclip", 16),
             Map.entry("boatfly", 14), Map.entry("longjump", 14), Map.entry("highjump", 12),
@@ -72,12 +58,6 @@ public final class Exposure extends Module {
         alias("risk", "detect", "opsec");
     }
 
-    // ------------------------------------------------------------------ what gets measured
-
-    /**
-     * A silent rotation is about to be sent at these angles while your view stays where it is. The gap between the two
-     * is what a server sees as an impossible snap, and it is the strongest single signal a client gives off.
-     */
     public static void rotation(float viewYaw, float viewPitch, float sentYaw, float sentPitch) {
         float d = Math.abs(net.minecraft.util.Mth.wrapDegrees(sentYaw - viewYaw));
         float p = Math.abs(sentPitch - viewPitch);
@@ -92,7 +72,6 @@ public final class Exposure extends Module {
         trim(now);
     }
 
-    /** A swing that was sent at this entity, with how far away it was. */
     public static void swing(Entity target) {
         if (target == null) return;
         Minecraft mc = Minecraft.getInstance();
@@ -113,8 +92,6 @@ public final class Exposure extends Module {
         while (!SWINGS.isEmpty() && now - SWINGS.peekFirst()[0] > SWING_WINDOW_MS) SWINGS.removeFirst();
         while (!CLICKS.isEmpty() && now - CLICKS.peekFirst() > CLICK_WINDOW_MS) CLICKS.removeFirst();
     }
-
-    // ------------------------------------------------------------------ scoring
 
     private void compute() {
         long now = System.currentTimeMillis();
@@ -196,8 +173,6 @@ public final class Exposure extends Module {
     private int colour() {
         return score < 15 ? 0xFF5EE6A0 : score < 35 ? 0xFFFFC857 : score < 60 ? 0xFFFF8F4D : 0xFFFF5C6C;
     }
-
-    // ------------------------------------------------------------------ the card
 
     @Override
     protected void onTick(Minecraft mc) {

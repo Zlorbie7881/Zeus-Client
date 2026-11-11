@@ -8,21 +8,20 @@ import com.zlorbie788.zeus.core.Category;
 import java.util.HashMap;
 import java.util.Map;
 
-/** Where the windows of the Windows layout are and which ones are folded. Saved with the rest of the settings. */
 public final class UiState {
     private UiState() {}
 
     public static final class Win {
         public float x;
         public float y;
-        /** False until the player moves the window: it then follows the automatic tiling. */
+
         public boolean placed;
         public boolean collapsed;
         public float scroll;
     }
 
     private static final Map<String, Win> WINS = new HashMap<>();
-    /** Windows that are not a category: starred modules and the ones used lately. */
+
     public static final String FAVOURITES = "FAVOURITES";
     public static final String RECENT = "RECENT";
     public static Win win(Category c) {
@@ -42,7 +41,6 @@ public final class UiState {
         com.zlorbie788.zeus.core.Zeus.markDirty();
     }
 
-    /** Snaps every window back into the automatic grid (folded windows stay folded). */
     public static void tidy() {
         for (Win w : WINS.values()) {
             w.placed = false;
@@ -51,7 +49,6 @@ public final class UiState {
         com.zlorbie788.zeus.core.Zeus.markDirty();
     }
 
-    /** Bumped when the automatic layout changes so windows dragged around in an older version do not keep an old, messy arrangement. */
     private static final int WINDOW_REV = 2;
 
     public static void save(JsonObject root) {
@@ -93,7 +90,6 @@ public final class UiState {
                 w.placed = a.get(2).getAsInt() == 1 && !oldRev;
                 w.collapsed = a.get(3).getAsInt() == 1;
             } catch (RuntimeException ignored) {
-                // A broken window entry should not prevent other windows from being restored.
             }
         }
     }

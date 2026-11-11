@@ -15,9 +15,6 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.function.Consumer;
 
-/** A menu to pick a player from the current server list: a search bar, a list of every online player, click to pick one.
- * The picked name is reported at once and the menu closes, so it feels like a normal picker. The name is the same value
- * Skin Change already uses for lookup, so it works without any extra matching. */
 public final class PlayerPickerScreen extends Screen {
     private record Entry(PlayerInfo info, String name, String id, String words) {}
 
@@ -195,7 +192,6 @@ public final class PlayerPickerScreen extends Screen {
         if (event.button() == 0) {
             int dy = py + ph - 20;
             if (x >= px + pw - 12 - 56 && x < px + pw - 12 && y >= dy - 2 && y < dy + 16) {
-                // Done keeps whatever is in the box, so a name typed or pasted by hand is used too
                 commit.accept(search.getValue().trim());
                 onClose();
                 return true;

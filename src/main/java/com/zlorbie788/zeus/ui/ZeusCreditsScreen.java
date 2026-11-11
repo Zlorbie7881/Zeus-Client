@@ -6,7 +6,6 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 
-/** Who made what, on the same storm as the menu. */
 public final class ZeusCreditsScreen extends Screen {
     private final Screen parent;
     private final long born = System.nanoTime();
@@ -24,7 +23,6 @@ public final class ZeusCreditsScreen extends Screen {
 
     @Override
     public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-        // drawn in render
     }
 
     @Override

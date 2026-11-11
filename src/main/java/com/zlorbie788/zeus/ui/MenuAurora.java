@@ -2,11 +2,6 @@ package com.zlorbie788.zeus.ui;
 
 import net.minecraft.client.gui.GuiGraphics;
 
-/**
- * The aurora over the seasonal menu: a green and violet curtain in the sky on clear winter nights. It comes up slowly with the
- * snow (so it follows {@link UiSettings#SEASON}), goes away when a storm builds, and keeps clear of the moon. It is drawn
- * behind the clouds, so the banks of cloud drift in front of it.
- */
 final class MenuAurora {
     private MenuAurora() {}
 
@@ -26,15 +21,10 @@ final class MenuAurora {
         STYLE.seed = 11;
     }
 
-    /** How much of the aurora is showing, 0 to 1. */
     static float level() {
         return level;
     }
 
-    /**
-     * @param storm the storm level 0 to 1; {@code moonX}, {@code moonY} and {@code moonR} are the moon on the screen, so the
-     *              curtains thin out around it
-     */
     static void draw(GuiGraphics g, int width, int height, float t, float storm, float moonX, float moonY, float moonR, boolean still) {
         long now = System.nanoTime();
         float dt = last == 0 ? 0f : Math.min(0.1f, (now - last) / 1e9f);

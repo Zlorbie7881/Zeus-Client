@@ -7,7 +7,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/** Hitboxes: how far outside its body an entity can still be aimed at. */
 @Mixin(Entity.class)
 public abstract class EntityPickMixin {
     @Inject(method = "getPickRadius", at = @At("RETURN"), cancellable = true, require = 0)

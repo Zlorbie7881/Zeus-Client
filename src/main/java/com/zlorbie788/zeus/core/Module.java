@@ -7,10 +7,6 @@ import net.minecraft.client.gui.GuiGraphics;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * One feature. A module can be switched on and off, owns its settings and a key, and gets a tick and a draw call while it
- * is on. Everything is client side: a module changes what your own game does and draws, never anything on a server.
- */
 public abstract class Module {
     public final String id;
     public final String name;
@@ -23,16 +19,15 @@ public abstract class Module {
     private boolean oneShot;
     private boolean airborne;
     public KeyMapping key;
-    /** Set when the module failed, so the panel can say so. */
+
     public String error;
-    /** Nanoseconds this module used since the Performance Monitor last rolled over (only counted while it is on). */
+
     long profNs;
-    /** What this module used of the last second of game time, in percent. Only filled while something asked Prof to measure. */
+
     public volatile float costPct;
     private boolean light;
     private int skip;
 
-    /** A bag of settings that belongs to the panel itself, not to a module. */
     public static final class Holder {
         private final List<Setting> list = new ArrayList<>();
 
@@ -41,7 +36,6 @@ public abstract class Module {
             return s;
         }
 
-        /** Inserts a panel setting at the top so important controls are immediately discoverable. */
         public <T extends Setting> T addFirst(T s) {
             list.add(0, s);
             return s;
@@ -63,7 +57,6 @@ public abstract class Module {
         return this;
     }
 
-    /** True for the heavy scanners and ESPs that may run less often (and that the Performance Guard may switch off). */
     public boolean isLight() {
         return light;
     }
@@ -80,7 +73,6 @@ public abstract class Module {
         }
     }
 
-    /** Called when a world opens. */
     protected void cleanSlate() {}
 
     protected Module(String id, String name, String desc, Category category) {
@@ -95,12 +87,10 @@ public abstract class Module {
         return s;
     }
 
-    /** The same as {@code add}, for helpers outside the module class. */
     public <T extends Setting> T addSetting(T s) {
         return add(s);
     }
 
-    /** A module whose on/off state is remembered between launches (the interface ones). All others start off every launch. */
     protected Module anywhere() {
         startsOff = false;
         return this;
@@ -108,7 +98,6 @@ public abstract class Module {
 
     private final List<String> aliases = new ArrayList<>();
 
-    /** Other names people know this module by. Search, /zeus commands and the website find the module under them too. */
     protected Module alias(String... names) {
         for (String n : names) if (n != null && !n.isBlank()) aliases.add(n);
         return this;
@@ -120,34 +109,25 @@ public abstract class Module {
 
     private boolean hudCard;
 
-    /** Marks a module outside the HUD & Info category that draws a box on the screen, so the HUD editor can move and scale it. */
     protected Module hudCard() {
         hudCard = true;
         return this;
     }
 
-    /** True for HUD & Info modules and for any module that called {@code hudCard()}: the ones the HUD editor lists. */
     public boolean isHudWidget() {
         return category == Category.PANELS || hudCard;
     }
 
-    /**
-     * Marks a module that mostly scans and then draws what it found: in the Light and Minimal performance modes it is ticked
-     * every second, third or fourth game tick instead of every tick. Never use it on something that must react at once
-     * (fighting, movement).
-     */
     protected Module light() {
         light = true;
         return this;
     }
 
-    /** A module that does one thing when it is switched on and then switches itself off again. */
     protected Module oneShot() {
         oneShot = true;
         return this;
     }
 
-    /** A module that keeps you off the ground without a flying permission (in your own singleplayer world Zeus then dips you a little now and then so the game's own floating check does not kick you). */
     protected Module airborne() {
         airborne = true;
         return this;
@@ -157,7 +137,6 @@ public abstract class Module {
         return airborne;
     }
 
-    /** A page of buttons, not a switch. */
     protected Module panelOnly() {
         toggleable = false;
         return this;
@@ -166,19 +145,16 @@ public abstract class Module {
     private boolean locked;
     private String note;
 
-    /** A module that is listed but cannot be switched on yet. {@code why} is what the list shows instead of its description. */
     protected Module locked(String why) {
         locked = true;
         note = why;
         return this;
     }
 
-    /** True for a module that is still in development: the switch does nothing and the row says why. */
     public boolean locked() {
         return locked;
     }
 
-    /** The line the module list shows for a locked module, or null for a normal one. */
     public String note() {
         return note;
     }
@@ -191,7 +167,6 @@ public abstract class Module {
         return enabled;
     }
 
-    /** True when this module is switched off at every launch, false when its state is remembered. */
     public boolean startsOff() {
         return startsOff;
     }
@@ -226,7 +201,6 @@ public abstract class Module {
         Zeus.markDirty();
     }
 
-    /** Starts the module over, so it picks up settings that were changed behind its back (a profile was loaded). */
     void restart() {
         if (!enabled) return;
         try {
@@ -237,16 +211,10 @@ public abstract class Module {
         }
     }
 
-    /**
-     * Handles a world transition. Modules explicitly marked with anywhere() are
-     * client-persistent (HUD, preferences and other world-independent state), so
-     * leave their enabled state intact. World-bound modules are always shut down.
-     */
     void quietForWorldExit() {
         if (startsOff) quiet();
     }
 
-    /** Switches off without telling the world (used when leaving a world). */
     void quiet() {
         if (!enabled) return;
         enabled = false;
@@ -254,7 +222,6 @@ public abstract class Module {
         try {
             onDisable();
         } catch (Throwable ignored) {
-            // the world is going away anyway
         }
     }
 
@@ -266,24 +233,18 @@ public abstract class Module {
         try {
             onDisable();
         } catch (Throwable ignored) {
-            // nothing more to do
         }
         Zeus.toast(name + " hit a problem and was switched off", false);
     }
 
-    /** Called once when switched on. */
     protected void onEnable() {}
 
-    /** Called once when switched off. */
     protected void onDisable() {}
 
-    /** Every game tick while on and in a world. */
     protected void onTick(Minecraft mc) {}
 
-    /** Every frame while on, on top of the game picture. For a HUD widget this is the movable box only. */
     protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {}
 
-    /** Drawn every frame while on, outside the widget's own position and scale: world markers and centred screen text. */
     protected void onHudWorld(GuiGraphics g, Minecraft mc, float partial, int w, int h) {}
 
     final void hudWorld(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
@@ -296,7 +257,6 @@ public abstract class Module {
         if (t0 != 0L) profNs += System.nanoTime() - t0;
     }
 
-    /** What the module list shows after the name, or null. */
     public String info() {
         return null;
     }
@@ -325,12 +285,10 @@ public abstract class Module {
         if (t0 != 0L) profNs += System.nanoTime() - t0;
     }
 
-    /** Public dispatch bridge for composite modules in other packages. */
     public final void tickFromComposite(Minecraft mc) {
         if (enabled()) tick(mc);
     }
 
-    /** Public HUD dispatch bridge for composite modules in other packages. */
     public final void hudFromComposite(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
         if (enabled()) hud(g, mc, partial, w, h);
     }

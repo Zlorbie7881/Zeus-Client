@@ -2,53 +2,25 @@ package com.zlorbie788.zeus.ui;
 
 import net.minecraft.client.gui.GuiGraphics;
 
-/**
- * The northern lights, shared by the seasonal menu and the Aurora module.
- *
- * <p>The sky is described by bearing and elevation (in degrees), and the picture is drawn as thin vertical columns, each one a
- * stack of smooth colour gradients, so the soft glow comes from the graphics card and the rays stand upright like the real
- * thing. What makes it look like an aurora and not like a coloured stripe:</p>
- * <ul>
- * <li><b>Nested arcs.</b> Several curtains lie one above the other, each a long arc with its own folds. Every fold is made of
- * three waves moving at different speeds, and where a fold turns edge-on to you the curtain is seen through more glowing air,
- * so it burns brighter there, as it does in photographs.</li>
- * <li><b>Rays.</b> The vertical striations are layered noise that drifts sideways. Near the lower edge they are sharp, higher
- * up they soften, and where a ray is strong it also reaches higher.</li>
- * <li><b>A hard lower edge and a long glow.</b> The bottom of a curtain is crisp (that is where the electrons hit), the glow
- * above it fades in two steps, a short bright one and a long faint one.</li>
- * <li><b>Real colours by height.</b> A thin pink fringe at the very bottom, then green, then (depending on the colour scheme)
- * teal, blue and violet high up, and a touch of red at the top when a surge comes.</li>
- * <li><b>Surges.</b> Every minute or two the sky wakes up: the arcs brighten, rays shoot up, the top turns red and a corona of
- * rays opens around the zenith, then it slowly calms again.</li>
- * <li><b>Light, not paint.</b> Colours add up like light and are squeezed through a soft curve, so overlapping curtains glow
- * brighter and whiter without ever turning into a flat block.</li>
- * </ul>
- * Everything is a pure function of the time, so there are no buffers to keep in step, and a column that has no aurora costs
- * almost nothing.
- */
 public final class AuroraSky {
-    /** How a screen point maps to the sky. */
+
     public interface View {
-        /** Fills {@code azel} with the compass bearing (0 north, 90 east) and the elevation, both in degrees. False: no sky here. */
+
         boolean at(float sx, float sy, float[] azel);
 
-        /** True when {@link #skyline} gives something other than "no ground". */
         default boolean hasSkyline() {
             return false;
         }
 
-        /** The elevation of the land (hills, trees) at a bearing. The aurora is hidden below this line. */
         default float skyline(float az) {
             return -90f;
         }
 
-        /** An extra fade from 0 to 1 for a screen point (used by the menu to keep the moon clear). */
         default float mask(float sx, float sy) {
             return 1f;
         }
     }
 
-    /** What the sky looks like. Cheap to change; the sky rebuilds its arcs when something here is different. */
     public static final class Style {
         public int curtains = 4;
         public int scheme;
@@ -70,27 +42,19 @@ public final class AuroraSky {
 
     public static final String[] SCHEMES = {"Green and violet", "Classic green", "Polar pink", "Solar storm", "Ice", "Night sky"};
 
-    // colour stops from the bottom fringe to the top, at heights 0, 0.2, 0.45, 0.72 and 1 of a curtain
     private static final float[] STOPS = {0f, 0.20f, 0.45f, 0.72f, 1f};
     private static final float[][][] PALETTE = {
-            // green and violet
             {{0.98f, 0.38f, 0.72f}, {0.22f, 1.00f, 0.56f}, {0.16f, 0.96f, 0.62f}, {0.30f, 0.74f, 0.96f}, {0.64f, 0.32f, 1.00f}},
-            // classic green
             {{0.70f, 1.00f, 0.55f}, {0.26f, 1.00f, 0.46f}, {0.20f, 0.95f, 0.38f}, {0.16f, 0.78f, 0.42f}, {0.50f, 0.26f, 0.70f}},
-            // polar pink
             {{1.00f, 0.36f, 0.62f}, {0.32f, 1.00f, 0.62f}, {0.22f, 0.88f, 0.74f}, {0.78f, 0.42f, 0.96f}, {1.00f, 0.32f, 0.70f}},
-            // solar storm
             {{1.00f, 0.30f, 0.42f}, {0.62f, 1.00f, 0.40f}, {0.92f, 0.56f, 0.30f}, {1.00f, 0.24f, 0.32f}, {0.72f, 0.12f, 0.38f}},
-            // ice
             {{0.66f, 0.92f, 1.00f}, {0.30f, 0.96f, 0.96f}, {0.26f, 0.78f, 1.00f}, {0.36f, 0.52f, 1.00f}, {0.62f, 0.42f, 1.00f}},
-            // night sky (green into teal, blue and violet, like the Atmosphere picture)
             {{0.62f, 1.00f, 0.50f}, {0.24f, 1.00f, 0.52f}, {0.14f, 0.92f, 0.76f}, {0.24f, 0.56f, 1.00f}, {0.66f, 0.30f, 0.96f}},
     };
 
-    private static final int AZN = 720;          // bins around the horizon, half a degree each
+    private static final int AZN = 720;
     private static final int MAX = 6;
 
-    // the arcs
     private int sig = Integer.MIN_VALUE;
     private int count;
     private final float[] az0 = new float[MAX];
@@ -105,7 +69,6 @@ public final class AuroraSky {
     private int scheme;
     private int seed = 7;
 
-    // per bearing values of the current frame, filled when first needed
     private final float[][] tBase = new float[MAX][AZN];
     private final float[][] tThick = new float[MAX][AZN];
     private final float[][] tBright = new float[MAX][AZN];
@@ -114,7 +77,6 @@ public final class AuroraSky {
     private final int[][] stamp = new int[MAX][AZN];
     private int frameId = 1;
 
-    // the sky's mood this frame
     private float time;
     private float act = 0.75f;
     private float breakup;
@@ -133,12 +95,10 @@ public final class AuroraSky {
         for (int i = 0; i < MAX; i++) java.util.Arrays.fill(stamp[i], 0);
     }
 
-    /** The surge of the sky at a time, 0 to 1: a short rise and a long calm-down. Exposed for the preview tools and the status line. */
     public float surge() {
         return breakup;
     }
 
-    /** Prepares a frame: the style, the time (seconds, already scaled by the speed) and the mood of the sky. */
     public void begin(float t, Style s) {
         if (s.signature() != sig) configure(s);
         time = t;
@@ -150,7 +110,6 @@ public final class AuroraSky {
             for (int i = 0; i < MAX; i++) java.util.Arrays.fill(stamp[i], 0);
         }
         breakup = surges ? surgeAt(t) : 0f;
-        // the baseline breathes slowly, and a surge lifts everything
         float slow = 0.5f + 0.5f * (float) Math.sin(t * 0.045f + 1.3f);
         act = Math.max(0.12f, baseAct * (0.78f + 0.22f * slow) + 0.55f * breakup);
     }
@@ -193,8 +152,6 @@ public final class AuroraSky {
         }
     }
 
-    // ---------------------------------------------------------------------------------------------------------------- maths
-
     private static float smooth01(float x) {
         x = x < 0f ? 0f : x > 1f ? 1f : x;
         return x * x * (3f - 2f * x);
@@ -220,9 +177,6 @@ public final class AuroraSky {
         return d;
     }
 
-    // ---------------------------------------------------------------------------------------------------------------- the arcs
-
-    /** Fills one bearing of one curtain: where its lower edge is, how thick, how bright, how strong the ray there. */
     private void fill(int c, int bin) {
         stamp[c][bin] = frameId;
         float az = bin * 0.5f + 0.25f;
@@ -247,12 +201,10 @@ public final class AuroraSky {
         float wob = 0.5f * (float) Math.sin(a1) + 0.3f * (float) Math.sin(a2) + 0.2f * (float) Math.sin(a3);
         float slope = amp * k * (0.5f * (float) Math.cos(a1) + 0.3f * 2.31f * (float) Math.cos(a2) + 0.2f * 5.2f * (float) Math.cos(a3));
         float base = baseEl[c] + tilt[c] * (d / len) * 5f + amp * wob;
-        // a fold that turns edge-on is seen through more glowing air
         float edge = 1f + Math.min(2.2f, 3.0f * Math.abs(slope));
         float patch = 0.20f + 0.80f * smooth01(vn(d * 0.065f + t * 0.05f + ph1[c] * 3f, seed + c * 7) * 1.6f - 0.2f);
         float flame = 0.80f + 0.20f * (float) Math.sin(t * (1.0f + 0.9f * Lightning.hash(seed, c + 70)) * (1f + 0.8f * breakup) + d * 0.11f + ph2[c]);
         int sd = seed * 3 + c * 11;
-        // ray spacing from about two degrees down to a fifth of a degree
         float rn = 0.50f * vn(d * 0.55f + t * 0.16f + ph3[c] * 5f, sd + 1)
                 + 0.28f * vn(d * 1.3f - t * 0.28f, sd + 2)
                 + 0.14f * vn(d * 2.7f + t * 0.46f, sd + 3)
@@ -266,7 +218,6 @@ public final class AuroraSky {
         tBright[c][bin] = env * patch * flame * weight[c] * act;
     }
 
-    /** Samples the sky at a bearing and elevation. Returns the opacity (0 to 1) and puts the colour in {@link #out}. */
     private float eval(float az, float el, float gain) {
         float bf = az * 2f;
         bf %= AZN;
@@ -298,7 +249,6 @@ public final class AuroraSky {
             float up = u > 0f ? u : 0f;
             float lower = smooth01((u + 0.5f) / 1.7f);
             float vert = 0.82f * (float) Math.exp(-up / (hh * 0.36f)) + 0.18f * (float) Math.exp(-up / (hh * 1.15f));
-            // the striations are sharp at the bottom and soften with height
             float rf = ray + (0.60f - ray) * Math.min(1f, up / (hh * 0.9f));
             float i = br * edge * lower * vert * (0.22f + 0.78f * rf * 1.25f);
             if (i <= 0.002f) continue;
@@ -310,7 +260,6 @@ public final class AuroraSky {
             lum += i;
         }
         if (breakup > 0.04f && el > 50f) {
-            // the corona: near the zenith the rays seem to come together and fan out
             float kz = smooth01((el - 50f) / 24f);
             float rr = 0.6f * vn(az * 0.22f + time * 0.15f, seed + 9) + 0.4f * vn(az * 0.9f - time * 0.4f, seed + 10);
             float i = breakup * kz * (0.22f + 0.78f * rr) * 0.85f;
@@ -326,7 +275,6 @@ public final class AuroraSky {
         b /= lum;
         float e = lum * gain;
         float a = 1f - (float) Math.exp(-1.35f * e);
-        // very bright light turns white-ish
         float w = smooth01((e - 1.1f) / 2.2f) * 0.25f;
         out[0] = r + (1f - r) * w;
         out[1] = g + (1f - g) * w;
@@ -334,7 +282,6 @@ public final class AuroraSky {
         return Math.min(a, 0.93f);
     }
 
-    /** The colour at a height of the curtain (0 bottom, 1 top), into {@link #out}. */
     private void palette(float v, float strength) {
         float[][] p = PALETTE[scheme];
         int k = 0;
@@ -345,7 +292,6 @@ public final class AuroraSky {
         float g = p[k][1] + (p[k + 1][1] - p[k][1]) * f;
         float b = p[k][2] + (p[k + 1][2] - p[k][2]) * f;
         if (breakup > 0.05f && (scheme == 0 || scheme == 1) && v > 0.55f) {
-            // the top of the curtain blushes red in a surge
             float m = breakup * 0.6f * clamp01((v - 0.55f) / 0.45f);
             r += (1f - r) * m;
             g += (0.22f - g) * m;
@@ -355,8 +301,6 @@ public final class AuroraSky {
         out[1] = g;
         out[2] = b;
     }
-
-    // ---------------------------------------------------------------------------------------------------------------- drawing
 
     private void room(int n) {
         if (n <= ys.length) return;
@@ -368,10 +312,6 @@ public final class AuroraSky {
         ca = java.util.Arrays.copyOf(ca, m);
     }
 
-    /**
-     * Draws the aurora into the box. {@code colStep} is the width of a column and {@code rowStep} the distance between colour
-     * stops down a column, both in GUI pixels; {@code gain} scales the brightness (1 is normal).
-     */
     public void render(GuiGraphics g, int x0, int y0, int x1, int y1, View view, float gain, int colStep, int rowStep) {
         if (gain <= 0.01f || x1 <= x0 || y1 <= y0) return;
         colStep = Math.max(2, colStep);
@@ -433,7 +373,6 @@ public final class AuroraSky {
         }
     }
 
-    /** Positive where the sky is above the land. */
     private float skyGap(View view, float sx, float sy) {
         if (!view.at(sx, sy, azel)) return -1f;
         return azel[1] - view.skyline(azel[0]);

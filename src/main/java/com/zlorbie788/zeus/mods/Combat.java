@@ -24,12 +24,11 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 
-/** Combat modules. */
 public final class Combat {
     private Combat() {}
 
-    /** Local hotbar attribute swap: smartly alternates sword/mace, or swaps two chosen hotbar slots. */
     public static final class AttributeSwap extends Module {
         private final Setting.Choice mode = add(new Setting.Choice("Mode", "Smart finds a sword and mace in your hotbar. Simple alternates two selected slots.", 0, "Smart sword / mace", "Simple slots"));
         private final Setting.Num first = add(new Setting.Num("First hotbar slot", "First slot for Simple mode (1-9).", 1, 1, 9, 1, "" )).showIf(() -> mode.index() == 1);
@@ -63,7 +62,6 @@ public final class Combat {
         }
     }
 
-    /** Hits the nearest monster in range by itself. */
     public static final class KillAura extends Module {
         private final Setting.Num range = add(new Setting.Num("Range", "How far away a target can be.", 4.2, 2.5, 6.0, 0.1, " blocks"));
         private final Setting.Bool hostiles = add(new Setting.Bool("Monsters", "Attack hostile mobs.", true));
@@ -79,6 +77,13 @@ public final class Combat {
         private final Setting.Bool swing = add(new Setting.Bool("Swing arm", "Show the arm swinging on every hit.", true));
         private final Setting.Bool silent = add(new Setting.Bool("Silent rotation", "Send a look packet at the target right before every hit, so the server sees you facing what you hit even while your camera looks somewhere else.", true));
         private final Setting.Bool confirm = add(new Setting.Bool("Confirm hits", "Drop a target whose last few swings got no answer from the server, and show how many hits are landing.", true));
+        private final Setting.Num fov = add(new Setting.Num("Field of view", "Only attack targets inside this cone around your crosshair, so the aura never turns you round to hit something behind you. 360 ignores it.", 150, 30, 360, 10, "\u00b0"));
+        private final Setting.Bool humanAim = add(new Setting.Bool("Humanised aim", "Turn the server's copy of your view toward the target at a human speed instead of snapping to it, and hit only once it is on target.", true));
+        private final Setting.Num turn = add(new Setting.Num("Turn speed", "The fastest the server-side view turns, in degrees per second.", 420, 180, 1080, 20, "\u00b0/s")).showIf(humanAim::on);
+        private final Setting.Bool timing = add(new Setting.Bool("Randomise timing", "Vary the time between hits like a hand instead of a metronome.", true));
+        private final Setting.Bool pauseUse = add(new Setting.Bool("Pause while using an item", "Do not attack while you eat or draw a bow.", true));
+        private float aimYaw = Float.NaN;
+        private float aimPitch;
         private String target;
 
         public KillAura() {
@@ -91,9 +96,15 @@ public final class Combat {
             if (mc.player == null || mc.level == null || mc.gameMode == null || mc.screen != null) return;
             int m = mode.index();
             var me = mc.player;
+            if (pauseUse.on() && me.isUsingItem()) {
+                aimYaw = Float.NaN;
+                return;
+            }
             if (m == 0 && System.currentTimeMillis() < nextHit) return;
             if (m != 0 && full.on() && me.getAttackStrengthScale(0f) < 0.95f) return;
             double r2 = range.get() * range.get();
+            Vec3 look = me.getLookAngle();
+            double cone = Math.cos(Math.toRadians(fov.get() / 2.0));
             Entity best = null;
             double bestD = Double.MAX_VALUE;
             for (Entity e : Env.entities(mc, range.get() + 1.0)) {
@@ -107,17 +118,22 @@ public final class Combat {
                 }
                 double dist = mc.player.distanceToSqr(e);
                 if (dist > r2) continue;
-                // "Closest" ranks by distance, "Lowest health" by what is left of the target's health
+                if (fov.get() < 359.0) {
+                    Vec3 to = e.getBoundingBox().getCenter().subtract(me.getEyePosition());
+                    if (to.lengthSqr() > 1e-6 && to.normalize().dot(look) < cone) continue;
+                }
                 double d = priority.index() == 1 ? le.getHealth() + le.getAbsorptionAmount() + dist * 0.001 : dist;
                 if (d >= bestD) continue;
                 if (los.on() && !mc.player.hasLineOfSight(e)) continue;
                 best = e;
                 bestD = d;
             }
-            if (best == null) return;
+            if (best == null) {
+                aimYaw = Float.NaN;
+                return;
+            }
             target = best.getName().getString();
             if (m == 1) {
-                // a critical hit needs a fall: not on the ground, falling, not in water or on a ladder, not sprinting
                 boolean falling = !me.onGround() && me.fallDistance > 0.0f && me.getDeltaMovement().y < 0 && !me.isInWater() && !me.onClimbable() && !me.isPassenger() && !me.isSprinting();
                 if (!falling) {
                     if (jump.on() && me.onGround() && !me.isInWater() && !me.onClimbable() && !me.isPassenger()) {
@@ -127,21 +143,56 @@ public final class Combat {
                     return;
                 }
             }
-            if (m == 0) nextHit = System.currentTimeMillis() + (long) (1000.0 / rate.get());
-            // Ghost holds back the odd swing so a perfect rhythm is not the only thing the server sees
             if (Ghost.skipSwing()) return;
             if (confirm.on() && Hits.cold(best.getId())) {
-                // four swings in a row with nothing back: out of the server's reach, or refused. Stop feeding the void.
                 target = null;
                 return;
             }
-            if (silent.on()) {
-                // the server checks that you face what you hit; send that look without moving the camera
-                Aim.look(best.position().add(best.getDeltaMovement().scale(0.35)).add(0, best.getBbHeight() * 0.55, 0));
+            Vec3 aimAt = best.position().add(best.getDeltaMovement().scale(0.35)).add(0, best.getBbHeight() * 0.55, 0);
+            if (humanAim.on()) {
+                if (!humanAim(me, aimAt)) return;
+            } else if (silent.on()) {
+                Aim.look(aimAt);
+            }
+            if (m == 0) {
+                double interval = 1000.0 / rate.get();
+                if (timing.on()) interval *= ThreadLocalRandom.current().nextDouble(0.88, 1.12);
+                nextHit = System.currentTimeMillis() + (long) interval;
             }
             if (confirm.on()) Hits.attempt(best);
             mc.gameMode.attack(mc.player, best);
             if (swing.on()) mc.player.swing(InteractionHand.MAIN_HAND);
+        }
+
+        private boolean humanAim(Player me, Vec3 point) {
+            if (Float.isNaN(aimYaw)) {
+                aimYaw = me.getYRot();
+                aimPitch = me.getXRot();
+            }
+            Vec3 eye = me.getEyePosition();
+            float wantYaw = Aim.yawTo(eye, point);
+            float wantPitch = Math.max(-90f, Math.min(90f, Aim.pitchTo(eye, point)));
+            float dy = AimAssist.wrap(wantYaw - aimYaw);
+            float dp = wantPitch - aimPitch;
+            float off = Math.max(Math.abs(dy), Math.abs(dp));
+            if (off > 0.05f) {
+                float step = (float) Math.min(off, turn.get() / 20.0 * ThreadLocalRandom.current().nextDouble(0.88, 1.12));
+                aimYaw = AimAssist.wrap(aimYaw + dy / off * step);
+                aimPitch = Math.max(-90f, Math.min(90f, aimPitch + dp / off * step));
+                Aim.sendRotation(aimYaw, aimPitch);
+            }
+            return off <= 4.0f;
+        }
+
+        @Override
+        protected void onDisable() {
+            aimYaw = Float.NaN;
+            target = null;
+        }
+
+        @Override
+        protected void cleanSlate() {
+            aimYaw = Float.NaN;
         }
 
         @Override
@@ -152,17 +203,6 @@ public final class Combat {
         }
     }
 
-    /**
-     * Aim assist: when something is near your crosshair your aim is eased onto it instead of snapped.
-     *
-     * <p>Every tick it covers a share of the angle that is left, never faster than the top speed, never past the target,
-     * and it stops inside a small dead zone. The share is larger for a big correction and smaller for a small one, so a
-     * small nudge stays gentle while a real flick still lands in a few ticks without ever jumping. The target is the
-     * living thing nearest the middle of your screen, weighted by how close it is and whether it is already on you, and
-     * the same one is kept while it stays reasonable instead of flickering between two. In Silent mode only the
-     * server's copy of your view turns, so a hit is accepted while your screen does not move at all. It never attacks
-     * for you.</p>
-     */
     public static final class AimAssist extends Module {
         private final Targets.Pick who = Targets.pick(this::add, true, true, false);
         private final Setting.Choice when = add(new Setting.Choice("Works", "Holding attack: only while the attack button is held down. Always: whenever something is near your crosshair.", 0, "Holding attack", "Always"));
@@ -187,7 +227,7 @@ public final class Combat {
         private String name;
         private float lastYaw = Float.NaN;
         private float lastPitch;
-        private float give = 1f;   // 1 full help, lower while the mouse is being used
+        private float give = 1f;
         private long tick;
 
         public AimAssist() {
@@ -218,7 +258,6 @@ public final class Combat {
             return a;
         }
 
-        /** Where on the target to aim: the point of its body nearest the line of sight, its middle, or its eyes. */
         private Vec3 aimPoint(Vec3 eye, Vec3 look, LivingEntity e) {
             AABB b = e.getBoundingBox();
             Vec3 p;
@@ -240,7 +279,6 @@ public final class Combat {
             return p;
         }
 
-        /** How much this target matters beyond being under the crosshair: one already on you is worth more. */
         private static double threat(Minecraft mc, LivingEntity e) {
             var me = mc.player;
             if (me == null) return 0.0;
@@ -260,7 +298,6 @@ public final class Combat {
             return d.lengthSqr() > 1e-4 && d.normalize().dot(look) >= cone - 0.08;
         }
 
-        /** The target to help with: the kept one, or the one nearest the middle of the screen. */
         private LivingEntity pick(Minecraft mc) {
             var me = mc.player;
             if (me == null) return null;
@@ -303,7 +340,6 @@ public final class Combat {
             }
             float yaw = me.getYRot();
             float pitch = me.getXRot();
-            // the mouse: if the view is not where the last tick left it, you turned it yourself
             if (yieldMouse.on() && !Float.isNaN(lastYaw)) {
                 float moved = Math.abs(wrap(yaw - lastYaw)) + Math.abs(pitch - lastPitch);
                 float want = moved > 1.2f ? Math.max(0.25f, 1f - moved / 14f) : 1f;
@@ -337,14 +373,11 @@ public final class Combat {
                 lastPitch = pitch;
                 return;
             }
-            // fraction of the angle that is left, per tick: an exponential ease, so the movement always slows into the target
             double rate = Math.max(0.03, strength.get() / 100.0);
             float k = (float) (1.0 - Math.exp(-rate * 2.4)) * give;
-            // a big correction gets a bigger share of itself, a small one stays gentle
             float off = Math.max(Math.abs(dYaw), Math.abs(dPitch));
             k *= 0.55f + 0.45f * Math.min(1f, off / 12f);
             if (wobble.on()) k *= 0.9f + 0.2f * (float) (0.5 + 0.5 * Math.sin(tick * 0.31 + 1.7) * Math.sin(tick * 0.113));
-            // per-tick cap from the degrees-per-second setting, and never past the target (no overshoot, no shaking)
             float maxStep = (float) (speed.get() / 20.0) * give;
             float sy = Math.abs(dYaw) <= dz ? 0f : clamp(dYaw * k, maxStep);
             float sp = Math.abs(dPitch) <= dz ? 0f : clamp(dPitch * k * (float) (vertical.get() / 100.0), maxStep * 0.7f);
@@ -358,7 +391,6 @@ public final class Combat {
             float ny = yaw + sy;
             float np = Math.max(-90f, Math.min(90f, pitch + sp));
             if (mode.index() == 1) {
-                // silent: the server is told we face the target, your own view does not move
                 Aim.sendRotation(ny, np);
                 lastYaw = yaw;
                 lastPitch = pitch;
@@ -381,12 +413,6 @@ public final class Combat {
         }
     }
 
-    /**
-     * A trigger bot that does not waste a hit. It strikes the moment the thing under your crosshair can be hit for full
-     * damage: the attack bar is full, and (if you want) you are falling so the hit is a critical one. A target that holds a
-     * shield up is hit with an axe from your hotbar. With "Aim at target" it also turns the server's view of you to a target
-     * that is in reach but not under the crosshair, so no swing is lost.
-     */
     public static final class AutoCombo extends Module {
         private final Targets.Pick who = Targets.pick(this::add, true, true, false);
         private final Setting.Num reach = add(new Setting.Num("Reach", "How far the target may be. Normal hits reach 3 blocks.", 3.0, 2.5, 6.0, 0.1, " blocks"));
@@ -461,15 +487,16 @@ public final class Combat {
         }
     }
 
-    /** Clicks for you while you hold the button. */
     public static final class AutoClicker extends Module {
         private final Setting.Choice mode = add(new Setting.Choice("Button", "Which button to click.", 0, "Left (attack)", "Right (use / place)", "Both"));
         private final Setting.Num cps = add(new Setting.Num("Clicks per second", "How fast to click.", 10, 1, 20, 1, ""));
         private final Setting.Bool jitter = add(new Setting.Bool("Randomise timing", "Vary the time between clicks a little, like a hand.", true));
+        private final Setting.Bool human = add(new Setting.Bool("Human pauses", "Take a short pause every few seconds, so the clicking is not perfectly continuous.", true));
         private final Setting.Bool hold = add(new Setting.Bool("Only while the button is held", "Off: it clicks all the time.", true));
         private final Random rng = new Random();
         private long nextLeft;
         private long nextRight;
+        private long nextBurst;
         private BlockPos breakingBlock;
 
         public AutoClicker() {
@@ -478,7 +505,15 @@ public final class Combat {
 
         private long delay() {
             double d = 1000.0 / cps.get();
-            if (jitter.on()) d *= 0.8 + rng.nextDouble() * 0.4;
+            if (jitter.on()) d *= 1.0 + Math.max(-0.18, Math.min(0.18, rng.nextGaussian() * 0.07));
+            if (human.on()) {
+                long now = System.currentTimeMillis();
+                if (nextBurst == 0) nextBurst = now + 1800 + rng.nextInt(2600);
+                if (now >= nextBurst) {
+                    nextBurst = now + 2200 + rng.nextInt(4200);
+                    d += 60 + rng.nextInt(140);
+                }
+            }
             return (long) d;
         }
 
@@ -522,21 +557,30 @@ public final class Combat {
         }
     }
 
-    /** Longer arms. */
     public static final class Reach extends Module {
         private final Setting.Num block = add(new Setting.Num("Block reach", "How far you can break and place blocks. Normal is 4.5. Servers usually refuse anything past about 5.5.", 5.5, 4.5, 14, 0.5, " blocks"));
         private final Setting.Num entity = add(new Setting.Num("Attack reach", "How far you can hit mobs. Normal is 3. Servers usually refuse anything past about 4.", 4, 3, 12, 0.5, " blocks"));
+        private final Setting.Bool safe = add(new Setting.Bool("Server-safe", "Cap the bonus at what ordinary server reach checks accept, so the module does not stand out. Off: use the full sliders, which most servers refuse.", true));
 
         public Reach() {
             super("reach", "Reach", "Break, place and hit from further away.", Category.COMBAT);
             block.onChange(this::apply);
             entity.onChange(this::apply);
+            safe.onChange(this::apply);
+        }
+
+        private double blockValue() {
+            return safe.on() ? Math.min(block.get(), 5.25) : block.get();
+        }
+
+        private double entityValue() {
+            return safe.on() ? Math.min(entity.get(), 3.35) : entity.get();
         }
 
         private void apply() {
             if (!enabled()) return;
-            Env.attribute("block_interaction_range", "reach_block", block.get() - 4.5, "add_value");
-            Env.attribute("entity_interaction_range", "reach_entity", entity.get() - 3.0, "add_value");
+            Env.attribute("block_interaction_range", "reach_block", blockValue() - 4.5, "add_value");
+            Env.attribute("entity_interaction_range", "reach_entity", entityValue() - 3.0, "add_value");
         }
 
         @Override
@@ -561,7 +605,6 @@ public final class Combat {
         }
     }
 
-    /** No knockback: the push the server sends when you are hit is ignored. */
     public static final class AntiKnockback extends Module {
         private static volatile boolean active;
 
@@ -569,7 +612,6 @@ public final class Combat {
             super("antiknockback", "Anti Knockback", "Ignore the push when you are hit.", Category.COMBAT);
         }
 
-        /** Asked by the packet mixin: true while hits should not move you. */
         public static boolean blocks() {
             return active;
         }

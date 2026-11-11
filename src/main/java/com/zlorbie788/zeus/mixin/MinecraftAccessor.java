@@ -4,7 +4,6 @@ import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 
-/** Gives Fast Place access to the game's cooldown between right clicks. */
 @Mixin(Minecraft.class)
 public interface MinecraftAccessor {
     @Accessor("rightClickDelay")

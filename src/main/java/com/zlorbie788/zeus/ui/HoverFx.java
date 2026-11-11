@@ -2,28 +2,14 @@ package com.zlorbie788.zeus.ui;
 
 import net.minecraft.client.gui.GuiGraphics;
 
-/**
- * What happens on the Zeus menu's buttons when the pointer reaches them, besides the lightning of {@link PlateFx}.
- *
- * <p><b>Stone plates</b>: a spring that lifts the plate with a small overshoot, a pale shine that sweeps across the plate
- * once as the pointer arrives (the letters flash white as it passes over them), a ripple that spreads from the point where
- * the pointer came in, embers that rise off the plate while it is lit, and a streak of light along its lower edge.
- *
- * <p><b>Round buttons</b>: a spring that makes the button jump up and settle, a ring that leaves it when the pointer
- * arrives, slower rings that keep leaving it, and a spark that circles its rim.
- *
- * <p>Everything is a function of time and the few numbers it is given, so no state is kept here.
- */
 final class HoverFx {
     private HoverFx() {}
 
     private static final int ICE = 0xFFDCE8FF;
     private static final int BLUE = 0xFF7CA4FF;
 
-    /** One step of a spring that is pulled towards {@code target}: returns the new position, velocity goes back in {@code vel[idx]}. */
     static float spring(float pos, float[] vel, int idx, float target, float dt) {
         float h = Math.min(dt, 0.033f);
-        // two half steps keep it stable when a frame is slow
         for (int k = 0; k < 2; k++) {
             vel[idx] += ((target - pos) * 230f - vel[idx] * 15f) * (h / 2f);
             pos += vel[idx] * (h / 2f);
@@ -35,12 +21,6 @@ final class HoverFx {
         return pos;
     }
 
-    // ---------------------------------------------------------------- plates
-
-    /**
-     * The shine: a slanted pale band that crosses the plate once. {@code p} is 0 to 1 (how far it has gone). Returns the left
-     * and right edge of the band in {@code out} (so the letters can be lit inside it), or false when it is not on the plate.
-     */
     static boolean shine(GuiGraphics g, int x, int y, int w, int h, float p, float u, float strength, int[] out) {
         if (p <= 0f || p >= 1f || strength <= 0.01f) return false;
         float e = p * p * (3f - 2f * p);
@@ -66,7 +46,6 @@ final class HoverFx {
         g.fill(Math.round(x0), y, Math.round(x1), y + 1, color);
     }
 
-    /** A ring that spreads from the point where the pointer came in; {@code p} is 0 to 1. */
     static void ripple(GuiGraphics g, int x, int y, int w, int h, float entryX, float p, float u, float strength) {
         if (p <= 0f || p >= 1f || strength <= 0.01f) return;
         float e = 1f - (1f - p) * (1f - p);
@@ -81,7 +60,6 @@ final class HoverFx {
         g.disableScissor();
     }
 
-    /** Embers that rise off the plate. */
     static void embers(GuiGraphics g, int x, int y, int w, int h, float t, float s, float u, int seed) {
         if (s <= 0.05f) return;
         int n = Perf.fast() ? 5 : 11;
@@ -104,7 +82,6 @@ final class HoverFx {
         }
     }
 
-    /** A line of light along the lower edge of the plate that grows out of the middle. */
     static void underline(GuiGraphics g, int x, int y, int w, int h, float s, float t) {
         if (s <= 0.03f) return;
         float k = (float) Math.pow(s, 0.6);
@@ -121,12 +98,6 @@ final class HoverFx {
         Lightning.bloom(g, cx, ly, Math.max(8f, half * 0.55f), 0xFF7C9CE0, 0.20f * s);
     }
 
-    // ---------------------------------------------------------------- round buttons
-
-    /**
-     * Rings that leave a round button: one big one when the pointer arrives ({@code since} is the time since, in seconds), then a
-     * slow soft one every second or so while it stays; and a spark that runs round the rim.
-     */
     static void roundFx(GuiGraphics g, float cx, float cy, float r, float t, float since, float s, float u) {
         if (s <= 0.04f) return;
         float p0 = since / 0.65f;
@@ -139,7 +110,6 @@ final class HoverFx {
             ring(g, cx, cy, r * (1.02f + 0.45f * ph), r * (1.02f + 0.45f * ph), 1f, Draw.rgba(0xFF9CBCFF, 0.32f * (1f - ph) * (1f - ph) * s), 40);
         }
         if (!Perf.fast() && !Anim.menuReady()) {
-            // the spark circles the rim with a tail behind it
             float ang = t * 5.6f;
             for (int i = 0; i < 9; i++) {
                 float a = ang - i * 0.085f;
@@ -156,7 +126,6 @@ final class HoverFx {
         }
     }
 
-    /** An outline of an ellipse made of short straight pieces. */
     static void ring(GuiGraphics g, float cx, float cy, float rx, float ry, float thick, int color, int segs) {
         if (Draw.a(color) < 3) return;
         float px = cx + rx;

@@ -2,11 +2,6 @@ package com.zlorbie788.zeus.ui;
 
 import net.minecraft.client.gui.GuiGraphics;
 
-/**
- * December on the menu: snow falls in three layers (fine, middle, big and soft) that sway a little as they come down, with a
- * cold tint over the picture. In a storm it becomes a blizzard: the snow falls faster and is blown hard to the left, and the
- * rain is left out. {@link UiSettings#SEASON} chooses: automatic (December only), always, or never.
- */
 final class MenuSnow {
     private MenuSnow() {}
 
@@ -16,7 +11,6 @@ final class MenuSnow {
     private static long checkedAt;
     private static boolean december;
 
-    /** True while it is the snow season by the calendar. */
     private static boolean season() {
         int mode = UiSettings.SEASON.index();
         if (mode == 2) return false;
@@ -29,7 +23,6 @@ final class MenuSnow {
         return december;
     }
 
-    /** How much snow there is, 0 to 1; it comes and goes smoothly. Call once a frame. */
     static float level() {
         return level;
     }
@@ -49,9 +42,9 @@ final class MenuSnow {
         int gs = Tex.guiScale();
         String[] names = {"far", "mid", "near"};
         float[] side = {0.70f, 0.95f, 1.30f};
-        float[] fall = {0.075f, 0.12f, 0.19f};     // screen heights per second
+        float[] fall = {0.075f, 0.12f, 0.19f};
         float[] alpha = {0.85f, 0.9f, 0.8f};
-        float wind = 0.012f + 0.30f * storm;        // screen heights per second, to the left
+        float wind = 0.012f + 0.30f * storm;
         float boost = 1f + 2.0f * storm;
         for (int i = 0; i < 3; i++) {
             int ts = Math.max(64, Math.round(height * side[i]));

@@ -11,21 +11,13 @@ import java.util.Map;
 import java.util.Set;
 import net.minecraft.client.gui.GuiGraphics;
 
-/**
- * The flat chunk marking of Anubis (GPL-3, credited in NOTICE): a translucent tile on the Y=63 plane for every flagged chunk,
- * a thin edge only round the outside of a group of joined chunks with softly rounded corners, a tile that grows in from the
- * middle of its group and shrinks away again, and a tracer to the middle of each separate area.
- *
- * <p>This class only holds the shapes and draws them. Which chunks are flagged is decided elsewhere.
- */
 public final class ChunkLook {
     private ChunkLook() {}
 
-    /** Normal find: translucent red. */
     public static final int FILL = 0x60FF0404;
-    /** A likely mined geode: translucent purple. */
+
     public static final int FILL_MINED = 0x60A64DFF;
-    /** The plane the tiles lie on. */
+
     public static final double PLANE = 63.0;
 
     private static final float GROW_S = 0.30f;
@@ -34,7 +26,6 @@ public final class ChunkLook {
     private static final int CORNER_STEPS = 4;
     private static final int MAX_CELLS_FILLED = 160;
 
-    /** The edge colour of a fill: alpha x 1.5 (at most 255) and the colour a little darker. */
     public static int edgeColor(int fill) {
         int a = Math.min(255, Math.round(((fill >>> 24) & 255) * 1.5f));
         int r = Math.round(((fill >> 16) & 255) * 0.77f);
@@ -43,7 +34,6 @@ public final class ChunkLook {
         return a << 24 | r << 16 | g << 8 | b;
     }
 
-    /** One group of chunks with everything needed to draw it. */
     public static final class Area {
         public final long id;
         final int sig;
@@ -52,7 +42,7 @@ public final class ChunkLook {
         final double cx;
         final double cz;
         final List<double[][]> loops = new ArrayList<>();
-        /** x, z of the middle of each separate (also diagonally joined) area. */
+
         public final List<double[]> centres = new ArrayList<>();
         long born;
         long died;
@@ -84,12 +74,10 @@ public final class ChunkLook {
             if (died == 0L) died = now;
         }
 
-        /** True once the shrinking is over and the area can be forgotten. */
         public boolean gone(long now) {
             return died != 0L && (now - died) / 1000f >= SHRINK_S;
         }
 
-        /** 0 to 1: how far the tile has grown. */
         public float scale(long now) {
             if (died != 0L) {
                 float t = Math.min(1f, Math.max(0f, (now - died) / 1000f / SHRINK_S));
@@ -134,7 +122,6 @@ public final class ChunkLook {
                 }
                 double mx = sx / part.size();
                 double mz = sz / part.size();
-                // the middle of an L or a ring can lie outside the area: move it into the nearest flagged chunk
                 if (!in.contains(cellKey((long) Math.floor(mx / 16.0), (long) Math.floor(mz / 16.0)))) {
                     double best = Double.MAX_VALUE;
                     for (long[] c : part) {
@@ -152,11 +139,9 @@ public final class ChunkLook {
             }
         }
 
-        /** The outside of the group, as closed lines; each corner is rounded off. */
         private void buildLoops() {
             Set<Long> in = new HashSet<>();
             for (long[] c : cells) in.add(cellKey(c[0], c[1]));
-            // directed edges, clockwise seen from above (x east, z south), keyed by their start corner
             Map<Long, List<long[]>> out = new HashMap<>();
             for (long[] c : cells) {
                 long x0 = c[0] * 16;
@@ -203,7 +188,6 @@ public final class ChunkLook {
             return e;
         }
 
-        /** Drops corners that lie on a straight line. */
         private static List<long[]> simplify(List<long[]> pts) {
             List<long[]> out = new ArrayList<>();
             int n = pts.size();
@@ -247,7 +231,6 @@ public final class ChunkLook {
         return h;
     }
 
-    /** The Area for these chunks: the old one if nothing changed, a fresh one (growing in) if it is new or changed shape. */
     public static Area area(Map<Long, Area> store, List<long[]> cells, int fill, long now) {
         if (cells.isEmpty()) return null;
         long id = Long.MAX_VALUE;
@@ -258,7 +241,6 @@ public final class ChunkLook {
         Area old = store.get(id);
         if (old != null && old.sig == signature(cells, fill) && !old.dying()) return old;
         Area a = new Area(id, new ArrayList<>(cells), fill, now);
-        // a group that only changed a little keeps its place instead of growing in from nothing again
         if (old != null && !old.dying()) a.born = old.born;
         store.put(id, a);
         return a;
@@ -267,7 +249,6 @@ public final class ChunkLook {
     private static final double[] POLY = new double[24];
     private static final float[] SCR = new float[16];
 
-    /** Draws the tiles and the edge of an area at the given grow state (0 to 1). */
     public static void draw(GuiGraphics g, Area a, float e, double y) {
         if (e <= 0.003f) return;
         int gs = Tex.guiScale();
@@ -283,7 +264,6 @@ public final class ChunkLook {
             if (filled >= MAX_CELLS_FILLED) break;
             double x0 = c[0] * 16;
             double z0 = c[1] * 16;
-            // the four corners, shrunk towards the middle of the group while it grows or shrinks
             double[] px = {x0, x0 + 16, x0 + 16, x0};
             double[] pz = {z0, z0, z0 + 16, z0 + 16};
             int n = 0;
@@ -311,7 +291,6 @@ public final class ChunkLook {
                 maxY = Math.max(maxY, tmp[1]);
             }
             if (!ok || maxX < 0 || maxY < 0 || minX > sw || minY > sh) continue;
-            // a very long thin sliver (the plane seen edge-on) adds nothing
             if (maxY - minY < 0.3f && maxX - minX < 0.3f) continue;
             for (int i = 1; i < n - 1; i++) {
                 Stroke.tri(g, SCR[0], SCR[1], SCR[i * 2], SCR[i * 2 + 1], SCR[(i + 1) * 2], SCR[(i + 1) * 2 + 1], fill);
@@ -332,7 +311,6 @@ public final class ChunkLook {
         }
     }
 
-    /** Cuts the polygon in POLY (n points) against the near plane. Returns the new count. */
     private static int clipNear(int n) {
         double near = 0.1;
         double[] out = new double[24];

@@ -9,10 +9,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/**
- * The game's "loading world" screen: Zeus draws the ring with the real percent (singleplayer) or the menu sky with the
- * logo (a server) in its place. Everything else the screen does (ticking, closing when the world is ready) is left alone.
- */
 @Mixin(LevelLoadingScreen.class)
 public abstract class LevelLoadingScreenMixin {
     @Inject(method = "render", at = @At("HEAD"), cancellable = true, require = 0)

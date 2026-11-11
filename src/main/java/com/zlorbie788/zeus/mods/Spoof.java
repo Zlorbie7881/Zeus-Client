@@ -14,16 +14,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-/**
- * Vanilla spoof: the client tells the server it is the ordinary game. The brand line that every client sends is rewritten
- * to "vanilla", and the channel list that mods announce (the thing a server reads to see Fabric, Fabric API or another mod
- * on the other side) is not sent at all.
- *
- * <p>It is deliberately narrow. It rewrites exactly one payload and drops exactly the channel-announcement payloads, and it
- * never touches anything the game needs to play: no chat, no movement, no container, no keep-alive. Nothing is ever
- * <i>added</i> to the stream, because a client that sends something vanilla never sends is easier to spot than one that says
- * "fabric". The panel shows what a server would see, so you can tell at a glance whether the spoof is doing its job.</p>
- */
 public final class Spoof extends Module {
     private final Setting.Bool brand = add(new Setting.Bool("Vanilla client brand", "Sends the ordinary game's brand instead of the loader's name. This is the single most obvious hint a server gets.", true));
     private final Setting.Text brandText = add(new Setting.Text("Brand the server sees", "What the server is told about your client. \"vanilla\" is what the unmodded game sends; anything else is a lie a staff member can compare with the real thing.", "vanilla", 24)).showIf(() -> this.brand.on());
@@ -61,10 +51,6 @@ public final class Spoof extends Module {
         return t.isEmpty() ? "vanilla" : t;
     }
 
-    /**
-     * Looks at one outgoing packet. Returns the packet to send: the same instance to leave it alone, a replacement, or
-     * null to drop it. Called from the packet hook.
-     */
     public static Packet<?> intercept(Packet<?> packet) {
         Spoof m = live;
         if (m == null || !m.enabled() || delivering) return packet;
@@ -90,7 +76,6 @@ public final class Spoof extends Module {
         return packet;
     }
 
-    /** True for the "here are the channels I know" announcements a modded client sends. */
     private static boolean announcement(CustomPacketPayload body) {
         Identifier id = idOf(body);
         if (id == null) return false;
@@ -113,7 +98,6 @@ public final class Spoof extends Module {
         }
     }
 
-    /** Sends a replacement packet exactly once, without letting this module (or the lag queue) see it again. */
     public static void deliver(Packet<?> packet) {
         var conn = Minecraft.getInstance().getConnection();
         if (conn == null) return;

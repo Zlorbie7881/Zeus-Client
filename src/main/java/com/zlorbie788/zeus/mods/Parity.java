@@ -41,14 +41,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 
-/**
- * Combat and utility modules added in 0.9.0.0: Triggerbot, W-Tap, Jump Reset, Shield Breaker,
- * Key Throw, Mace Swap, Air Stuck, Weather Notifier, Block Notifier, Coord Snapper, Chat Macros, Low Health Warning,
- * Nametags, Target ESP, Jump Circles, Custom Crosshair and the Region Map.
- *
- * <p>All of them work on your own side of the game: they read the world your game already has, press keys for you or
- * draw on your screen. None of them reads anything the server did not send to you.</p>
- */
 public final class Parity {
     private Parity() {}
 
@@ -58,9 +50,6 @@ public final class Parity {
         return mc.player != null && mc.level != null && mc.gameMode != null && mc.screen == null;
     }
 
-    // ================================================================== combat
-
-    /** Hits what is under the crosshair once the swing has charged, after a reaction delay. */
     public static final class Triggerbot extends Module {
         private final Targets.Pick who = Targets.pick(this::add, true, true, false);
         private final Setting.Num delay = add(new Setting.Num("Reaction delay", "How long the target must stay under the crosshair before the hit, like a human reaction.", 90, 0, 400, 10, " ms"));
@@ -111,7 +100,6 @@ public final class Parity {
         }
     }
 
-    /** Releases the sprint for a moment right after a sprinting hit so the next hit knocks back again. */
     public static final class WTap extends Module {
         private final Setting.Num ticks = add(new Setting.Num("Release time", "How many ticks the sprint stays off.", 1, 1, 4, 1, " ticks"));
         private final Setting.Num chance = add(new Setting.Num("Chance", "How often it taps.", 100, 10, 100, 5, " %"));
@@ -145,7 +133,6 @@ public final class Parity {
         }
     }
 
-    /** Jumps the tick knockback lands so you take less of it. */
     public static final class JumpReset extends Module {
         private final Setting.Num chance = add(new Setting.Num("Chance", "How often it jumps when you are hit.", 100, 10, 100, 5, " %"));
         private int lastHurt;
@@ -168,7 +155,6 @@ public final class Parity {
         }
     }
 
-    /** Swaps to an axe for a hit into a raised shield. */
     public static final class ShieldBreaker extends Module {
         private final Setting.Bool autoHit = add(new Setting.Bool("Hit for me", "Also make the hit after the swap.", false));
         private final Setting.Bool back = add(new Setting.Bool("Switch back", "Go back to the slot you had afterwards.", true));
@@ -207,7 +193,6 @@ public final class Parity {
         }
     }
 
-    /** Swaps to a mace while you fall onto something, so the smash hit lands with it. */
     public static final class MaceSwap extends Module {
         private final Targets.Pick who = Targets.pick(this::add, true, true, false);
         private final Setting.Num minFall = add(new Setting.Num("Fall at least", "Swap once you have fallen this far.", 1.5, 0.5, 8, 0.5, " blocks"));
@@ -242,7 +227,6 @@ public final class Parity {
         }
     }
 
-    /** Throws an ender pearl or a wind charge from your hotbar when switched on, then switches itself off. Put it on a key. */
     public static final class KeyThrow extends Module {
         private final Setting.Choice what = add(new Setting.Choice("Throw", "What to throw.", 0, "Ender pearl", "Wind charge"));
 
@@ -270,9 +254,6 @@ public final class Parity {
         }
     }
 
-    // ================================================================== movement
-
-    /** Holds you in place, even in the air. */
     public static final class AirStuck extends Module {
         public AirStuck() {
             super("airstuck", "Air Stuck", "Freezes you in place, even mid-air.", Category.MOVEMENT);
@@ -292,11 +273,6 @@ public final class Parity {
         }
     }
 
-    // ================================================================== tools
-
-    // ================================================================== visuals
-
-    /** Flashes the edges of the screen red when your health is low. */
     public static final class LowHealthWarning extends Module {
         private final Setting.Num below = add(new Setting.Num("Below", "The warning starts at this many hearts.", 6, 1, 19, 1, " hearts"));
         private final Setting.Num strength = add(new Setting.Num("Strength", "How strong the red edge is.", 70, 10, 100, 5, " %"));
@@ -328,7 +304,6 @@ public final class Parity {
         }
     }
 
-    /** Name tags with health, ping, distance and the item in the hand, drawn over every player in range. */
     public static final class Nametags extends Module {
         private final Setting.Num range = add(new Setting.Num("Range", "Furthest player that gets a tag.", 64, 8, 256, 8, " blocks"));
         private final Setting.Bool health = add(new Setting.Bool("Health", "Show the health.", true));
@@ -407,7 +382,6 @@ public final class Parity {
         }
     }
 
-    /** A ring around the entity you are fighting. */
     public static final class TargetEsp extends Module {
         private final Targets.Pick who = Targets.pick(this::add, true, true, false);
         private final Setting.Choice color = add(new Setting.Choice("Colour", "Automatic: green to red with the target's health.", 0, EspKit.COLOR_NAMES));
@@ -463,13 +437,11 @@ public final class Parity {
 
     private static volatile CustomCrosshair crosshair;
 
-    /** True when the vanilla crosshair should not be drawn (read by the Gui mixin). */
     public static boolean hideCrosshair() {
         CustomCrosshair c = crosshair;
         return c != null && c.enabled() && c.hideVanilla.on();
     }
 
-    /** A crosshair you design: cross, dot, circle or a mix, with a gap, thickness, colour and outline. */
     public static final class CustomCrosshair extends Module {
         private final Setting.Choice style = add(new Setting.Choice("Style", "The shape.", 0, "Cross", "Dot", "Circle", "Cross and dot"));
         private final Setting.Num size = add(new Setting.Num("Size", "Length of each arm.", 6, 1, 20, 1, " px"));
@@ -529,7 +501,6 @@ public final class Parity {
         }
     }
 
-    /** A small map of every DonutSMP Goliath with a dot for you. */
     public static final class RegionMap extends Module {
         private final Setting.Choice corner = Hud.corner(this, 3);
         private final Setting.Num cell = add(new Setting.Num("Cell size", "Pixels per grid square.", 4, 2, 8, 1, " px"));
@@ -595,8 +566,6 @@ public final class Parity {
         }
     }
 
-    /** Builds every module in this file, for the registry. */
-    /** Tells you when one of the blocks you care about shows up anywhere near you. */
     public static final class BlockNotifier extends Module {
         private final Setting.Text blocks = add(new Setting.Text("Blocks", "Block ids separated by commas, e.g. spawner, ancient_debris, beacon. A * at the start or end of a name matches more.", "spawner, trial_spawner, ancient_debris", 400));
         private final Setting.Num range = add(new Setting.Num("Range", "How far around you it looks.", 48, 16, 128, 8, " blocks"));
@@ -719,7 +688,6 @@ public final class Parity {
         }
     }
 
-    /** Copies the coordinates you are looking at, in whichever shape you paste them. */
     public static final class CoordSnapper extends Module {
         private final Setting.Choice format = add(new Setting.Choice("Format", "How the numbers are written.", 0, "x y z", "x, y, z", "/tp x y z", "x z"));
 
@@ -749,7 +717,6 @@ public final class Parity {
         }
     }
 
-    /** Sends one chat message or command on a key. */
     public static final class ChatMacro extends Module {
         private final Setting.Text message = add(new Setting.Text("Message", "What to send. Start with / for a command.", "", 256));
 

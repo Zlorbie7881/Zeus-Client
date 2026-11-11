@@ -7,7 +7,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/** While Freecam is on, your player sees the movement keys as released (the camera reads them instead). */
 @Mixin(KeyMapping.class)
 public abstract class KeyMappingMixin {
     @Inject(method = "isDown", at = @At("RETURN"), cancellable = true, require = 0)

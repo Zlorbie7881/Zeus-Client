@@ -17,7 +17,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Predicate;
 
-/** Modules that put blocks around you or a target: surround, traps, webs and hole filling. */
 public final class Defense {
     private Defense() {}
 
@@ -25,7 +24,6 @@ public final class Defense {
         return s.is(Items.OBSIDIAN) || s.is(Items.CRYING_OBSIDIAN);
     }
 
-    /** Any plain block that is safe to wall with. */
     static boolean wallBlock(ItemStack s) {
         if (!(s.getItem() instanceof BlockItem)) return false;
         String n = com.zlorbie788.zeus.core.Names.item(s);
@@ -35,7 +33,6 @@ public final class Defense {
         return true;
     }
 
-    /** Shared base: places a list of blocks each tick. */
     abstract static class Placer extends Module {
         final Setting.Choice block = add(new Setting.Choice("Block", "What to build with.", 0, "Obsidian", "Any plain block"));
         final Setting.Num perTick = add(new Setting.Num("Blocks per tick", "How many blocks can be placed in one tick.", 2, 1, 6, 1, ""));
@@ -52,7 +49,6 @@ public final class Defense {
             return block.index() == 0 ? Defense::obsidianOnly : Defense::wallBlock;
         }
 
-        /** The blocks that should exist, nearest-the-ground first. */
         abstract List<BlockPos> wanted(Minecraft mc);
 
         @Override
@@ -85,7 +81,6 @@ public final class Defense {
 
     private static final int[][] SIDES = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
 
-    /** Walls you in with obsidian at your feet. */
     public static final class Surround extends Placer {
         private final Setting.Bool floor = add(new Setting.Bool("Floor", "Also fill the block under you.", true));
         private final Setting.Bool diagonals = add(new Setting.Bool("Corners", "Also the four diagonal blocks, so crystals cannot be placed next to you.", false));
@@ -110,7 +105,6 @@ public final class Defense {
         }
     }
 
-    /** A box of obsidian around the nearest target. */
     public static final class AutoTrap extends Placer {
         private final Targets.Pick who = Targets.pick(this::add, true, true, false);
         private final Setting.Num range = add(new Setting.Num("Target range", "How far away a target is picked.", 5, 2, 8, 1, " blocks"));
@@ -135,7 +129,6 @@ public final class Defense {
         }
     }
 
-    /** Fills one-block holes near you (the safe spots people stand in) with obsidian. */
     public static final class HoleFiller extends Placer {
         private final Setting.Num range = add(new Setting.Num("Range", "How far around you holes are filled.", 4, 1, 5, 1, " blocks"));
         private final Setting.Bool nearEnemy = add(new Setting.Bool("Only near an enemy", "Fill holes only when a monster or player is close.", false));
@@ -169,7 +162,6 @@ public final class Defense {
         }
     }
 
-    /** A cobweb at the target's feet. */
     public static final class AutoWeb extends Module {
         private final Targets.Pick who = Targets.pick(this::add, true, true, false);
         private final Setting.Num range = add(new Setting.Num("Target range", "How far away a target is picked.", 5, 2, 8, 1, " blocks"));
@@ -194,7 +186,6 @@ public final class Defense {
         }
     }
 
-    /** A cobweb at your own feet. */
     public static final class SelfWeb extends Module {
         public SelfWeb() {
             super("selfweb", "Self Web", "Puts a cobweb at your feet, so nothing can run you down.", Category.COMBAT);
@@ -208,7 +199,6 @@ public final class Defense {
         }
     }
 
-    /** What a one-block hole looks like. 0 = not a hole, 1 = obsidian or mixed walls, 2 = all bedrock. */
     public static final class Hole {
         private Hole() {}
 

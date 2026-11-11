@@ -13,11 +13,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * What you use most. Three small lists kept with your settings: the modules you starred (favourites), the ones you switched
- * on most recently, and how many times you have switched each one on. They only ever live on your computer, in zeus.json.
- * The module lists use them for "Favourites", "Recently used" and the "Most used first" order.
- */
 public final class Usage {
     private Usage() {}
 
@@ -26,10 +21,6 @@ public final class Usage {
     public static final int SORT_NAME = 2;
     private static final int RECENT_MAX = 8;
 
-    /**
-     * The modules people reach for most, best guess first, used to order the list before you have a history of your own.
-     * Your own switch-on counts then take over, with this order breaking ties. The website uses the same order.
-     */
     public static final String[] POPULAR = {
             "flight", "speed", "xray", "fullbright", "esp", "freecam", "zoom", "nametags", "waypoints", "killaura",
             "autototem", "autoeat", "autotool", "nofall", "autosprint", "suspicious", "basefinder", "storageesp", "blockesp", "scaffold",
@@ -51,7 +42,6 @@ public final class Usage {
     private static final List<String> RECENT = new ArrayList<>();
     private static final Map<String, Integer> COUNT = new HashMap<>();
 
-    /** Where this module sits in the built-in order (0 is the most used); modules not in it come after all that are. */
     public static int rank(String id) {
         return RANK.getOrDefault(id, POPULAR.length + 1);
     }
@@ -69,7 +59,6 @@ public final class Usage {
         return FAVOURITES.size();
     }
 
-    /** Your starred modules, in the order you starred them. */
     public static List<Module> favourites() {
         List<Module> out = new ArrayList<>();
         for (String id : FAVOURITES) {
@@ -79,7 +68,6 @@ public final class Usage {
         return out;
     }
 
-    /** The modules you switched on most recently, newest first. */
     public static List<Module> recent() {
         List<Module> out = new ArrayList<>();
         for (String id : RECENT) {
@@ -93,7 +81,6 @@ public final class Usage {
         return COUNT.getOrDefault(m.id, 0);
     }
 
-    /** Called when you switch a module on. */
     public static void used(Module m) {
         if (!m.toggleable()) return;
         COUNT.merge(m.id, 1, Integer::sum);
@@ -103,12 +90,10 @@ public final class Usage {
         Zeus.markDirty();
     }
 
-    /** How much a module is wanted near the top: your own switch-ons first, the built-in order for the rest. */
     public static int score(Module m) {
         return Math.min(500, count(m)) * 1000 + Math.max(0, POPULAR.length + 2 - rank(m.id));
     }
 
-    /** A copy of {@code in} in the order the "Sort" setting asks for. */
     public static List<Module> sorted(List<Module> in, int mode) {
         if (mode == SORT_DEFAULT || in.size() < 2) return in;
         List<Module> out = new ArrayList<>(in);
@@ -119,8 +104,6 @@ public final class Usage {
         });
         return out;
     }
-
-    // ------------------------------------------------------------ saving
 
     public static void save(JsonObject root) {
         JsonObject o = new JsonObject();
@@ -156,7 +139,6 @@ public final class Usage {
                     try {
                         COUNT.put(e.getKey(), Math.max(0, e.getValue().getAsInt()));
                     } catch (RuntimeException ignored) {
-                        // one bad count should not lose the rest
                     }
                 }
             }

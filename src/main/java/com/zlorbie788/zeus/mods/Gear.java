@@ -26,11 +26,8 @@ import net.minecraft.world.phys.Vec3;
 import java.util.Random;
 import java.util.function.Predicate;
 
-/** Items, armor, food and tools: the modules that look after your inventory. */
 public final class Gear {
     private Gear() {}
-
-    // ------------------------------------------------------------------ armor ranking
 
     private static int tier(String n) {
         if (n.startsWith("netherite_")) return 6;
@@ -56,12 +53,10 @@ public final class Gear {
         if (s.isEmpty()) return 0;
         int t = tier(Names.item(s));
         if (t == 0) return 0;
-        // a nearly broken piece is worth less than a fresh one of the next tier down
         int dmg = s.isDamageableItem() ? Math.round(10f * s.getDamageValue() / Math.max(1, s.getMaxDamage())) : 0;
         return t * 12 - dmg;
     }
 
-    /** Puts the stack in an inventory slot onto an armor slot: pick up, put down, put the old piece back. */
     static void equipFrom(int invSlot, EquipmentSlot slot) {
         int from = Inv.menuSlot(invSlot);
         int to = Inv.armorMenuSlot(slot);
@@ -70,9 +65,6 @@ public final class Gear {
         Inv.click(from, 0, ClickType.PICKUP);
     }
 
-    // ------------------------------------------------------------------ Auto Totem
-
-    /** Keeps a totem (or something else) in your offhand. */
     public static final class AutoTotem extends Module {
         private final Setting.Choice item = add(new Setting.Choice("Offhand item", "What sits in your offhand when your health is fine.", 0, "Totem", "Golden apple", "End crystal", "Shield"));
         private final Setting.Num health = add(new Setting.Num("Totem below", "When your health (hearts x 2) falls to this, the totem goes in whatever the setting above says.", 10, 0, 20, 1, ""));
@@ -115,9 +107,6 @@ public final class Gear {
         }
     }
 
-    // ------------------------------------------------------------------ Auto Armor
-
-    /** Wears the best armor you carry. */
     public static final class AutoArmor extends Module {
         private final Setting.Num delay = add(new Setting.Num("Delay", "Ticks between two swaps.", 3, 0, 20, 1, " ticks"));
         private final Setting.Bool elytra = add(new Setting.Bool("Keep elytra", "Do not replace an elytra with a chestplate.", true));
@@ -158,7 +147,6 @@ public final class Gear {
         }
     }
 
-    /** Swaps between an elytra and a chestplate once. */
     public static final class ChestSwap extends Module {
         public ChestSwap() {
             super("chestswap", "Chest Swap", "Swaps your chestplate and elytra, once, when you switch it on. Put it on a key.", Category.PLAYER);
@@ -184,9 +172,6 @@ public final class Gear {
         }
     }
 
-    // ------------------------------------------------------------------ tools
-
-    /** Picks the fastest tool in your hotbar when you start to mine. */
     public static final class AutoTool extends Module {
         private final Setting.Bool restore = add(new Setting.Bool("Switch back", "Go back to the slot you had when you stop mining.", true));
         private int previous = -1;
@@ -222,7 +207,6 @@ public final class Gear {
         }
     }
 
-    /** Picks the best weapon when you swing at something. */
     public static final class AutoWeapon extends Module {
         private final Setting.Choice prefer = add(new Setting.Choice("Prefer", "Swords are faster, axes hit harder.", 0, "Sword", "Axe"));
         private final Setting.Bool restore = add(new Setting.Bool("Switch back", "Go back to the slot you had afterwards.", true));
@@ -268,8 +252,6 @@ public final class Gear {
         }
     }
 
-    // ------------------------------------------------------------------ eating
-
     private static boolean goodFood(ItemStack s) {
         if (!s.has(DataComponents.FOOD)) return false;
         String n = Names.item(s);
@@ -279,7 +261,6 @@ public final class Gear {
         return !n.equals("chicken");
     }
 
-    /** Eats when you are hungry or hurt. */
     public static final class AutoEat extends Module {
         private final Setting.Num hunger = add(new Setting.Num("Eat when food is below", "Food level (of 20) that makes you eat.", 14, 1, 19, 1, ""));
         private final Setting.Bool gapples = add(new Setting.Bool("Golden apples when hurt", "Eat a golden apple when your health is low.", true));
@@ -349,9 +330,6 @@ public final class Gear {
         }
     }
 
-    // ------------------------------------------------------------------ small helpers
-
-    /** Clicks Respawn for you. */
     public static final class AutoRespawn extends Module {
         public AutoRespawn() {
             super("autorespawn", "Auto Respawn", "Respawns at once when you die.", Category.PLAYER);
@@ -366,7 +344,6 @@ public final class Gear {
         }
     }
 
-    /** Throws experience bottles at your feet to repair your armor. */
     public static final class ExpThrower extends Module {
         private final Setting.Num delay = add(new Setting.Num("Delay", "Ticks between two bottles.", 2, 0, 20, 1, " ticks"));
         private final Setting.Bool onlyDamaged = add(new Setting.Bool("Only when armor is damaged", "Stops when nothing you wear needs mending.", true));
@@ -409,7 +386,7 @@ public final class Gear {
             if (slot < 0 && !Inv.offhand(Inv.is(Items.EXPERIENCE_BOTTLE))) return;
             mc.player.setXRot(90f);
             aimed++;
-            if (aimed < 3) return; // the game must have been told where you look before the first throw
+            if (aimed < 3) return;
             if (cd > 0) {
                 cd--;
                 return;
@@ -423,7 +400,6 @@ public final class Gear {
         }
     }
 
-    /** Casts and reels in for you. */
     public static final class AutoFish extends Module {
         private final Setting.Num recast = add(new Setting.Num("Recast delay", "Ticks to wait before casting again.", 15, 5, 60, 1, " ticks"));
         private int castTicks;
@@ -486,7 +462,6 @@ public final class Gear {
         }
     }
 
-    /** Moves a little now and then so the game never thinks you are away. */
     public static final class AntiAfk extends Module {
         private final Random rng = new Random();
         private int next = 60;
@@ -507,7 +482,6 @@ public final class Gear {
         }
     }
 
-    /** Removes blindness and darkness. */
     public static final class NoStatusEffects extends Module {
         public NoStatusEffects() {
             super("nostatus", "No Bad Effects", "Removes the blindness and darkness effects from your screen.", Category.PLAYER);
@@ -521,9 +495,6 @@ public final class Gear {
         }
     }
 
-    // ------------------------------------------------------------------ bows
-
-    /** Shoots arrows in rapid fire. */
     public static final class BowSpam extends Module {
         private final Setting.Num charge = add(new Setting.Num("Charge", "Ticks to draw the bow before the arrow is released. 20 is a full draw.", 4, 3, 20, 1, " ticks"));
 
@@ -543,7 +514,6 @@ public final class Gear {
         }
     }
 
-    /** Aims the bow at the nearest target while you draw it. */
     public static final class BowAimbot extends Module {
         private final Targets.Pick who = Targets.pick(this::add, true, true, false);
         private final Setting.Num range = add(new Setting.Num("Range", "How far away a target is picked.", 40, 10, 100, 5, " blocks"));
@@ -574,7 +544,6 @@ public final class Gear {
             double dz = aim.z - eye.z;
             double dy = aim.y - eye.y;
             float yaw = (float) (Math.toDegrees(Math.atan2(dz, dx)) - 90.0);
-            // find the pitch whose arrow path passes closest to the target
             double bestErr = Double.MAX_VALUE;
             float bestPitch = mc.player.getXRot();
             double horiz = Math.sqrt(dx * dx + dz * dz);
@@ -603,7 +572,6 @@ public final class Gear {
         }
     }
 
-    /** Makes everything easier to hit. */
     public static final class Hitboxes extends Module {
         private static volatile Hitboxes self;
         private final Setting.Num size = add(new Setting.Num("Extra size", "How much bigger things are to hit, in blocks.", 0.3, 0.05, 1.5, 0.05, ""));
@@ -615,7 +583,6 @@ public final class Gear {
             self = this;
         }
 
-        /** Called by the mixin: how many blocks to add around an entity when aiming at it. */
         public static float extra(Entity e) {
             Hitboxes h = self;
             if (h == null || !h.enabled() || e == Minecraft.getInstance().player || !(e instanceof LivingEntity)) return 0f;

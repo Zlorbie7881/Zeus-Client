@@ -35,12 +35,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
 
-/**
- * Staff Live: tells you when streamers you follow (by default DonutSMP staff) go live on YouTube or TikTok. A background
- * thread asks the public live page of each channel once a minute (or as often as you set) and compares the answer with the
- * last one. When a channel turns live you get a message, a chime and a box with the stream title while it lasts. It reads
- * public web pages only and uses no account of yours.
- */
 public final class StaffLive extends Module {
     private static final String BROWSER = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
     private static final Pattern HANDLE = Pattern.compile("^@?([A-Za-z0-9._-]{2,40})$");
@@ -166,7 +160,6 @@ public final class StaffLive extends Module {
         return platform == 0 ? youtubeList : platform == 1 ? tiktokList : twitchList;
     }
 
-    /** The platform and name in what was typed: a page address gives both, a plain name uses the chosen platform. */
     private Channel typed() {
         String raw = addName.get().trim();
         if (raw.isEmpty()) return null;
@@ -225,8 +218,6 @@ public final class StaffLive extends Module {
     private boolean typedFromLink() {
         return PAGE_URL.matcher(addName.get()).find();
     }
-
-    // ------------------------------------------------------------------ the worker
 
     private void run() {
         long next = 0;
@@ -330,7 +321,6 @@ public final class StaffLive extends Module {
                 char[] buf = new char[16384];
                 int n;
                 while ((n = in.read(buf)) > 0 && page.length() < MAX_PAGE) page.append(buf, 0, n);
-                // a channel that is live carries a broadcast event in the page's data; an offline one does not
                 boolean live = page.indexOf("\"isLiveBroadcast\":true") >= 0;
                 if (!live) return OFFLINE;
                 Matcher t = Pattern.compile("<meta property=\"og:description\" content=\"([^\"]*)\"").matcher(page);
@@ -359,8 +349,6 @@ public final class StaffLive extends Module {
         news.add(who + " is live on " + platform + (s.title() == null ? "" : ": " + s.title()) + "  " + link);
     }
 
-    // ------------------------------------------------------------------ on the game thread
-
     @Override
     protected void onTick(Minecraft mc) {
         String line;
@@ -371,7 +359,6 @@ public final class StaffLive extends Module {
                 try {
                     mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.PLAYER_LEVELUP, 1.2f, 0.6f));
                 } catch (Throwable ignored) {
-                    // a missing sound must never break the module
                 }
             }
         }

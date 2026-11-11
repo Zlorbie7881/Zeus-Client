@@ -18,23 +18,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * The "Discoveries" card: what a finder has found around you, shown like a short field report. A title and how long ago it
- * was first seen, what kind of find it is, a count of clues, the things in it as small item slots with their numbers, a line
- * per category, and a reminder that loaded objects are not proof of a base. It only reads what your own game has: block
- * types, item frames and armor stands that are loaded, and the contents of containers <i>you opened yourself</i> (the server
- * never sends the inside of a chest you have not opened, so nothing else can be shown).
- */
 public final class Discoveries {
     private Discoveries() {}
 
-    /** One slot in the card. */
     public record Slot(Item item, int count, int color) {}
 
-    /** One line of the category list. */
     public record Cat(String label, int count, int color) {}
 
-    /** Everything the card shows. */
     public static final class Card {
         public String kind = "";
         public String line = "";
@@ -57,14 +47,12 @@ public final class Discoveries {
         return 10 + 14 + 14 + 14 + (rows > 0 ? rows * 28 + 4 : 0) + (catRows > 0 ? catRows * 14 + 4 : 0) + 14 + 6;
     }
 
-    /** Draws the card with its top-left corner at x, y. */
     public static void draw(GuiGraphics g, int x, int y, Card c, float a) {
         int h = height(c);
         Hud.panelFade(g, x, y, W, h, a);
         Draw.rrectLine(g, x, y, W, h, Hud.round(4), Draw.rgba(c.accent, 0.55f * a));
         int px = x + 10;
         int py = y + 10;
-        // header: an accent bar, the title, and how long ago it was first seen
         g.fill(px, py, px + 3, py + 11, Draw.rgba(c.accent, a));
         Draw.bold(g, "ZEUS / DISCOVERIES", px + 8, py + 2, Draw.rgba(0xFFE9F1FF, a));
         if (!c.age.isEmpty()) Draw.textRight(g, c.age, x + W - 10, py + 2, Draw.rgba(c.accent, a));
@@ -73,7 +61,6 @@ public final class Discoveries {
         py += 15;
         Draw.text(g, Draw.fit(c.line, W - 20), px, py, Draw.rgba(0xFFE9F1FF, a));
         py += 16;
-        // item slots, six to a row
         int n = Math.min(c.slots.size(), 12);
         for (int i = 0; i < n; i++) {
             Slot s = c.slots.get(i);
@@ -84,14 +71,12 @@ public final class Discoveries {
             try {
                 g.renderItem(new ItemStack(s.item(), Math.max(1, s.count())), sx + 5, sy + 4);
             } catch (RuntimeException ignored) {
-                // a slot without a picture is still a slot
             }
             String num = Integer.toString(s.count());
             Draw.textShadow(g, num, sx + 24 - Draw.width(num), sy + 15, Draw.rgba(0xFFFFFFFF, a));
             g.fill(sx + 3, sy + 24, sx + 23, sy + 25, Draw.rgba(s.color(), 0.95f * a));
         }
         if (n > 0) py += ((n + 5) / 6) * 28 + 4;
-        // categories, two to a row
         for (int i = 0; i < c.cats.size(); i++) {
             Cat cat = c.cats.get(i);
             int cx = px + (i % 2) * 92;
@@ -103,7 +88,6 @@ public final class Discoveries {
         Draw.text(g, Draw.fit(c.foot, W - 20), px, py + 2, Draw.rgba(Accent.DIM, a));
     }
 
-    /** "58m", "12s", "2h". */
     public static String age(long ms) {
         long s = Math.max(0, ms / 1000);
         if (s < 60) return s + "s";
@@ -111,14 +95,10 @@ public final class Discoveries {
         return (s / 3600) + "h";
     }
 
-    // ------------------------------------------------------------------ what you have opened
-
-    /** What was inside the containers you opened: block position to item counts. */
     private static final Map<Long, Map<Item, Integer>> OPENED = new HashMap<>();
     private static long pendingPos = Long.MIN_VALUE;
     private static int lastMenu = -1;
 
-    /** Call every tick: remembers what is in a chest when you open it. */
     public static void tick(Minecraft mc) {
         if (mc.player == null) return;
         if (mc.screen == null) {
@@ -137,14 +117,12 @@ public final class Discoveries {
             if (st == null || st.isEmpty()) continue;
             items.merge(st.getItem(), st.getCount(), Integer::sum);
         }
-        // a chest, barrel or shulker box has at least nine slots of its own; a crafting table or a furnace does not count
         if (outside < 9) return;
         if (OPENED.size() > 400) OPENED.clear();
         OPENED.put(pendingPos, items);
         lastMenu = menu.containerId;
     }
 
-    /** The remembered contents of the container at a position, or null if it was never opened. */
     public static Map<Item, Integer> opened(BlockPos p) {
         return OPENED.get(p.asLong());
     }
