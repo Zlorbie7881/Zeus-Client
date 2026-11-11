@@ -16,12 +16,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-/**
- * Conservative tunnel-mining helper for digging straight tunnels.
- * It clears a one-wide, two-high passage in the direction the player is facing.
- * It stops at fluids, block entities, unbreakable
- * blocks, missing floor support, screens, or a collision obstruction.
- */
 public final class TunnelMiner extends Module {
     private final Setting.Bool autoAdvance = add(new Setting.Bool(
             "Auto advance", "Walk forward through the cleared tunnel. Turn it off to mine while standing still.", false));
@@ -98,7 +92,6 @@ public final class TunnelMiner extends Module {
             }
             if (player.getEyePosition().distanceTo(Vec3.atCenterOf(pos)) > reach.get()) continue;
             if (mineCooldown == 0) {
-                // the same hold-to-break the game uses, so a server sees real digging
                 mc.gameMode.startDestroyBlock(pos, Direction.UP);
                 mc.gameMode.continueDestroyBlock(pos, Direction.UP);
                 if (mc.level.getBlockState(pos).isAir()) broken++;

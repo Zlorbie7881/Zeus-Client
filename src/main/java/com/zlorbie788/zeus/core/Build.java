@@ -14,7 +14,6 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.function.Predicate;
 
-/** Placing blocks and using items on blocks, the way a player does with a right click. */
 public final class Build {
     private Build() {}
 
@@ -36,13 +35,11 @@ public final class Build {
         return state(p).isAir();
     }
 
-    /** Something solid you could stand on or place against. */
     public static boolean solid(BlockPos p) {
         BlockState s = state(p);
         return !s.isAir() && !s.canBeReplaced() && !s.getCollisionShape(mc().level, p).isEmpty();
     }
 
-    /** A living thing or a placed object is in the way (dropped items do not count). */
     public static boolean blocked(BlockPos p) {
         for (Entity e : mc().level.getEntities((Entity) null, new AABB(p))) {
             if (e instanceof ItemEntity || !e.isAlive() || e.isSpectator()) continue;
@@ -59,12 +56,10 @@ public final class Build {
         return eye().distanceTo(Vec3.atCenterOf(p));
     }
 
-    /** A click on the top face of a block. */
     public static BlockHitResult top(BlockPos base) {
         return new BlockHitResult(new Vec3(base.getX() + 0.5, base.getY() + 1.0, base.getZ() + 0.5), Direction.UP, base, false);
     }
 
-    /** Finds a neighbour of {@code pos} to click on so that the block lands on {@code pos}. Null when there is none in reach. */
     public static BlockHitResult against(BlockPos pos, double reach) {
         BlockHitResult best = null;
         double bestD = Double.MAX_VALUE;
@@ -81,12 +76,10 @@ public final class Build {
         return best;
     }
 
-    /** True when something could be placed at pos right now (free, in reach, with something to click on). */
     public static boolean canPlace(BlockPos pos, double reach) {
         return replaceable(pos) && !blocked(pos) && against(pos, reach) != null;
     }
 
-    /** Uses the item on a block: the hand is the offhand when it holds the item, otherwise the hotbar slot is selected for a moment. */
     public static boolean useOn(BlockHitResult hit, Predicate<ItemStack> item, boolean swing) {
         Minecraft mc = mc();
         if (mc.gameMode == null || mc.player == null) return false;
@@ -103,7 +96,6 @@ public final class Build {
         });
     }
 
-    /** Places the held item on pos. */
     public static boolean place(BlockPos pos, Predicate<ItemStack> item, boolean swing, double reach) {
         if (!replaceable(pos) || blocked(pos)) return false;
         BlockHitResult hit = against(pos, reach);

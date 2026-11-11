@@ -2,17 +2,12 @@ package com.zlorbie788.zeus.ui;
 
 import net.minecraft.client.gui.GuiGraphics;
 
-/**
- * Small thunders used all over the interface: crawling along the edge of a button or card, circling a logo, leaping off a
- * switch. They are drawn fresh every frame from a time slot, so each one lives a fraction of a second and then jumps elsewhere.
- */
 public final class Thunder {
     private Thunder() {}
 
     private static final int BLUE = 0xFF5C9CFF;
     private static final int DEEP = 0xFF2A5CFF;
 
-    /** Small jagged bolts that flicker around a circle. */
     static void ring(GuiGraphics g, float cx, float cy, float r, float t, float alpha, float k) {
         if (UiSettings.CALM.on() || Perf.fast()) return;
         if (Anim.menuReady()) {
@@ -32,7 +27,6 @@ public final class Thunder {
         }
     }
 
-    /** Where a point {@code p} along the outline of a rectangle is, and which way is outward there. */
     private static float[] onOutline(float x, float y, float w, float h, float p) {
         float per = 2f * (w + h);
         p = ((p % per) + per) % per;
@@ -45,10 +39,6 @@ public final class Thunder {
         return new float[] {x, y + h - p, -1f, 0f};
     }
 
-    /**
-     * An energy arc that flows along the top and the bottom edge of a rectangle, with a soft blue edge so the shape always reads.
-     * The animation was rendered offline and is only played here ({@link Anim}). {@code strength} is 0 to 1.
-     */
     static void outline(GuiGraphics g, int x, int y, int w, int h, float t, float strength, float k, float density) {
         if (strength <= 0.01f) return;
         int edge = Draw.rgba(0xFF8EB8FF, 0.30f * strength);
@@ -61,7 +51,6 @@ public final class Thunder {
         Anim.arc(g, x + inset, y + h, aw, ah, t, 0.45f, BLUE, 0xFFDCEBFF, strength * 0.9f);
     }
 
-    /** A burst of bolts from a point, for when something switches on. {@code p} runs 0 to 1 over the burst. */
     static void burst(GuiGraphics g, float cx, float cy, float reach, float p, float k) {
         if (p <= 0f || p >= 1f || UiSettings.CALM.on()) return;
         Anim.burst(g, cx, cy, Math.round(reach * 2.4f), p, BLUE, 0xFFE6F1FF, 1f);

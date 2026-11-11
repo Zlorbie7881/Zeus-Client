@@ -20,14 +20,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/**
- * Counts one thing per chunk across the chunks you have loaded, so you can walk a straight line instead of a spiral.
- *
- * <p>Ore is not spread out evenly: it comes in veins, and the vein you are standing over tells you nothing about the chunk
- * next to it. This keeps a tally for every chunk in range and lists the best ones with a direction and a distance, which is
- * the difference between mining for an hour and mining where the ore actually is. It reads only chunk data your client has
- * already received, on a small time budget, so it never asks the server for anything.</p>
- */
 public final class ChunkScanner extends Module {
     private static final String[] WHAT = {"Diamond ore", "Ancient debris", "Emerald ore", "Gold ore", "Iron ore", "Coal ore", "Amethyst cluster", "Spawner", "Chest", "Shulker box"};
 
@@ -81,7 +73,6 @@ public final class ChunkScanner extends Module {
     private static boolean matches(BlockState state, Block wanted) {
         Block block = state.getBlock();
         if (block == wanted) return true;
-        // deepslate variants count for the ore they hold
         String want;
         String have;
         try {

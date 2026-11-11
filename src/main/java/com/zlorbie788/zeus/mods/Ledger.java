@@ -21,10 +21,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.LongPredicate;
 
-/**
- * Remembers the bases it has found, per server, and compares what is there now with what was there before. That is how it
- * can tell a base that was raided: the chests, beds and valuable blocks it saw last time are gone.
- */
 public final class Ledger {
     private Ledger() {}
 
@@ -47,7 +43,6 @@ public final class Ledger {
     private static boolean dirty;
     private static long dirtyAt;
 
-    // key positions are packed into one long: x (26 bits), z (26 bits), y (12 bits)
     public static long pack(int x, int y, int z) {
         return ((x & 0x3FFFFFFL) << 38) | ((z & 0x3FFFFFFL) << 12) | ((y + 2048) & 0xFFFL);
     }
@@ -145,13 +140,8 @@ public final class Ledger {
         return DATA.computeIfAbsent(server, k -> new ArrayList<>());
     }
 
-    /** The result of looking at a base now. */
     public record Seen(Entry entry, boolean isNew) {}
 
-    /**
-     * The base this server already has recorded closest to a point, or null when nothing was found that close. Used to
-     * keep "found a base" reports to places a finder really did find, rather than to every chest on the map.
-     */
     public static Entry near(String server, double x, double z, double maxDist) {
         Entry best = null;
         double bd = maxDist * maxDist;
@@ -165,13 +155,6 @@ public final class Ledger {
         return best;
     }
 
-    /**
-     * Records a base and judges whether it was raided.
-     *
-     * @param keysNow the key blocks (storage, beds, valuables, workstations) found in the base now
-     * @param scanned tells whether the chunk that holds a saved position is loaded and was looked at, because a block in an unloaded chunk is not "gone"
-     * @param weakRaid a single-look hint (fire, scattered dropped items) used only when there is nothing saved to compare with
-     */
     public static Seen observe(String server, double x, double z, String type, int conf, Set<Long> keysNow, LongPredicate scanned, boolean weakRaid) {
         List<Entry> list = list(server);
         long now = System.currentTimeMillis();
@@ -211,7 +194,6 @@ public final class Ledger {
                 e.status = "Looted";
                 e.detail = gone + " of " + comparable.size() + " storage / valuable blocks are gone";
             } else if (!"Raided".equals(e.status) || frac == 0 && comparable.size() >= 4 && keysNow.size() >= comparable.size()) {
-                // everything it saw before is still there (a rebuilt base clears an old raid mark)
                 e.status = "Intact";
                 e.detail = "";
                 e.lastIntact = now;
@@ -220,7 +202,6 @@ public final class Ledger {
             e.status = weakRaid ? "Possibly raided" : "Intact";
             e.detail = weakRaid ? "fire or scattered items, nothing saved to compare with" : "";
         }
-        // remember new key blocks, but never forget the ones that vanished while the base is marked raided
         if (e.status.equals("Intact")) {
             Set<Long> merged = new HashSet<>();
             for (long k : e.keys) if (!scanned.test(k) || keysNow.contains(k)) merged.add(k);

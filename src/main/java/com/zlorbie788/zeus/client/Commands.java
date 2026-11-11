@@ -22,7 +22,6 @@ import java.util.Locale;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.argument;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.literal;
 
-/** /zeus: opens the panel, and switches modules from the chat box. */
 public final class Commands {
     private Commands() {}
 
@@ -44,7 +43,6 @@ public final class Commands {
         mc.gui.getChat().addMessage(Component.literal("[Zeus] ").withStyle(ChatFormatting.AQUA).append(Component.literal(text).withStyle(ChatFormatting.WHITE)));
     }
 
-    /** A setting's value as plain text, or null for settings that have no value to print (buttons, secrets). */
     private static String valueOf(com.zlorbie788.zeus.core.Setting s) {
         if (s instanceof com.zlorbie788.zeus.core.Setting.Bool b) return b.on() ? "on" : "off";
         if (s instanceof com.zlorbie788.zeus.core.Setting.Num n) return n.text();
@@ -171,7 +169,6 @@ public final class Commands {
                     }
                     return 1;
                 })))
-                // keyboard-first access: find a module and read its settings without opening the panel
                 .then(literal("find").then(argument("text", StringArgumentType.greedyString()).executes(c -> {
                     String q = StringArgumentType.getString(c, "text").trim().toLowerCase(Locale.ROOT);
                     int n = 0;

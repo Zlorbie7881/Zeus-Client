@@ -14,12 +14,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/**
- * The game's start screen (the Mojang logo with the line under it, shown while the game loads its resources). Zeus draws its
- * own ring with the real percent in its place. Everything the screen does besides drawing is repeated here exactly as the
- * game does it (when the fade starts, when the screen removes itself), so loading finishes the same way; if anything
- * here fails, the game's own drawing runs instead.
- */
 @Mixin(LoadingOverlay.class)
 public abstract class LoadingOverlayMixin {
     @Shadow @Final private Minecraft minecraft;
@@ -51,7 +45,6 @@ public abstract class LoadingOverlayMixin {
             }
             float actual = this.reload.getActualProgress();
             boolean done = this.reload.isDone();
-            // draw first: if Zeus cannot, the game's own drawing goes ahead untouched
             if (under) {
                 if (this.minecraft.screen != null) this.minecraft.screen.renderWithTooltipAndSubtitles(g, mouseX, mouseY, partialTick);
                 else this.minecraft.gui.renderDeferredSubtitles();
@@ -62,7 +55,6 @@ public abstract class LoadingOverlayMixin {
             if (out >= 2.0F) this.minecraft.setOverlay(null);
             ci.cancel();
         } catch (RuntimeException | LinkageError e) {
-            // leave the game's own drawing in place
         }
     }
 }

@@ -28,34 +28,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Amethyst ESP: marks amethyst geodes even where a server has hidden the blocks themselves.
- *
- * <p>The three ways of finding a geode are kept as they are in the original module this was ported from, which is
- * published under the GNU General Public License version 3 and credited in the root {@code NOTICE}. That notice is the
- * only place the project is named; the game, the panel and this website never mention it.</p>
- *
- * <ul>
- *   <li><b>Bypass</b> — a hidden chunk section still carries the list of block kinds it holds, so a section whose list
- *       names an amethyst bud has a geode in it even when every block in it was sent as stone. The marker is the
- *       visible air pocket next to amethyst block or budding amethyst, or the middle of the section when the inside of
- *       the geode was hidden too.</li>
- *   <li><b>Light</b> — the light a server sends is not hidden, so an air cell whose block light is exactly what a
- *       crystal gives off, that touches the geode's own blocks and fades evenly into the cells around it, is a crystal
- *       the server did not send.</li>
- *   <li><b>ANBS+ Scan</b> — the same idea at the heights geodes spawn, looking for dark cells with one lit opening, and
- *       only marking a chunk once enough of them agree.</li>
- * </ul>
- *
- * <p>Only the drawing changed: boxes go through Zeus's {@link EspKit} (so they have the same style, tracers, tags and
- * fade as every other ESP) instead of immediate-mode quads, and the packet hooks became the finders' usual rescan
- * cycle, so nothing here needs a mixin. It reads blocks and light the game already has and sends nothing.</p>
- */
 public final class AmethystBypass extends Module {
     private static final String BYPASS = "Bypass";
     private static final String LIGHT = "Light";
     private static final String GLOW = "ANBS+ Scan";
-    /** The colour the original module draws its boxes in. */
+
     private static final int PINK = 0xFFC882FF;
     private static final long SCAN_NANOS = 1_600_000L;
     private static final int MAX_GLOW_MARKS = 200;
@@ -72,7 +49,6 @@ public final class AmethystBypass extends Module {
             "Name and distance on the nearest finds.", true));
     private final EspKit kit;
 
-    /** Chunk key to the packed positions to draw. */
     private final Map<Long, long[]> hits = new HashMap<>();
     private final Map<Long, Long> scannedAt = new HashMap<>();
     private final GlowScan glow = new GlowScan();
@@ -110,8 +86,6 @@ public final class AmethystBypass extends Module {
     protected void onDisable() {
         reset();
     }
-
-    // ------------------------------------------------------------------ the scan
 
     @Override
     protected void onTick(Minecraft mc) {
@@ -156,12 +130,6 @@ public final class AmethystBypass extends Module {
         hits.put(key(cx, cz), packed);
     }
 
-    // ------------------------------------------------------------------ Bypass
-
-    /**
-     * The Bypass method: the block list of a section still names the amethyst it holds after the blocks themselves were
-     * hidden, so the first such section in a chunk is where the geode is.
-     */
     private static BlockPos bypassMarker(LevelChunk chunk) {
         LevelChunkSection[] sections = chunk.getSections();
         int minSectionY = chunk.getMinSectionY();
@@ -170,16 +138,11 @@ public final class AmethystBypass extends Module {
             if (sec == null || !sec.getStates().maybeHas(AmethystBypass::isBud)) continue;
             int baseY = (minSectionY + i) * 16;
             BlockPos marker = pickMarker(chunk, sec, baseY);
-            // the inside of the geode was hidden as well: the middle of the section is the best that can be said
             return marker != null ? marker : new BlockPos(chunk.getPos().x << 4, baseY + 8, chunk.getPos().z << 4);
         }
         return null;
     }
 
-    /**
-     * The air pocket the block list points at: the cell next to amethyst block or budding amethyst with the lowest
-     * scatter value, so the marker stays on the same cell from one scan to the next instead of wandering.
-     */
     private static BlockPos pickMarker(LevelChunk chunk, LevelChunkSection sec, int baseY) {
         ChunkPos cp = chunk.getPos();
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
@@ -216,7 +179,6 @@ public final class AmethystBypass extends Module {
         return best;
     }
 
-    /** A stable pseudo-random value for a position, used to pick one cell out of thousands. */
     static int scatter(int x, int y, int z) {
         long h = (long) x * -7046029254386353131L ^ (long) y * -4417276706812531889L ^ (long) z * 1609587929392839161L;
         h ^= h >>> 29;
@@ -225,9 +187,6 @@ public final class AmethystBypass extends Module {
         return Math.floorMod(h, 100);
     }
 
-    // ------------------------------------------------------------------ Light
-
-    /** The Light method: cells whose block light is exactly a crystal's own glow, next to the geode's blocks. */
     private static void lightScan(ClientLevel level, LevelChunk chunk, List<Long> out) {
         LevelChunkSection[] sections = chunk.getSections();
         int minSectionY = chunk.getMinSectionY();
@@ -250,7 +209,6 @@ public final class AmethystBypass extends Module {
                         int value = light.get(wx, wy, wz);
                         int brightest = light.brightestAround(wx, wy, wz);
                         if (value == 0) {
-                            // dark cell with a lit neighbour: the opening of a geode whose crystal was not sent
                             if ((brightest != 4 && brightest != 3) || !isOpen(state)) continue;
                             if (!touchesLining(level, cursor, wx, wy, wz) || !litOpening(level, light, cursor, wx, wy, wz, brightest)) continue;
                         } else {
@@ -265,11 +223,6 @@ public final class AmethystBypass extends Module {
         }
     }
 
-    /**
-     * The block light of a 3x3 chunk area as the server sent it. Layers are fetched the first time they are asked for
-     * and kept for the rest of this chunk's scan, and a section with no data reads as 0 — the same convention as the
-     * original, where an unlit cell and an unsent one are both "dark".
-     */
     private static final class LightCache {
         private final LayerLightEventListener listener;
         private final int chunkX;
@@ -319,7 +272,6 @@ public final class AmethystBypass extends Module {
             return Math.max(best, get(x, y, z - 1));
         }
 
-        /** True when this section and the ones that touch it have no light data at all, so there is nothing to find. */
         boolean quiet(int sectionIndex) {
             int section = sectionIndex + 1;
             return layer(0, 0, section) == null && layer(0, 0, section - 1) == null && layer(0, 0, section + 1) == null
@@ -355,12 +307,6 @@ public final class AmethystBypass extends Module {
         return false;
     }
 
-    // ------------------------------------------------------------------ ANBS+ Scan
-
-    /**
-     * The ANBS+ method: at the heights geodes spawn, a dark cell whose only neighbour light is one lit opening is the
-     * inside of a geode the server did not send. A chunk is only marked once enough of those cells agree.
-     */
     private static final class GlowScan {
         private static final int MIN_Y = -58;
         private static final int MAX_Y = 30;
@@ -373,7 +319,6 @@ public final class AmethystBypass extends Module {
         private int chunkX;
         private int chunkZ;
 
-        /** Marks the cells of this chunk and returns how many were found. */
         int scan(ClientLevel level, LevelChunk chunk, List<Long> out) {
             this.chunkX = chunk.getPos().x;
             this.chunkZ = chunk.getPos().z;
@@ -460,15 +405,11 @@ public final class AmethystBypass extends Module {
             return ((dx + 1) * 3 + dz + 1) * CACHED + s;
         }
 
-        /** Air or the cluster growing into it: a passage, as this method counts them (water is not). */
         private static boolean open(BlockState state) {
             return state.isAir() || state.is(Blocks.AMETHYST_CLUSTER);
         }
     }
 
-    // ------------------------------------------------------------------ the blocks a geode is made of
-
-    /** True for the blocks that line the inside of a geode. */
     private static boolean isLining(BlockState state) {
         return state.is(Blocks.AMETHYST_BLOCK) || state.is(Blocks.BUDDING_AMETHYST);
     }
@@ -478,17 +419,13 @@ public final class AmethystBypass extends Module {
         return b == Blocks.SMALL_AMETHYST_BUD || b == Blocks.MEDIUM_AMETHYST_BUD || b == Blocks.LARGE_AMETHYST_BUD;
     }
 
-    /** Air, or the cluster that grows into it, which does not block a passage. */
     private static boolean isOpen(BlockState state) {
         return state.isAir() || state.is(Blocks.AMETHYST_CLUSTER) || state.is(Blocks.WATER);
     }
 
-    /** The block light a growing amethyst gives off. */
     private static boolean isGrowthLight(int light) {
         return light == 1 || light == 2 || light == 4 || light == 5;
     }
-
-    // ------------------------------------------------------------------ drawing
 
     @Override
     public String info() {

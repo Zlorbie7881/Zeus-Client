@@ -141,7 +141,7 @@ Zeus cannot make a server do something it does not allow. This is how each kind 
 **Removed because they cannot work on your side:** God Mode, Water Breathing, Fire Resistance, Haste, Damage Boost, World Control (time and weather on the server), and the old Quick Actions (game mode, heal, teleport, clear items). The server owns all of those.
 
 ### About being "detected"
-Zeus does not hide anything. On a server with an anticheat, many of these modules will be noticed and can get you kicked or banned, and most servers forbid them in their rules. I did not build anything to disguise Zeus from an anticheat. Use it where it is allowed (your own worlds, your own server, servers that say yes). The one exception is a tiny convenience in singleplayer: while a module keeps you in the air, Zeus dips you a tenth of a block every second or so, so the game's own "Flying is not enabled on this server" check does not kick you out of your own world. It does nothing on a multiplayer server.
+Zeus does not hide anything. On a server with an anticheat, many of these modules will be noticed and can get you kicked or banned, and most servers forbid them in their rules. Nothing here is designed to disguise Zeus from an anticheat. Use it where it is allowed (your own worlds, your own server, servers that say yes). The one exception is a tiny convenience in singleplayer: while a module keeps you in the air, Zeus dips you a tenth of a block every second or so, so the game's own "Flying is not enabled on this server" check does not kick you out of your own world. It does nothing on a multiplayer server.
 
 ---
 
@@ -241,11 +241,11 @@ The jar is `build/libs/zeus-0.9.9.0.jar` (see "Setup, step by step" above). Sett
 
 ---
 
-## Honest limits
+## Known limits
 
-- **Zeus 0.9.9.0 has not been run in a real Minecraft.** It was checked against stand-in classes and logic tests only, so a wrong class or method name for 1.21.11 can still stop your Gradle build or make a mixin skip itself. Tell me what you see and I will fix it.
-- **The website helper is not an AI.** It is a search engine over this site's own content plus rules for common question shapes. It answers what is written down (modules, settings, FAQ, commands, timeline) and says so when it cannot find something. It cannot browse, run code or answer general knowledge. The "thinking" is an animation, not computation time.
-- **References are credited from what I know was used.** Meteor Client is listed for the base mod style as you asked; Fabric, Litematica, the fonts and DonutSMP are listed for what they are used for. Correct the list in `site.json` (website) and `ZeusCreditsScreen.java` (in-game) if it is wrong. The root `NOTICE` file still carries the licence attribution that parts of Zeus require.
+- **Zeus 0.9.9.0 has not been run in a real Minecraft.** It was checked against stand-in classes and logic tests only, so a wrong class or method name for 1.21.11 can still stop the Gradle build or make a mixin skip itself. The Gradle output and the client log identify which class or hook is affected.
+- **The website helper searches the site's own content.** It answers what is written down (modules, settings, FAQ, commands, timeline) and says so when it cannot find something; it cannot browse, run code or answer general knowledge.
+- **References are credited by the part each one plays.** Meteor Client is listed for the base mod style; Fabric, Litematica, the fonts and DonutSMP are listed for what they are used for. Correct the list in `site.json` (website) and `ZeusCreditsScreen.java` (in-game) if it is wrong. The root `NOTICE` file carries the licence attribution that parts of Zeus require.
 - **The estimated base area is a search area, not a location.** It comes from the Goliath grid cell, which is inferred from coordinates (not a server shard id) and can go stale if the server changes its map. Exact coordinates appear only when the player's body is loaded by your client.
 - **Staff detection only reads what the server sends.** Ranks, markers and team prefixes are matched against tab text and teams; a server that hides or renames them, or a vanished staff member the server never reports, will not show. A match is a confidence, not proof. The "watching" alert relies on game-mode packets the server chooses to send.
 
@@ -253,8 +253,8 @@ The jar is `build/libs/zeus-0.9.9.0.jar` (see "Setup, step by step" above). Sett
 - **Cave ESP shows open space, not "caves" as the game defines them.** A large room you dug yourself looks like a cave too. Chunks your game has not loaded are not scanned.
 
 - **Mixins that miss are skipped silently.** Anti Knockback, Hitboxes, X-Ray, the glow outline, Morph and Weather Changer use small mixins. If a name is wrong the mixin is skipped and that module does nothing instead of crashing.
-- **Weather Changer and Time Changer use the game's client-side time and weather values.** 1.21.11 changed how the clock works, so if the sky does not follow, tell me what you see.
-- **X-Ray removes blocks from the chunk meshes through a mixin**, one on the game's chunk view and one on Sodium's / Embeddium's. I have not seen it run in a real game. The Status box on the X-Ray card tells you what happened; if it says the hook did not run, send me that text and the game log. Fullbright and X-Ray ore lighting now use a light hook (with night vision as an optional second method).
+- **Weather Changer and Time Changer use the game's client-side time and weather values.** 1.21.11 changed how the clock works, so if the sky does not follow, the client-side value was not applied.
+- **X-Ray removes blocks from the chunk meshes through a mixin**, one on the game's chunk view and one on Sodium's / Embeddium's. The Status box on the X-Ray card reports what happened, and the game log records a hook that did not run. Fullbright and X-Ray ore lighting use a light hook (with night vision as an optional second method).
 - **The title-screen swap is a mixin on the game's screen switch** (with a per-tick check as a backup). If both fail you simply get the normal title screen. The menu does not have the game's language and accessibility buttons or Realms.
 - **The intro film is 1024 x 576** (16:9, 40 frames a second, 200 pictures in `intro/`). A sharper film gives a sharper intro.
 - **Screen sizes:** the panel and menu are drawn for 16:9. Other shapes work, and very small windows (GUI scale 4 on a small screen) are cramped.

@@ -30,17 +30,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Finds chunks that look built by someone. Every loaded chunk is scored by the blocks that almost never occur on their
- * own (storage, workstations, redstone, lights, metal blocks, glass, concrete and so on) plus item frames, armor stands and
- * minecarts with chests. Naturally generated structures (villages, mineshafts, strongholds, bastions and the like) are
- * recognised from their signature blocks, named, and left out of the red list unless there are clear signs of a base
- * inside them. Neighbouring flagged chunks are merged into one find with a centre, a size, a depth and a direction.
- */
 public class SuspiciousChunks extends Module {
     private static final String[] GROUPS = {"storage", "workstations", "redstone", "lighting", "metal blocks", "building"};
     private static final String[] STRUCTS = {"Mineshaft", "Stronghold", "Bastion", "Nether fortress", "Ancient city", "End city", "Ocean monument", "Trial chambers", "Village", "Temple", "Mansion", "Dungeon"};
-    /** How many marker points a chunk needs to count as that structure. */
+
     private static final int[] STRUCT_MIN = {18, 12, 24, 30, 5, 12, 24, 8, 16, 14, 70, 9};
     private static final String[] DIRS = {"E", "SE", "S", "SW", "W", "NW", "N", "NE"};
 
@@ -79,12 +72,10 @@ public class SuspiciousChunks extends Module {
     private final Setting.Info geodeList;
     private final Setting.Action rescan;
 
-    /** {weight * 10, group, structure + 1 (0 = none), marker weight, tell (1/0)} per block. */
     private static final ConcurrentHashMap<Block, int[]> WEIGHT = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<Block, String> GROWTH_KIND = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<Block, Integer> GEODE_KIND = new ConcurrentHashMap<>();
 
-    /** The score of one chunk. */
     private static final class Score {
         double total;
         double tell;
@@ -113,17 +104,16 @@ public class SuspiciousChunks extends Module {
         int grownPlants;
         int youngPlants;
         int growthKinds;
-        /** Under-grown plants in this chunk (see Clearance): proof nobody has been here. */
+
         int owed;
         int owedKinds;
-        /** How many of the 8 chunks around it are untouched too. */
+
         int clearRing;
         int tunnelRuns;
         int verticalShafts;
         BaseBrain.Verdict verdict;
     }
 
-    /** Several flagged chunks that touch each other. */
     private static final class Find {
         double cx;
         double cz;
@@ -148,7 +138,7 @@ public class SuspiciousChunks extends Module {
     private final Map<Long, GeodeHint> geodeHints = new HashMap<>();
     private final Map<Long, Double> entScore = new HashMap<>();
     private final Map<Long, Integer> itemCount = new HashMap<>();
-    /** Per chunk: ender pearls, name-tagged mobs, villagers, the biggest herd of one kind. */
+
     private final Map<Long, int[]> clueMap = new HashMap<>();
     private boolean hub;
     private long lastLearn;
@@ -156,7 +146,7 @@ public class SuspiciousChunks extends Module {
     private final Set<Long> announced = new HashSet<>();
     private List<Find> finds = new ArrayList<>();
     private List<long[]> queue = new ArrayList<>();
-    /** Next scan candidate. Avoids ArrayList.remove(0), which shifts the whole queue for every chunk. */
+
     private int queueIndex;
     private int tick;
 
@@ -164,12 +154,10 @@ public class SuspiciousChunks extends Module {
         this("suspicious", "Suspicious Chunks", "Finds chunks that look built by someone: bases, farms, hidden rooms. Names natural structures.", 2, 1);
     }
 
-    /** {@code level} is the starting sensitivity (0 low, 1 medium, 2 high) and {@code smallest} the smallest find in chunks. */
     protected SuspiciousChunks(String id, String name, String desc, int level, int smallest) {
         this(id, name, desc, level, smallest, 0);
     }
 
-    /** Variant constructor lets focused scanners choose a default vertical region. */
     protected SuspiciousChunks(String id, String name, String desc, int level, int smallest, int defaultWhere) {
         super(id, name, desc, Category.SCANNER);
         light();
@@ -231,7 +219,6 @@ public class SuspiciousChunks extends Module {
                 String.format(Locale.ROOT, "Cut-off on this server: %+.1f points.", b));
     }
 
-    /** The user says whether the nearest find is a base. */
     private void answer(boolean isBase) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || finds.isEmpty()) {
@@ -257,7 +244,6 @@ public class SuspiciousChunks extends Module {
 
     private final Set<Long> activeAnnounced = new HashSet<>();
 
-    /** Separate exploration clue: likely harvested geodes are never counted as player bases. */
     private record GeodeHint(int shell, int budding, int crystals, int exposedBudding) {}
 
     private void waypointFinds() {
@@ -338,7 +324,6 @@ public class SuspiciousChunks extends Module {
         reset();
     }
 
-    /** How many blocks that no natural structure places (chests, hoppers, concrete...) a flagged chunk must hold. */
     private int minStrong() {
         return switch (sensitivity.index()) {
             case 0 -> 6;
@@ -347,7 +332,6 @@ public class SuspiciousChunks extends Module {
         };
     }
 
-    /** A chunk that is not flagged but showed some evidence of a player. */
     private boolean isMaybe(Score s) {
         return maybe.on() && !s.flagged && s.verdict != null && s.verdict.confidence >= 20 && (s.structure < 0 || natural.index() == 2);
     }
@@ -369,7 +353,6 @@ public class SuspiciousChunks extends Module {
         return out;
     }
 
-    /** Why the chunk under you is or is not flagged. The first thing to read when a base is not found. */
     private List<String> here() {
         List<String> out = new ArrayList<>();
         Minecraft mc = Minecraft.getInstance();
@@ -409,8 +392,6 @@ public class SuspiciousChunks extends Module {
         };
     }
 
-    // ------------------------------------------------------------------ the weights
-
     private static int[] weigh(Block b) {
         int[] w = WEIGHT.get(b);
         if (w == null) {
@@ -429,11 +410,6 @@ public class SuspiciousChunks extends Module {
         return w;
     }
 
-    /**
-     * How much a block says "a player was here": 2 for blocks that no natural structure places (or places only in a way the
-     * structure check handles), 1 for ordinary workstations and lights, 0 for everything that villages, ruins, mineshafts
-     * and the Nether also have. Blocks of strength 0 and 1 can only add a little to a chunk that already has strong ones.
-     */
     static int strength(String p) {
         if (p.isEmpty()) return 0;
         if (isTell(p)) return 2;
@@ -453,7 +429,6 @@ public class SuspiciousChunks extends Module {
         return 0;
     }
 
-    /** What a block means to the judge: a bed, a container, a light and so on (see {@link BaseBrain}). */
     static int roleOf(String p) {
         if (p.isEmpty()) return 0;
         if (p.endsWith("_bed")) return BaseBrain.R_BED;
@@ -477,7 +452,6 @@ public class SuspiciousChunks extends Module {
 
     private static final ConcurrentHashMap<String, Integer> FOOT = new ConcurrentHashMap<>();
 
-    /** The kind of a player-made block ("door", "planks", "glass"...), 1 to 62, or 0 for blocks nature makes. Every colour of a thing is one kind. */
     static int footOf(String p) {
         if (p.isEmpty()) return 0;
         String k;
@@ -525,7 +499,6 @@ public class SuspiciousChunks extends Module {
         return FOOT.computeIfAbsent(k, x -> Math.min(62, FOOT.size() + 1));
     }
 
-    /** {structure + 1, points} for blocks that give a natural structure away. */
     static int[] markerOf(String p) {
         switch (p) {
             case "rail", "cobweb": return new int[] {1, 1};
@@ -550,7 +523,6 @@ public class SuspiciousChunks extends Module {
         return new int[] {0, 0};
     }
 
-    /** Blocks that nature and generated structures do not place, so finding them is a strong sign of a player. */
     static boolean isTell(String p) {
         return p.endsWith("_concrete") || p.endsWith("glazed_terracotta") || p.endsWith("stained_glass") || p.endsWith("stained_glass_pane")
                 || p.equals("beacon") || p.equals("netherite_block") || p.equals("diamond_block") || p.equals("emerald_block")
@@ -566,10 +538,8 @@ public class SuspiciousChunks extends Module {
 
     static int[] weighPath(String p) {
         if (p.isEmpty()) return new int[] {0, 0};
-        // storage
         if (p.equals("ender_chest")) return new int[] {60, 0};
         if (p.contains("chest") || p.endsWith("shulker_box") || p.equals("barrel")) return new int[] {40, 0};
-        // things only a player puts down
         switch (p) {
             case "lodestone", "respawn_anchor", "conduit", "jukebox", "crafter", "beehive", "copper_bulb", "calibrated_sculk_sensor":
                 return new int[] {50, 1};
@@ -582,7 +552,6 @@ public class SuspiciousChunks extends Module {
             default:
                 break;
         }
-        // workstations
         switch (p) {
             case "enchanting_table", "brewing_stand":
                 return new int[] {60, 1};
@@ -592,7 +561,6 @@ public class SuspiciousChunks extends Module {
             default:
                 break;
         }
-        // redstone
         switch (p) {
             case "hopper", "dispenser", "dropper", "repeater", "comparator", "daylight_detector", "redstone_block", "tnt":
                 return new int[] {50, 2};
@@ -603,7 +571,6 @@ public class SuspiciousChunks extends Module {
             default:
                 break;
         }
-        // lighting
         switch (p) {
             case "sea_lantern", "end_rod":
                 return new int[] {40, 3};
@@ -614,7 +581,6 @@ public class SuspiciousChunks extends Module {
             default:
                 break;
         }
-        // metal and gem blocks
         switch (p) {
             case "beacon", "netherite_block":
                 return new int[] {300, 4};
@@ -625,7 +591,6 @@ public class SuspiciousChunks extends Module {
             default:
                 break;
         }
-        // building
         if (p.equals("glass") || p.endsWith("_glass") || p.endsWith("glass_pane") || p.equals("tinted_glass")) return new int[] {25, 5};
         if (p.endsWith("_concrete")) return new int[] {30, 5};
         if (p.endsWith("glazed_terracotta")) return new int[] {40, 5};
@@ -643,8 +608,6 @@ public class SuspiciousChunks extends Module {
         return new int[] {0, 0};
     }
 
-    // ------------------------------------------------------------------ the scan
-
     private static long key(int cx, int cz) {
         return ((long) cx << 32) | (cz & 0xFFFFFFFFL);
     }
@@ -659,8 +622,6 @@ public class SuspiciousChunks extends Module {
 
     @Override
     protected void onTick(Minecraft mc) {
-        // Multiplayer scanning is opt-in and reads only chunks already loaded by the client.
-        // No packet tricks, chunk requests, or access to server-side/unloaded world data are used.
         if (!Env.local() && !scanMultiplayer.on()) return;
         if (mc.level == null || mc.player == null) return;
         int pcx = mc.player.getBlockX() >> 4;
@@ -676,7 +637,6 @@ public class SuspiciousChunks extends Module {
             for (int dx = -rc; dx <= rc; dx++) {
                 for (int dz = -rc; dz <= rc; dz++) {
                     Score s = chunks.get(key(pcx + dx, pcz + dz));
-                    // the area around you is checked again now and then, because you build and dig
                     long age = now - (s == null ? 0 : s.at);
                     long max = Math.abs(dx) <= 3 && Math.abs(dz) <= 3 ? 8000 : 90000;
                     if (s == null || age > max) queue.add(new long[] {dx * dx + dz * dz, pcx + dx, pcz + dz});
@@ -710,7 +670,6 @@ public class SuspiciousChunks extends Module {
         }
     }
 
-    /** Focused scanners can add terrain-shape evidence without changing the general base scanner. */
     protected boolean useTunnelGeometry() {
         return false;
     }
@@ -731,12 +690,6 @@ public class SuspiciousChunks extends Module {
         return state != null && !state.isAir() && state.getFluidState().isEmpty();
     }
 
-    /**
-     * The terrain-shape part of the suspicious-chunk approach. It looks for
-     * enclosed, two-block-high horizontal passages and narrow vertical shafts in the
-     * already-loaded chunk. Geometry is only supporting evidence: caves alone never
-     * become a base, and no neighbouring/unloaded chunk is requested.
-     */
     private static int[] tunnelGeometry(LevelChunk chunk, int cx, int cz, int surface) {
         LevelChunkSection[] sections = chunk.getSections();
         int minSectionY = chunk.getMinSectionY();
@@ -748,11 +701,9 @@ public class SuspiciousChunks extends Module {
         int runs = 0;
         int shafts = 0;
 
-        // Sample every second Y level to keep the scan bounded while covering deep tunnels.
         for (int y = bottom; y <= top; y += 2) {
             for (int z = 1; z < 15; z++) {
                 for (int x = 1; x < 15; x++) {
-                    // A three-cell horizontal passage, with floor, roof and side walls.
                     if (x <= 12 && air(sections, minSectionY, x, y, z) && air(sections, minSectionY, x, y + 1, z)
                             && air(sections, minSectionY, x + 1, y, z) && air(sections, minSectionY, x + 1, y + 1, z)
                             && air(sections, minSectionY, x + 2, y, z) && air(sections, minSectionY, x + 2, y + 1, z)
@@ -769,7 +720,6 @@ public class SuspiciousChunks extends Module {
                             && solidDry(sections, minSectionY, x + 1, y, z + 1) && solidDry(sections, minSectionY, x + 1, y + 1, z + 1)) {
                         runs++;
                     }
-                    // A narrow, enclosed vertical shaft (three or more air blocks).
                     if (air(sections, minSectionY, x, y, z) && air(sections, minSectionY, x, y + 1, z) && air(sections, minSectionY, x, y + 2, z)
                             && solidDry(sections, minSectionY, x - 1, y + 1, z) && solidDry(sections, minSectionY, x + 1, y + 1, z)
                             && solidDry(sections, minSectionY, x, y + 1, z - 1) && solidDry(sections, minSectionY, x, y + 1, z + 1)) {
@@ -789,10 +739,6 @@ public class SuspiciousChunks extends Module {
         };
     }
 
-    /**
-     * Returns -1 for non-crops, 0 for an immature crop and 1 for a mature crop.
-     * This deliberately remains a weak signal: natural farms and villages are common.
-     */
     private static String growthKind(Block block) {
         return GROWTH_KIND.computeIfAbsent(block, b -> {
             String path;
@@ -823,7 +769,6 @@ public class SuspiciousChunks extends Module {
         return -1;
     }
 
-    /** 1=shell, 2=budding amethyst, 3=bud/cluster, 4=amethyst block. */
     private static int geodeKind(Block block) {
         return GEODE_KIND.computeIfAbsent(block, b -> {
             String path;
@@ -842,7 +787,6 @@ public class SuspiciousChunks extends Module {
         int open = 0;
         for (Direction direction : Direction.values()) {
             BlockPos neighbour = pos.relative(direction);
-            // Stay inside this already-loaded chunk; do not request neighbouring chunks just to score a clue.
             if ((neighbour.getX() >> 4) != cx || (neighbour.getZ() >> 4) != cz) continue;
             if (mc.level.getBlockState(neighbour).isAir()) open++;
         }
@@ -972,32 +916,24 @@ public class SuspiciousChunks extends Module {
         } else {
             geodeHints.remove(chunkKey);
         }
-        // ordinary blocks (planks, stairs, torches...) only add a little to a chunk that already holds blocks a player placed
         s.total = s.strong + Math.min(s.mid, s.strong + 6) + Math.min(s.weak, s.strong * 0.5 + 3);
-        // growth-pattern clue: mature crop diversity supports an existing build signal,
-        // but is capped and cannot independently make a farm look like a hidden base.
         if (growthEvidence.on() && s.strongCount > 0 && s.grownPlants > 0) {
             double growth = Math.min(5.0, s.grownPlants * 0.12 + s.youngPlants * 0.015);
             if (s.growthKinds >= 3) growth *= 1.2;
             s.total += growth;
         }
-        // Tunnel geometry is a low-weight corroborating signal, never a standalone base detector.
-        // Require existing player evidence (for example storage, lighting or distinctive blocks).
         if (useTunnelGeometry() && (s.strongCount > 0 || s.tell > 0 || s.roles[BaseBrain.R_LIGHT] > 0)) {
             s.total += Math.min(8.0, s.tunnelRuns * 0.35 + s.verticalShafts * 0.9);
         }
-        // a chunk that is only one kind of thing (a field of lanterns) is less telling than one that mixes several kinds
         int kinds = 0;
         for (double g : s.groups) if (g >= 3) kinds++;
         double adjusted = s.total * (kinds >= 3 ? 1.25 : kinds == 2 ? 1.0 : 0.7);
-        // a small, dense build in one spot is more telling than the same amount spread out
         if (s.total > 0 && bestSection / s.total > 0.6 && s.total > threshold() * 0.4) adjusted *= 1.25;
         s.total = adjusted;
         s.underground = allW <= 0 ? 0 : surf == Integer.MIN_VALUE ? 0.3 : underW / allW;
         if (s.strongCount == 0) s.total = Math.min(s.total, 8);
         double bestRatio = 0;
         for (int i = 0; i < STRUCTS.length; i++) {
-            // mineshafts, strongholds, ancient cities, trial chambers and dungeons are underground: fences or rails on the surface are a player's
             boolean undergroundOnly = i == 0 || i == 1 || i == 4 || i == 7 || i == 11;
             if (undergroundOnly && surf != Integer.MIN_VALUE && s.under[i] < s.markers[i] * 0.6) continue;
             double ratio = s.markers[i] / (double) STRUCT_MIN[i];
@@ -1066,7 +1002,7 @@ public class SuspiciousChunks extends Module {
             s.verdict = BaseBrain.judge(ft, hubMode, nether);
             if (s.structure < 0 || mode == 2) ev.put(en.getKey(), Math.max(0, s.verdict.evidence - 0.5));
         }
-        if (hubMode) return; // in a hub every neighbour looks built; that proves nothing
+        if (hubMode) return;
         for (Map.Entry<Long, Score> en : chunks.entrySet()) {
             long k = en.getKey();
             double sum = 0;
@@ -1080,7 +1016,6 @@ public class SuspiciousChunks extends Module {
         }
     }
 
-    /** Everything Zeus knows about the best chunks, as text, to paste into a message when something is not found. */
     private void copyReport() {
         Minecraft mc = Minecraft.getInstance();
         StringBuilder b = new StringBuilder();
@@ -1106,7 +1041,6 @@ public class SuspiciousChunks extends Module {
         }
     }
 
-    /** The finds of this session as {x, z, score, chunks}. Read-only, for the local website's map. */
     public static java.util.List<double[]> findsNow() {
         SuspiciousChunks m = com.zlorbie788.zeus.core.Zeus.get(SuspiciousChunks.class);
         if (m == null) return java.util.List.of();
@@ -1115,20 +1049,17 @@ public class SuspiciousChunks extends Module {
         return out;
     }
 
-    /** Decides which chunks are flagged and merges neighbours into finds. */
     private void rebuild(Minecraft mc) {
         int mode = natural.index();
         boolean nether = Brain.ctx().dim.equals("nether");
-        // 1. judge every chunk on its own, then let the chunks around it vouch for it
         for (Map.Entry<Long, Score> en : chunks.entrySet()) {
             Score s = en.getValue();
             s.ents = entScore.getOrDefault(en.getKey(), 0.0);
             s.items = itemCount.getOrDefault(en.getKey(), 0);
             s.clues = clueMap.get(en.getKey());
-            if (s.structure == 0) s.ents = 0; // minecarts in a mineshaft are normal
+            if (s.structure == 0) s.ents = 0;
         }
         judgeAll(mode, false, nether);
-        // 2. how crowded with builds is this area? a spawn or a hub would flag half of itself
         double learned = Brain.learning() ? Brain.baseline().crowding : 0.08;
         int cut = BaseBrain.cutoff(sensitivity.index(), learned);
         String fbServer = Brain.ctx().server;
@@ -1144,7 +1075,6 @@ public class SuspiciousChunks extends Module {
             Brain.baseline().add(crowding);
             Brain.learned();
         }
-        // 2b. the opposite evidence: a chunk nobody ticked, sitting inside a ring of chunks nobody ticked
         if (clearance.on() && mc.player != null && !hub) {
             int pcx = mc.player.getBlockX() >> 4;
             int pcz = mc.player.getBlockZ() >> 4;
@@ -1153,7 +1083,6 @@ public class SuspiciousChunks extends Module {
                 if (s.verdict == null || s.owed > 0) continue;
                 int cx = kx(en.getKey());
                 int cz = kz(en.getKey());
-                // right around you every chunk ticks, so a hole there means nothing
                 if (Math.abs(cx - pcx) <= 4 && Math.abs(cz - pcz) <= 4) continue;
                 int ring = 0;
                 int kinds = 0;
@@ -1191,7 +1120,6 @@ public class SuspiciousChunks extends Module {
             s.flagged = !Feedback.dismissed(fbServer, fbDim, fx, fz)
                     && (yes || s.verdict.confidence >= cutFb && s.verdict.evidence > 0);
         }
-        // 3. merge touching flagged chunks
         List<Find> out = new ArrayList<>();
         Set<Long> seen = new HashSet<>();
         for (Map.Entry<Long, Score> en : chunks.entrySet()) {
@@ -1236,7 +1164,6 @@ public class SuspiciousChunks extends Module {
             f.cx = wx / ws;
             f.cz = wz / ws;
             f.verdict = BaseBrain.merge(parts);
-            // a find inside a village, mineshaft or other natural structure stays hidden when the player's blocks do not show clearly
             if (mode == 0 && f.structure != null && f.verdict.confidence < cut + 12) continue;
             if (f.chunks >= minCluster.i()) out.add(f);
         }
@@ -1289,7 +1216,6 @@ public class SuspiciousChunks extends Module {
         return f;
     }
 
-    /** A new find has appeared. Base Finder uses this to send the Discord message. */
     protected void found(Minecraft mc, double x, double z, int chunks, int minY, int maxY, String kind, String structure) {
         if (chunks >= 4) DiscordWebhook.bigBase(mc, x, z, chunks, minY, maxY, kind);
     }
@@ -1304,8 +1230,6 @@ public class SuspiciousChunks extends Module {
         for (int i = 1; i < groups.length; i++) if (groups[i] > groups[best]) best = i;
         return GROUPS[best];
     }
-
-    // ------------------------------------------------------------------ what it shows
 
     private static String direction(double dx, double dz) {
         double a = Math.toDegrees(Math.atan2(dz, dx));
@@ -1374,20 +1298,16 @@ public class SuspiciousChunks extends Module {
         if (world.on() && Projector.prepare(mc, partial, w, h)) drawMarkers(g, mc, w, h);
     }
 
-    /** Whether the marker tracer to the nearest find is drawn. Variants with no HUD turn it off. */
     protected boolean hudTracer() {
         return true;
     }
 
-    // ------------------------------------------------------------------ the map
-
     private static final int[] GROUP_COLORS = {0xFFFFC857, 0xFFB77BFF, 0xFFFF4D5E, 0xFFFF9F43, 0xFF4DD2FF, 0xFF5EE6A0, 0xFFFF7AB6};
     private static final String[] GROUP_LABELS = {"Storage", "Workstations", "Redstone", "Lighting", "Metal blocks", "Building", "Frames and stands"};
     private static final int NATURAL_COLOR = 0xFF4C86E8;
-    /** Sure, likely, weak: the red, amber and green of the map and its legend. */
+
     private static final int[] BAND_COLORS = {0xFFE2555F, 0xFFE0A93C, 0xFF45CE93};
 
-    /** Which kind of thing a flagged chunk is mostly made of; the last index is item frames and the like. */
     private static int groupOf(double[] groups) {
         int best = -1;
         double top = 0;
@@ -1452,7 +1372,6 @@ public class SuspiciousChunks extends Module {
         ringSeg(g, ccx, ccy, gridW * 0.22f, 1f, Draw.rgba(0xFF35617E, 0.55f));
         ringSeg(g, ccx, ccy, gridW * 0.44f, 1f, Draw.rgba(0xFF3E708F, 0.75f));
 
-        // the way you face, as a soft wedge with a lit leading edge
         float yaw = (float) Math.toRadians(mc.player.getYRot());
         float dirx = -(float) Math.sin(yaw);
         float diry = (float) Math.cos(yaw);
@@ -1467,7 +1386,6 @@ public class SuspiciousChunks extends Module {
                     1f, Draw.rgba(0xFFE2555F, 0.30f));
         }
 
-        // the chunks themselves: red is sure, amber is likely, green is weak, blue is a natural structure
         for (int dz = -r; dz <= r; dz++) {
             for (int dx = -r; dx <= r; dx++) {
                 Score s = chunks.get(key(pcx + dx, pcz + dz));
@@ -1543,7 +1461,6 @@ public class SuspiciousChunks extends Module {
         }
     }
 
-    /** The card's top row: the mark, the name, what it is, and how many finds there are. */
     private void radarHead(GuiGraphics g, int x, int y, int pad, int pw, int accent) {
         int ts = 22;
         int ix = x + pad;
@@ -1569,7 +1486,6 @@ public class SuspiciousChunks extends Module {
         int tx = ix + ts + 9;
         int have = px - 7 - tx;
         if (have < 26) return;
-        // the title steps down a size on a narrow card rather than being cut short
         String title = "Suspicious Chunks";
         float tsc = 1f;
         if (Draw.widthBold(title) > have) tsc = 0.78f;
@@ -1579,7 +1495,6 @@ public class SuspiciousChunks extends Module {
         if (Draw.widthS(sub, 0.78f) <= have) Draw.textS(g, sub, tx, y + pad + 14, 0xFF93A5B4, 0.78f);
     }
 
-    /** A thin circle, drawn as short segments so it stays round at any size. */
     private static void ringSeg(GuiGraphics g, float cx, float cy, float rad, int color) {
         ringSeg(g, cx, cy, rad, 1f, color);
     }
@@ -1594,7 +1509,6 @@ public class SuspiciousChunks extends Module {
         }
     }
 
-    /** A filled wedge from the centre out to {@code rad}, {@code halfDeg} to either side of the given direction. */
     private static void sector(GuiGraphics g, float cx, float cy, float dirx, float diry, float rad, float halfDeg, int color) {
         float mid = (float) Math.atan2(diry, dirx);
         float half = (float) Math.toRadians(halfDeg);
@@ -1606,7 +1520,6 @@ public class SuspiciousChunks extends Module {
         }
     }
 
-    /** You, in the middle of the map: a small arrow that points the way you face. */
     private static void selfArrow(GuiGraphics g, float cx, float cy, float dirx, float diry, int cell) {
         float len = Math.max(8f, cell * 1.15f);
         float tipx = cx + dirx * len;
@@ -1615,7 +1528,6 @@ public class SuspiciousChunks extends Module {
         float by = cy - diry * len * 0.72f;
         float px = -diry * len * 0.44f;
         float py = dirx * len * 0.44f;
-        // pink body, white edge: readable on the dark map at any size
         for (int k = 0; k <= 12; k++) {
             float t = k / 12f;
             Draw.line(g, tipx, tipy, bx + px * t, by + py * t, 1.2f, 0xFFFF7594);
@@ -1627,7 +1539,6 @@ public class SuspiciousChunks extends Module {
         Draw.line(g, cx - dirx * len * 0.1f, cy - diry * len * 0.1f, cx - dirx * len * 0.9f, cy - diry * len * 0.9f, 1f, 0xFFFFFFFF);
     }
 
-    /** The little north marker: the letter, and a red needle under it. */
     private static void north(GuiGraphics g, int x, int y) {
         Draw.textS(g, "N", x + 5, y + 8, 0xFFD6E0EC, 1f);
         for (int i = 0; i < 6; i++) {
@@ -1636,7 +1547,6 @@ public class SuspiciousChunks extends Module {
         }
     }
 
-    /** How sure a flagged chunk is: 0 strong, 1 likely, 2 weak. */
     private static int band(Score s) {
         double c = s.verdict == null ? 0 : s.verdict.confidence;
         return c >= 65 ? 0 : c >= 35 ? 1 : 2;
@@ -1673,13 +1583,11 @@ public class SuspiciousChunks extends Module {
             double dist = dist(f, mc);
             if (dist > mr + f.chunks * 8) continue;
             drawn++;
-            // the top of what was built there, used only to hang the label above the find
             double top = (f.maxY == Integer.MIN_VALUE ? mc.player.getY() : f.maxY) + 2;
             float certainty = f.verdict.confidence / 100f;
             int baseColour = GROUP_COLORS[groupOf(f.groups)];
             int tileColor;
             if (lineColor.index() <= 0) {
-                // gradient from yellow (unsure / possible) to orange to AMR red (certain base)
                 int yellow = 0xFFF4D84B;
                 int orange = 0xFFF08C2E;
                 int red = 0xFFDD3B3B;
@@ -1695,7 +1603,6 @@ public class SuspiciousChunks extends Module {
                 area.stamp = markStamp;
                 ChunkLook.draw(g, area, area.scale(now), ChunkLook.PLANE);
                 if (tracer.on() && hudTracer() && first) {
-                    // one tracer to the middle of every separate area, in the fill colour
                     int tc = 0xFF000000 | (fill & 0xFFFFFF);
                     for (double[] c : area.centres) {
                         com.zlorbie788.zeus.render.EspKit.tracerLine(g, sw, sh, 0, c[0], ChunkLook.PLANE, c[1], tc, area.scale(now));
@@ -1719,7 +1626,6 @@ public class SuspiciousChunks extends Module {
                 Draw.textCenter(g, Draw.fit(why, 220), Math.round(p[0]), ty + 13, Draw.rgba(tone, 0.8f));
             }
         }
-        // likely mined geodes: one purple tile each
         if (minedGeodeScan.on() && !geodeHints.isEmpty()) {
             for (Map.Entry<Long, GeodeHint> en : geodeHints.entrySet()) {
                 int gx = kx(en.getKey());
@@ -1733,7 +1639,6 @@ public class SuspiciousChunks extends Module {
                 ChunkLook.draw(g, ga, ga.scale(now), ChunkLook.PLANE);
             }
         }
-        // whatever stopped being flagged shrinks away instead of vanishing
         shrinkAway(g, areas, now);
         shrinkAway(g, geodeAreas, now);
     }

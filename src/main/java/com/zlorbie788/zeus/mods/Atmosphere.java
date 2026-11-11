@@ -15,11 +15,6 @@ import net.minecraft.world.level.LightLayer;
 
 import java.util.List;
 
-/**
- * A fully procedural night atmosphere. Every element is placed on the celestial sphere and projected through the active
- * camera: a layered aurora, a generated Milky Way, thousands of stars, drifting cloud banks and occasional meteors.
- * Nothing is a screen-space picture, so the sky remains coherent as the player looks around, including straight up.
- */
 public final class Atmosphere extends Module {
     private final Setting.Num brightness = add(new Setting.Num("Brightness", "Overall strength of the night atmosphere.", 100, 30, 100, 5, "%"));
     private final Setting.Num motion = add(new Setting.Num("Motion", "Speed of the aurora folds and cloud drift. 0 pauses the movement.", 100, 0, 250, 10, "%"));
@@ -133,20 +128,16 @@ public final class Atmosphere extends Module {
             style.activity = 0.88f;
             aurora.begin(clock, style);
 
-            // Deep blue atmospheric gradient and the directionally generated Milky Way.
             scape.renderHaze(g, w, h, scapeView, gain * 0.88f, HAZE_COLS[quality], HAZE_ROWS[quality], true);
 
-            // Broad, folded aurora curtains are drawn behind the closer cloud banks.
             int auroraCol = Math.max(2, Math.round(w / (float) (quality == 0 ? 90 : quality == 1 ? 150 : 220)));
             int auroraRow = Math.max(4, Math.round(h / (float) (quality == 0 ? 20 : quality == 1 ? 32 : 44)));
             aurora.render(g, 0, 0, w, h, auroraView, auroraGain, auroraCol, auroraRow);
 
-            // Stars sit behind the cloud banks; each has its own subtle shimmer.
             float starGain = gain * (twinkle.on() ? 1f : 0.88f);
             scape.renderStars(g, scapeView, starGain, STAR_COUNTS[quality], clock * (twinkle.on() ? 1f : 0f),
                     Math.max(1, (int) mc.getWindow().getGuiScale()));
 
-            // Clouds are generated from procedural puff geometry and slowly drift across the celestial sphere.
             scape.renderClouds(g, scapeView, gain * 0.72f, CLOUD_DETAIL[quality], clock, speed, aurora.surge() * 0.55f);
 
             scape.updateMeteors(clock, METEOR_GAP[shooting.index()]);
@@ -157,7 +148,6 @@ public final class Atmosphere extends Module {
         }
     }
 
-    /** Visibility follows the real world: dimension, time of day, weather and whether the player can see the sky. */
     private float target(Minecraft mc, float partial) {
         if (mc.level.dimension() != Level.OVERWORLD) {
             why = "only in the overworld";

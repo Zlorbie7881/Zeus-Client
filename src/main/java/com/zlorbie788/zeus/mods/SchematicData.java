@@ -6,7 +6,6 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.zip.GZIPInputStream;
 
-/** Bounded reader for Sponge .schem and Litematica .litematic NBT files. No external parser dependency. */
 public final class SchematicData {
     public static volatile SchematicData lastLoaded;
     public record Cell(int x, int y, int z, String state) {}

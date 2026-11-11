@@ -18,11 +18,6 @@ import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * Pictures for the interface: the main menu art, the intro frames and the icons. Everything goes through one dynamic
- * texture per picture, so the same code path loads a file from the jar and shows a picture made in code. Pictures are
- * drawn with the same blit call the rest of the interface mods use.
- */
 public final class Tex {
     private Tex() {
     }
@@ -31,7 +26,6 @@ public final class Tex {
         javax.imageio.ImageIO.setUseCache(false);
     }
 
-    /** One picture on the graphics card. */
     public static final class Img {
         public final Identifier id;
         public final int w;
@@ -45,23 +39,19 @@ public final class Tex {
             this.h = h;
         }
 
-        /** Draws the whole picture stretched into the box. */
         public void draw(GuiGraphics g, int x, int y, int dw, int dh, int tint) {
             g.blit(RenderPipelines.GUI_TEXTURED, id, x, y, 0f, 0f, dw, dh, w, h, w, h, tint);
         }
 
-        /** Draws a part of the picture (in picture pixels) into the box. */
         public void drawPart(GuiGraphics g, int x, int y, int dw, int dh, int sx, int sy, int sw, int sh, int tint) {
             g.blit(RenderPipelines.GUI_TEXTURED, id, x, y, (float) sx, (float) sy, dw, dh, sw, sh, w, h, tint);
         }
 
-        /** Replaces every pixel (plain ARGB, w * h of them) and sends the picture to the graphics card. */
         public void put(int[] argb) {
             writePixels(tex.getPixels(), argb, w, h);
             tex.upload();
         }
 
-        /** Replaces only the rows {@code y0} up to (not including) {@code y1} and sends the picture to the graphics card. */
         public void putRows(int[] argb, int y0, int y1) {
             y0 = Math.max(0, y0);
             y1 = Math.min(h, y1);
@@ -70,12 +60,6 @@ public final class Tex {
             tex.upload();
         }
 
-        /**
-         * Gives the picture back to the graphics card, but not at once: the game draws the interface in two steps (it notes
-         * what to draw, then draws it), so a picture freed in the middle of a frame could still be used by that frame, and the
-         * graphics card may already have given its memory to something else, such as an item icon. The picture is freed a
-         * little later instead.
-         */
         public void release() {
             PENDING.add(new Object[] {this, System.nanoTime()});
         }
@@ -86,13 +70,11 @@ public final class Tex {
                 Minecraft.getInstance().getTextureManager().release(id);
                 managed = true;
             } catch (RuntimeException ignored) {
-                // already gone
             }
             if (!managed) {
                 try {
                     tex.close();
                 } catch (RuntimeException ignored) {
-                    // nothing to free
                 }
             }
         }
@@ -101,7 +83,6 @@ public final class Tex {
     private static final Map<String, Img> CACHE = new HashMap<>();
     private static final java.util.List<Object[]> PENDING = new java.util.ArrayList<>();
 
-    /** Frees the pictures that were given up at least a second ago. */
     private static void flush(boolean all) {
         if (PENDING.isEmpty()) return;
         long now = System.nanoTime();
@@ -115,9 +96,8 @@ public final class Tex {
         }
     }
     private static int counter;
-    private static int order = -1; // 0: NativeImage.setPixel takes ARGB, 1: it takes ABGR
+    private static int order = -1;
 
-    /** True when the game's picture class wants ABGR. Measured once with a one-pixel PNG, so no version is assumed. */
     private static boolean abgr() {
         if (order < 0) {
             order = 0;
@@ -128,10 +108,9 @@ public final class Tex {
                 javax.imageio.ImageIO.write(probe, "png", out);
                 try (NativeImage img = NativeImage.read(NativeImage.Format.RGBA, new ByteArrayInputStream(out.toByteArray()))) {
                     int v = img.getPixel(0, 0);
-                    if ((v & 255) > ((v >> 16) & 255)) order = 1; // the red came back in the low byte
+                    if ((v & 255) > ((v >> 16) & 255)) order = 1;
                 }
             } catch (IOException | RuntimeException ignored) {
-                // keep ARGB
             }
         }
         return order == 1;
@@ -155,10 +134,6 @@ public final class Tex {
         }
     }
 
-    /**
-     * A picture the game samples with smooth (linear) filtering. Dynamic pictures are sampled with the nearest pixel, which is
-     * right for text and pixel-exact shapes but makes any sprite that is drawn at another size look jagged and shimmer.
-     */
     private static final class Smooth extends DynamicTexture {
         Smooth(java.util.function.Supplier<String> label, NativeImage image) {
             super(label, image);
@@ -179,7 +154,6 @@ public final class Tex {
         return new Img(id, tex, image.getWidth(), image.getHeight());
     }
 
-    /** A picture from the jar, for example {@code textures/gui/menu/tablet.png}. Null when it cannot be read. */
     public static Img resource(String path) {
         Img have = CACHE.get(path);
         if (have != null) return have;
@@ -195,10 +169,6 @@ public final class Tex {
         }
     }
 
-    /**
-     * A sprite from the jar that is drawn scaled and rotated (the rendered animations and strokes): the same as
-     * {@link #resource} but sampled smoothly, so it stays clean at any size.
-     */
     public static Img sprite(String path) {
         String key = "smooth:" + path;
         Img have = CACHE.get(key);
@@ -215,7 +185,6 @@ public final class Tex {
         }
     }
 
-    /** Reads a picture from the jar into a normal Java image, or null. */
     public static BufferedImage image(String path) {
         try (InputStream in = Tex.class.getResourceAsStream("/assets/zeus/" + path)) {
             if (in == null) return null;
@@ -226,11 +195,6 @@ public final class Tex {
         }
     }
 
-    /**
-     * A picture from the jar made exactly {@code w} x {@code h} device pixels, so it is drawn one pixel to one pixel and
-     * stays sharp whatever the window size. With {@code cover} the picture fills the box and the overflow is cropped
-     * (centred, shifted by {@code anchorX} / {@code anchorY} from 0 to 1), otherwise it is stretched to the box.
-     */
     public static Img fitted(String key, String path, int w, int h, boolean cover, float anchorX, float anchorY) {
         w = Math.max(1, w);
         h = Math.max(1, h);
@@ -256,7 +220,6 @@ public final class Tex {
         java.awt.Graphics2D g0 = cur.createGraphics();
         g0.drawImage(src, 0, 0, null);
         g0.dispose();
-        // halve while the picture is more than twice too big, so the shrinking averages pixels instead of skipping them
         while (cur.getWidth() >= tw * 2 || cur.getHeight() >= th * 2) {
             int nw = Math.max(tw, cur.getWidth() >= tw * 2 ? cur.getWidth() / 2 : cur.getWidth());
             int nh = Math.max(th, cur.getHeight() >= th * 2 ? cur.getHeight() / 2 : cur.getHeight());
@@ -278,12 +241,10 @@ public final class Tex {
         return out;
     }
 
-    /** A blank picture to draw into with {@link Img#put}. */
     public static Img blank(int w, int h) {
         return register("blank", new NativeImage(w, h, true));
     }
 
-    /** A picture made from plain ARGB pixels, kept under {@code key} so it is only built once. */
     public static Img made(String key, int[] argb, int w, int h) {
         Img have = CACHE.get(key);
         if (have != null && have.w == w && have.h == h) return have;
@@ -298,7 +259,6 @@ public final class Tex {
         return CACHE.get(key);
     }
 
-    /** Reads the bytes of a file in the jar, or null. */
     public static byte[] bytes(String path) {
         try (InputStream in = Tex.class.getResourceAsStream("/assets/zeus/" + path)) {
             return in == null ? null : in.readAllBytes();

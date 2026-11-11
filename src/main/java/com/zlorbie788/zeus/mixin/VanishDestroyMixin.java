@@ -8,7 +8,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** Anti Vanish: a "someone is breaking this block" packet from a player id you cannot see is a tell. */
 @Mixin(ClientPacketListener.class)
 public abstract class VanishDestroyMixin {
     @Inject(method = "handleBlockDestruction", at = @At("HEAD"), require = 0)

@@ -8,7 +8,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/** ESP outlines: the game's own glow outline is shown through walls, so entities are marked with it. */
 @Mixin(Entity.class)
 public abstract class EntityGlowMixin {
     @Inject(method = "isCurrentlyGlowing", at = @At("RETURN"), cancellable = true, require = 0)

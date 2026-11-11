@@ -1,8 +1,6 @@
-/* Zeus Helper: an offline question-answering assistant for the Zeus website.
- *
- * It is NOT a language model. It is a small search engine over this site's own content (FAQ, guides, the module
- * list, commands and the update timeline) plus some intent rules. Everything runs in the browser; nothing you type
- * is sent anywhere. If the answer is not written down on this site it says so instead of guessing.
+/* Zeus Helper: offline search over the Zeus website's own content (FAQ, guides, module list, commands and update
+ * timeline) with intent rules for common questions. Everything runs in the browser; nothing typed here is sent
+ * anywhere. If an answer is not written down on the site, the helper says so instead of guessing.
  */
 (function () {
   "use strict";
@@ -491,8 +489,8 @@
     if (/\b(stupid|useless|dumb|idiot|trash|shut up)\b/.test(s)) return A(["Sorry I wasn't more useful. Try asking it in different words, or use the FAQ search on the Help page. I only know what is written on this site."], { links: [{ label: "Open the FAQ", href: "/help#faq" }].concat(discordLink() || []), src: "Helper" });
 
     if (/(who|what) (are|r) you|are you (an? )?(ai|bot|human|real|robot|chatgpt|gpt|claude|llm|person)|your name|how do you work|are you smart|do you use ai|what ai|what model|powered by/.test(s))
-      return A(["I'm the Zeus helper. I am not a language model and nothing you type leaves your browser. I'm a search engine over this site's own guides, FAQ, module list, commands and update timeline, with some rules for common questions.",
-        "That means I can answer anything that is written down here, and I will tell you when I can't find something instead of making it up."], { chips: (Z.help.quick || []).slice(0, 4), src: "Helper" });
+      return A(["I'm the Zeus helper: a search over this site's own guides, FAQ, module list, commands and update timeline, with rules for common questions. Everything runs in this browser tab and nothing you type is sent anywhere.",
+        "That means I answer what is written down here, and I tell you when I can't find something instead of making it up."], { chips: (Z.help.quick || []).slice(0, 4), src: "Helper" });
 
     if (/^(help|help me|can you help( me)?|how (can|do) you help( me)?|what can (i|you) (ask|do|help with)( you)?|what do you (know|do)|what (can|should) i ask( you)?|topics)$/.test(s.replace(/[?!.']/g, "").trim()))
       return A(["I can answer questions about:"], { ul: ["Installing and updating Zeus, the mods folder, Fabric and Java", "Every module, for example “What does Auto Totem do?” or “How do I bind Fly to a key?”",
@@ -605,7 +603,7 @@
 
     if (/(helper|chat ?bot|assistant|bot|this chat|my (messages|questions))/.test(s) && /(send|store|log|save|record|see|privacy|private|data|track|share|leave|upload)/.test(s) || (/\b(site|website|page)\b/.test(s) && /(track|cookie|cookies|analytic|analytics|spy|spies|collect|privacy|telemetry)/.test(s)))
       return A(["This website runs entirely in your browser. It loads its fonts and images from itself and includes no analytics or advertising scripts.",
-        "The helper does not call any server or AI service: your questions are answered by code in this page and are never sent anywhere. The conversation is kept in your browser tab only (it disappears when you close the tab or press the restart button).",
+        "The helper runs entirely in this page: your questions are answered by code here and are never sent anywhere. The conversation is kept in your browser tab only (it disappears when you close the tab or press the restart button).",
         "If you connect the control center, the access token is stored in your browser's local storage until you press Disconnect. Whoever hosts this site can still see ordinary web-server logs, as with any website."], { links: [{ label: "Is Zeus safe?", href: "/help#faq" }], src: "Site", chips: ["Does Zeus collect data or have telemetry?", "Is the control center safe?"] });
     if (/^(the |your )?(discord|youtube|twitter|x|socials?|community|invite|server invite|discord (link|server|invite)|join (the )?discord|youtube (channel|link))$/.test(joined) || /(discord|youtube|twitter).*(link|channel|server|invite|where)|(where|link).*(discord|youtube|twitter)/.test(s) && !/webhook/.test(s)) {
       var sl = Z.site.links, ln = [];
@@ -679,7 +677,7 @@
           links: [{ label: "Download page", href: "/download" }].concat(gh2 ? [{ label: "GitHub", href: gh2, ext: true }] : []).concat(dc2 ? [dc2] : []), src: "Site", chips: ["Is Zeus safe to download?", "How do I install Zeus?"] });
     }
     if (/\b(is|are)\b.*\b(you|helper|bot|chat ?bot|assistant|this chat|this)\b.*\b(ai|artificial|human|real|robot|chatgpt|gpt|llm|person)\b/.test(s) && !/\b(zeus|module|mod|client|site|website)\b.*\b(ai)\b/.test(s) && ws.length <= 9)
-      return A(["I'm the Zeus helper. I am not a language model and nothing you type leaves your browser. I'm a search engine over this site's own guides, FAQ, module list, commands and update timeline, with some rules for common questions.", "That means I can answer anything that is written down here, and I will tell you when I can't find something instead of making it up."], { chips: (Z.help.quick || []).slice(0, 4), src: "Helper" });
+      return A(["I'm the Zeus helper: a search over this site's own guides, FAQ, module list, commands and update timeline, with rules for common questions. Everything runs in this browser tab and nothing you type is sent anywhere.", "That means I answer what is written down here, and I tell you when I can't find something instead of making it up."], { chips: (Z.help.quick || []).slice(0, 4), src: "Helper" });
     if ((!one || /^(info|infohud|netinfo|session)$/.test(one.m.id)) && /\b(fps|framerate|frame rate|lag|laggy|stutter\w*|freez\w*|performance|slow(ing)? down)\b/.test(s) && !/\b(server|ping|tps|rubber|fake)\b/.test(s)) {
       var lf = exactFaq(/\b(fps|framerate|frame rate)\b/.test(s) && /\b(low|drop\w*|bad|poor|tank\w*|slow\w*|less|improve|boost|increase|better|fix)\b/.test(s) ? "My FPS dropped after enabling a module" : "Does Zeus lag my game?");
       if (lf) return faqAnswer(lf, ["Does Zeus lag my game?", "My FPS dropped after enabling a module", "What is TPS, ping and FPS?"].filter(function (c) { return c !== lf.q; }));
@@ -1080,7 +1078,7 @@
     root.appendChild(msgs);
     root.appendChild(chips);
     root.appendChild(form);
-    root.appendChild(h("div", { class: "hlp-note", text: "Offline helper: it searches this site's content and can't browse or run a language model. Nothing you type is sent anywhere." }));
+    root.appendChild(h("div", { class: "hlp-note", text: "Offline helper: it searches this site's content and cannot browse the web. Nothing you type is sent anywhere." }));
 
     function scroll() { msgs.scrollTop = msgs.scrollHeight; }
     view.scroll = scroll;

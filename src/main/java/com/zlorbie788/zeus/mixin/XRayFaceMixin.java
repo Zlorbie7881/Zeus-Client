@@ -9,11 +9,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/**
- * X-Ray opacity, step two: which faces are drawn. Two stone blocks side by side show no face to each other, so only the
- * skin of the ground (where it meets air, water or an ore) is drawn, and the faces of an ore that look at stone are drawn
- * too. That keeps the faint picture clean: you see the shape of the caves, not twenty layers of stone.
- */
 @Mixin(Block.class)
 public abstract class XRayFaceMixin {
     @Inject(method = "shouldRenderFace", at = @At("HEAD"), cancellable = true, require = 0)

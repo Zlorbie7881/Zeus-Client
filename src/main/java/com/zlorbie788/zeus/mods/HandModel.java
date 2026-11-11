@@ -8,10 +8,6 @@ import net.minecraft.client.Minecraft;
 
 import java.util.List;
 
-/**
- * Gives every silent rotation a hand to go through. Off, the angles are exact and repeat; on, they carry the tremor,
- * drift and sensor grain a real mouse has, and the server never sees the same angle twice.
- */
 public final class HandModel extends Module {
     private final Setting.Num amount = add(new Setting.Num("Shakiness", "How unsteady the aim is. Higher hides more of the machine, and starts to cost accuracy past about 70%.", 35, 0, 100, 5, "%"));
     private final Setting.Info state = add(new Setting.Info("This session", this::lines));
@@ -40,7 +36,6 @@ public final class HandModel extends Module {
 
     @Override
     protected void onTick(Minecraft mc) {
-        // the slider can move while it is on, and the hand follows without a restart
         Hand.set(true, (float) (amount.get() / 100.0));
     }
 

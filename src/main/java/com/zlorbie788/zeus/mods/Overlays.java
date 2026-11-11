@@ -20,13 +20,9 @@ import net.minecraft.world.phys.Vec3;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Drawn aids: holes, dark spots, flight paths and your own trail. All of it is drawn on your screen only. */
 public final class Overlays {
     private Overlays() {}
 
-    // ------------------------------------------------------------------ Hole ESP
-
-    /** Marks one-block holes where a crystal fight is safe to stand. */
     public static final class HoleEsp extends Module {
         private final Setting.Num range = add(new Setting.Num("Range", "How far around you it looks.", 10, 4, 20, 1, " blocks"));
         private final Setting.Bool bedrock = add(new Setting.Bool("Bedrock holes", "Holes with only bedrock around (safest).", true));
@@ -83,9 +79,6 @@ public final class Overlays {
         }
     }
 
-    // ------------------------------------------------------------------ Light overlay
-
-    /** Shows where monsters can spawn. */
     public static final class LightOverlay extends Module {
         private final Setting.Num range = add(new Setting.Num("Range", "How far around you it looks.", 12, 4, 24, 1, " blocks"));
         private final List<int[]> spots = new ArrayList<>();
@@ -128,9 +121,6 @@ public final class Overlays {
         }
     }
 
-    // ------------------------------------------------------------------ Trajectories
-
-    /** Draws where an arrow, pearl or potion you are about to throw will land. */
     public static final class Trajectories extends Module {
         private final Setting.Bool landing = add(new Setting.Bool("Landing marker", "A box where it hits.", true));
         private final Setting.Choice colour = add(new Setting.Choice("Colour", "Colour of the path.", 0, "Blue", "White", "Gold"));
@@ -141,7 +131,6 @@ public final class Overlays {
         }
 
         private static double[] physics(Minecraft mc, ItemStack s) {
-            // {speed, gravity}
             if (s.is(Items.BOW)) {
                 if (!mc.player.isUsingItem()) return null;
                 float f = mc.player.getTicksUsingItem() / 20f;
@@ -194,9 +183,6 @@ public final class Overlays {
         }
     }
 
-    // ------------------------------------------------------------------ Breadcrumbs
-
-    /** A line behind you showing where you have been. */
     public static final class Breadcrumbs extends Module {
         private final Setting.Num length = add(new Setting.Num("Length", "How many points of the path are kept.", 200, 20, 1000, 20, ""));
         private final List<double[]> trail = new ArrayList<>();

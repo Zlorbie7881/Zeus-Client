@@ -6,7 +6,6 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
-/** The date and the real time, with seconds, in the top right corner of the menu. */
 final class MenuClock {
     private MenuClock() {}
 
@@ -36,7 +35,6 @@ final class MenuClock {
         Draw.rrect(g, x, y, w, h, 4, Draw.rgba(0xFF050914, 0.62f * a), Draw.rgba(0xFF03060E, 0.62f * a));
         Draw.rrectLine(g, x, y, w, h, 4, Draw.rgba(0xFF5A6C98, 0.80f * a));
         int xr = x + w - padX;
-        // the time, with a soft glow, and the date under it with a thin rule between
         Draw.textRightS(g, time, xr + 1, y + padY + 1, Draw.rgba(0xFF000000, 0.55f * a), ts);
         Draw.textRightS(g, time, xr, y + padY, Draw.rgba(0xFFEAF0FF, a), ts);
         int ry = y + padY + th + gap / 2;

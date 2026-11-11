@@ -15,17 +15,6 @@ import java.util.Locale;
 import java.util.Random;
 import java.util.Set;
 
-/**
- * The part of cheating that is about not being noticed.
- *
- * <p>Being banned is rarely about one hit. It is about a staff member walking past you while Kill Aura is mid-swing, or
- * about a pattern a person cannot make. This keeps a watch on who is on the server, and the moment a staff member is there
- * it stops what you asked it to stop, tells you once, and gives it back when they are gone. It also has the human part: a
- * swing that is deliberately not sent, so a perfect rhythm is not the only thing the server ever sees from you.</p>
- *
- * <p>Nothing here reads anything the client is not given: the tab list is public, the markers are visible in every name, and
- * no packet is sent to ask the server a question.</p>
- */
 public final class Ghost extends Module {
     private static final String[] STARTS = {"★", "☆", "✦", "✧", "✪", "✯", "✨", "⭐"};
 
@@ -61,7 +50,6 @@ public final class Ghost extends Module {
         giveBack();
     }
 
-    /** True when the aura should not send this swing. */
     public static boolean skipSwing() {
         Ghost g = Zeus.get(Ghost.class);
         return g != null && g.enabled() && g.holds();
@@ -113,7 +101,6 @@ public final class Ghost extends Module {
             if (!w.isEmpty() && lower.contains(w)) return true;
         }
         for (String star : STARTS) if (text.contains(star)) return true;
-        // the private-use glyphs servers use for rank icons (✔, ❤ and friends live there too, so only the whole name is checked)
         return StaffMatcher.isPrivateUse(text.codePointAt(0));
     }
 

@@ -14,12 +14,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-/** What Zeus puts on the game screen. These work anywhere and are harmless. */
 public final class Interface {
     private Interface() {}
 
-
-    /** Always-visible launcher for the global HUD layout editor. */
     public static final class HudEditorLauncher extends Module {
         public HudEditorLauncher() {
             super("hudeditor", "HUD Editor", "Open the global editor to move, scale, hide and arrange Zeus HUD widgets.", Category.INTERFACE);
@@ -81,7 +78,6 @@ public final class Interface {
         private long builtAt;
         private boolean builtDetails;
 
-        /** Rebuilds the sorted rows only when a module switched on or off, or a few times a second for the changing details. */
         private void rebuild() {
             long now = System.nanoTime();
             boolean det = details.on() || cost.on();
@@ -133,7 +129,6 @@ public final class Interface {
                 Hud.listHeight = 0;
                 return;
             }
-            // one panel for the whole list, with a row per module: the same card as every other HUD box
             String tally = Integer.toString(count);
             int widest = Hud.captionWidth("Modules") + 12 + Hud.chipWidth(tally);
             for (int i = 0; i < count; i++) widest = Math.max(widest, widths[i] + 26);
@@ -164,10 +159,6 @@ public final class Interface {
         }
     }
 
-    /**
-     * A label on the left and a value on the right, which is how every line of these two panels reads. The values are
-     * right-aligned so they line up in a column and can be scanned without reading the labels.
-     */
     private static void row(GuiGraphics g, Minecraft mc, int x, int y, int w, String label, String value, boolean strong) {
         Draw.text(g, label, x, y, Accent.DIM);
         if (strong) Draw.bold(g, value, x + w - Draw.widthBold(value), y, Accent.TEXT);
@@ -252,7 +243,6 @@ public final class Interface {
         }
     }
 
-    /** Where you are, on its own: the line people look at most, in its own small panel. */
     public static final class Coordinates extends Module {
         private final Setting.Bool decimals = add(new Setting.Bool("Decimals", "Show the fraction of a block too.", false));
         private final Setting.Bool dimension = add(new Setting.Bool("Dimension", "A line under the position with the dimension you are in.", false));

@@ -37,33 +37,9 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.regex.Pattern;
 
-/**
- * Staff HUD: finds the staff on the server you are on, tells you which of them are hidden or watching you, and lists them.
- *
- * <p>Finding works in layers, from sure to guessed:</p>
- * <ol>
- *   <li><b>Standard rules</b> (the shared staff matcher): a rank word in the name tag, suffix or tab text (also
- *   in small capitals or with accents), a team name that starts with a rank number such as <i>01-</i>, a marker star or
- *   icon glyph, and a list of known staff names (the DonutSMP list is built in).</li>
- *   <li><b>Evidence</b> (Zeus): every other player collects weighted clues, each shown with <i>Show reasons</i> — a creative
- *   or spectator game mode, a game-mode change while online, a tag that known staff also wear, a tag only one or two people
- *   wear, a name you added, or somebody who was confirmed as staff earlier on this server. The sum is a confidence.</li>
- *   <li><b>Presence</b>: staff that sit in the tab list but are not listed (hidden from TAB) are shown as <i>vanished</i>;
- *   staff in spectator mode as <i>spectating</i>; staff that left the tab list while their body is still loaded stay as
- *   <i>vanished</i> instead of silently disappearing.</li>
- *   <li><b>Watching you</b>: the server sends you a game-mode change for a player only when that player is on your side of
- *   the server. When a listed staff member switches game mode, or their body shows up near you, Zeus raises an alarm, a
- *   "WATCHING YOU" screen alert, a chat line and a timer on their row. That is the proof the finder relies on.</li>
- * </ol>
- *
- * <p>Everything is read from the tab list, the scoreboard teams and packets the game already received. Nothing is sent.
- * A server that shows no ranks and no teams to players hides them from this module too, and a staff member who is fully
- * removed from the tab list and far away cannot be seen by any client.</p>
- */
 public final class StaffHud extends Module {
     private static volatile StaffHud instance;
 
-    /** DonutSMP staff accounts (the built-in list). */
     public static final List<String> DONUT_STAFF = List.of("FluffyMaster07", "archivePedro", "Munkerlich", "Frenk_Btw", "Napooo_", "auzzitech", "CryptoDaveYT", "W1zox_", "ZEEF69", "showered", "CaptainMoose35", "BobIsFound", "NoahvdAa", "0GSummer", "LzouzMP5", "Pastagamer08", "u_vv", "Owen1212055", "Splaterd", "Fallerfly", "Bloodspulse", "_chaon", "Dough4", "evify");
 
     private static final Pattern ACCOUNT_NAME = Pattern.compile("[.*]?[A-Za-z0-9_]{1,16}");
@@ -80,7 +56,6 @@ public final class StaffHud extends Module {
     private static final long SWITCH_EVIDENCE_MS = 600_000L;
     private static final int MAX_REMEMBERED = 300;
 
-    /** Rank words that mark a rank, with how serious they look. 0 owners and admins, 1 moderators, 2 helpers, 3 other staff. */
     private static final Map<String, Integer> RANKS = new LinkedHashMap<>();
 
     static {
@@ -90,7 +65,6 @@ public final class StaffHud extends Module {
         for (String s : new String[] {"staff", "dev", "developer", "builder", "build", "organizer", "event", "yt", "youtuber", "team", "tech", "bot"}) RANKS.put(s, 3);
     }
 
-    /** Words that look like ranks but are the opposite: paying members and ordinary players. */
     private static final Set<String> NOT_STAFF = Set.of("vip", "mvp", "donor", "member", "default", "player", "elite", "legend", "premium", "plus", "pro", "supporter", "booster");
 
     private static final int[] RANK_COLORS = {0xFFFF5C6C, 0xFFFFA24D, 0xFF5EE6A0, 0xFF6AA6FF};
@@ -145,7 +119,6 @@ public final class StaffHud extends Module {
 
     private enum Presence { ONLINE, SPECTATOR, VANISHED }
 
-    /** One staff member the module follows. */
     private static final class Staff {
         final UUID id;
         String name = "";
@@ -165,7 +138,6 @@ public final class StaffHud extends Module {
         }
     }
 
-    /** What is known about a staff member being on your side of the server. */
     private static final class Sighting {
         long provenAt;
         long watchingSince;
@@ -234,7 +206,6 @@ public final class StaffHud extends Module {
     private int alertGather;
     private int tickCount;
 
-    // screen alert
     private UUID ghostId;
     private String ghostName = "";
     private int ghostOthers;
@@ -247,9 +218,6 @@ public final class StaffHud extends Module {
         instance = this;
     }
 
-    // ------------------------------------------------------------------ the packet hook
-
-    /** Called for every player-info packet before the game applies it. A game-mode action on an account is the proof used for the watching alert. */
     public static void notePlayerInfoUpdate(ClientboundPlayerInfoUpdatePacket packet) {
         StaffHud h = instance;
         if (h == null || !h.enabled() || packet == null || !h.regionAlert.on()) return;
@@ -260,24 +228,19 @@ public final class StaffHud extends Module {
                 if (entry != null && entry.profileId() != null) h.switches.offer(new GameModeSwitch(entry.profileId(), entry.gameMode()));
             }
         } catch (RuntimeException ignored) {
-            // a changed packet layout must never break packet handling
         }
     }
 
-    /** True when this account is on the staff list Zeus follows right now. */
     public static boolean isStaff(UUID id) {
         StaffHud h = instance;
         return h != null && h.enabled() && id != null && h.staff.containsKey(id);
     }
-
-    // ------------------------------------------------------------------ names you add and remember
 
     private void addFromClipboard() {
         String clip = "";
         try {
             clip = Minecraft.getInstance().keyboardHandler.getClipboard();
         } catch (RuntimeException ignoredClipboard) {
-            // no clipboard
         }
         addName(clip);
     }
@@ -331,8 +294,6 @@ public final class StaffHud extends Module {
         return server + "|" + name.toLowerCase(Locale.ROOT);
     }
 
-    // ------------------------------------------------------------------ life cycle
-
     @Override
     protected void onEnable() {
         forget();
@@ -383,8 +344,6 @@ public final class StaffHud extends Module {
         return sorted.isEmpty() ? null : Integer.toString(sorted.size());
     }
 
-    // ------------------------------------------------------------------ the tick
-
     @Override
     protected void onTick(Minecraft mc) {
         sound.tick(mc);
@@ -430,8 +389,6 @@ public final class StaffHud extends Module {
         if (resort) sortView(now);
     }
 
-    // ------------------------------------------------------------------ settings -> matcher
-
     private StaffMatcher matcher() {
         String known = knownList.on() ? String.join(",", DONUT_STAFF) : "";
         String k = detect.index() + "|" + rankWords.get() + "|" + markers.get() + "|" + iconGlyphs.on() + "|" + teamRankMax.i() + "|" + known.length() + "|" + ignored.get();
@@ -451,7 +408,6 @@ public final class StaffHud extends Module {
         return c == null ? "" : c.getString();
     }
 
-    /** The best rank hint in some text (lowest number), or -1. Whole words only, so "Modern" is not a mod. */
     static int rankIn(String s) {
         int best = -1;
         for (String tok : s.toLowerCase(Locale.ROOT).split("[^a-z0-9\\-+]+")) {
@@ -463,7 +419,6 @@ public final class StaffHud extends Module {
         return best;
     }
 
-    /** A tag without colour codes, spaces and brackets, for comparing. */
     static String tagKey(String s) {
         return s.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9+]", "");
     }
@@ -488,9 +443,6 @@ public final class StaffHud extends Module {
         }
     }
 
-    // ------------------------------------------------------------------ the scan
-
-    /** The verdict about one player. */
     private static final class Verdict {
         int conf;
         String label;
@@ -520,7 +472,6 @@ public final class StaffHud extends Module {
             if (id != null) listed.add(id);
         }
         List<PlayerInfo> online = new ArrayList<>(conn.getOnlinePlayers());
-        // how common is each tag? the biggest group is "ordinary player", tiny groups are interesting
         Map<String, Integer> tagCount = new HashMap<>();
         Map<UUID, String> tagOf = new HashMap<>();
         for (PlayerInfo pi : online) {
@@ -546,7 +497,6 @@ public final class StaffHud extends Module {
             Verdict v = judge(m, pi, id, name, tagOf.getOrDefault(id, ""), tagCount, players, mine, tracked);
             if (v == null || v.conf < minConf.i() || v.label == null) {
                 if (tracked != null && tracked.peak >= 70 && tracked.conf >= minConf.i()) {
-                    // seen as staff earlier and now shows nothing: they may have switched their tag off; keep them, lower
                     tracked.info = pi;
                     tracked.offTabScans = 0;
                     tracked.presence = presenceOf(pi, listed.contains(id));
@@ -622,7 +572,6 @@ public final class StaffHud extends Module {
         s.presence = presence;
     }
 
-    /** Collects the evidence about one player. */
     private Verdict judge(StaffMatcher m, PlayerInfo pi, UUID id, String name, String tag, Map<String, Integer> tagCount, int players, Set<String> mine, Staff tracked) {
         Verdict v = new Verdict();
         String key = tagKey(tag);
@@ -637,7 +586,6 @@ public final class StaffHud extends Module {
             v.why.add("you added them");
             if (!key.isEmpty() && tagCount.getOrDefault(key, 0) <= 6) learned.add(key);
         }
-        // standard rules
         StaffMatcher.Match match = matched(m, pi, id, name, teamName, team);
         if (match != null) {
             int c = switch (match.kind()) {
@@ -664,7 +612,6 @@ public final class StaffHud extends Module {
             v.why.add(how);
             if (!key.isEmpty() && c >= 84 && tagCount.getOrDefault(key, 0) <= 6) learned.add(key);
         }
-        // Zeus evidence
         if (ranks.on()) {
             int r = rankIn(tag);
             int rt = rankIn(teamName.replace('_', ' '));
@@ -748,8 +695,6 @@ public final class StaffHud extends Module {
         if (seen != null && seen.marked(now)) return 1;
         return s.presence != Presence.ONLINE ? 2 : 3;
     }
-
-    // ------------------------------------------------------------------ watching
 
     private void drainSwitches(ClientPacketListener conn, UUID self, long now) {
         GameModeSwitch change;
@@ -847,8 +792,6 @@ public final class StaffHud extends Module {
         }
     }
 
-    // ------------------------------------------------------------------ chat
-
     private static void say(Minecraft mc, Component body) {
         if (mc.gui == null) return;
         mc.gui.getChat().addMessage(Component.literal("[Staff HUD] ").withStyle(ChatFormatting.GOLD).append(body));
@@ -898,8 +841,6 @@ public final class StaffHud extends Module {
         return false;
     }
 
-    // ------------------------------------------------------------------ settings page
-
     private List<String> statusLines() {
         List<Staff> list = sorted;
         if (settle > 0) return List.of("Checking... " + (settle / 20 + 1) + " s");
@@ -925,8 +866,6 @@ public final class StaffHud extends Module {
         if (hours > 0L) out.append(hours).append(minutes < 10L ? ":0" : ":");
         return out.append(minutes).append(seconds < 10L ? ":0" : ":").append(seconds).toString();
     }
-
-    // ------------------------------------------------------------------ drawing
 
     @Override
     protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
@@ -978,10 +917,8 @@ public final class StaffHud extends Module {
                 } catch (RuntimeException e) {
                     Draw.rrect(g, x, y, hs, hs, 3, Draw.rgba(col, 0.6f));
                 }
-                // soft focus ring: a restrained pulse keeps the card readable without a costly blur
                 float pulse = 0.5f + 0.5f * (float) Math.sin(now / 360.0 + i * 0.7);
                 Draw.rrectLine(g, x - 2, y - 2, hs + 4, hs + 4, 4, Draw.rgba(col, (watching ? 0.5f : 0.28f) + pulse * 0.42f));
-                // a thin confidence bar under the head communicates evidence strength
                 g.fill(x, y + hs + 1, x + Math.round(hs * s.conf / 100f), y + hs + 2, Draw.rgba(col, 0.9f));
                 x += hs + Math.round(5 * sc);
             }
@@ -1026,7 +963,6 @@ public final class StaffHud extends Module {
             try {
                 PlayerFaceRenderer.draw(g, info.getSkin(), w / 2 - size / 2, h / 2 - size / 2 - Math.round(h * 0.05f), size, Draw.rgba(0xFFFFFFFF, alpha));
             } catch (RuntimeException ignored) {
-                // no skin yet: the text below still shows
             }
         }
         if (t >= 1250L) {
@@ -1037,9 +973,6 @@ public final class StaffHud extends Module {
         }
     }
 
-    // ------------------------------------------------------------------ alarm
-
-    /** The repeating sound for a watching alert: four alert sounds. */
     private static final class Alarm {
         private String mode = "Off";
         private float volume;

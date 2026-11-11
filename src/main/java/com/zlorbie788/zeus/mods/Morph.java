@@ -19,14 +19,8 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Random;
 
-/**
- * Turns your own body into any mob, for your eyes only. A copy of the mob is built locally (never added to the world, never
- * sent anywhere) and follows your position, turning, walking, hurt flash and the things you wear and hold. The renderer is
- * told to draw that copy wherever it would have drawn you, so you see the mob in third person (F5) and in the inventory
- * preview. Nobody else sees anything, and nothing about how you move, fight or collide changes: you are still you.
- */
 public final class Morph extends Module {
-    /** Mobs offered in the picker. Ids missing in the running game are dropped, so the list is safe across versions. */
+
     private static final String[] WANTED = {
         "allay", "armadillo", "axolotl", "bat", "bee", "blaze", "bogged", "breeze", "camel", "camel_husk", "cat", "cave_spider",
         "chicken", "copper_golem", "cow", "creaking", "creeper", "dolphin", "donkey", "drowned", "elder_guardian", "enderman",
@@ -94,7 +88,6 @@ public final class Morph extends Module {
         return status != null ? status : pretty(mob.id()).toLowerCase(Locale.ROOT);
     }
 
-    /** Called by the renderer hook: the entity to draw in place of {@code e}. Returns {@code e} itself when nothing changes. */
     public static Entity swap(Entity e) {
         Morph m = self;
         if (m == null || e == null || !m.enabled()) return e;
@@ -148,7 +141,6 @@ public final class Morph extends Module {
             if (made instanceof LivingEntity living) {
                 ghost = living;
                 sync(living, mc.player);
-                // start with no interpolation gap, so the mob appears exactly where you are
                 living.xo = living.xOld = mc.player.getX();
                 living.yo = living.yOld = mc.player.getY();
                 living.zo = living.zOld = mc.player.getZ();
@@ -188,7 +180,6 @@ public final class Morph extends Module {
         g.hurtTime = p.hurtTime;
         g.deathTime = p.deathTime;
         g.tickCount++;
-        // the legs: the same rule the game uses for your own walking
         float speed = (float) Math.min(Math.sqrt(dx * dx + dz * dz) * 4.0, 1.0);
         g.walkAnimation.update(speed, 0.4f, 1.0f);
         for (EquipmentSlot s : WORN) {

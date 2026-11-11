@@ -13,11 +13,6 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 
-/**
- * The Zeus lettering as a font: a row of silver, carved-metal capitals (made by {@code tools/greek_font.py}) drawn letter by
- * letter at any size. Lower case is drawn as capitals. Text that has a letter the font does not have (other alphabets) is not
- * drawn by this class: {@link #supports} says so and the caller uses the game's font instead.
- */
 public final class GreekFont {
     private GreekFont() {}
 
@@ -62,7 +57,6 @@ public final class GreekFont {
         return ok;
     }
 
-    /** True when every character of the text can be drawn with this font (spaces and lower case included). */
     public static boolean supports(String text) {
         if (!available()) return false;
         for (int i = 0; i < text.length(); i++) {
@@ -72,7 +66,6 @@ public final class GreekFont {
         return true;
     }
 
-    /** The width of the text, in interface pixels, for letters {@code capHeight} high. */
     public static int width(String text, int capHeight) {
         if (!available()) return Draw.width(text);
         float s = capHeight / (float) cap;
@@ -91,7 +84,6 @@ public final class GreekFont {
         return Math.round(x * s);
     }
 
-    /** Draws the text with its capitals {@code capHeight} interface pixels high, the top of the capitals at y. */
     public static void draw(GuiGraphics g, String text, int x, int y, int capHeight, int tint, boolean shadow) {
         if (!available()) {
             Draw.text(g, text, x, y, tint);
@@ -99,7 +91,7 @@ public final class GreekFont {
         }
         int gs = Tex.guiScale();
         float s = capHeight / (float) cap;
-        float px = s * gs;                       // texture pixels per atlas pixel
+        float px = s * gs;
         int tw = Math.max(1, Math.round(total * px));
         int th = Math.max(1, Math.round(row * px));
         Tex.Img img = Tex.fitted("greek_" + th, PICTURE, tw, th, false, 0, 0);
@@ -109,7 +101,7 @@ public final class GreekFont {
         }
         String t = text.toUpperCase(Locale.ROOT);
         float cx = x;
-        int topPad = base - cap;                 // the capitals start this far down in the picture
+        int topPad = base - cap;
         int dy = y - Math.round(topPad * s);
         int dh = Math.round(row * s);
         for (int i = 0; i < t.length(); i++) {

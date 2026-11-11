@@ -6,11 +6,9 @@ import com.zlorbie788.zeus.core.Module;
 import com.zlorbie788.zeus.core.Setting;
 import net.minecraft.client.Minecraft;
 
-/** Movement modules. */
 public final class Movement {
     private Movement() {}
 
-    /** Flight by steering your own movement: it needs no permission from the game. */
     public static final class Flight extends Module {
         private final Setting.Num speed = add(new Setting.Num("Speed", "Sideways speed. 1x is about creative flight.", 2.0, 0.5, 10.0, 0.5, "x"));
         private final Setting.Num vertical = add(new Setting.Num("Up and down speed", "How fast jump and sneak move you.", 1.0, 0.2, 5.0, 0.1, "x"));
@@ -53,7 +51,6 @@ public final class Movement {
         }
     }
 
-    /** Faster running. */
     public static final class Speed extends Module {
         private final Setting.Num factor = add(new Setting.Num("Speed", "How much faster you run than normal.", 2.0, 1.1, 8.0, 0.1, "x"));
 
@@ -87,7 +84,6 @@ public final class Movement {
         }
     }
 
-    /** Jump much higher. */
     public static final class HighJump extends Module {
         private final Setting.Num power = add(new Setting.Num("Jump power", "1x is a normal jump. 3x is about a nine block jump.", 2.5, 1.2, 10.0, 0.1, "x"));
 
@@ -121,7 +117,6 @@ public final class Movement {
         }
     }
 
-    /** Walk up whole walls. */
     public static final class Step extends Module {
         private final Setting.Num height = add(new Setting.Num("Step height", "How tall a block you can walk up without jumping. Normal is 0.6.", 2.0, 1.0, 8.0, 0.5, " blocks"));
 
@@ -155,12 +150,6 @@ public final class Movement {
         }
     }
 
-    /**
-     * No fall damage. The server works out fall damage from how far you fell before a movement packet says "on the ground".
-     * While you are falling more than a couple of blocks, the "on the ground" flag of the movement packet your game is about
-     * to send is set in that same packet, so the server never counts the long fall. This is the one thing in Zeus that
-     * changes what the game sends: it is the same packet, with one flag changed.
-     */
     public static final class NoFall extends Module {
         private static volatile boolean on;
         private static volatile boolean hookSeen;
@@ -181,7 +170,6 @@ public final class Movement {
             hookSeen = true;
         }
 
-        /** Called for every movement packet just before it is sent. */
         public static void rewrite(net.minecraft.network.protocol.game.ServerboundMovePlayerPacket packet) {
             if (!on || rewriteBroken) return;
             Minecraft mc = Minecraft.getInstance();
@@ -216,7 +204,6 @@ public final class Movement {
             var net = mc.getConnection();
             ticks++;
             if (p == null || net == null || p.onGround() || p.isFallFlying() || p.getAbilities().flying || p.isPassenger()) return;
-            // the packet hook is the main way; this is the backup when it is not reachable
             boolean backup = ticks > 40 && (!hookSeen || rewriteBroken);
             if (backup && p.fallDistance > from && p.getDeltaMovement().y < 0 && !(p.isInWater() && water.on())) {
                 net.send(new net.minecraft.network.protocol.game.ServerboundMovePlayerPacket.StatusOnly(true, p.horizontalCollision));
@@ -230,13 +217,6 @@ public final class Movement {
         }
     }
 
-    /**
-     * Anti Hunger. The server adds hunger for sprinting and for moving while "on the ground". Two small changes in what your
-     * game sends cut that: the sprint start/stop messages are not sent (the server then never sees you sprint), and the
-     * "on the ground" flag of the movement packet is sent as "in the air" while you are not falling. Falling uses the real flag
-     * so landing still works. Like No Fall, this changes what the game sends; a server with movement checks can notice a
-     * sprinting player that the server believes is walking, so use it where that is fine.
-     */
     public static final class AntiHunger extends Module {
         private static volatile boolean on;
         private static volatile boolean dropSprint = true;
@@ -280,7 +260,6 @@ public final class Movement {
             try {
                 ((com.zlorbie788.zeus.mixin.MovePacketAccessor) (Object) packet).zeus$onGround(false);
             } catch (ClassCastException | LinkageError ignored) {
-                // the packet cannot be changed: the module does nothing
             }
         }
 
@@ -290,7 +269,6 @@ public final class Movement {
         }
     }
 
-    /** Moon gravity. */
     public static final class LowGravity extends Module {
         private final Setting.Num gravity = add(new Setting.Num("Gravity", "How strong gravity is. 1x is normal, 0.1x is almost floating.", 0.3, 0.02, 1.0, 0.02, "x"));
 
@@ -324,7 +302,6 @@ public final class Movement {
         }
     }
 
-    /** Sprints whenever you walk forward. */
     public static final class AutoSprint extends Module {
         public AutoSprint() {
             super("autosprint", "Auto Sprint", "Sprints for you whenever you walk forward.", Category.MOVEMENT);

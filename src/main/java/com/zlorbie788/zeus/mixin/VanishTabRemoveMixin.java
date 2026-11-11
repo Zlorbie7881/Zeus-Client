@@ -8,7 +8,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** Captures tab-list removals so Anti Vanish can correlate them with entities still visible client-side. */
 @Mixin(ClientPacketListener.class)
 public abstract class VanishTabRemoveMixin {
     @Inject(method = "handlePlayerInfoRemove", at = @At("HEAD"), require = 0)

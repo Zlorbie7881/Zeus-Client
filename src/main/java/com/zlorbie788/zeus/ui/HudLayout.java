@@ -8,14 +8,13 @@ import com.zlorbie788.zeus.core.Zeus;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** Per-widget placement and presentation settings for the in-game HUD editor. */
 public final class HudLayout {
     private HudLayout() {}
 
     public static final class Entry {
         public int x;
         public int y;
-        /** A widget's own size as set in the editor; the global multiplier below is applied on top. */
+
         public static final float DEFAULT_SCALE = 1.0f;
 
         public float scale = DEFAULT_SCALE;
@@ -24,14 +23,8 @@ public final class HudLayout {
         public boolean visible = true;
     }
 
-    /**
-     * One multiplier over every widget: the HUD is drawn at this fraction of its raw layout size, so making the whole
-     * HUD smaller (or bigger) is this single number and applies to configs that already saved a per-widget scale.
-     */
     public static final float GLOBAL_SCALE = 0.60f;
 
-    /** The size a widget is really drawn at: its own scale times the global one. */
-    /** Set by the HUD editor: this widget is drawn at true size so its real pixels can be judged. Not saved. */
     public static String actualSizeId;
 
     public static float scaleOf(Entry e) { return (e == null ? Entry.DEFAULT_SCALE : e.scale) * GLOBAL_SCALE; }

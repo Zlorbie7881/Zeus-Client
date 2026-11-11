@@ -10,14 +10,8 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/**
- * The remembered worlds of Seed ESP: every save and every server that has a seed, with the seed itself. A click uses that
- * world's seed, the small red button forgets it. The list is read again on every frame, so a world disappears the moment
- * it is forgotten.
- */
 public final class SeedWorldsScreen extends Screen {
 
-    /** One remembered world: its key, the name shown, the seed and whether it is the world you are in. */
     public record Row(String key, String label, String seed, boolean here) {}
 
     private static final int ROW = 32;
@@ -28,7 +22,6 @@ public final class SeedWorldsScreen extends Screen {
     private final Consumer<String> forget;
     private float scroll;
 
-    // the layout of the last frame, shared by drawing and the mouse handlers
     private int px;
     private int py;
     private int pw;
@@ -53,7 +46,6 @@ public final class SeedWorldsScreen extends Screen {
 
     @Override
     public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-        // the panel is drawn in render
     }
 
     @Override

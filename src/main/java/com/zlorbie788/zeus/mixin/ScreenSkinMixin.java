@@ -8,7 +8,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** Hooks the start and the end of every screen's drawing, for the Zeus look on the pause menu and the world and server lists. */
 @Mixin(Screen.class)
 public abstract class ScreenSkinMixin {
     @Inject(method = "render", at = @At("HEAD"), require = 0)

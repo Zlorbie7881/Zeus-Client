@@ -2,14 +2,6 @@ package com.zlorbie788.zeus.ui;
 
 import net.minecraft.client.gui.GuiGraphics;
 
-/**
- * The name tags and small pills of the overlays, drawn with the interface font at the real pixel size of the screen, so they
- * stay sharp at every GUI scale. Coordinates in and out are the game's GUI pixels (what the overlays work in); the drawing
- * itself is done in device pixels.
- *
- * <p>Call {@link #begin()} before the first tag of a frame and {@link #end()} after the last one, so the text pictures made
- * during the frame are sent to the graphics card once.</p>
- */
 public final class Tag {
     private Tag() {}
 
@@ -27,7 +19,6 @@ public final class Tag {
         Ty.flush();
     }
 
-    /** Width of a tag with this text, in GUI pixels. */
     public static int width(String text, String right, float scale) {
         int gs = Tex.guiScale();
         float px = 8.4f * gs * scale;
@@ -37,10 +28,6 @@ public final class Tag {
         return Math.round((pad * 2 + 8f * gs * scale + tw + rw) / gs);
     }
 
-    /**
-     * A name tag: a dark pill with a coloured dot, the name and, in the colour, a second short text (a distance).
-     * (cx, top) is the middle of the top edge, in GUI pixels; the tag is kept on the screen.
-     */
     public static void draw(GuiGraphics g, String text, String right, int cx, int top, int color, float alpha, int sw, int sh, float scale) {
         if (alpha <= 0.01f) return;
         begin();
@@ -73,7 +60,6 @@ public final class Tag {
         pose.popMatrix();
     }
 
-    /** The same pill without the dot, for a short text kept at a point (tracer distances). */
     public static void pill(GuiGraphics g, String text, int x, int y, int color, float alpha, int sw, int sh) {
         if (text == null || text.isEmpty() || alpha <= 0.01f) return;
         begin();

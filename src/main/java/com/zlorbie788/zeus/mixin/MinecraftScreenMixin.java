@@ -7,7 +7,6 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 
-/** Every screen the game opens passes here; the game's title screen is swapped for the Zeus menu (see {@link ZeusMenu}). */
 @Mixin(Minecraft.class)
 public abstract class MinecraftScreenMixin {
     @ModifyVariable(method = "setScreen", at = @At("HEAD"), argsOnly = true, require = 0)

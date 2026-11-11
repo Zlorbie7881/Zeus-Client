@@ -23,16 +23,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-/**
- * Screenshot Tweaks. When you take a screenshot the game writes "Saved screenshot as ..." in the chat. This module adds
- * buttons to the end of that same line: Open (the picture opens), Copy (the picture goes to your clipboard, ready to paste
- * into Discord or anywhere) and Delete (the file is removed).
- *
- * <p>Open is the game's own click action. Copy and Delete cannot be done by the game, so their buttons carry a private
- * marker that Zeus recognises when you click (see {@code ShotClickMixin}); nothing is sent to the server. The copy is made
- * by a small helper of your system (PowerShell on Windows, osascript on macOS, wl-copy or xclip on Linux) so the game's own
- * window is never disturbed.
- */
 public final class ScreenshotTweaks extends Module {
     private static final String MARK = "zeus-shot:";
     private static final Map<Integer, Path> SHOTS = new LinkedHashMap<>();
@@ -62,9 +52,6 @@ public final class ScreenshotTweaks extends Module {
         if (inst == this) inst = null;
     }
 
-    // ------------------------------------------------------------------ the chat line
-
-    /** Called with every message the game adds to the chat. Returns the same message, or the screenshot message with buttons. */
     public static Component decorate(Component message) {
         ScreenshotTweaks t = inst;
         if (t == null || message == null) return message;
@@ -75,7 +62,7 @@ public final class ScreenshotTweaks extends Module {
             if (!(name.getStyle().getClickEvent() instanceof ClickEvent.OpenFile of)) return message;
             return t.withButtons(message, Path.of(of.path()));
         } catch (RuntimeException e) {
-            return message; // never lose the game's own message
+            return message;
         }
     }
 
@@ -110,9 +97,6 @@ public final class ScreenshotTweaks extends Module {
         return Component.literal(label).withStyle(s -> s.withColor(colour).withClickEvent(click).withHoverEvent(new HoverEvent.ShowText(Component.literal(tip))));
     }
 
-    // ------------------------------------------------------------------ the clicks
-
-    /** Called for every click event the game is about to run. True: it was one of ours and is handled, so the game skips it. */
     public static boolean click(ClickEvent event) {
         try {
             if (!(event instanceof ClickEvent.CopyToClipboard c)) return false;
@@ -152,7 +136,6 @@ public final class ScreenshotTweaks extends Module {
         try {
             Path dir = FabricLoader.getInstance().getGameDir() == null ? null : FabricLoader.getInstance().getGameDir().resolve("screenshots").toAbsolutePath().normalize();
             Path f = file.toAbsolutePath().normalize();
-            // only ever delete a picture that sits in the game's screenshots folder
             if (dir == null || !f.startsWith(dir) || !f.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".png")) {
                 Zeus.toast("That file is not in the screenshots folder", false);
                 return;
@@ -169,8 +152,6 @@ public final class ScreenshotTweaks extends Module {
             Zeus.toast("Could not delete the screenshot", false);
         }
     }
-
-    // ------------------------------------------------------------------ the clipboard
 
     private static void copyAsync(Path file) {
         Thread th = new Thread(() -> copyNow(file), "zeus-shot-copy");
@@ -202,13 +183,11 @@ public final class ScreenshotTweaks extends Module {
         for (List<String> cmd : tries) {
             try {
                 Process pr = new ProcessBuilder(cmd).redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
-                // xclip and wl-copy stay alive in the background to serve the clipboard; that counts as done
                 if (!pr.waitFor(6, TimeUnit.SECONDS) || pr.exitValue() == 0) {
                     ok = true;
                     break;
                 }
             } catch (IOException e) {
-                // that helper is not installed, try the next one
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;

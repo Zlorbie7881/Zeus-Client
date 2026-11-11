@@ -10,16 +10,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/**
- * Two more hooks for the see-through mode, on the block state (a class every renderer goes through), so they work whichever
- * chunk renderer is installed:
- * <ul>
- *   <li>{@code skipRendering}: the game asks the neighbour whether it hides the face that touches it. Two faint blocks side by
- *       side hide the face between them, so only the skin of the ground is drawn (unless "Show faces between faint blocks").</li>
- *   <li>{@code getFluidState}: the chunk builder asks for the fluid of a place before the block, so this is where the opacity
- *       of water is chosen.</li>
- * </ul>
- */
 @Mixin(BlockBehaviour.BlockStateBase.class)
 public abstract class XRayShapeMixin {
     @Inject(method = "skipRendering", at = @At("HEAD"), cancellable = true, require = 0)

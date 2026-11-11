@@ -13,25 +13,9 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 
-/**
- * The Zeus look for the game's own loading screens. The game keeps working exactly as before (it opens, ticks and closes
- * its screens itself); only the drawing is taken over, from two small mixins ({@code LevelLoadingScreenMixin} and
- * {@code ConnectScreenMixin}):
- *
- * <ul>
- *   <li><b>Your own world</b> (singleplayer, new or loaded): the ring of the intro draws itself round the medallion
- *   from 0 to 100 percent, with the number under the logo. The percent is the game's own: how much of the starting area
- *   the server has made. No lightning and no thunder - the ring just closes and you are in.</li>
- *   <li><b>A server</b> (connecting, then the wait for the first chunks): the menu's sky with the Zeus logo, nothing
- *   else but the Cancel button.</li>
- * </ul>
- *
- * Going through a portal keeps the game's own screen. If anything here fails, the game's screen is drawn instead.
- */
 public final class ZeusLoading {
     private ZeusLoading() {}
 
-    // the logo picture is 368 x 332 reference units with the medallion at (178, 131), radius 123 (as on the menu)
     private static final float LW = 368f;
     private static final float LH = 332f;
     private static final float MCX = 178f;
@@ -48,11 +32,10 @@ public final class ZeusLoading {
     private static long born;
     private static long last;
     private static float shown;
-    /** When the ring closed (0 = not yet), and the last frame it was on screen closed: the world fades in from there. */
+
     private static long fullAt;
     private static long lastFull;
 
-    /** Time since this screen began, in seconds, and the step since the last frame; a gap of more than a second means a new loading. */
     private static float[] tick() {
         long now = System.nanoTime();
         if (last == 0 || now - last > 1_500_000_000L) {
@@ -65,9 +48,6 @@ public final class ZeusLoading {
         return new float[] {(now - born) / 1e9f, dt};
     }
 
-    // ------------------------------------------------------------ hooks (called from the mixins)
-
-    /** The game's level loading screen: true when Zeus drew it, so the game's own drawing is skipped. */
     public static boolean level(Screen screen, GuiGraphics g) {
         try {
             if (!UiSettings.LOADING.on()) return false;
@@ -77,7 +57,6 @@ public final class ZeusLoading {
             boolean single = Minecraft.getInstance().getSingleplayerServer() != null;
             if (single) {
                 float target = progress(screen);
-                // the shown number only moves forwards, and catches up with the real one smoothly
                 float step = 1f - (float) Math.exp(-tt[1] * 6f);
                 shown = Math.max(shown, shown + (target - shown) * step);
                 if (target >= 0.999f) shown = Math.max(shown, Math.min(1f, shown + tt[1] * 1.5f));
@@ -94,11 +73,6 @@ public final class ZeusLoading {
         }
     }
 
-    /**
-     * The game's connecting screen: the same dark backdrop, medallion and ring a singleplayer world gets while it loads, with
-     * the game's own Cancel button on top. A server gives no progress number, so the ring fills towards the first world tick
-     * and holds there until the world is in.
-     */
     public static boolean connect(Screen screen, GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         try {
             if (!UiSettings.LOADING.on()) return false;
@@ -120,8 +94,6 @@ public final class ZeusLoading {
         }
     }
 
-    // ------------------------------------------------------------ the game starting up
-
     private static float joinShown;
     private static Screen joinFor;
 
@@ -130,12 +102,6 @@ public final class ZeusLoading {
     private static float startShown;
     private static Object startSession;
 
-    /**
-     * The game's own start screen (the red Mojang logo and its bar) in the Zeus look: the ring and the medallion with the
-     * real percent of the game's loading. {@code session} is the game's loading overlay (a new one starts the count again), {@code progress} is the game's own 0 to 1, {@code done} is true once it has
-     * finished, {@code alpha} is how much of the screen is showing (it lifts to show the menu when loading ends). Returns
-     * false if it could not be drawn, so the caller can leave the game's own drawing in place.
-     */
     public static boolean startup(Object session, GuiGraphics g, int w, int h, float progress, boolean done, float alpha) {
         try {
             if (!UiSettings.LOADING.on()) return false;
@@ -151,7 +117,6 @@ public final class ZeusLoading {
             startLast = now;
             float t = (now - startBorn) / 1e9f;
             float target = done ? 1f : norm(progress);
-            // only forwards, and smoothly towards the game's number
             float step = 1f - (float) Math.exp(-dt * 6f);
             startShown = Math.max(startShown, startShown + (target - startShown) * step);
             if (done) startShown = Math.min(1f, startShown + dt * 1.5f);
@@ -165,13 +130,6 @@ public final class ZeusLoading {
         }
     }
 
-    // ------------------------------------------------------------ reading the game's progress
-
-    /**
-     * Finds the three things on the game's screen that matter, by what they are and not by their names (the names change
-     * between the game's releases and are scrambled in the shipped game): the tracker the screen was made with (it has one
-     * method that returns a float, the progress), the screen's own smoothed float, and the reason it was opened.
-     */
     private static void probe() {
         if (probed) return;
         probed = true;
@@ -204,7 +162,6 @@ public final class ZeusLoading {
         }
     }
 
-    /** Portals keep the game's own picture. The reasons are in the order nether portal, end portal, other. */
     private static boolean portal(Screen screen) {
         if (reasonField == null) return false;
         try {
@@ -215,7 +172,6 @@ public final class ZeusLoading {
         }
     }
 
-    /** How far the loading is, 0 to 1: the tracker's progress, or the screen's own smoothed number, whichever is further. */
     private static float progress(Screen screen) {
         float best = 0f;
         try {
@@ -225,7 +181,6 @@ public final class ZeusLoading {
             }
             if (smoothField != null) best = Math.max(best, norm(smoothField.getFloat(screen)));
         } catch (ReflectiveOperationException | RuntimeException e) {
-            // keep what we have
         }
         return best;
     }
@@ -236,14 +191,11 @@ public final class ZeusLoading {
         return Math.min(1f, v);
     }
 
-    // ------------------------------------------------------------ drawing
-
     private static float ease(float x) {
         x = Math.max(0f, Math.min(1f, x));
         return x * x * (3f - 2f * x);
     }
 
-    /** Size of one reference unit of the logo for this window. */
     private static float unit(int w, int h) {
         return Math.min(h * 0.50f / LH, w * 0.62f / LW);
     }
@@ -252,7 +204,6 @@ public final class ZeusLoading {
         return Tex.fitted("load_logo", "textures/gui/menu/logo.png", Math.round(LW * k * gs), Math.round(LH * k * gs), false, 0, 0);
     }
 
-    /** The intro's loading ring with the real percent. */
     private static void ring(GuiGraphics g, int w, int h, float p, float t, float a) {
         g.fill(0, 0, w, h, Draw.rgba(0xFF03050B, a));
         float k = unit(w, h);
@@ -265,17 +216,14 @@ public final class ZeusLoading {
         float cy = ly + MCY * k;
         float r = MR * k * 1.03f;
 
-        // a faint light behind the medallion that grows with the loading
         Lightning.bloom(g, cx, cy, MR * k * 2.3f, 0xFF3A66C8, (0.05f + 0.13f * ease(p)) * a);
 
-        // the medallion and its lettering come up out of the dark as it loads
         Tex.Img logo = logoPicture(k, gs);
         if (logo != null) {
             int v = Math.round(255f * (0.20f + 0.80f * ease(p)));
             logo.draw(g, lx, ly, lw, lh, Draw.rgba(0xFF000000 | (v << 16) | (v << 8) | v, a));
         }
 
-        // the ring, drawn clockwise from the top; a bright head runs at its end
         float sweep = (float) (Math.PI * 2.0) * p;
         float start = (float) (-Math.PI / 2.0);
         int n = Math.max(2, Math.round(p * 84f));
@@ -301,7 +249,6 @@ public final class ZeusLoading {
         if (full) Lightning.bloom(g, cx, cy, r * 1.35f, 0xFF5C9CFF, 0.10f * pulse);
         if (full && a > 0.999f) finish(g, w, h, cx, cy, r, k, logo, lx, ly, lw, lh);
 
-        // the number
         int pct = Math.min(100, (int) Math.floor(p * 100f + 0.0001f));
         float s = Math.max(1f, k * 1.7f);
         Draw.textCenterS(g, pct + "%", w / 2, ly + lh + Math.round(8f * k), Draw.rgba(0xFFB4C0DC, a), s);
@@ -332,7 +279,6 @@ public final class ZeusLoading {
     private static int tipBase;
     private static float tipLastT = 1e9f;
 
-    /** One short tip under the percent, changing every few seconds with a soft fade. */
     private static void tip(GuiGraphics g, int w, int h, float t, int y, float k, float alpha) {
         if (t < tipLastT) tipBase = (int) (Math.abs(System.nanoTime() / 1000L) % TIPS.length);
         tipLastT = t;
@@ -350,7 +296,6 @@ public final class ZeusLoading {
         Draw.textCenterS(g, text, w / 2, y + cap + Math.round(7f * k), Draw.rgba(0xFFB4C0DC, 0.85f * a), sc);
     }
 
-    /** When the ring closes: a flash of pale light, the medallion lit white for a moment, and one wide wave leaving the ring. No lightning. */
     private static void finish(GuiGraphics g, int w, int h, float cx, float cy, float r, float k, Tex.Img logo, int lx, int ly, int lw, int lh) {
         long now = System.nanoTime();
         if (fullAt == 0) fullAt = now;
@@ -373,7 +318,6 @@ public final class ZeusLoading {
                 float an = i * 6.2832f / segs;
                 float x2 = cx + (float) Math.cos(an) * rad;
                 float y2 = cy + (float) Math.sin(an) * rad;
-                // the wave never crosses the lettering under the medallion
                 if (Math.max(py, y2) < cy + r * 1.1f) Draw.line(g, px, py, x2, y2, Math.max(1f, (3.2f - 2.0f * q) * k), Draw.rgba(0xFFDCE8FF, 0.7f * a));
                 px = x2;
                 py = y2;
@@ -381,10 +325,6 @@ public final class ZeusLoading {
         }
     }
 
-    /**
-     * Drawn over the game once the loading screen has gone: the dark of the ring screen lifts and the world is revealed, so
-     * there is no hard cut. Called from the HUD.
-     */
     public static void worldFade(GuiGraphics g, int w, int h) {
         if (lastFull == 0) return;
         try {
@@ -401,7 +341,6 @@ public final class ZeusLoading {
         g.fill(0, 0, w, h, Draw.rgba(0xFF03050B, a));
     }
 
-    /** The menu's sky with the logo: for the time between pressing Join and being in the world. */
     private static void join(GuiGraphics g, int w, int h, float t) {
         ZeusTitleScreen.scene(g, w, h, t, new long[2], false);
         float k = unit(w, h);

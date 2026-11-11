@@ -17,21 +17,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
-/**
- * A butterfly knife (balisong) in your own hand, with the tricks of a real flipper. It is built in 3D (two handles that turn
- * about their pins, a blade, a fist of blocky fingers and an arm that wears your own skin), and drawn over your screen. By default
- * it shows when your hand is empty and slides away when you pick something up.
- *
- * <p>Moves all start and end in the same hold, so any order works: <b>flick open</b>, <b>fan</b>, <b>showcase</b>, <b>handle
- * whirl</b>, <b>rollover</b> and <b>reverse rollover</b> (the knife turns about its length), <b>twirl</b> (it spins like a
- * propeller), <b>gunslinger</b> (it flips end over end), <b>aerial toss</b> (thrown up, spun, caught) and <b>snap shut</b>. The trick key
- * (or right click) plays the chosen trick; press again while one plays to chain the next. <b>Chaos combo</b> links them all.
- * It only decorates your own screen: nothing is sent anywhere.</p>
- *
- * <p>The knife can also be a <b>karambit</b>: the curved claw knife with a ring on its handle. The ring sits on your finger and
- * the knife spins about it (<b>ring spin</b>, <b>reverse spin</b>, <b>ring flurry</b>, <b>pinwheel</b>), flips (<b>backflip</b>), is
- * thrown and caught (<b>toss and catch</b>), turns to show itself (<b>showcase</b>) and cuts (<b>slash</b>).</p>
- */
+
 public final class KnifeSwing extends Module {
     private static final int OPEN = 0;
     private static final int FAN = 1;
@@ -72,7 +58,6 @@ public final class KnifeSwing extends Module {
     private static final int LATCH = 36;
     private static final int CASCADE = 37;
     private static final int INSPECT = 38;
-    // the studio moves: authored animations (the same clips as the website's 3D viewer), played on the 3D models of the butterfly and the karambit
     private static final int SB_DRAW = 39;
     private static final int SB_ROLL = 40;
     private static final int SB_FAN = 41;
@@ -87,7 +72,7 @@ public final class KnifeSwing extends Module {
     private static final int SK_TOSS = 50;
     private static final String[] CLIP_NAME = {"draw", "inspect2", "fan", "zen", "aerial", "inspect", "draw", "inspect", "inspect2", "spin", "pinwheel", "toss"};
     private static final float[] CLIP_D = {1.35f, 3.4f, 3.2f, 3.0f, 2.6f, 3.9f, 1.3f, 3.5f, 3.0f, 2.2f, 3.0f, 2.8f};
-    /** Everything plays this much faster than the script's own seconds, on top of the Speed setting. */
+
     private static final float BASE = 1.3f;
     private static final float[] MOVE_TIME = {0.55f, 1.05f, 1.7f, 1.15f, 1.0f, 1.0f, 1.2f, 1.1f, 1.6f, 0.5f, 0.72f,
         0.9f, 0.9f, 1.6f, 1.15f, 0.95f, 1.35f, 1.35f, 0.7f,
@@ -164,15 +149,14 @@ public final class KnifeSwing extends Module {
     private long enter;
     private boolean isOpen;
     private boolean wasDown;
-    /** While this is in the future the knife is drawn even if the hand is not empty (the Show it now button). */
+
     private long previewUntil;
-    /** Set when a 3D model could not be drawn, so the pixel knife is used instead for the rest of the session. */
+
     private boolean meshBroken;
     private boolean wasUse;
     private long autoAt;
     private final Random rnd = new Random();
     private int lastRandom = -1;
-    // what the player holds, and how far the hand has slid in (0 out, 1 in place)
     private boolean want;
     private float vis;
     private long lastFrame;
@@ -182,9 +166,9 @@ public final class KnifeSwing extends Module {
     private float lastPitch;
     private final Rig rig = new Rig();
     private final Rig ghost = new Rig();
-    /** The last few blade tips, in screen pixels, for the light trail. */
+
     private final ArrayDeque<float[]> tipTrail = new ArrayDeque<>();
-    /** Recent knife transforms, drawn again faded while the knife moves fast. */
+
     private final List<Rig.T> ghostAt = new ArrayList<>();
     private final List<float[]> ghostAngle = new ArrayList<>();
     private final List<Long> ghostWhen = new ArrayList<>();
@@ -206,7 +190,7 @@ public final class KnifeSwing extends Module {
             }));
         }
     }
-    /** The finish setting that belongs to a knife type: butterfly colours, karambit colours or a straight knife's finish. */
+
     private Setting.Choice finishFor(int t) {
         return t == 0 ? preset : t == 1 ? kcolor : sfinish;
     }
@@ -227,7 +211,7 @@ public final class KnifeSwing extends Module {
         "a fast turn about the handle, then the blade rocked from side to side",
         "a turn into a reverse grip, a small stab and a turn back",
         "a loose wrist roll that ends in a full turn"};
-    /** What the Inspect trick does with this knife (0 butterfly, 1 karambit, 2 and up the straight knives). Same rule as the move itself. */
+
     public static String inspectText(int id) {
         String st = INSPECT_STYLES[id % 6];
         String out = st.substring(0, 1).toUpperCase() + st.substring(1) + ".";
@@ -235,11 +219,11 @@ public final class KnifeSwing extends Module {
         if ((id / 6) % 2 == 1) out += " Turns the other way round.";
         return out;
     }
-    /** Called from the trick key. */
+
     public static void pressTrick() {
         if (self != null && self.enabled()) self.perform(self.curTrick());
     }
-    /** Called from the "next trick" key. */
+
     public static void nextTrick() {
         if (self != null && self.enabled()) {
             if (self.karambit()) {
@@ -253,15 +237,15 @@ public final class KnifeSwing extends Module {
             }
         }
     }
-    /** True for every knife that is not the butterfly: they share the karambit's frame and tricks. */
+
     private boolean karambit() {
         return type.index() >= 1;
     }
-    /** True for the karambit itself, whose ring sits on a finger. */
+
     private boolean ring() {
         return type.index() == 1;
     }
-    /** Which shape KnifeArt draws: the karambit's curve, or three more than that for each straight knife. */
+
     private int key() {
         return ring() ? kcurve.index() : type.index() >= 2 ? 3 + (type.index() - 2) : 0;
     }
@@ -271,7 +255,7 @@ public final class KnifeSwing extends Module {
     private int curTrick() {
         return karambit() ? ktrick.index() : trick.index();
     }
-    /** True while the knife is in the hand and the game's own hand should not be drawn. */
+
     public static boolean hidesHand() {
         return self != null && self.enabled() && self.hideHand.on() && self.vis > 0.02f;
     }
@@ -292,7 +276,7 @@ public final class KnifeSwing extends Module {
         }
         launch(id);
     }
-    /** The classic move that stands in for a studio move when the 3D model (or its clip) is not available. */
+
     private int studioOr(int m) {
         if (m < SB_DRAW) return m;
         String mesh = !model3d.on() ? null : karambit() ? KnifeArt.nameOf(key()) : "Butterfly knife";
@@ -314,7 +298,7 @@ public final class KnifeSwing extends Module {
     private boolean playing() {
         return !line.isEmpty() && secs() < lineTotal;
     }
-    /** Builds the list of moves for a trick. A trick that needs the knife open first gets a flick open in front of it. */
+
     private void launch(int id) {
         line.clear();
         if (karambit()) {
@@ -357,7 +341,6 @@ public final class KnifeSwing extends Module {
         }
         lineTotal = t;
         start = System.nanoTime();
-        // the new moves start from the pose that is on screen now, not from a jump
         carry = lastShown;
         carryStart = null;
         carryAt = System.nanoTime();
@@ -414,12 +397,11 @@ public final class KnifeSwing extends Module {
             perform((karambit() ? KTRICKS.length : TRICKS.length) - 1);
         }
     }
-    /** Seconds into the current set of moves (scaled by the speed setting). */
+
     private float secs() {
         if (start == 0) return 99f;
         return (System.nanoTime() - start) / 1e9f * speed.f() * BASE;
     }
-    // ------------------------------------------------------------------ easing
     private static float c01(float x) {
         return Math.max(0f, Math.min(1f, x));
     }
@@ -431,12 +413,12 @@ public final class KnifeSwing extends Module {
         x = c01(x);
         return x * x * x;
     }
-    /** Quintic smoothstep: rotations start and finish without a sharp change in angular velocity. */
+
     private static float easeSmoother(float x) {
         x = c01(x);
         return x * x * x * (x * (x * 6f - 15f) + 10f);
     }
-    /** Takes the hard edge off the start of a flick: it still leaves fast, but it no longer jumps straight to full speed. */
+
     private static float softStart(float x) {
         x = c01(x);
         return 0.5f * ease(x) + 0.5f * x;
@@ -450,35 +432,30 @@ public final class KnifeSwing extends Module {
     private static float bump(float x) {
         return (float) Math.sin(c01(x) * Math.PI);
     }
-    // ------------------------------------------------------------------ the poses
     private static final float PI = (float) Math.PI;
     private static final float TAU = (float) (Math.PI * 2.0);
-    private static final float GRIP = 8.6f;      // where the fist holds the handle, from the pivot
+    private static final float GRIP = 8.6f;
     private static final float ARM_L = 38f;
-    private static final float ARM_Z = 2.62f;    // the arm points up and to the left
-    private static final float ARM_X = 0.35f;    // and away from you
-    /** The pose at one moment. Angles in radians, lengths in world units. */
+    private static final float ARM_Z = 2.62f;
+    private static final float ARM_X = 0.35f;
+
     private static final class Pose {
-        float flickZ, flickX, flickY; // the arm turns about the shoulder
-        float gx, gy, gz;             // the whole hand moves
-        float kx, ky, kz;             // the knife moves alone (it leaves the hand)
-        float rx, ry, rz;             // the knife turns about the fist, about the world's axes
-        float gripY = GRIP;           // where on the handle the fist holds
-        float a, b, c;                // handle A, handle B and the blade, about their pins
-        float release;                // 0 fist closed .. 1 fingers open
+        float flickZ, flickX, flickY;
+        float gx, gy, gz;
+        float kx, ky, kz;
+        float rx, ry, rz;
+        float gripY = GRIP;
+        float a, b, c;
+        float release;
         float flash, rush;
-        float shake;                  // the whole hand jolts (0..1)
+        float shake;
         float armRoll = 0.38f;
-        String clip;                  // an authored animation is playing on the 3D model (studio moves)
-        float clipT;                  // seconds into it
+        String clip;
+        float clipT;
     }
     private float slideNow() {
         return vis;
     }
-    // ------------------------------------------------------------------ the motion toolkit
-    //
-    // Real knife tricks are not smooth sine waves: the hand winds up, the knife is flicked fast, spins on, and is caught with a
-    // small recoil. These helpers give every spin that shape, so a trick reads as a hand doing it, not a rotating picture.
     private static float lerp(float a, float b, float k) {
         return a + (b - a) * k;
     }
@@ -490,19 +467,15 @@ public final class KnifeSwing extends Module {
     private static float lerpAng(float a, float b, float k) {
         return a + wrapPi(b - a) * k;
     }
-    /**
-     * An angle that spins {@code turns} full turns with a wind-up, a flick and a settle. It starts and ends at rest and ends
-     * exactly on a whole turn, so the next move can carry on from it. {@code flick} 0 is an even swell (fast in the middle), 1
-     * is a hard flick that starts fast and slows on its own, like a knife let go of.
-     */
+
     private static float spin(float x, float turns, float flick) {
         x = c01(x);
         float sg = Math.signum(turns);
         float tot = turns * TAU;
         float wind = 0.11f;
         float settle = 0.15f;
-        float back = 0.30f * sg;           // how far it is drawn back before the flick
-        float over = 0.12f * sg;           // how far it swings past the end
+        float back = 0.30f * sg;
+        float over = 0.12f * sg;
         if (x < wind) {
             float u = x / wind;
             return -back * (float) Math.sin(u * PI / 2f);
@@ -518,27 +491,23 @@ public final class KnifeSwing extends Module {
         float d = 1f - u;
         return tot + over * d * d * (float) Math.cos(u * PI * 1.15f);
     }
-    /** A damped recoil that starts at {@code at} (0..1 of the move): the hand jolting as it catches something. */
+
     private static float kick(float x, float at, float amp) {
         if (x < at) return 0f;
         float t = x - at;
         return amp * (float) (Math.exp(-9.0 * t) * Math.sin(t * 40.0));
     }
-    /** How far the hand is open while the knife is in the air: eases open as it is let go and closed as it comes back. */
+
     private static float let(float u) {
         if (u <= 0f || u >= 1f) return 0f;
         return easeSmoother(u / 0.13f) * (1f - easeSmoother((u - 0.87f) / 0.13f));
     }
-    /** 0 at both ends, 1 in the middle, flat-topped like a parabola: how high something thrown is. */
+
     private static float arc(float u) {
         u = c01(u);
         return 4f * u * (1f - u);
     }
-    /**
-     * Carries the difference between two poses over onto {@code cur} and lets it fade out with {@code w} (1 = all of it, 0 =
-     * none). Unlike blending two poses, this never sweeps a fast spin through the wrong way round, because the move itself keeps
-     * running underneath: only the small gap at its start is smoothed away.
-     */
+
     private static Pose carryOver(Pose cur, Pose from, Pose startOf, float w) {
         Pose p = mix(cur, cur, 0f);
         if (w <= 0f) return p;
@@ -561,7 +530,7 @@ public final class KnifeSwing extends Module {
         p.release += w * (from.release - startOf.release);
         return p;
     }
-    /** A pose that is the same as {@code a} blended toward {@code b}; angles take the short way round, so whole turns do not unwind. */
+
     private static Pose mix(Pose a, Pose b, float k) {
         Pose p = new Pose();
         p.flickZ = lerp(a.flickZ, b.flickZ, k);
@@ -589,7 +558,7 @@ public final class KnifeSwing extends Module {
         p.clipT = k < 0.5f || b.clip == null ? a.clipT : b.clipT;
         return p;
     }
-    /** The resting pose: the knife held, a slow breath. */
+
     private Pose idle(boolean open) {
         Pose p = new Pose();
         float idleT = (System.nanoTime() % 20_000_000_000L) / 1e9f;
@@ -605,11 +574,11 @@ public final class KnifeSwing extends Module {
         p.gx += (float) Math.cos(idleT * 0.9) * 0.20f;
         return p;
     }
-    /** Moves that open the knife themselves, so they do not need it open first. */
+
     private static boolean selfOpens(int move) {
         return move == OPEN || move == SLASHING || move == LATCH || move == SB_DRAW;
     }
-    /** A pose that begins in the pose the last frame showed and eases into the one asked for, so tricks never jump. */
+
     private Pose shown(float s, boolean running) {
         Pose p = pose(s, running);
         if (carry != null) {
@@ -629,7 +598,7 @@ public final class KnifeSwing extends Module {
     private Pose carryStart;
     private long carryAt;
     private Pose lastShown;
-    /** The pose at second {@code s}: one move after the other along the current line, or the resting pose. */
+
     private Pose pose(float s, boolean running) {
         if (!running || line.isEmpty()) return idle(isOpen);
         int idx = 0;
@@ -638,7 +607,6 @@ public final class KnifeSwing extends Module {
         float t = s - lineStart[idx];
         float x = c01(t / MOVE_TIME[move]);
         Pose p = movePose(move, x, t, startsOpen(idx));
-        // the start of a move blends out of the end of the one before it; the end of the last blends into the resting pose
         if (t < BLEND) {
             Pose before;
             if (idx > 0) {
@@ -659,20 +627,19 @@ public final class KnifeSwing extends Module {
         }
         return p;
     }
-    /** True when the knife is open as move {@code idx} of the line begins. */
+
     private boolean startsOpen(int idx) {
         int move = line.get(idx)[0];
         if (selfOpens(move)) return false;
         return idx == 0 ? isOpen : line.get(idx - 1)[0] != CLOSE;
     }
-    /** The pose {@code x} (0..1) of the way through one move; {@code t} is the same moment in seconds. */
+
     private Pose movePose(int move, float x, float t, boolean startsOpen) {
         Pose p = new Pose();
         boolean kb = karambit();
         p.c = kb ? 0f : startsOpen ? PI : 0f;
         if (kb) p.gripY = grip();
         if (move >= SB_DRAW) {
-            // an authored clip: the 3D model plays it by itself, the hand lets go of the knife
             int ci = move - SB_DRAW;
             p.clip = CLIP_NAME[ci];
             p.clipT = x * CLIP_D[ci];
@@ -714,7 +681,6 @@ public final class KnifeSwing extends Module {
                 p.flickX = -0.05f * bump(x);
                 p.flash = 0.35f * bump((x - 0.45f) / 0.2f);
                 if (kb) {
-                    // the karambit turns right over once in the middle of the show, so the whole blade is seen
                     p.rz += TAU * easeSmoother(c01((x - 0.30f) / 0.50f));
                     p.flash = Math.max(p.flash, 0.55f * bump((x - 0.62f) / 0.2f));
                 }
@@ -774,7 +740,6 @@ public final class KnifeSwing extends Module {
                 if (x > 0.93f) p.flash = 0.6f;
             }
             case AERIAL, KAERIAL -> {
-                // thrown straight up and caught: a parabola, so it hangs at the top, with a steady spin while it is in the air
                 float u = c01((x - 0.12f) / 0.72f);
                 float up = arc(u);
                 float wind = bump(x / 0.20f);
@@ -799,7 +764,6 @@ public final class KnifeSwing extends Module {
                 if (x > 0.9f) p.flash = 0.4f * (1f - (x - 0.9f) / 0.1f);
             }
             case RSPIN, RREV -> {
-                // the knife swings round the finger in the ring; the wrist follows it in a small circle
                 float dir = move == RSPIN ? -1f : 1f;
                 float ang = dir * spin(x, 2f, 0.45f);
                 p.rz = ang;
@@ -811,7 +775,6 @@ public final class KnifeSwing extends Module {
                 if (x > 0.9f) p.flash = 0.55f;
             }
             case RFLURRY -> {
-                // three spins in a row: one turn, one back, then two with everything behind them
                 float ph = x * 3f;
                 int seg = (int) Math.min(2f, ph);
                 float f = ph - seg;
@@ -843,7 +806,6 @@ public final class KnifeSwing extends Module {
                 if (x > 0.93f) p.flash = 0.6f;
             }
             case KTRIPLE -> {
-                // two quick turns, then a long one that ends in a jolt and a flash
                 float a = x < 0.5f ? -spin(x / 0.5f, 2f, 0.7f) : -2f * TAU - spin((x - 0.5f) / 0.5f, 1f, 0.15f);
                 p.rz = a;
                 p.ry = 0.14f * (float) Math.sin(a * 2f);
@@ -867,7 +829,6 @@ public final class KnifeSwing extends Module {
                 if (x > 0.84f) p.flash = 0.9f * (1f - (x - 0.84f) / 0.16f);
             }
             case KEIGHT -> {
-                // the hand draws a figure eight and the knife spins in time with it
                 float th = x * TAU * 1.5f;
                 float env = bump(x);
                 p.rz = 1.2f * TAU * (float) Math.sin(x * TAU);
@@ -907,7 +868,6 @@ public final class KnifeSwing extends Module {
                 if (f > 0.5f && f < 0.66f) p.flash = 0.9f;
             }
             case KSNAP -> {
-                // a long fast spin that is stopped dead: the hand clamps, the blade points where it was going, a flash
                 float a = -spin(x * 1.0f, 3f, 0.9f);
                 p.rz = a;
                 p.ry = 0.14f * (float) Math.sin(a * 2f) * bump(x);
@@ -919,7 +879,6 @@ public final class KnifeSwing extends Module {
                 if (x > 0.84f && x < 0.99f) p.flash = 1f - (x - 0.84f) / 0.15f;
             }
             case KHYPER -> {
-                // it builds up to a blur and then lets go
                 float a = -spin(x, 6f, 0.15f);
                 p.rz = a;
                 p.ry = 0.12f * (float) Math.sin(a * 3f) * bump(x);
@@ -946,7 +905,6 @@ public final class KnifeSwing extends Module {
                 if (x > 0.94f) p.shake = 0.6f;
             }
             case KORBIT -> {
-                // the wrist draws a wide circle and the knife goes round the ring in time with it, like a planet
                 float env = ease(x / 0.15f) * (1f - ease((x - 0.85f) / 0.15f));
                 float ang = -spin(x, 3f, 0.25f);
                 p.rz = ang;
@@ -960,7 +918,6 @@ public final class KnifeSwing extends Module {
                 if (x > 0.92f) p.flash = 0.6f;
             }
             case KCROSS -> {
-                // the blade sweeps a cone as it goes round, so it crosses in front of the hand
                 float ang = -spin(x, 2f, 0.4f);
                 p.rz = ang;
                 p.rx = 0.95f * (float) Math.sin(ang * 0.5f) * bump(x);
@@ -972,7 +929,6 @@ public final class KnifeSwing extends Module {
                 if (x > 0.92f) p.flash = 0.6f;
             }
             case KDOUBLE -> {
-                // a short toss with a flip, then a high one with a long spin; caught each time with a recoil
                 float u1 = c01((x - 0.05f) / 0.36f);
                 float u2 = c01((x - 0.50f) / 0.44f);
                 float up1 = arc(u1);
@@ -989,7 +945,6 @@ public final class KnifeSwing extends Module {
                 if (x > 0.95f) p.shake = 0.6f;
             }
             case KSTORM -> {
-                // five fast turns with the whole hand rattling, and two flashes
                 float a = -spin(x, 5f, 0.6f);
                 p.rz = a;
                 p.rx = 0.5f * (float) Math.sin(x * TAU * 2.0) * bump(x);
@@ -1002,7 +957,6 @@ public final class KnifeSwing extends Module {
                 if ((x > 0.45f && x < 0.52f) || x > 0.92f) p.flash = 1f;
             }
             case INSPECT -> {
-                // each knife has its own inspect: the style, the direction and the number of turns come from which knife is in the hand
                 int id = type.index();
                 int style = id % 6;
                 float dir = (id / 6) % 2 == 0 ? 1f : -1f;
@@ -1013,16 +967,13 @@ public final class KnifeSwing extends Module {
                 p.release = 0.3f * env;
                 p.rush = x > 0.06f && x < 0.94f ? 1f : 0f;
                 if (style == 0) {
-                    // a slow turn with a tilt, so the flat of the blade and then the spine face you
                     p.ry = dir * spin(c01((x - 0.10f) / 0.80f), turns, 0.2f);
                     p.rx = -0.35f * env;
                     p.rz = 0.15f * (float) Math.sin(x * TAU) * env;
                 } else if (style == 1) {
-                    // flipped end over end to show the front, then swept round to show the edge
                     p.rx = dir * spin(c01((x - 0.08f) / 0.42f), 1f, 0.5f);
                     p.rz = dir * spin(c01((x - 0.56f) / 0.38f), turns, 0.3f);
                 } else if (style == 2) {
-                    // a short toss, a catch with a recoil, then one turn to show it
                     float u = c01((x - 0.10f) / 0.55f);
                     float up = arc(u);
                     p.ky = -14f * up;
@@ -1031,29 +982,25 @@ public final class KnifeSwing extends Module {
                     p.gy += kick(x, 0.66f, 0.6f);
                     p.ry = dir * spin(c01((x - 0.74f) / 0.22f), 1f, 0.2f);
                 } else if (style == 3) {
-                    // a fast turn about the handle, then the blade is rocked from side to side
                     p.rz = -dir * spin(c01((x - 0.10f) / 0.50f), turns, 0.4f);
                     p.ry = x > 0.62f ? dir * 0.9f * (float) Math.sin((x - 0.62f) / 0.34f * TAU) : 0f;
                 } else if (style == 4) {
-                    // turned over into a reverse grip, held with a small stab, and turned back
                     p.rz = dir * PI * (easeSmoother(c01((x - 0.10f) / 0.25f)) - easeSmoother(c01((x - 0.60f) / 0.25f)));
                     p.rx = 0.5f * dir * (float) Math.sin(c01((x - 0.35f) / 0.30f) * PI);
                     p.gy += -2.0f * bump((x - 0.42f) / 0.16f);
                 } else {
-                    // a loose wrist roll that ends in a full turn
                     p.rz = dir * 0.6f * (float) Math.sin(x * TAU * 2f) * env;
                     p.ry = dir * spin(c01((x - 0.40f) / 0.55f), turns, 0.1f);
                 }
                 p.flash = Math.max(0.5f * bump((x - 0.46f) / 0.12f), x > 0.92f ? 0.6f : 0f);
             }
             case HELI -> {
-                // the knife lies flat and goes round like a helicopter blade while the handles whirl
                 float ang = spin(x, 3f, 0.2f);
                 float env = bump(x);
                 p.ry = ang;
                 p.rz = 0.35f * env;
                 p.rx = 0.18f * (float) Math.sin(ang) * env;
-                float hs = spin(x, 2f, 0.2f);   // the handles turn whole times, so the knife is whole again at the end
+                float hs = spin(x, 2f, 0.2f);
                 p.a = -hs;
                 p.b = hs;
                 p.release = 0.6f * env;
@@ -1082,7 +1029,6 @@ public final class KnifeSwing extends Module {
                 if (x > 0.95f) p.shake = 0.6f;
             }
             case LATCH -> {
-                // the knife is flicked open and turned over in the same movement, then locks with a flash
                 float o = x >= 0.45f ? 1f : easeOutBack(softStart(x / 0.45f));
                 setOpen(p, Math.min(1.05f, o));
                 p.rz = -spin(x, 1f, 0.7f);
@@ -1093,7 +1039,6 @@ public final class KnifeSwing extends Module {
                 if (x > 0.42f && x < 0.8f) p.flash = 1f - (x - 0.42f) / 0.38f;
             }
             case CASCADE -> {
-                // fan, handle whirl and rollover as one unbroken movement
                 if (x < 0.30f) return movePose(FAN, x / 0.30f, t, true);
                 if (x < 0.62f) return movePose(WHIRL, (x - 0.30f) / 0.32f, t, true);
                 return movePose(ROLL, (x - 0.62f) / 0.38f, t, true);
@@ -1108,7 +1053,7 @@ public final class KnifeSwing extends Module {
         }
         return p;
     }
-    /** The hand lets the handle go (only the finger in the ring stays) while the knife spins. */
+
     private static void spinHand(Pose p, float x) {
         p.release = Math.min(ease(x / 0.10f), 1f - ease((x - 0.90f) / 0.10f));
         p.rush = x > 0.03f && x < 0.97f ? 1f : 0f;
@@ -1135,7 +1080,6 @@ public final class KnifeSwing extends Module {
         p.flash = s > 0.27f && s < 0.42f ? 1f - (s - 0.27f) / 0.15f : 0f;
         p.rush = (cut > 0.05f && cut < 0.99f && back < 0.2f ? 1f : 0f) + (s < 0.17f ? 0.6f : 0f);
     }
-    // ------------------------------------------------------------------ the frame: where everything is for a pose
     private static final class Frame {
         Rig.T knife;
         Rig.T arm;
@@ -1146,7 +1090,6 @@ public final class KnifeSwing extends Module {
         Rig.T r0 = ring() ? Rig.T.rz(0.40f).rotY(-0.45f).rotX(0.10f) : kb ? Rig.T.rz(PI - 0.50f).rotY(-0.45f).rotX(0.10f) : Rig.T.rz(-0.20f).rotY(-0.55f).rotX(0.12f);
         Rig.T base = new Rig.T(r0);
         float[] g = base.point(0f, p.gripY, 0f);
-        // the butterfly turns about the fist, the karambit about its ring (the knife's own origin)
         float[] pv = ring() ? new float[] {0f, 0f, 0f} : g;
         Rig.T rt = Rig.T.rz(p.rz).then(Rig.T.rx(p.rx)).then(Rig.T.ry(p.ry));
         Rig.T k = base.worldRot(rt, pv[0], pv[1], pv[2]);
@@ -1169,11 +1112,6 @@ public final class KnifeSwing extends Module {
         f.fist = fist.worldRot(rf, sh[0], sh[1], sh[2]);
         return f;
     }
-    // ------------------------------------------------------------------ drawing
-
-
-
-    // ------------------------------------------------------------------ drawing
 
     @Override
     protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
@@ -1181,7 +1119,6 @@ public final class KnifeSwing extends Module {
         long now = System.nanoTime();
         float dt = lastFrame == 0L ? 0.016f : Math.min(0.08f, (now - lastFrame) / 1e9f);
         lastFrame = now;
-        // it slides up from the bottom of the screen when it shows and back down when it goes
         vis += ((want ? 1f : 0f) - vis) * Math.min(1f, dt * 9f);
         if (vis < 0.02f) {
             tipTrail.clear();
@@ -1191,9 +1128,7 @@ public final class KnifeSwing extends Module {
             return;
         }
         float sc = Math.max(0.5f, (float) size.f());
-        // one world unit in screen pixels, tied to the screen height so the hand looks the same at every GUI scale
         float unit = Math.max(0.6f, h / 540f * 4.6f * sc) * (0.62f + 0.38f * vis);
-        // the hand lags behind when you turn
         float yaw = mc.player.getYRot(), pitch = mc.player.getXRot();
         if (!Float.isNaN(lastYaw)) {
             float dy = wrap(yaw - lastYaw);
@@ -1229,7 +1164,6 @@ public final class KnifeSwing extends Module {
         g.pose().pushMatrix();
         g.pose().translate(x0 + swayX, y0 + swayY);
 
-        // the trail: where the blade tip has been
         float[] tip = tipOf(f, p);
         float[] tp = onScreen(tip, u);
         if (trail.on() && trailStrength.f() > 1 && p.rush > 0.05f) {
@@ -1253,7 +1187,6 @@ public final class KnifeSwing extends Module {
             }
         }
 
-        // ghosts of the last few frames while it moves fast
         if (blur.on() && ghostStrength.f() > 1 && p.rush > 0.05f) {
             ghostAt.add(new Rig.T(f.knife));
             ghostAngle.add(new float[] {p.a, p.b, p.c, p.clip == null ? -1f : 0f, p.clipT});
@@ -1277,7 +1210,6 @@ public final class KnifeSwing extends Module {
             if (!mesh || !drawMesh(g, ghostAt.get(i), a[0], a[1], a[2], look, u, al)) pixelKnife(g, ghostAt.get(i), a[0], a[1], a[2], look, u, al);
         }
 
-        // the hand: the arm reaching in, then the fingers on the handle
         rig.clear();
         rig.alpha(fade);
         ArmArt.Skin skin = ArmArt.skin(mc.player, hand.index(), handLight.on() ? glowOf(look, p) : 0);
@@ -1293,7 +1225,6 @@ public final class KnifeSwing extends Module {
         }
         rig.flush(g, u);
 
-        // the knife itself, as the 3D model when there is one
         if (mesh && p.clip != null && KnifeMesh.hasClip(meshName(), p.clip)) {
             boolean ok;
             try {
@@ -1308,7 +1239,6 @@ public final class KnifeSwing extends Module {
             if (!drawMesh(g, f.knife, p.a, p.b, p.c, look, u, fade)) pixelKnife(g, f.knife, p.a, p.b, p.c, look, u, fade);
         }
 
-        // a flash at the tip when it locks or cuts
         if (sparks.on() && p.flash > 0.01f) {
             float s = Math.max(0.01f, Math.min(1f, p.flash) * Math.min(1f, flashStrength.f() / 100f));
             int r = Math.round(26f * sc * (0.4f + s));
@@ -1323,7 +1253,6 @@ public final class KnifeSwing extends Module {
         g.pose().popMatrix();
     }
 
-    /** The knife's colours for this frame, from the settings of the knife type in use. */
     private KnifeArt.Look lookFor() {
         float time = (System.nanoTime() % 60_000_000_000L) / 1e9f;
         if (type.index() == 0) return KnifeArt.look(preset.index(), shape.index(), finish.index(), design.index(), time);
@@ -1331,23 +1260,17 @@ public final class KnifeSwing extends Module {
         return KnifeArt.sLook(sfinish.index(), type.index() - 2, time);
     }
 
-    /** The 3D model that draws this knife, or null when the 3D models are off. */
     private String meshName() {
         if (!model3d.on()) return null;
         return karambit() ? KnifeArt.nameOf(key()) : "Butterfly knife";
     }
 
-    /** True when the knife in use is drawn as a real 3D model right now. */
     private boolean meshReady() {
         if (meshBroken) return false;
         String name = meshName();
         return name != null && KnifeMesh.has(name);
     }
 
-    /**
-     * Draws the 3D knife, and falls back to the pixel knife for the rest of the session if the model cannot be drawn. A
-     * broken model must never take the hand down with it.
-     */
     private boolean drawMesh(GuiGraphics g, Rig.T at, float a, float b, float c, KnifeArt.Look look, float unit, float alpha) {
         try {
             String name = meshName();
@@ -1361,7 +1284,6 @@ public final class KnifeSwing extends Module {
         }
     }
 
-    /** Draws the pixel knife through the spare rig, for when a 3D model failed. */
     private void pixelKnife(GuiGraphics g, Rig.T at, float a, float b, float c, KnifeArt.Look look, float unit, float alpha) {
         ghost.clear();
         ghost.alpha(alpha);
@@ -1370,13 +1292,11 @@ public final class KnifeSwing extends Module {
         ghost.flush(g, unit);
     }
 
-    /** How much of the knife's colour is thrown on the hand this frame. */
     private static int glowOf(KnifeArt.Look look, Pose p) {
         float k = 0.18f + 0.55f * Math.max(0f, Math.min(1f, p.flash)) + 0.25f * Math.max(0f, Math.min(1f, p.rush));
         return (Math.round(255f * Math.min(1f, k)) << 24) | (look.glow & 0xFFFFFF);
     }
 
-    /** A point of the hand in screen pixels, at the hand's own scale. */
     private static float[] onScreen(float[] p, float unit) {
         float k = unit * 90f / (90f + p[2]);
         return new float[] {p[0] * k, p[1] * k};
@@ -1391,10 +1311,7 @@ public final class KnifeSwing extends Module {
     private float[] tipOf(Frame f, Pose p) {
         return karambit() ? KnifeArt.kTip(f.knife, key()) : KnifeArt.tip(f.knife, p.c);
     }
-    /**
-     * The hand of the karambit: three fingers across the handle, the first finger through the ring (it stays there when the knife
-     * spins or is thrown, the others let go) and a thumb on the spine.
-     */
+
     private void kFingers(Frame f, Pose p, ArmArt.Skin skin) {
         Rig.Painter paint = ArmArt.finger(skin);
         float rel = Math.max(0f, Math.min(1f, p.release));
@@ -1406,14 +1323,13 @@ public final class KnifeSwing extends Module {
         }
         boolean inRing = ring() && Math.abs(p.kx) + Math.abs(p.ky) + Math.abs(p.kz) < 0.6f;
         if (inRing) {
-            // the finger goes through the ring: a short stub up from the top finger
             Rig.T ring = f.fist.move(0.2f, -KnifeArt.KGRIP, -1.3f);
             rig.box(ring, 0f, 1.4f, 0f, 2.4f, 4.6f, 2.8f, paint, false);
         }
         Rig.T thumb = f.fist.move(-2.3f, -4.3f - 1.5f * rel, z - 0.2f).rotZ(0.25f + 0.7f * rel);
         rig.box(thumb, 0f, 0f, 0f, 2.6f, 4.4f, 2.6f, paint, false);
     }
-    /** Four fingers across the handle and a thumb; they swing away as the hand lets go. */
+
     private void fingers(Frame f, Pose p, ArmArt.Skin skin) {
         Rig.Painter paint = ArmArt.finger(skin);
         float rel = Math.max(0f, Math.min(1f, p.release));

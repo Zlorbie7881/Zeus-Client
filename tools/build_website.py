@@ -348,7 +348,7 @@ DNS can take from a few minutes to a day. Always use HTTPS; every host above pro
 
 ## Privacy and safety notes
 - The site loads its fonts and images from itself and contains no trackers. If you add analytics, update your own privacy notice.
-- The in-page helper runs entirely in the visitor's browser. It is a search over this site's own content, not an AI service, and sends nothing anywhere.
+- The in-page helper runs entirely in the visitor's browser. It is a search over this site's own content and sends nothing anywhere.
 - Never put a download of anything other than your own, scanned release jar behind the Download button, and publish its SHA-256 (`--jar` does this) so people can verify it.
 - Cheat clients are banned on many servers. Keep the warning on the Download and Information pages.
 

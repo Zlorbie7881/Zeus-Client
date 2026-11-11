@@ -4,7 +4,6 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 
-/** The short registry name of an item or block ("diamond_sword"). */
 public final class Names {
     private Names() {}
 

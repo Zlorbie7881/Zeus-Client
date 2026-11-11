@@ -40,12 +40,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
-/**
- * The Zeus website, served from this computer only (127.0.0.1). The pages are static files from the jar. The API under
- * /api/ is split in two: /api/site and /api/features are public (they only describe Zeus), everything that reads or
- * changes the running game needs the bearer token and runs on the client thread. Requests whose Host or Origin is not this
- * computer are refused, so a web page on the internet cannot talk to it.
- */
 public final class LocalControlServer {
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
     private static final String WEB_ROOT = "/assets/zeus/web/";
@@ -65,9 +59,6 @@ public final class LocalControlServer {
 
     private LocalControlServer() {}
 
-    // ------------------------------------------------------------------ life cycle
-
-    /** Starts the server on the given port (does nothing when it already runs) and returns the access token. */
     public static synchronized String start(int wantedPort, boolean keepToken) throws IOException {
         if (server != null) return token;
         port = Math.max(1024, Math.min(65535, wantedPort));
@@ -90,7 +81,6 @@ public final class LocalControlServer {
         return token;
     }
 
-    /** Kept for the older command; uses the saved port. */
     public static synchronized String start() throws IOException {
         return start(WebDashboard.portNow(), WebDashboard.keepTokenOn());
     }
@@ -141,8 +131,6 @@ public final class LocalControlServer {
         }
     }
 
-    // ------------------------------------------------------------------ requests
-
     private static void handle(HttpExchange ex) throws IOException {
         try {
             if (!localHost(ex)) {
@@ -163,7 +151,6 @@ public final class LocalControlServer {
                 json(ex, 403, error("Cross-site request refused"));
                 return;
             }
-            // public: they only describe Zeus
             if ("GET".equals(method) && "/api/site".equals(path)) {
                 json(ex, 200, site());
                 return;
@@ -184,7 +171,6 @@ public final class LocalControlServer {
             try {
                 json(ex, 500, error("Request failed"));
             } catch (IOException ignored) {
-                // the client went away
             }
         } finally {
             ex.close();
@@ -265,7 +251,6 @@ public final class LocalControlServer {
             try {
                 after = Long.parseLong(query(ex, "after"));
             } catch (NumberFormatException ignored) {
-                // from the start
             }
             JsonArray list = new JsonArray();
             long last = after;
@@ -300,8 +285,6 @@ public final class LocalControlServer {
         }
     }
 
-    // ------------------------------------------------------------------ the game's side of the API (client thread)
-
     private static JsonObject status() {
         Minecraft mc = Minecraft.getInstance();
         JsonObject o = new JsonObject();
@@ -333,16 +316,11 @@ public final class LocalControlServer {
                 var info = mc.getConnection() == null ? null : mc.getConnection().getPlayerInfo(mc.player.getUUID());
                 if (info != null) o.addProperty("ping", info.getLatency());
             } catch (RuntimeException ignored) {
-                // no ping on this server
             }
         }
         return o;
     }
 
-    /**
-     * Everything the map draws, in one answer: where you are, the bases the Ledger keeps, the chests this world
-     * remembers, the finds from the last scan and the people in the dossier. Read-only.
-     */
     private static JsonObject atlas() {
         Minecraft mc = Minecraft.getInstance();
         JsonObject o = new JsonObject();
@@ -493,7 +471,7 @@ public final class LocalControlServer {
             for (String line : i.lines()) lines.add(line);
             o.add("lines", lines);
         } else {
-            return null; // a secret or an unknown kind is never sent
+            return null;
         }
         return o;
     }
@@ -540,8 +518,6 @@ public final class LocalControlServer {
         return error("Unknown action");
     }
 
-    // ------------------------------------------------------------------ public information
-
     private static JsonObject site() {
         JsonObject o = new JsonObject();
         o.addProperty("version", Zeus.VERSION);
@@ -562,8 +538,6 @@ public final class LocalControlServer {
         if (featuresJson == null) featuresJson = com.zlorbie788.zeus.core.FeatureCatalog.json();
         return featuresJson;
     }
-
-    // ------------------------------------------------------------------ scheduler and market alerts (kept from the earlier dashboard)
 
     private static JsonObject tasks() {
         JsonObject root = new JsonObject();
@@ -662,8 +636,6 @@ public final class LocalControlServer {
         json(ex, 200, out);
     }
 
-    // ------------------------------------------------------------------ plumbing
-
     private static boolean localHost(HttpExchange ex) {
         String host = ex.getRequestHeaders().getFirst("Host");
         if (host == null) return false;
@@ -677,7 +649,7 @@ public final class LocalControlServer {
 
     private static boolean sameOrigin(HttpExchange ex) {
         String origin = ex.getRequestHeaders().getFirst("Origin");
-        if (origin == null) return true; // not a browser page
+        if (origin == null) return true;
         String o = origin.toLowerCase(Locale.ROOT);
         int p;
         synchronized (LocalControlServer.class) {
@@ -730,7 +702,6 @@ public final class LocalControlServer {
         return "";
     }
 
-    /** Reads a small JSON body; answers 400/413 itself and returns null when it is not usable. */
     private static JsonObject body(HttpExchange ex) throws IOException {
         byte[] bytes = ex.getRequestBody().readNBytes(MAX_BODY + 1);
         if (bytes.length > MAX_BODY) {
@@ -766,8 +737,6 @@ public final class LocalControlServer {
         if (!head) ex.getResponseBody().write(bytes);
     }
 
-    // ------------------------------------------------------------------ the pages
-
     private static final Map<String, String> TYPES = Map.ofEntries(
             Map.entry("html", "text/html; charset=utf-8"),
             Map.entry("css", "text/css; charset=utf-8"),
@@ -788,7 +757,6 @@ public final class LocalControlServer {
 
     private static void serveStatic(HttpExchange ex, String path) throws IOException {
         String name = "/".equals(path) ? "index.html" : path.substring(1);
-        // the pages of the site have clean addresses (/help, /features/...): the single page answers them all
         if (name.matches("[a-z-]{1,24}(/[a-z0-9-]{0,40})?/?")) name = "index.html";
         if (!name.matches("[A-Za-z0-9_./-]{1,80}") || name.contains("..") || name.startsWith(".")) {
             json(ex, 404, error("Not found"));

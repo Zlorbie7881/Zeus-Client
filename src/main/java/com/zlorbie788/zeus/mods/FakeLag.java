@@ -28,21 +28,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
-/**
- * Fake lag: holds the packets you send for a chosen time and then releases them, so the server works from an older picture
- * of where you are. It is a real delay in the connection, not a display trick: the packets are kept and sent in order,
- * never dropped and never reordered.
- *
- * <p>What makes it safe to leave switched on is what it refuses to touch: keep-alives, pings, resource-pack answers, your
- * client information and every custom payload are always sent at once, and containers, chat and recipe book never wait
- * unless you pick that scope yourself. The queue is capped, a full queue is released instead of piling up, and everything
- * waiting is flushed the moment you take damage (if you keep that on), leave the world or switch the module off, so you can
- * never be left talking to a server through a stale connection.</p>
- *
- * <p>Modes: Constant (one steady delay), Jitter (a delay that wanders), Pulse (held for a while, then everything at once,
- * like a blink), Spike (normally nothing, a short burst of lag now and then) and Adaptive (the delay follows how long the
- * server is really taking to answer your hits, so it stays believable instead of looking like a fixed script).</p>
- */
 public final class FakeLag extends Module {
     private static final String[] MODES = {"Constant", "Jitter", "Pulse", "Spike", "Adaptive"};
     private static final String[] SCOPES = {"Movement only", "Movement and actions", "Everything but answers"};
@@ -112,7 +97,6 @@ public final class FakeLag extends Module {
         QUEUE.clear();
     }
 
-    /** Called by the packet hook before a packet leaves. True when the packet was taken and must not be sent now. */
     public static boolean holds(Packet<?> packet) {
         FakeLag m = live;
         if (m == null || !m.enabled() || delivering) return false;
@@ -131,7 +115,6 @@ public final class FakeLag extends Module {
         return true;
     }
 
-    /** Packets that must never wait: the connection would time out or the game would stop answering the server. */
     private static boolean never(Packet<?> p) {
         return p instanceof ServerboundKeepAlivePacket
                 || p instanceof ServerboundPongPacket
@@ -162,11 +145,9 @@ public final class FakeLag extends Module {
         if (action(p)) return true;
         if (scope.index() == 1) return false;
         String n = p.getClass().getSimpleName();
-        // an inventory or a chat message that arrives late is confusing at best, so those stay out of "everything" too
         return !(n.contains("Container") || n.contains("Chat") || n.contains("Recipe") || n.contains("Book") || n.contains("Sign"));
     }
 
-    /** When this packet should go out, or -1 when it should go now. */
     private long dueFor(Packet<?> p, long now) {
         if (!inScope(p)) return -1;
         return switch (mode.index()) {
@@ -192,7 +173,6 @@ public final class FakeLag extends Module {
         };
     }
 
-    /** Sends everything that is due, oldest first, so the order the game produced is the order the server sees. */
     private void flushDue(long now) {
         if (QUEUE.isEmpty()) return;
         ClientPacketListener c = Minecraft.getInstance().getConnection();
@@ -243,7 +223,6 @@ public final class FakeLag extends Module {
 
     @Override
     protected void onHud(net.minecraft.client.gui.GuiGraphics g, Minecraft mc, float partial, int w, int h) {
-        // every frame, so a release lands on the frame it is due rather than up to a tick later
         flushDue(System.currentTimeMillis());
     }
 

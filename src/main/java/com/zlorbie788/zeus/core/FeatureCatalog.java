@@ -10,11 +10,6 @@ import net.minecraft.client.gui.GuiGraphics;
 
 import java.util.Locale;
 
-/**
- * A description of every module and every setting as JSON: names, descriptions, kinds, ranges and starting values. It holds no
- * live values and nothing about the player, so the website can show it publicly. The same text is saved as features.json for
- * the copy of the website you publish.
- */
 public final class FeatureCatalog {
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
 
@@ -61,23 +56,17 @@ public final class FeatureCatalog {
         return GSON.toJson(root);
     }
 
-    /** True when the module's own class (not the empty one in Module) defines this method. */
     private static boolean declares(Module m, String name, Class<?>... args) {
         for (Class<?> c = m.getClass(); c != null && c != Module.class; c = c.getSuperclass()) {
             try {
                 c.getDeclaredMethod(name, args);
                 return true;
             } catch (NoSuchMethodException e) {
-                // look one class up
             }
         }
         return false;
     }
 
-    /**
-     * A rough cost for the website, worked out from what the module does every frame: 1 almost nothing, 2 low, 3 medium, 4 high,
-     * 5 very high. It is an estimate from the code, not a measurement. In the game the real, measured cost is shown in the list.
-     */
     private static void addCost(JsonObject o, Module m) {
         boolean tick = declares(m, "onTick", Minecraft.class);
         boolean hud = declares(m, "onHud", GuiGraphics.class, Minecraft.class, float.class, int.class, int.class);

@@ -2,11 +2,6 @@ package com.zlorbie788.zeus.mods;
 
 import com.zlorbie788.zeus.core.Setting;
 
-/**
- * Base Finder: the same scanner as Suspicious Chunks, tuned to find bases and nothing else. It starts on the strict side
- * (a find needs blocks that no natural structure places, such as chests, hoppers, concrete and redstone parts), shows only
- * finds of at least two chunks, names natural structures and hides them, and can send the big ones to your Discord webhook.
- */
 public final class BaseFinder extends SuspiciousChunks {
     private final Setting.Num bigSize;
 
@@ -15,7 +10,6 @@ public final class BaseFinder extends SuspiciousChunks {
         this.bigSize = addSetting(new Setting.Num("Big base from", "A find this many chunks wide counts as a big base (for the Discord message).", 4, 2, 12, 1, " chunks"));
     }
 
-    /** This one has no HUD: the finds are in the world markers, the alerts and the Discord message, never in a box. */
     @Override
     public boolean isHudWidget() {
         return false;

@@ -17,25 +17,14 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvents;
 import org.lwjgl.glfw.GLFW;
 
-/**
- * The Zeus main menu, built to match the reference picture (tools/menu_reference.jpg): the Zeus medallion with its lettering above
- * six stone plates, two columns on each side, a full moon over a starry sky, banks of storm cloud that drift to the left for ever
- * (new ones keep coming in from the right), fog that rolls along the ground in waves, four round buttons in the bottom left
- * (Language, Accessibility, Zeus Settings, Credits) and the 3D news scroll in the bottom right.
- *
- * <p>Every picture is a layer made by tools/menu_layers.py, tools/menu_clouds.py and tools/make_news_scroll.py. The scene is drawn
- * on a canvas of 1360 x 768 units (the size of the reference picture) that is scaled to cover the window; the buttons and the logo
- * use the same units but are scaled to fit inside it, so they are never cut off on a wide or a narrow window.
- */
 public final class ZeusTitleScreen extends Screen {
-    // ---- the reference picture's units
     private static final float MW = 1360f;
     private static final float MH = 768f;
     private static final float PLATE_X = 490f;
     private static final float PLATE_W = 382f;
     private static final float PLATE_H = 54f;
     private static final float[] PLATE_Y = {351f, 414f, 476f, 539f, 602f, 665f};
-    /** The logo picture (medallion, lettering and the line under it): where it goes, and where the medallion sits in it. */
+
     private static final float LOGO_X = 500f;
     private static final float LOGO_Y = 14f;
     private static final float LOGO_W = 368f;
@@ -43,21 +32,20 @@ public final class ZeusTitleScreen extends Screen {
     private static final float MEDAL_CX = 678f;
     private static final float MEDAL_CY = 145f;
     private static final float MEDAL_R = 123f;
-    /** The round buttons: centres, and how far the picture reaches round each. */
+
     private static final float[][] ICON = {{74.5f, 714f}, {165.5f, 714f}, {256.5f, 714f}, {347.5f, 714f}, {438.5f, 714f}};
-    /** The invite the Discord button opens. */
+
     private static final String DISCORD = "https://discord.gg/znrj2TfCP8";
     private static final float ICON_R = 34f;
     private static final float ICON_PIC = 37f;
     private static final String[] NAMES = {"singleplayer", "multiplayer", "customs", "settings", "realms", "exit"};
     private static final String[] ICON_NAMES = {"language", "accessibility", "settings", "credits", "discord"};
-    /** Frames in the animation strip of each round button (0 = drawn in code instead). */
+
     private static final int[] ICON_FRAMES = {24, 24, 0, 12, 0};
     private static final float CLICK_LENGTH = 0.34f;
     private static final float CLICK_GO = 0.25f;
     private static final String[] ICON_TIPS = {"Language", "Accessibility", "Zeus Settings", "Credits", "Join the Discord"};
 
-    // ---- the scene's pictures (sizes in the 1920 x 1080 picture the layers were made on)
     private static final int PIC_W = 1920;
     private static final int PIC_H = 1080;
     private static final int PILLAR_L_W = 370;
@@ -70,7 +58,6 @@ public final class ZeusTitleScreen extends Screen {
     private final long born = System.nanoTime();
     private final float[] glow = new float[6];
     private final float[] iconGlow = new float[5];
-    // hover animation state: springs that overshoot a little, and where / when the pointer came in
     private final float[] plateSpring = new float[6];
     private final float[] plateVel = new float[6];
     private final float[] plateMag = new float[6];
@@ -85,18 +72,18 @@ public final class ZeusTitleScreen extends Screen {
     private int soundPlate = -1;
     private int soundIcon = -1;
     private final float[] iconPhase = new float[4];
-    /** A click in progress: what was clicked (0 a plate, 1 a round button), which one, when, and where it is on screen (centre and box). */
+
     private int clickKind = -1;
     private int clickIdx = -1;
     private long clickAt;
     private final float[] clickBox = new float[6];
     private final MenuNews news = new MenuNews();
-    /** The plate that is lit (pointer or keyboard); -1 while nothing is. */
+
     private int selected = -1;
     private boolean selectedByMouse;
-    /** Where the logo and the lettering are on screen (x, y, w, h): clicking there opens the Zeus settings. */
+
     private final int[] logoBox = {0, 0, 0, 0};
-    /** The medallion: centre x, centre y and radius on the screen, and how strongly the pointer is on the logo (0 to 1). */
+
     private final float[] logoC = {0, 0, 0};
     private float logoHot;
     private long logoHotAt;
@@ -118,7 +105,6 @@ public final class ZeusTitleScreen extends Screen {
         warm();
     }
 
-    /** Builds every picture the menu needs while the screen fades in, so nothing is made in the middle of an animation. */
     private void warm() {
         try {
             int gs = Tex.guiScale();
@@ -154,16 +140,12 @@ public final class ZeusTitleScreen extends Screen {
 
     @Override
     public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-        // drawn in render, without the game's blurred panorama
     }
 
     private float time() {
         return (System.nanoTime() - born) / 1e9f;
     }
 
-    // ------------------------------------------------------------ layout
-
-    /** Gui pixels per reference unit for things that must stay whole on screen (logo, buttons, round buttons). */
     private float u() {
         return Math.min(width / MW, height / MH);
     }
@@ -196,7 +178,6 @@ public final class ZeusTitleScreen extends Screen {
         return uy(PLATE_Y[i]);
     }
 
-    /** The round buttons stick to the left edge and the bottom of the window. */
     private int iconCx(int i) {
         return Math.round(ICON[i][0] * u());
     }
@@ -221,7 +202,6 @@ public final class ZeusTitleScreen extends Screen {
     }
 
     private int iconAt(int mx, int my) {
-        // the picture reaches a little past ICON_R, so the click area matches what the eye sees
         float r = ICON_R * 1.06f * u();
         for (int i = 0; i < ICON.length; i++) {
             float dx = mx - iconCx(i);
@@ -231,21 +211,13 @@ public final class ZeusTitleScreen extends Screen {
         return -1;
     }
 
-    // ------------------------------------------------------------ the scene
-
-    /** Where the mouse is on the screen, -0.5 to 0.5 each way, for a slight parallax of the layers. Set by the screens that draw the scene. */
     static float parX;
     static float parY;
     static float flashX;
     static float flashY;
-    /** How strong the last far flash was (0 to 1), so the logo can glow with it. */
+
     static float lastFlash;
 
-    /**
-     * The canvas the scene is drawn on: {scale (gui pixels per unit), left, top} of the 1360 x 768 canvas, covering the window with a
-     * little spare round it, and moved a few pixels by the slow sway and the mouse. {@code depth} is how much the layer moves: 0
-     * for the sky behind everything, 1 for the columns in front.
-     */
     private static float[] canvas(int width, int height, float t, float depth) {
         float cs = Math.max(width / MW, height / MH) * 1.035f;
         boolean calm = UiSettings.CALM.on() || Perf.fast();
@@ -261,12 +233,10 @@ public final class ZeusTitleScreen extends Screen {
         return Tex.fitted(key, path, w, h, false, 0, 0);
     }
 
-    /** Width in device pixels of the whole canvas picture, never more than the pictures themselves have. */
     private static int canvasPx(float cs, int gs, int cap) {
         return Math.max(64, Math.min(Math.round(MW * cs * gs), cap));
     }
 
-    /** Builds the pictures of the scene at the exact size they are drawn. */
     private static void scenePictures(float cs, int gs) {
         int cw = canvasPx(cs, gs, PIC_W);
         int ch = Math.round(cw * (float) PIC_H / PIC_W);
@@ -288,10 +258,6 @@ public final class ZeusTitleScreen extends Screen {
         pic("menu_mist_b", "textures/gui/menu/mist_b.png", kw, mh);
     }
 
-    /**
-     * Sheet lightning far behind the clouds: how strong it is right now (0 to 1); where it is goes to flashX and flashY. Every
-     * six seconds there is one flash, and now and then a second, weaker one a little later.
-     */
     private static float skyFlash(float t, int width, int height) {
         int slot = (int) Math.floor(t / 6f);
         float local = t - slot * 6f;
@@ -301,7 +267,6 @@ public final class ZeusTitleScreen extends Screen {
             float start = n == 0 ? 0.8f + 2.0f * Lightning.hash(slot, 41) : 3.6f + 0.9f * Lightning.hash(slot, 42);
             float e = local - start;
             if (e < 0f || e > 1.1f) continue;
-            // two quick pulses, then a slow fade
             float v = e < 0.07f ? e / 0.07f : e < 0.15f ? 0.30f : e < 0.24f ? 1f : Math.max(0f, 1f - (e - 0.24f) / 0.8f);
             if (n == 1) v *= 0.7f;
             if (v > best) {
@@ -313,11 +278,6 @@ public final class ZeusTitleScreen extends Screen {
         return best;
     }
 
-    /**
-     * A picture that tiles sideways, drawn in vertical strips so every strip can have its own transparency and its own height shift
-     * (the waves). {@code top} and {@code hUnits} are in canvas units; {@code offset} slides it to the left (units, wraps round);
-     * {@code alpha} has one value per strip; {@code waveAmp} (units) moves strip i by sin(x * waveK + phase).
-     */
     private static void strips(GuiGraphics g, Tex.Img img, float[] c, float top, float hUnits, float offset, float[] alpha, int tintRgb,
                                float waveAmp, float waveK, float phase) {
         if (img == null) return;
@@ -333,7 +293,6 @@ public final class ZeusTitleScreen extends Screen {
             int dx1 = Math.round(c[1] + (cx + sw) * cs);
             int dy = Math.round(c[2] + (top + (waveAmp == 0f ? 0f : waveAmp * (float) Math.sin(cx * waveK + phase))) * cs);
             int col = Draw.rgba(tintRgb, alpha[i]);
-            // where this strip's piece starts in the picture and where the next strip's starts, in picture pixels (so strips meet exactly)
             int s0 = Math.round((cx + off) / MW * img.w);
             int s1 = Math.round((cx + sw + off) / MW * img.w);
             int sx = s0 % img.w;
@@ -356,12 +315,10 @@ public final class ZeusTitleScreen extends Screen {
         return a;
     }
 
-    /** The scene shared by the menu and the credits: sky, moon, stars, clouds, columns, fog and the far flashes. */
     static void scene(GuiGraphics g, int width, int height, float t, long[] flash) {
         scene(g, width, height, t, flash, true);
     }
 
-    /** {@code menu} false is for the loading screens: the same sky, but no storm (and the wait for the next one starts again). */
     static void scene(GuiGraphics g, int width, int height, float t, long[] flash, boolean menu) {
         if (!menu) MenuStorm.reset();
         float ct = menu ? MenuStorm.update() : t;
@@ -387,15 +344,12 @@ public final class ZeusTitleScreen extends Screen {
         }
         lastFlash = fl;
 
-        // the sky, the moon and the columns are one picture
         Tex.Img bg = pic("menu_bg", "textures/gui/menu/background.png", cw, ch);
         if (bg != null) bg.draw(g, Math.round(back[1]), Math.round(back[2]), Math.round(MW * cs), Math.round(MH * cs), 0xFFFFFFFF);
         else g.fillGradient(0, 0, width, height, 0xFF0A1226, 0xFF050810);
 
-        // how much of the storm's cloud has arrived over the moon (it is swallowed as the storm builds and comes back as it clears)
         float moonCover = lv > 0.004f ? ceilingCover(Math.min(16, (int) (MOON_X / (MW / 17f))), 17, lv) : 0f;
 
-        // the moon breathes a little, and the stars twinkle
         if (!still) {
             float mxp = back[1] + 1015f * cs;
             float myp = back[2] + 90f * cs;
@@ -410,7 +364,6 @@ public final class ZeusTitleScreen extends Screen {
             }
         }
         if (moonCover > 0.02f) {
-            // the moon goes out behind the cloud: its disc is dimmed to the colour of the sky, softly at the edge
             float c = moonCover * moonCover * (3f - 2f * moonCover);
             int mx = Math.round(back[1] + MOON_X * cs);
             int my = Math.round(back[2] + 90f * cs);
@@ -418,7 +371,6 @@ public final class ZeusTitleScreen extends Screen {
             Lightning.disc(g, mx, my, Math.round(52f * cs), Draw.rgba(0xFF0A1630, 0.42f * c));
             Lightning.disc(g, mx, my, Math.round(45f * cs), Draw.rgba(0xFF0A1630, 0.60f * c));
         }
-        // winter nights: the aurora, behind the storm and the clouds
         if (MenuSnow.level() > 0.01f || MenuAurora.level() > 0.01f) {
             MenuAurora.draw(g, width, height, t, lv, back[1] + MOON_X * cs, back[2] + 90f * cs, 66f * cs, still);
         }
@@ -431,7 +383,6 @@ public final class ZeusTitleScreen extends Screen {
             MenuStorm.bolt(g, width, height);
             stormCeiling(g, back, front, kw, lv, fl, ct, still);
             if (!still && moonCover > 0.08f && moonCover < 0.98f) {
-                // a silver edge: the moon shining through the thin rim of the cloud that is covering it, or leaving it
                 float rim = (float) Math.sin(Math.PI * moonCover);
                 float mxp = back[1] + MOON_X * back[0];
                 float myp = back[2] + 90f * back[0];
@@ -439,19 +390,15 @@ public final class ZeusTitleScreen extends Screen {
             }
         }
 
-        // the cloud banks: three layers slide to the left at their own pace; the part that leaves on the left is the part that
-        // enters on the right, so there are always new clouds coming. In the middle of the screen the banks thin out (the logo and
-        // the buttons are there), as in the reference picture.
         float cloudTop = MH - CLOUD_H * (MW / CLOUD_W);
         float cloudH = CLOUD_H * (MW / CLOUD_W);
         int nStrip = 17;
         float[] env = new float[nStrip];
         for (int i = 0; i < nStrip; i++) {
-            float sxm = (back[1] + (i + 0.5f) * (MW / nStrip) * cs) / Math.max(1, width);          // 0..1 across the window
+            float sxm = (back[1] + (i + 0.5f) * (MW / nStrip) * cs) / Math.max(1, width);
             float d = Math.abs(sxm - 0.5f) * 2f;
             float k = Math.max(0f, Math.min(1f, (d - 0.18f) / 0.55f));
             env[i] = 0.34f + 0.66f * (k * k * (3f - 2f * k));
-            // a storm closes the gap in the middle: the banks thicken until there is no clear sky left
             env[i] += (1f - env[i]) * 0.85f * lv;
         }
         String[] names = {"far", "mid", "near"};
@@ -467,7 +414,6 @@ public final class ZeusTitleScreen extends Screen {
             for (int i = 0; i < nStrip; i++) a[i] = Math.min(1f, env[i] * thick);
             float off = still ? 140f * (L + 1) : ct * speed[L] + 380f * L;
             int bankTint = lv > 0.004f ? Draw.mix(0xFFFFFFFF, 0xFF5A6480, 0.9f * lv) : 0xFFFFFFFF;
-            // the bank changes shape: it is faded to and from its twin (same shapes, other details) as it drifts
             Tex.Img twin = still ? null : pic("menu_cloud_" + names[L] + "_b", "textures/gui/menu/cloud_" + names[L] + "_b.png", kw, kh);
             if (twin != null) {
                 float wv = 0.5f - 0.5f * (float) Math.cos((ct + 23f * L) * (float) (Math.PI * 2.0) / (46f + 14f * L));
@@ -484,14 +430,12 @@ public final class ZeusTitleScreen extends Screen {
                 strips(g, img, c, cloudTop + bob, cloudH, off, a, bankTint, 0f, 0f, 0f);
             }
             if (fl > 0.02f && L > 0) {
-                // the flash lights the clouds from behind: the same clouds again in a pale tint
                 float[] b = new float[nStrip];
                 for (int i = 0; i < nStrip; i++) b[i] = env[i] * 0.55f * fl;
                 strips(g, img, c, cloudTop + bob, cloudH, off, b, L == 2 ? 0xFFD2E2FF : 0xFFBED2FF, 0f, 0f, 0f);
             }
         }
 
-        // low ragged cloud racing along under the storm, in front of the banks
         if (lv > 0.05f) {
             int sh = Math.round(kw * 520f / 2560f);
             Tex.Img scud = pic("menu_storm_scud", "textures/gui/menu/storm_scud.png", kw, sh);
@@ -510,7 +454,6 @@ public final class ZeusTitleScreen extends Screen {
             }
         }
 
-        // the columns, in front of the clouds
         int pwL = Math.round(cw * PILLAR_L_W / (float) PIC_W);
         int pwR = Math.round(cw * PILLAR_R_W / (float) PIC_W);
         Tex.Img pl = pic("menu_pillar_l", "textures/gui/menu/pillar_l.png", pwL, ch);
@@ -530,7 +473,6 @@ public final class ZeusTitleScreen extends Screen {
             if (pr != null) pr.draw(g, prx, ply, prw, phh, lit);
         }
 
-        // fog on the ground, in waves: two layers drifting at different speeds, every strip riding its own wave
         int mh = Math.round(kw * (float) MIST_H / CLOUD_W);
         float mistH = MIST_H * (MW / CLOUD_W);
         int mStrip = still ? 34 : 136;
@@ -551,35 +493,22 @@ public final class ZeusTitleScreen extends Screen {
         strips(g, ma, front, MH - mistH * 0.80f, mistH, still ? 0f : ct * 16f, fa, mistTint, still ? 0f : 6.5f, 0.015f, -waveT * 0.7f);
 
         if (lv > 0.004f) {
-            // the whole scene is darker in a storm, most at the top; the rain falls in front of everything
             g.fill(0, 0, width, height, Draw.rgba(0xFF050A1C, 0.18f * lv));
             g.fillGradient(0, 0, width, Math.round(height * 0.62f), Draw.rgba(0xFF02040C, 0.22f * lv), 0x00000000);
             if (fl > 0.02f) g.fill(0, 0, width, height, Draw.rgba(0xFFB4CCFF, 0.10f * fl));
             MenuStorm.rain(g, width, height);
         }
         if (MenuSnow.level() > 0.004f) {
-            // winter: a cold tint over the picture and the snow in front of everything
             g.fill(0, 0, width, height, Draw.rgba(0xFF9CB8E8, 0.045f * MenuSnow.level()));
             MenuSnow.draw(g, width, height, lv);
         }
 
-        // a soft shade at the edges, so the scene sits back behind the buttons
         g.fillGradient(0, 0, width, Math.max(1, height / 7), 0x30000000, 0x00000000);
         g.fillGradient(0, height - Math.max(1, height / 6), width, height, 0x00000000, 0x50000000);
     }
 
-    /**
-     * The roof of the storm: two banks of heavy dark cloud across the top of the picture, one slow and one faster, that thicken
-     * with the storm and drift away again as it clears. The flash lights them from behind.
-     */
-    /** Where the moon is in the sky picture, in menu units across. */
     private static final float MOON_X = 1015f;
 
-    /**
-     * How much of the storm's cloud has arrived over strip {@code i} of {@code n} (0..1). The storm builds from the right (the
-     * clouds come in on the wind) and clears towards the left, so the moon is swallowed early and is the first thing to
-     * come back out.
-     */
     static float ceilingCover(int i, int n, float lv) {
         float x = (i + 0.5f) / n;
         float phase = (MenuStorm.rising ? 1f - x : x) * 0.75f;
@@ -591,8 +520,6 @@ public final class ZeusTitleScreen extends Screen {
         int kh = Math.round(kw * 700f / 2560f);
         float hUnits = 700f * (MW / 2560f);
         int n = 17;
-        // the cover of the whole sky: a heavy, dark deck that rolls in from the right as the storm forms (and changes shape while
-        // it is there), under the two roofs below
         {
             int fh = Math.round(kw * 1000f / 2560f);
             Tex.Img fa = pic("menu_storm_full_a", "textures/gui/menu/storm_full_a.png", kw, fh);
@@ -619,7 +546,6 @@ public final class ZeusTitleScreen extends Screen {
                 strips(g, fa, c, -40f + drop, fullH, off, a, tint, 0f, 0f, 0f);
             }
             if (fl > 0.02f && fa != null) {
-                // lit from inside by the flash
                 float[] b = new float[n];
                 for (int i = 0; i < n; i++) b[i] = a[i] * 0.42f * fl;
                 strips(g, fa, c, -40f + drop, fullH, off, b, 0xFF9DB6F0, 0f, 0f, 0f);
@@ -636,7 +562,6 @@ public final class ZeusTitleScreen extends Screen {
             float[] a = new float[n];
             for (int i = 0; i < n; i++) a[i] = ceilingCover(i, n, lv) * base[L];
             float off = still ? 260f * (L + 1) : ct * speed[L] + 900f * L;
-            // sliding in from the top as it builds
             float drop = (1f - lv) * -40f;
             strips(g, img, c, top[L] + drop, hUnits, off, a, 0xFFFFFFFF, 0f, 0f, 0f);
             if (fl > 0.02f) {
@@ -647,7 +572,6 @@ public final class ZeusTitleScreen extends Screen {
         }
     }
 
-    /** Strikes: returns the flash strength (0..1) and draws the bolt. {@code state} is {next strike nanos, seed}. */
     static float strike(GuiGraphics g, int width, int height, float t, long[] state) {
         long now = System.nanoTime();
         if (state[0] == 0) state[0] = now + (long) (3.5e9 + 3e9 * Lightning.hash((int) (now >> 20), 9));
@@ -716,11 +640,9 @@ public final class ZeusTitleScreen extends Screen {
         Tex.Img plate = Tex.fitted("menu_plate", "textures/gui/menu/plate.png", w * gs, h * gs, false, 0, 0);
         for (int i = 0; i < 6; i++) {
             float want = i == selected ? 1f : 0f;
-            // Exponential damping is independent of frame rate and avoids the twitchy feel of a fixed per-frame lerp.
             float hoverBlend = 1f - (float) Math.exp(-dt * 12.5f);
             glow[i] += (want - glow[i]) * hoverBlend;
             if (Math.abs(want - glow[i]) < 0.0025f) glow[i] = want;
-            // each plate fades in and rises a little, one after the other
             float appear = Math.max(0f, Math.min(1f, (t - 0.35f - i * 0.06f) / 0.5f));
             float ease = 1f - (float) Math.pow(1f - appear, 3.0);
             int x = plateX();
@@ -735,7 +657,6 @@ public final class ZeusTitleScreen extends Screen {
             platePrev[i] = isIn;
             float sp = fx ? HoverFx.spring(plateSpring[i], plateVel, i, want, dt) : want;
             plateSpring[i] = sp;
-            // the plate lifts a little (with a small overshoot) and leans towards the pointer
             float magWant = fx && isIn && curX >= 0 ? Math.max(-1f, Math.min(1f, (curX - (x + w / 2f)) / (w * 0.5f))) * 2.6f * u : 0f;
             plateMag[i] += (magWant - plateMag[i]) * (1f - (float) Math.exp(-dt * 12f));
             int lift = fx ? Math.round(1.7f * u * sp) : 0;
@@ -747,7 +668,6 @@ public final class ZeusTitleScreen extends Screen {
             else Draw.rrect(g, x, y, w, h, 3, Draw.rgba(0xFF05070C, ease));
             Tex.Img ink = Tex.fitted("menu_ink_" + NAMES[i], "textures/gui/menu/ink_" + NAMES[i] + ".png", w * gs, h * gs, false, 0, 0);
             if (ink != null) {
-                // the lettering is the stone lettering of the reference; pointing at it lights it up
                 ink.draw(g, x, y, w, h, Draw.rgba(0xFFFFFFFF, ease));
                 if (gl > 0.02f) ink.draw(g, x, y, w, h, Draw.rgba(0xFFDCE8FF, 0.55f * gl * ease));
             } else {
@@ -755,7 +675,6 @@ public final class ZeusTitleScreen extends Screen {
             }
             if (gl > 0.02f && fx) {
                 float since = t - enterAt[i];
-                // the shine crosses the plate once, the letters flash white as it passes over them
                 if (HoverFx.shine(g, x, y, w, h, since / 0.62f, u, ease, shineBand) && ink != null) {
                     g.enableScissor(Math.max(x, shineBand[0]), y, Math.min(x + w, shineBand[1]), y + h);
                     ink.draw(g, x, y, w, h, Draw.rgba(0xFFFFFFFF, 0.92f * ease));
@@ -771,7 +690,6 @@ public final class ZeusTitleScreen extends Screen {
             }
         }
 
-        // bottom left: Language, Accessibility, Zeus Settings, Credits, Discord
         int ip = Math.round(2 * ICON_PIC * u);
         for (int i = 0; i < ICON_NAMES.length; i++) {
             float want = i == hoverIcon ? 1f : 0f;
@@ -809,13 +727,11 @@ public final class ZeusTitleScreen extends Screen {
             }
         }
 
-        // bottom right: the 3D news scroll
         if (news.layout(width, height, plateRight(), newsBottom(), newsRight())) {
             float na = Math.max(0f, Math.min(1f, (t - 1.1f) / 0.6f));
             news.draw(g, mouseX, mouseY, dt, 1f - (1f - na) * (1f - na), t);
         }
 
-        // the way back to the game's own menu, and who is playing, at the bottom in the middle
         String name = minecraft.getUser().getName().toUpperCase(java.util.Locale.ROOT);
         String line = "VERSION " + ZeusMenu.MENU_VERSION + " - " + name + " ONLINE";
         Draw.textCenter(g, line, width / 2, height - 11, 0x99B4C0D8);
@@ -825,13 +741,11 @@ public final class ZeusTitleScreen extends Screen {
 
         MenuClock.draw(g, width, height, u, Math.max(0f, Math.min(1f, (t - 0.6f) / 0.6f)));
 
-        // a click: the flash goes through the whole menu, on top of everything
         if (clickIdx >= 0) {
             float cp = (System.nanoTime() - clickAt) / 1e9f / CLICK_LENGTH;
             PlateFx.click(g, clickBox[0], clickBox[1], Math.round(clickBox[2]), Math.round(clickBox[3]), Math.round(clickBox[4]), Math.round(clickBox[5]), u, cp, width, height, clickIdx * 7 + clickKind * 3 + 1);
         }
 
-        // fade in from black
         float in = Math.max(0f, 1f - t / 0.9f);
         if (in > 0.01f) g.fill(0, 0, width, height, Draw.rgba(0xFF000000, in * in));
     }
@@ -841,7 +755,6 @@ public final class ZeusTitleScreen extends Screen {
         return mx >= width / 2 - cw / 2 && mx < width / 2 + cw / 2 && my >= height - 25 && my < height - 13;
     }
 
-    /** The Zeus medallion with its lettering above the first plate. It fades in, and a soft light behind it breathes slowly. */
     private void drawLogo(GuiGraphics g, float u, float t, int gs) {
         int lw = Math.round(LOGO_W * u);
         int lh = Math.round(LOGO_H * u);
@@ -860,7 +773,6 @@ public final class ZeusTitleScreen extends Screen {
         logoHot += ((over ? 1f : 0f) - logoHot) * Math.min(1f, ldt * (over ? 11f : 7f));
         if (Math.abs((over ? 1f : 0f) - logoHot) < 0.004f) logoHot = over ? 1f : 0f;
         float hot = UiSettings.CALM.on() ? (over ? 1f : 0f) : logoHot;
-        // it swells a little round the middle of the medallion while the pointer is on it
         float sc = 1f + 0.04f * hot;
         int sw = Math.round(lw * sc);
         int sh = Math.round(lh * sc);
@@ -878,7 +790,6 @@ public final class ZeusTitleScreen extends Screen {
         logoC[1] = cy;
         logoC[2] = MEDAL_R * u;
         if (hot > 0.01f) {
-            // a ring of light round the medallion, with two brighter arcs circling it
             float rr = mr * 1.07f;
             int segs = Perf.fast() ? 36 : 72;
             for (int i = 0; i < segs; i++) {
@@ -901,12 +812,6 @@ public final class ZeusTitleScreen extends Screen {
         }
     }
 
-
-    /**
-     * The hover animation of a round button. The globe and the figure play a strip of pictures made from the button's own
-     * artwork (the globe turns, the figure waves), the scroll unrolls as far as the pointer has stayed on it, and the
-     * lightning bolt is lit, with the ring of arcs circling the button.
-     */
     private void iconAnim(GuiGraphics g, int i, int cx, int cy, int size, float gl, float appear, float dt, float t, float u, Tex.Img still) {
         int frames = ICON_FRAMES[i];
         if (frames > 0) {
@@ -924,22 +829,17 @@ public final class ZeusTitleScreen extends Screen {
             strip.drawPart(g, cx - size / 2, cy - size / 2, size, size, f * fp, 0, fp, fp, Draw.rgba(0xFFFFFFFF, Math.min(1f, gl * 1.8f) * appear));
             return;
         }
-        // the bolt: the icon itself, lit, with the ring of arcs circling the round button
         still.draw(g, cx - size / 2, cy - size / 2, size, size, Draw.rgba(Draw.mix(0xFFFFFFFF, 0xFFE2EEFF, gl), appear));
         Thunder.ring(g, cx, cy, ICON_R * u * 0.96f, t, gl * appear, Math.max(0.6f, u));
     }
-
-    // ------------------------------------------------------------ input
 
     private void play() {
         try {
             minecraft.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1f));
         } catch (Throwable ignored) {
-            // silence is fine
         }
     }
 
-    /** The logo is clickable where it is drawn: the medallion (a circle) and the lettering under it, not the empty corners of its picture. */
     private boolean inLogo(int x, int y) {
         if (logoBox[2] <= 0 || x < logoBox[0] || x >= logoBox[0] + logoBox[2] || y < logoBox[1] || y >= logoBox[1] + logoBox[3]) return false;
         float dx = x - logoC[0];
@@ -948,7 +848,6 @@ public final class ZeusTitleScreen extends Screen {
         return y >= logoC[1] + logoC[2] * 0.98f;
     }
 
-    /** The Zeus settings, the same panel the Zeus Customs plate opens. */
     private void openSettings() {
         try {
             minecraft.setScreen(new ZeusScreen(this));
@@ -957,7 +856,6 @@ public final class ZeusTitleScreen extends Screen {
         }
     }
 
-    /** A click or Enter on a plate (kind 0) or a round button (kind 1): the flash plays first and the screen opens in the middle of it. */
     private void trigger(int kind, int i) {
         if (clickIdx >= 0) return;
         play();
@@ -1004,7 +902,6 @@ public final class ZeusTitleScreen extends Screen {
             try {
                 minecraft.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.LIGHTNING_BOLT_IMPACT, 1.35f, 0.32f));
             } catch (Throwable ignored) {
-                // the flash is enough
             }
         }
     }
@@ -1043,7 +940,6 @@ public final class ZeusTitleScreen extends Screen {
                 case 1 -> minecraft.setScreen(new AccessibilityOptionsScreen(this, minecraft.options));
                 case 2 -> minecraft.setScreen(new ZeusScreen(this));
                 case 4 -> {
-                    // the invite opens in the browser, and the menu stays where it is
                     net.minecraft.util.Util.getPlatform().openUri(DISCORD);
                     Zeus.toast("Opening Discord", true);
                 }
@@ -1113,6 +1009,5 @@ public final class ZeusTitleScreen extends Screen {
 
     @Override
     public void removed() {
-        // pictures stay cached for the next time the menu opens
     }
 }

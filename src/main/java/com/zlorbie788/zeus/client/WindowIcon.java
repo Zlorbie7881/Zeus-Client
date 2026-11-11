@@ -13,11 +13,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 
-/**
- * Puts the Zeus medallion in the window's icon, so the task bar and the title bar show it instead of the game's grass block.
- * The game sets its own icon once while it starts; this replaces it on the first tick, at six sizes so the system can pick
- * the one that fits (16 px for the title bar, 32 to 48 px for the task bar, bigger for Alt+Tab and high-resolution screens).
- */
 public final class WindowIcon {
     private WindowIcon() {}
 
@@ -25,7 +20,6 @@ public final class WindowIcon {
     private static long applied;
     private static boolean failed;
 
-    /** Called every game tick; does the work once per window. */
     public static void tick(Minecraft mc) {
         if (failed) return;
         try {
@@ -74,7 +68,6 @@ public final class WindowIcon {
         }
     }
 
-    /** Scales in halving steps with smooth filtering, so small sizes stay clean instead of jagged. */
     private static BufferedImage scale(BufferedImage src, int size) {
         BufferedImage cur = src;
         while (cur.getWidth() / 2 >= size) cur = step(cur, cur.getWidth() / 2);

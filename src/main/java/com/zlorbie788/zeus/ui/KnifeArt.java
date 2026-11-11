@@ -2,22 +2,15 @@ package com.zlorbie788.zeus.ui;
 
 import net.minecraft.client.gui.GuiGraphics;
 
-/**
- * The butterfly knife (a balisong) as boxes for {@link Rig}: two handles, a blade, two pins. The handles and the blade each turn
- * about their own pin, which is what makes it a butterfly: opening it, the blade goes half a turn and the free handle a whole one.
- *
- * <p>The knife's own frame: origin at the pivot, +y down along the handles, x across, z the pin's direction (away from you).
- * Handle A sits in front, handle B behind it and the blade between them.</p>
- */
 public final class KnifeArt {
-    /** Everything of the knife is drawn this much bigger than its plain numbers. */
+
     public static final float S = 1.35f;
-    public static final float HL = 11f * S;   // handle length
-    public static final float HW = 1.8f * S;  // handle width
-    public static final float HT = 1.4f * S;  // handle thickness
-    public static final float BL = 11f * S;   // blade length
-    public static final float BH = 2.4f * S;  // blade height (spine to edge)
-    public static final float BT = 0.5f * S;  // blade thickness
+    public static final float HL = 11f * S;
+    public static final float HW = 1.8f * S;
+    public static final float HT = 1.4f * S;
+    public static final float BL = 11f * S;
+    public static final float BH = 2.4f * S;
+    public static final float BT = 0.5f * S;
     public static final float PIN_X = 0.95f * S;
     public static final float PIN_Z = 0.75f * S;
 
@@ -26,7 +19,6 @@ public final class KnifeArt {
     public static final String[] FINISHES = {"Same as the knife", "Satin steel", "Black coated", "Mirror", "Gold plated", "Blue titanium", "Rainbow titanium"};
     public static final String[] DESIGNS = {"Slotted", "Grooved", "Skeleton", "Plain"};
 
-    /** {handle light, mid, dark, deep} {blade light, mid, dark} glow. */
     private static final int[][] HANDLES = {
         {0xFFFF7A7A, 0xFFD72634, 0xFF7C101A, 0xFF340608},
         {0xFFDCE3EE, 0xFF9AA6B8, 0xFF566074, 0xFF232935},
@@ -62,7 +54,6 @@ public final class KnifeArt {
         null,
     };
 
-    /** The look of one knife for one frame. */
     public static final class Look {
         public final int[] handle = new int[4];
         public final int[] blade = new int[3];
@@ -70,11 +61,10 @@ public final class KnifeArt {
         public int shape;
         public int design;
         public boolean mirror;
-        /** Draw the blade at twice the resolution (not for ghosts or on slow computers). */
+
         public boolean fine = true;
     }
 
-    /** Fills a look from the settings. {@code time} is in seconds (for the rainbow). */
     public static Look look(int preset, int shape, int finish, int design, float time) {
         Look l = new Look();
         preset = Math.max(0, Math.min(PRESETS.length - 1, preset));
@@ -127,9 +117,6 @@ public final class KnifeArt {
         return 0xFF000000 | (Math.round(r * 255) << 16) | (Math.round(g * 255) << 8) | Math.round(b * 255);
     }
 
-    // ------------------------------------------------------------------ building
-
-    /** Adds the knife to the rig. {@code k} is the knife's frame at the pivot; a, b, c are how far handle A, handle B and the blade have turned. */
     public static void build(Rig rig, Rig.T k, float a, float b, float c, Look look) {
         rig.box(k.move(-PIN_X, 0, -PIN_Z).rotZ(a), 0, HL / 2, 0, HW, HL, HT, handle(look, false), false);
         rig.box(k.move(PIN_X, 0, PIN_Z).rotZ(b), 0, HL / 2, 0, HW, HL, HT, handle(look, true), false);
@@ -138,7 +125,6 @@ public final class KnifeArt {
         pin(rig, k, PIN_X, look);
     }
 
-    /** Where the blade tip is, in the world, for a trail. */
     public static float[] tip(Rig.T k, float c) {
         return k.rotZ(c).point(0f, BL, 0f);
     }
@@ -156,8 +142,6 @@ public final class KnifeArt {
         };
         rig.box(k, x, 0.8f * S, 0f, 1.0f * S, 1.0f * S, 3.5f * S, p, false);
     }
-
-    // ------------------------------------------------------------------ the handles
 
     private static Rig.Painter handle(Look look, boolean back) {
         return (g, c, face, w, h) -> {
@@ -228,7 +212,6 @@ public final class KnifeArt {
                     g.fill(w / 2 - 1, y, w / 2 + 1, y + 2, deep);
                     g.fill(w / 2 - 1, y + 2, w / 2 + 1, y + 3, light);
                 }
-                // the slanted teeth near the tail
                 for (int k = 0; k < 4; k++) {
                     int y = Math.round(h * 0.80f) + k * 3;
                     g.fill(1, y, 1 + third, y + 1, deep);
@@ -239,47 +222,42 @@ public final class KnifeArt {
                 }
             }
         }
-        // the pin head near the pivot and the hole for a lanyard at the tail
         int pc = w / 2;
         g.fill(pc - 2, 2, pc + 2, 6, c.col(0xFF222833));
         g.fill(pc - 1, 3, pc + 1, 5, c.col(0xFFD8DFEA));
         g.fill(pc - 1, h - 7, pc + 1, h - 3, deep);
         g.fill(pc - 1, h - 3, pc + 1, h - 2, light);
-        // a shine that slides along as it turns
         int gy = 3 + Math.round(c.glint * (h - 12));
         g.fill(1, gy, w - 1, gy + 2, c.raw(0xFFFFFFFF, 0.2f));
     }
 
-    // ------------------------------------------------------------------ the blade
-
-    /** Spine and edge of the blade at {@code t} (0 at the pivot, 1 at the tip), in units from the spine side. Returns {spine, edge}. */
     public static float[] profile(int shape, float t) {
         float s = 0f;
         float e = BH;
         switch (shape) {
-            case 0 -> { // tanto: a straight back and a high, angled point
+            case 0 -> {
                 if (t > 0.78f) e = BH * (1f - (t - 0.78f) / 0.22f);
                 if (t > 0.90f) s = BH * 0.10f * ((t - 0.90f) / 0.10f);
             }
-            case 1 -> { // drop point
+            case 1 -> {
                 if (t > 0.62f) s = BH * 0.52f * (float) Math.pow((t - 0.62f) / 0.38f, 1.7);
                 if (t > 0.75f) e = BH * (1f - 0.5f * (float) Math.pow((t - 0.75f) / 0.25f, 2.0));
             }
-            case 2 -> { // clip point
+            case 2 -> {
                 if (t > 0.58f) s = BH * 0.62f * (float) Math.pow((t - 0.58f) / 0.42f, 1.25);
                 if (t > 0.80f) e = BH * (1f - 0.34f * (float) Math.pow((t - 0.80f) / 0.20f, 2.0));
             }
-            case 3 -> { // wharncliffe: a straight edge and a back that comes down to the point
+            case 3 -> {
                 if (t > 0.55f) s = BH * 0.98f * (float) Math.pow((t - 0.55f) / 0.45f, 2.0);
             }
-            case 4 -> { // spear point: both sides come in evenly
+            case 4 -> {
                 if (t > 0.5f) {
                     float k = (float) Math.pow((t - 0.5f) / 0.5f, 1.4);
                     s = BH * 0.5f * k;
                     e = BH * (1f - 0.5f * k);
                 }
             }
-            default -> { // sheepsfoot: a straight edge and a rounded back
+            default -> {
                 if (t > 0.66f) s = BH * 0.98f * (float) Math.pow((t - 0.66f) / 0.34f, 1.8);
             }
         }
@@ -295,7 +273,6 @@ public final class KnifeArt {
             if (face == 4 || face == 5) {
                 boolean spineRight = face == 5;
                 float gl = c.glint;
-                // drawn at twice the resolution so the slanted point is not a staircase
                 final int R = look.fine ? 2 : 1;
                 g.pose().pushMatrix();
                 g.pose().scale(1f / R, 1f / R);
@@ -312,7 +289,6 @@ public final class KnifeArt {
                     if (b <= a) hi[r] = lo[r];
                 }
                 int edgeMax = 3 * R;
-                // rows with the same width are drawn as one block
                 for (int r0 = 0; r0 < H; ) {
                     int r1 = r0;
                     while (r1 + 1 < H && lo[r1 + 1] == lo[r0] && hi[r1 + 1] == hi[r0]) r1++;
@@ -332,7 +308,6 @@ public final class KnifeArt {
                     }
                     r0 = r1 + 1;
                 }
-                // a shine that slides along as it turns
                 int gr = Math.max(0, Math.min(H - 1, Math.round(c.glint * H)));
                 if (hi[gr] > lo[gr]) g.fill(lo[gr], Math.max(0, gr - 2 * R), hi[gr], Math.min(H, gr + 2 * R), c.raw(0xFFFFFFFF, 0.45f));
                 int px = W / 2;
@@ -341,7 +316,6 @@ public final class KnifeArt {
                 g.fill(fx, Math.round(H * 0.2f), fx + R, Math.round(H * 0.7f), dark);
                 g.pose().popMatrix();
             } else if (face == 0 || face == 1) {
-                // the back (+x) and the edge (-x) seen from the side, only where the blade reaches them
                 boolean edge = face == 1;
                 for (int r = 0; r < h; r++) {
                     float t = (r + 0.5f) / h;
@@ -355,12 +329,9 @@ public final class KnifeArt {
         };
     }
 
-    // ================================================================== the karambit
-
     public static final String[] KPRESETS = {"Voidbloom", "Crimson claw", "Frost", "Toxic", "Gold rush", "Zeus blue", "Rainbow"};
     public static final String[] KCURVES = {"Claw", "Wide hook", "Talon"};
 
-    /** {ring light, ring and stripe, handle dark, handle deep}. */
     private static final int[][] KHANDLES = {
         {0xFFE9B0FF, 0xFFB45AF2, 0xFF3C1A66, 0xFF140724},
         {0xFFFFB0B0, 0xFFE63A4A, 0xFF541420, 0xFF1E050A},
@@ -370,7 +341,7 @@ public final class KnifeArt {
         {0xFFB8D4FF, 0xFF4C84F2, 0xFF1A3474, 0xFF090F2A},
         {0xFFFFFFFF, 0xFF888888, 0xFF444444, 0xFF111111},
     };
-    /** {blade bright, blade mid, blade dark}. */
+
     private static final int[][] KBLADES = {
         {0xFFFF9EEA, 0xFFE040C4, 0xFF6C1E94},
         {0xFFFFC4AC, 0xFFFF4C4C, 0xFF8C1830},
@@ -382,15 +353,13 @@ public final class KnifeArt {
     };
     private static final int[] KGLOWS = {0xFFE444FF, 0xFFFF4A66, 0xFF72D2FF, 0xFF52FF74, 0xFFFFC844, 0xFF5AA2FF, 0xFFFFFFFF};
 
-    /** The karambit is drawn on a flat cut-out in these units, the knife's own frame having the ring's centre as its origin. */
     public static final float Q = 1.2f;
     private static final float KX0 = -13.9f, KX1 = 3.0f, KY0 = -3.0f, KY1 = 21.5f;
-    private static final float KHY = 8.4f;                       // where the handle ends and the blade begins
-    private static final float[] KR = {8.0f, 9.5f, 6.5f};        // radius of the blade's curve
-    private static final float[] KTM = {125f, 105f, 150f};       // how far round it goes, in degrees
-    private static final float[] KHW = {2.0f, 2.3f, 1.75f};     // half the blade's width at the handle
-    /** Where the handle's middle is, from the ring's centre (the fist holds it here). */
-    /** The name of the model a shape key draws (the same names as the 3D meshes). */
+    private static final float KHY = 8.4f;
+    private static final float[] KR = {8.0f, 9.5f, 6.5f};
+    private static final float[] KTM = {125f, 105f, 150f};
+    private static final float[] KHW = {2.0f, 2.3f, 1.75f};
+
     public static String nameOf(int key) {
         if (key < KR.length) return "Karambit";
         return SMODELS[Math.min(SMODELS.length - 1, key - KR.length)].name;
@@ -398,7 +367,6 @@ public final class KnifeArt {
 
     public static final float KGRIP = 5.1f * Q;
 
-    /** Fills a look for the karambit. {@code curve} is kept in {@code shape}. */
     public static Look kLook(int preset, int curve, float time) {
         Look l = new Look();
         preset = Math.max(0, Math.min(KPRESETS.length - 1, preset));
@@ -421,9 +389,6 @@ public final class KnifeArt {
         return l;
     }
 
-    // ------------------------------------------------------------------ the gallery: any knife in any finish, drawn by the same code the game uses
-
-    /** All knife names: the butterfly, the karambit, then every straight knife. */
     public static String[] allKnives() {
         String[] st = straightNames();
         String[] all = new String[2 + st.length];
@@ -433,18 +398,12 @@ public final class KnifeArt {
         return all;
     }
 
-    /** The finish names of a knife: butterfly colours, karambit colours or the straight knives' finishes. */
     public static String[] finishNames(int type) {
         return type == 0 ? PRESETS : type == 1 ? KPRESETS : SFINISHES;
     }
 
     private static final Rig SHOW_RIG = new Rig();
 
-    /**
-     * Draws knife {@code type} (see {@link #allKnives()}) in finish {@code finish}, centred in the box and scaled to fit it.
-     * It is drawn at rest, from the same shapes and the same painters the knife overlay uses, so what the picker shows is
-     * what the game draws.
-     */
     public static void showcase(GuiGraphics g, int type, int finish, int bx, int by, int bw, int bh, float time, boolean fine) {
         Rig rig = SHOW_RIG;
         rig.clear();
@@ -473,12 +432,10 @@ public final class KnifeArt {
 
     private static final float TAU_SHOW = (float) (Math.PI * 2.0);
 
-    /** Where the blade's tip is, in the world. */
     public static float[] kTip(Rig.T k, int curve) {
         return kAt(k, curve, 1f);
     }
 
-    /** A point along the blade's middle, {@code t} from 0 (handle) to 1 (tip). */
     public static float[] kAt(Rig.T k, int curve, float t) {
         curve = Math.max(0, Math.min(KR.length + SMODELS.length - 1, curve));
         if (curve >= KR.length) {
@@ -495,12 +452,6 @@ public final class KnifeArt {
         return k.point((-r + r * (float) Math.cos(th)) * Q, (KHY + r * (float) Math.sin(th)) * Q, 0f);
     }
 
-    /**
-     * Adds the karambit as a real solid. The shape is cut into slices at different depths, and the slices get smaller towards
-     * the front and the back, so the handle and the ring are rounded like a real grip, the blade has a bevelled cutting
-     * edge on its inside and a thick spine, and it shows its thickness when it turns. Seen from the front only the visible
-     * bands of each slice are painted (so nothing is drawn twice); seen from the side the whole stack is drawn.
-     */
     public static void buildKarambit(Rig rig, Rig.T k, Look look) {
         int layers = look.fine ? 3 : 2;
         int cell = look.fine ? 2 : 4;
@@ -546,7 +497,6 @@ public final class KnifeArt {
         };
     }
 
-    /** The colours of one slice: the middle slice is the darker wall, the slices towards the front get lighter. */
     private static int[] kPalette(Look look, Rig.Ctx c, int depth, int layers) {
         float lift = depth == 0 ? -0.30f : 0.10f * depth;
         int[] src = {0, look.handle[3], look.handle[2], Draw.mix(look.handle[1], look.handle[2], 0.45f), look.handle[1], look.handle[0],
@@ -565,12 +515,10 @@ public final class KnifeArt {
         return p;
     }
 
-    /** The shape as rectangles of cells: {x1, y1, x2, y2, colour code} five numbers each. */
     private static final class KLayer {
         int[] rects = new int[0];
     }
 
-    /** All the slices of one curve at one cell size: the whole slice, and the band of it that no front slice covers. */
     private static final class KSet {
         KLayer[] full;
         KLayer[] band;
@@ -578,12 +526,10 @@ public final class KnifeArt {
 
     private static final KSet[][] KSETS = new KSet[KR.length + 18][4];
 
-    /** How many rectangles the middle slice of a curve is drawn with (for tests). */
     public static int kRects(int curve, boolean fine) {
         return kSet(curve, fine ? 2 : 4, fine ? 3 : 2).full[0].rects.length / 5;
     }
 
-    /** How many rectangles all slices of a curve together need (for tests and the speed check). */
     public static int kRectsAll(int curve, boolean fine) {
         KSet s = kSet(curve, fine ? 2 : 4, fine ? 3 : 2);
         int n = 0;
@@ -606,7 +552,6 @@ public final class KnifeArt {
         for (int j = 0; j < rows; j++) {
             for (int i = 0; i < cols; i++) code[j][i] = classify(curve, bd[0] + (i + 0.5f) * per, bd[2] + (j + 0.5f) * per);
         }
-        // how far each cell is from the edge of the shape, in the karambit's units (a two-pass chamfer)
         float[][] dist = new float[rows][cols];
         float big = 1e6f;
         for (int j = 0; j < rows; j++) for (int i = 0; i < cols; i++) dist[j][i] = code[j][i] == 0 ? 0f : big;
@@ -632,8 +577,6 @@ public final class KnifeArt {
                 dist[j][i] = dd;
             }
         }
-        // which cells each slice keeps: the rounded parts (ring, handle) shrink like a cylinder, the blade is bevelled on its
-        // inside and nearly flat on its spine
         boolean[][][] keep = new boolean[layers + 2][rows][cols];
         for (int d = 0; d <= layers; d++) {
             float f = d / (float) layers;
@@ -669,7 +612,6 @@ public final class KnifeArt {
                         if (edge) out = (code[j][i] & 64) != 0 ? 11 : 6;
                     }
                     if (d > 0 && out != 6 && out != 11 && j > 0 && i > 0 && j < rows - 1 && i < cols - 1) {
-                        // the light comes from the upper left: slopes that face it are lighter, the others darker
                         float gx = dist[j][i + 1] - dist[j][i - 1];
                         float gy = dist[j + 1][i] - dist[j - 1][i];
                         float sl = gx + gy;
@@ -687,7 +629,6 @@ public final class KnifeArt {
         return m;
     }
 
-    /** Runs along a row, joined with the same run in the row above, as rectangles. */
     private static KLayer kRectsOf(int[][] out, int rows, int cols) {
         java.util.ArrayList<int[]> list = new java.util.ArrayList<>();
         java.util.ArrayList<int[]> open = new java.util.ArrayList<>();
@@ -725,18 +666,17 @@ public final class KnifeArt {
         return l;
     }
 
-    /** What is at (x, y) of the karambit's own units: 0 nothing, else a colour code (+64 on the blade's inner edge). */
     private static int kClass(int curve, float x, float y) {
         float rr = (float) Math.sqrt(x * x + y * y);
-        if (rr <= 2.5f && rr >= 1.2f) return x + y < -0.4f ? 5 : 4;      // the ring
-        if (y >= 1.8f && y <= KHY + 0.2f && x >= -1.7f && x <= 1.7f) {  // the handle
+        if (rr <= 2.5f && rr >= 1.2f) return x + y < -0.4f ? 5 : 4;
+        if (y >= 1.8f && y <= KHY + 0.2f && x >= -1.7f && x <= 1.7f) {
             float p1 = (x + 0.0f) * (x + 0.0f) + (y - 3.0f) * (y - 3.0f);
             float p2 = (x + 0.0f) * (x + 0.0f) + (y - 7.1f) * (y - 7.1f);
-            if (p1 < 0.16f || p2 < 0.16f) return 5;                    // the two pins
+            if (p1 < 0.16f || p2 < 0.16f) return 5;
             if (x > -1.3f && x < -0.8f) return 3;
             int gx = (int) Math.floor((x + 1.7f) / 0.85f);
             int gy = (int) Math.floor((y - 1.8f) / 0.85f);
-            if (x >= -0.8f) return ((gx + gy) & 1) == 1 ? 1 : 2;      // a diamond grip
+            if (x >= -0.8f) return ((gx + gy) & 1) == 1 ? 1 : 2;
             return x < 0.2f ? 2 : 1;
         }
         float r = KR[curve];
@@ -750,7 +690,7 @@ public final class KnifeArt {
         float d = (float) Math.sqrt(dx * dx + dy * dy) - r;
         if (Math.abs(d) > hw) return 0;
         int cd;
-        if (Math.abs(d + hw * 0.1f) < hw * 0.09f && t > 0.12f && t < 0.78f) cd = 12;   // the groove down the blade
+        if (Math.abs(d + hw * 0.1f) < hw * 0.09f && t > 0.12f && t < 0.78f) cd = 12;
         else if (d > hw * 0.5f) cd = 7;
         else if (d < -hw * 0.4f) cd = 9;
         else if (t > 0.88f) cd = 10;
@@ -759,11 +699,9 @@ public final class KnifeArt {
         return d < 0f ? cd | 64 : cd;
     }
 
-    // ================================================================== the straight knives (CS2 shapes)
-
     public static final String[] SFINISHES = {"Stainless", "Blue steel", "Fade", "Slaughter", "Crimson web", "Doppler", "Case hardened", "Night",
         "Forest", "Gamma Doppler", "Gold", "Damascus", "Rainbow"};
-    /** {handle light, accent, dark, deep, blade bright, blade mid, blade dark, glow}. */
+
     private static final int[][] SFIN = {
         {0xFF8A8F98, 0xFF4A4F58, 0xFF24272E, 0xFF0E1014, 0xFFF4F7FB, 0xFFB7C0CC, 0xFF6B7684, 0xFFE8F1FF},
         {0xFF9DB6D8, 0xFF34527E, 0xFF182A48, 0xFF080F1C, 0xFFC9DCF5, 0xFF5B7DAE, 0xFF26426E, 0xFF9CC4FF},
@@ -779,7 +717,6 @@ public final class KnifeArt {
         {0xFFE2C79A, 0xFF8A6A3A, 0xFF3C2A14, 0xFF18100A, 0xFFEAEAEA, 0xFF9A9AA6, 0xFF50505C, 0xFFDDDDEE},
     };
 
-    /** Fills a look for a straight knife. {@code model} is the index into {@link #SMODELS}. */
     public static Look sLook(int finish, int model, float time) {
         Look l = new Look();
         finish = Math.max(0, Math.min(SFINISHES.length - 1, finish));
@@ -804,15 +741,13 @@ public final class KnifeArt {
         return l;
     }
 
-    /** Handle styles. */
     private static final int H_RIBBED = 0, H_CORD = 1, H_SKEL = 2, H_SCALES = 3, H_PUSH = 4;
 
-    /** One straight (or gently curved) knife: its handle, its blade as half-widths along its length, and its details. */
     public static final class Straight {
         public final String name;
         final float hl, hhw, bl;
-        final float[] ws, we;          // spine side and edge side half widths at 11 points along the blade
-        final float bend, sweep;       // signed radius (+ the edge is on the inside, - on the outside), degrees round
+        final float[] ws, we;
+        final float bend, sweep;
         final int style;
         final boolean guard, pommel, fuller, serr, hook, lanyard, flare;
 
@@ -861,14 +796,12 @@ public final class KnifeArt {
         new Straight("Shadow Daggers", 3.4f, 0.9f, 10f, w(0.9f, 1.3f, 1.6f, 1.7f, 1.6f, 1.4f, 1.1f, 0.8f, 0.5f, 0.25f, 0f), w(0.9f, 1.3f, 1.6f, 1.7f, 1.6f, 1.4f, 1.1f, 0.8f, 0.5f, 0.25f, 0f), 0f, 0f, H_PUSH, "f"),
     };
 
-    /** The names, for the settings. */
     public static String[] straightNames() {
         String[] n = new String[SMODELS.length];
         for (int i = 0; i < n.length; i++) n[i] = SMODELS[i].name;
         return n;
     }
 
-    /** Where the fist holds a knife of this kind (key as in {@link Look#shape}), from the knife's own origin. */
     public static float gripOf(int key) {
         if (key < KR.length) return KGRIP;
         Straight m = SMODELS[Math.min(SMODELS.length - 1, key - KR.length)];
@@ -877,7 +810,6 @@ public final class KnifeArt {
 
     private static final float[][] BOUNDS = new float[KR.length + 18][];
 
-    /** {x0, x1, y0, y1} of the cut-out of a knife, in its own units. Straight knives are measured once from their shape. */
     private static float[] bounds(int key) {
         key = Math.max(0, Math.min(KR.length + SMODELS.length - 1, key));
         if (key < KR.length) return new float[] {KX0, KX1, KY0, KY1};
@@ -911,15 +843,13 @@ public final class KnifeArt {
         return a[i] * (1f - k) + a[i + 1] * k;
     }
 
-    /** What is at (x, y) of a straight knife's own units: 0 nothing, else a colour code (+64 on the blade's edge side). */
     private static int sClass(Straight m, float x, float y) {
         float hl = m.hl;
         float gy = m.guard ? 0.9f : 0f;
-        // the handle
         if (y >= 0f && y < hl) {
             float hw = m.hhw;
             if (m.style == H_PUSH) {
-                if (y < 2.4f) {                                    // the bar the fist wraps round
+                if (y < 2.4f) {
                     if (Math.abs(x) <= 4.6f) return Math.abs(x) > 3.6f ? 4 : (((int) Math.floor((x + 4.6f) / 0.9f)) & 1) == 1 ? 1 : 2;
                     return 0;
                 }
@@ -947,10 +877,10 @@ public final class KnifeArt {
                     return ((gx + gyy) & 1) == 1 ? 1 : 2;
                 }
                 case H_SCALES -> {
-                    if (y < 0.9f || y > hl - 0.9f) return 4;                         // the bolsters
+                    if (y < 0.9f || y > hl - 0.9f) return 4;
                     float r1 = x * x + (y - 2.6f) * (y - 2.6f);
                     float r2 = x * x + (y - (hl - 2.6f)) * (y - (hl - 2.6f));
-                    if (r1 < 0.16f || r2 < 0.16f) return 5;                          // the rivets
+                    if (r1 < 0.16f || r2 < 0.16f) return 5;
                     return x > hw * 0.35f ? 3 : x > -hw * 0.2f ? 2 : 1;
                 }
                 default -> {
@@ -964,9 +894,7 @@ public final class KnifeArt {
             }
         }
         if (y < 0f) return pommelOf(m, x, y);
-        // the guard
         if (m.guard && y >= hl && y < hl + gy) return Math.abs(x) <= m.hhw + 1.0f ? 4 : 0;
-        // the blade
         float y0 = hl + gy;
         float t;
         float d;

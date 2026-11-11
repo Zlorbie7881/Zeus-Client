@@ -7,33 +7,19 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Hit confirmation: remembers what you swung at, and whether the server said it landed.
- *
- * <p>Every attack is a guess about what the server will accept — reach, line of sight, rotation, cooldown, anti-cheat. The
- * client used to throw those guesses away. Here the guess is written down first ({@link #attempt}) and the answer is taken
- * from the packets that describe damage or a removed entity ({@link #confirm}), which gives three things nothing in the mod
- * could see before: whether a target is actually taking your hits, how long the server takes to say so (latency, which is
- * the real ceiling on how fast anything can hit it), and a per-target misses streak, so a module can stop swinging at
- * somebody the server is ignoring instead of spamming packets into the void.</p>
- *
- * <p>The tracker is deliberately passive: it never sends anything and never changes a fight by itself. Modules read it.</p>
- */
 public final class Hits {
     private Hits() {}
 
-    /** An answer only counts when it arrives soon after the swing it belongs to. */
     private static final long WINDOW_MS = 1200L;
-    /** How long the rolling numbers look back. */
+
     private static final long RECENT_MS = 8000L;
-    /** Attempts with nothing back before a target is called cold. */
+
     private static final int COLD_MISSES = 4;
-    /** ... and how recent that streak has to be for it to still mean anything. */
+
     private static final long COLD_MS = 2600L;
     private static final int MAX_LOG = 96;
     private static final int MAX_TRACKED = 256;
 
-    /** One swing: where it went and whether anything came back. */
     private static final class Swing {
         final int id;
         final long at;
@@ -46,7 +32,6 @@ public final class Hits {
         }
     }
 
-    /** What one entity has been doing. */
     private static final class Rec {
         int swings;
         int landed;
@@ -59,8 +44,6 @@ public final class Hits {
     private static final Map<Integer, Rec> REC = new ConcurrentHashMap<>();
     private static final ArrayDeque<Swing> LOG = new ArrayDeque<>();
 
-    /** True when a swing was sent within this many milliseconds, or a hit came back. Used to decide whether a player is
-     * actually fighting right now (fake lag holds its packets only then, if you ask it to). */
     public static boolean fighting(long ms) {
         long now = System.currentTimeMillis();
         synchronized (LOG) {
@@ -74,7 +57,6 @@ public final class Hits {
         return false;
     }
 
-    /** Writes a swing down. Call it right before an attack. */
     public static void attempt(Entity e) {
         if (e == null) return;
         com.zlorbie788.zeus.mods.Exposure.swing(e);
@@ -96,10 +78,6 @@ public final class Hits {
         purge(now);
     }
 
-    /**
-     * The server reported something happening to this entity (damage, or the entity being removed). Only a swing from the
-     * last moment is matched, so unrelated damage somewhere else never counts as your hit.
-     */
     public static void confirm(int id) {
         long now = System.currentTimeMillis();
         Rec r = REC.get(id);
@@ -126,9 +104,6 @@ public final class Hits {
         r.latency = r.latency <= 0 ? hit.latency : r.latency * 0.7 + hit.latency * 0.3;
     }
 
-    // ------------------------------------------------------------------ what a module reads
-
-    /** True when recent swings at this entity got nothing back, so it is probably out of the server's reach. */
     public static boolean cold(int id) {
         Rec r = REC.get(id);
         return r != null && r.streak >= COLD_MISSES && System.currentTimeMillis() - r.lastSwing < COLD_MS;
@@ -144,20 +119,17 @@ public final class Hits {
         return r == null ? 0 : r.landed;
     }
 
-    /** 0 to 1: how much of what was swung at this entity landed. */
     public static float ratio(int id) {
         Rec r = REC.get(id);
         if (r == null || r.swings == 0) return 1f;
         return Math.min(1f, r.landed / (float) r.swings);
     }
 
-    /** How long the server takes to confirm a hit on this entity, in milliseconds. 0 when unknown. */
     public static double latencyMs(int id) {
         Rec r = REC.get(id);
         return r == null ? 0 : r.latency;
     }
 
-    /** Everything swung at lately, landed or not. */
     public static int recentSwings() {
         long now = System.currentTimeMillis();
         int n = 0;
@@ -183,13 +155,11 @@ public final class Hits {
         return n;
     }
 
-    /** Landed share over the last few seconds, 1 when nothing was swung. */
     public static float recentRatio() {
         int n = recentSwings();
         return n == 0 ? 1f : Math.min(1f, recentLanded() / (float) n);
     }
 
-    /** Average confirmation delay over the last few seconds, in milliseconds. 0 when unknown. */
     public static double recentLatency() {
         long now = System.currentTimeMillis();
         double sum = 0;
@@ -207,7 +177,6 @@ public final class Hits {
         return n == 0 ? 0 : sum / n;
     }
 
-    /** A short line for a module's info: how many hits land and how fast the server answers. */
     public static String text() {
         int n = recentSwings();
         if (n == 0) return "";
