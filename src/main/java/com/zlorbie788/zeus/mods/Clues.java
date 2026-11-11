@@ -22,10 +22,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * More ways to tell that someone has been somewhere: lights that nature does not put underground, the small things people
- * leave in a base, and the shape of the caves themselves. Everything is read from the chunks your game already holds.
- */
 public final class Clues {
     private Clues() {}
 
@@ -34,14 +30,12 @@ public final class Clues {
         return d.contains("nether") || d.contains("the_end");
     }
 
-    /** True when the block is not open to the sky (or the dimension has no sky at all). */
     static boolean underground(Minecraft mc, int x, int y, int z) {
         if (mc.level == null) return false;
         if (dark(mc)) return true;
         return !mc.level.canSeeSky(new BlockPos(x, y, z));
     }
 
-    /** The value of a yes / no property such as {@code lit}, or null when the block has none. */
     static Boolean flag(BlockState st, String name) {
         try {
             for (Property<?> p : st.getProperties()) {
@@ -51,14 +45,10 @@ public final class Clues {
                 }
             }
         } catch (RuntimeException ignored) {
-            // no such property
         }
         return null;
     }
 
-    // ------------------------------------------------------------------ Light Detector
-
-    /** Light sources people place: torches, lanterns, lamps. Underground, nature does not make them. */
     public static final class LightDetector extends Finders.BlockFinder {
         private final Setting.Bool deep = add(new Setting.Bool("Only underground", "Skip lights that have open sky above them (a lamp on a house, a torch at a farm).", true));
 
@@ -93,9 +83,6 @@ public final class Clues {
         }
     }
 
-    // ------------------------------------------------------------------ Base Clues
-
-    /** The small things a base leaves behind: workstations, glass, signs, rails, blocks of valuables. */
     public static final class BaseClues extends Finders.BlockFinder {
         private final Setting.Bool entities = add(new Setting.Bool("Item frames, paintings, armor stands", "Also mark these, they only exist where somebody put them.", true));
         private final Setting.Bool deep = add(new Setting.Bool("Only underground", "Skip finds with open sky above them.", false));
@@ -166,16 +153,6 @@ public final class Clues {
         }
     }
 
-    // ------------------------------------------------------------------ Cave ESP
-
-    /**
-     * Cave ESP: finds the open caves under the ground and outlines their shape.
-     *
-     * <p>The loaded chunks are cut into 4 x 4 x 4 cells. A cell counts as cave when most of it is air and it lies under
-     * the real ground (the game's own height map decides what the ground is, so open air above a hill is never a cave).
-     * Cells that touch each other are joined into one cave, small pockets are dropped, and only the cells on the edge of
-     * a cave are kept, so the shape shows up without a field of dots. Caves are teal near the surface and violet deep down.</p>
-     */
     public static final class CaveEsp extends Module {
         private final Setting.Num range = add(new Setting.Num("Range", "How far around you the caves are marked.", 40, 16, 96, 8, " blocks"));
         private final Setting.Num open = add(new Setting.Num("How open", "How much of a cell has to be empty for it to count as cave.", 75, 50, 100, 5, " %"));
@@ -189,7 +166,6 @@ public final class Clues {
         private final Setting.Choice tint = add(new Setting.Choice("Colours", "By depth: teal near the top, violet deep. Or one colour.", 0, "By depth", "Teal", "Violet", "Orange", "Green"));
         private final EspKit kit;
 
-        /** chunk key to cells {x, y, z, open %, component size in cells}. */
         private final Map<Long, int[][]> cells = new HashMap<>();
         private final Map<Long, Long> scannedAt = new HashMap<>();
         private List<long[]> queue = new ArrayList<>();
@@ -262,7 +238,6 @@ public final class Clues {
             int layers = sections.length * 4;
             int need = (int) Math.ceil(64 * open.get() / 100.0);
             boolean overworld = Brain.ctx().hasSurface;
-            // which cells are open air
             boolean[][][] air = new boolean[layers][4][4];
             boolean[][][] hard = new boolean[layers][4][4];
             int[][][] amount = new int[layers][4][4];
@@ -294,7 +269,6 @@ public final class Clues {
                     }
                 }
             }
-            // under the ground: the real ground height decides in the overworld, a solid cell above decides elsewhere
             boolean[][][] cave = new boolean[layers][4][4];
             for (int cz4 = 0; cz4 < 4; cz4++) {
                 for (int cx4 = 0; cx4 < 4; cx4++) {
@@ -311,7 +285,6 @@ public final class Clues {
                     }
                 }
             }
-            // join touching cells into caves and drop the small ones
             int[][][] comp = new int[layers][4][4];
             List<int[]> sizes = new ArrayList<>();
             int next = 0;
@@ -343,7 +316,6 @@ public final class Clues {
             }
             int[] sizeOf = new int[next + 1];
             for (int[] s : sizes) sizeOf[s[0]] = s[1];
-            // keep only the cells on the edge of a cave
             List<int[]> out = new ArrayList<>();
             for (int l = 0; l < layers && out.size() < 500; l++) {
                 for (int z = 0; z < 4; z++) {

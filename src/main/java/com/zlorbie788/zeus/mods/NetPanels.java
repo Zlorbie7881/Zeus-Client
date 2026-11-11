@@ -12,7 +12,6 @@ import net.minecraft.client.multiplayer.PlayerInfo;
 
 import java.util.Locale;
 
-/** Two more boxes for the Panels page: how your connection behaves, and what this play session looked like. */
 public final class NetPanels {
     private NetPanels() {}
 
@@ -20,9 +19,6 @@ public final class NetPanels {
         return ms < 60 ? 0xFF5EE6A0 : ms < 120 ? 0xFFFFC857 : ms < 200 ? 0xFFFF8F4D : 0xFFFF5C6C;
     }
 
-    // ------------------------------------------------------------------ Net Info
-
-    /** Ping now, its average and spread, and a little graph of the last minute. */
     public static final class NetInfo extends Module {
         private final Setting.Choice corner = Hud.corner(this, 0);
         private final Setting.Bool graph = add(new Setting.Bool("Graph", "A bar for every sample of the last while, coloured by how good the ping was.", true));
@@ -53,7 +49,6 @@ public final class NetPanels {
                     if (info != null) return Math.max(0, info.getLatency());
                 }
             } catch (RuntimeException ignored) {
-                // no connection
             }
             return -1;
         }
@@ -135,9 +130,6 @@ public final class NetPanels {
         }
     }
 
-    // ------------------------------------------------------------------ Session
-
-    /** Time played this session, distance walked and your top speed. */
     public static final class Session extends Module {
         private final Setting.Choice corner = Hud.corner(this, 2);
         private final Setting.Bool time = add(new Setting.Bool("Time played", "How long since you joined this world or server.", true));
@@ -236,14 +228,10 @@ public final class NetPanels {
         }
     }
 
-    // ------------------------------------------------------------------ Pop Counter
-
-    /** Names of players and how many totems each has popped since you joined (filled by the packet hook). */
     private static final java.util.Map<String, Integer> POPS = new java.util.concurrent.ConcurrentHashMap<>();
     private static final java.util.Map<String, Long> LAST_POP = new java.util.concurrent.ConcurrentHashMap<>();
     private static volatile boolean popsOn;
 
-    /** Called by the packet hook for entity event 35 (a totem was used). */
     public static void totemPopped(net.minecraft.world.entity.Entity e) {
         if (!popsOn || e == null) return;
         String name = e.getName().getString();
@@ -251,7 +239,6 @@ public final class NetPanels {
         LAST_POP.put(name, System.currentTimeMillis());
     }
 
-    /** Counts every totem you see pop, per player, and shows the busiest. Handy in a fight: you can see who is nearly out. */
     public static final class PopCounter extends Module {
         private final Setting.Choice corner = Hud.corner(this, 1);
         private final Setting.Num rows = add(new Setting.Num("Players listed", "How many players are listed, most pops first.", 5, 1, 10, 1, ""));

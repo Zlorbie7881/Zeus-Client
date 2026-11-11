@@ -23,15 +23,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
-/**
- * Discord Rich Presence. The Discord app on your computer listens on a local pipe; this module talks to it the way any game
- * does, so your Discord profile shows "Playing ..." with a line or two you choose. Nothing leaves your computer except to
- * your own Discord app, which shows it to the people you chose in Discord's own settings.
- *
- * <p>Discord needs an application to attach the presence to: create one free at discord.com/developers (its name is what
- * people see after "Playing"), copy its Application ID into the setting and, if you want a picture, upload an image under
- * Rich Presence, Art Assets and type its name in "Image name".</p>
- */
 public final class DiscordPresence extends Module {
     private static volatile DiscordPresence self;
 
@@ -82,7 +73,6 @@ public final class DiscordPresence extends Module {
         return link != null && link.connected ? "live" : null;
     }
 
-    /** Runs every client tick (also outside a world) so the card follows where you are. */
     static void pulse(Minecraft mc) {
         DiscordPresence m = self;
         if (m == null || !m.enabled()) return;
@@ -98,7 +88,6 @@ public final class DiscordPresence extends Module {
         }
     }
 
-    /** The JSON of the activity for the current settings. */
     private JsonObject card() {
         JsonObject a = new JsonObject();
         String d = details.get().trim();
@@ -122,9 +111,6 @@ public final class DiscordPresence extends Module {
         return a;
     }
 
-    // ------------------------------------------------------------------ the connection
-
-    /** One background thread that keeps the connection to Discord and sends the card when it changes. */
     private final class Link implements Runnable {
         private final String id;
         private final Thread thread;
@@ -202,7 +188,6 @@ public final class DiscordPresence extends Module {
                 try {
                     pipe.send(1, clear());
                 } catch (IOException | RuntimeException ignored) {
-                    // Discord went away first
                 }
             }
             closePipe();
@@ -236,11 +221,9 @@ public final class DiscordPresence extends Module {
         }
     }
 
-    /** The local pipe or socket to the Discord app. Frames are: opcode (4 bytes), length (4 bytes), JSON, all little endian. */
     private interface Pipe {
         void write(byte[] data) throws IOException;
 
-        /** Reads and drops whatever Discord has sent, without waiting for more. */
         void drain() throws IOException;
 
         void close();
@@ -286,7 +269,6 @@ public final class DiscordPresence extends Module {
                 p.send(0, hello.toString());
                 return p;
             } catch (IOException | RuntimeException ignored) {
-                // try the next one
             }
         }
         return null;
@@ -320,7 +302,6 @@ public final class DiscordPresence extends Module {
 
         @Override
         public synchronized void drain() throws IOException {
-            // Reading a pipe that has nothing in it would wait for ever, and a waiting read blocks writes on Windows, so only read what is there.
             while (file.length() >= 8) {
                 byte[] head = new byte[8];
                 file.readFully(head);
@@ -335,7 +316,6 @@ public final class DiscordPresence extends Module {
             try {
                 file.close();
             } catch (IOException ignored) {
-                // closing
             }
         }
     }
@@ -372,7 +352,6 @@ public final class DiscordPresence extends Module {
             try {
                 ch.close();
             } catch (IOException ignored) {
-                // closing
             }
         }
     }

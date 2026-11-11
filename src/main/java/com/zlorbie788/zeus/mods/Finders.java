@@ -30,17 +30,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
 import java.util.function.Predicate;
 
-/**
- * The finders: modules that look through the loaded chunks around you for one kind of thing and mark it with a box you can
- * see through walls. They only read blocks your game already has, so they send nothing and touch nothing. Each finder lists
- * what it can find, with a switch and a colour per kind. They share one scanner: a little work every tick (sections whose
- * block palette cannot hold the thing are skipped at once), nearest chunks first, results kept per chunk and refreshed every
- * few seconds, and a "new find" call the first time each block is seen (used for the alert and the Discord webhook).
- */
 public final class Finders {
     private Finders() {}
 
-    /** The path of a block's name without the namespace, for example {@code amethyst_cluster}. */
     static String pathOf(Block b) {
         try {
             String id = BuiltInRegistries.BLOCK.getKey(b).toString();
@@ -50,7 +42,6 @@ public final class Finders {
         }
     }
 
-    /** {age, highest age} of a block that grows, or null when it has no age. */
     static int[] age(BlockState st) {
         try {
             for (Property<?> p : st.getProperties()) {
@@ -60,12 +51,9 @@ public final class Finders {
                 }
             }
         } catch (RuntimeException ignored) {
-            // no age
         }
         return null;
     }
-
-    // ------------------------------------------------------------------ the shared scanner
 
     public abstract static class BlockFinder extends Module {
         private final String[] labels;
@@ -111,21 +99,16 @@ public final class Finders {
             highY.onChange(this::reset);
         }
 
-        /** Does this kind of block matter to the finder at all (decided once per block type, from its name)? */
         protected abstract boolean cares(String path);
 
-        /** Which kind (index into the labels) this exact block state is, or -1. */
         protected abstract int kind(BlockState st, String path);
 
-        /** The first time a block is found. */
         protected void newHit(Minecraft mc, int x, int y, int z, int kind) {}
 
-        /** A last check on a block of the right kind (a finder can ask for "only underground", for example). */
         protected boolean keep(LevelChunk chunk, int x, int y, int z, int kind) {
             return true;
         }
 
-        /** All finds of the kinds that are switched on within {@code r} blocks of a point. */
         protected List<int[]> hitsNear(double x, double y, double z, double r) {
             List<int[]> out = new ArrayList<>();
             double r2 = r * r;
@@ -145,13 +128,12 @@ public final class Finders {
             return radius.get();
         }
 
-        /** The "Where" and height settings of this finder. */
         private boolean placeOk(Minecraft mc, int x, int y, int z) {
             if (y < lowY.get() || y > highY.get()) return false;
             int mode = place.index();
             if (mode == 0) return true;
             int surf = Brain.surface(mc, x, z);
-            if (surf == Integer.MIN_VALUE) return true; // no ground in this dimension
+            if (surf == Integer.MIN_VALUE) return true;
             int depth = surf - y;
             return switch (mode) {
                 case 1 -> depth <= band.i() && depth >= -64;
@@ -161,7 +143,6 @@ public final class Finders {
             };
         }
 
-        /** A chunk has just been scanned. */
         protected void chunkDone(Minecraft mc, int cx, int cz, List<int[]> hits) {}
 
         private void reset() {
@@ -319,7 +300,6 @@ public final class Finders {
             drawExtra(g, mc, partial, w, h);
         }
 
-        /** Anything a finder draws besides its boxes (a card, extra marks). */
         protected void drawExtra(GuiGraphics g, Minecraft mc, float partial, int w, int h) {}
     }
 
@@ -328,9 +308,6 @@ public final class Finders {
         return false;
     }
 
-    // ------------------------------------------------------------------ the finders
-
-    /** Grown kelp: the kelp that has stopped growing and can be harvested. */
     public static final class KelpFinder extends BlockFinder {
         public KelpFinder() {
             super("kelpesp", "Kelp ESP", "Finds fully grown kelp and marks it, for kelp farms and for smelting fuel.",
@@ -352,7 +329,6 @@ public final class Finders {
         }
     }
 
-    /** Spawners and trial spawners, with an optional Discord message. */
     public static final class SpawnerEsp extends BlockFinder {
         public SpawnerEsp() {
             super("spawneresp", "Spawner ESP", "Finds monster spawners and trial spawners through the rock, and can tell your Discord.",
@@ -378,7 +354,6 @@ public final class Finders {
         }
     }
 
-    /** Every container: chests, barrels, shulker boxes and so on. Storage rooms can be sent to Discord. */
     public static final class StorageEsp extends BlockFinder {
         public StorageEsp() {
             super("storageesp", "Storage ESP", "Marks storage blocks in chunks and block states currently available to your client. It cannot reveal hidden or unloaded server data.",
@@ -422,7 +397,6 @@ public final class Finders {
             Discoveries.tick(mc);
         }
 
-        /** What the last build saw, so the card can be held back until the spot really looks like somebody's base. */
         private int lastStorage, lastMachines, lastDisplays;
         private double lastX, lastZ;
 
@@ -431,9 +405,6 @@ public final class Finders {
             if (!card.on() || mc.player == null || mc.screen != null) return;
             Discoveries.Card c = build(mc);
             if (c == null) return;
-            // A card is a report of a base, not of any chest you walk past: a dungeon's two chests or a lone barrel must not
-            // pull it up. It appears when a finder has already recorded a base here, or when the spot itself shows a base
-            // (several containers together with machines or displays, or a storage room's worth of containers).
             String server = Brain.ctx().server + "|" + Brain.ctx().dim;
             Ledger.Entry found = Ledger.near(server, lastX, lastZ, 96);
             boolean solid = lastStorage >= 4 || (lastStorage >= 2 && lastMachines + lastDisplays > 0);
@@ -469,7 +440,6 @@ public final class Finders {
             Discoveries.Card c = new Discoveries.Card();
             int[] amber = {0xFFFFB347, 0xFFFF6B6B, 0xFFC98A52, 0xFFB05CFF, 0xFFFF6FE0, 0xFFFF8A3D, 0xFFFF8A3D, 0xFF7ED6A8};
             for (int i = 0; i < KIND_ITEM.length; i++) if (count[i] > 0) c.slots.add(new Discoveries.Slot(KIND_ITEM[i], count[i], amber[i]));
-            // item frames and armor stands around the same spot
             int displays = 0;
             java.util.Map<net.minecraft.world.item.Item, Integer> shown = new java.util.LinkedHashMap<>();
             for (net.minecraft.world.entity.Entity e : Env.entities(mc, 60)) {
@@ -492,7 +462,6 @@ public final class Finders {
                 if (c.slots.size() >= 12) break;
                 c.slots.add(new Discoveries.Slot(en.getKey(), en.getValue(), 0xFF6AA6FF));
             }
-            // what was in the chests you opened yourself
             java.util.Map<net.minecraft.world.item.Item, Integer> loot = new java.util.HashMap<>();
             int seenContainers = 0;
             for (int[] n : cluster) {
@@ -540,7 +509,6 @@ public final class Finders {
         }
     }
 
-    /** Crops that are ready to harvest. */
     public static final class CropFinder extends BlockFinder {
         private static final Set<String> CROPS = Set.of("wheat", "carrots", "potatoes", "beetroots", "nether_wart", "cocoa", "sweet_berry_bush", "pitcher_crop", "torchflower_crop");
 
@@ -564,7 +532,6 @@ public final class Finders {
         }
     }
 
-    /** The rare blocks that only an ancient city has. */
     public static final class AncientCityFinder extends BlockFinder {
         public AncientCityFinder() {
             super("ancientcityfinder", "Ancient City ESP", "Finds the deep dark: ancient cities, sculk shriekers and their reinforced deepslate.",
@@ -585,7 +552,6 @@ public final class Finders {
         }
     }
 
-    /** Trial chambers and their vaults. */
     public static final class TrialFinder extends BlockFinder {
         public TrialFinder() {
             super("trialfinder", "Trial Chamber ESP", "Finds trial chambers by their vaults and spawners.",
@@ -606,7 +572,6 @@ public final class Finders {
         }
     }
 
-    /** Portals of every kind. */
     public static final class PortalFinder extends BlockFinder {
         public PortalFinder() {
             super("portalfinder", "Portal ESP", "Finds nether portals, end portals and end portal frames.",
@@ -627,7 +592,6 @@ public final class Finders {
         }
     }
 
-    /** Bee nests and hives. */
     public static final class BeeFinder extends BlockFinder {
         public BeeFinder() {
             super("beefinder", "Bee ESP", "Finds bee nests and beehives.",
@@ -648,7 +612,6 @@ public final class Finders {
         }
     }
 
-    /** Hoppers, observers, pistons and the like: where a farm or a machine is. */
     public static final class RedstoneFinder extends BlockFinder {
         public RedstoneFinder() {
             super("redstonefinder", "Farm ESP", "Finds machines and farms by their redstone parts: hoppers, observers, pistons, comparators.",
@@ -675,7 +638,6 @@ public final class Finders {
         }
     }
 
-    /** Beds and respawn anchors: where someone sleeps. */
     public static final class BedFinder extends BlockFinder {
         public BedFinder() {
             super("bedfinder", "Bed ESP", "Finds beds and respawn anchors: places where someone lives.",

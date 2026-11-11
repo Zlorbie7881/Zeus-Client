@@ -12,15 +12,6 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
-/**
- * Takes a totem out of any open container by hovering it, without a single click of your own.
- *
- * <p>Every container menu the game opens carries the player's hotbar and offhand as swap targets, so hovering a totem in a
- * chest, a barrel, a shulker box or a loot chest and pressing swap moves it straight into the offhand (or the selected
- * hotbar slot) in one packet. Nothing is taken you are not allowed to take: it is the same swap the game sends when you
- * press the swap key over that slot yourself, just aimed at whatever you are hovering and repeated only when the
- * destination does not already hold a totem.
- */
 public final class HoverTotem extends Module {
     private final Setting.Choice target = add(new Setting.Choice("Where it goes", "Offhand is the PvP choice. Hotbar slot puts it where you are looking, so a spear or sword stays in your hand.", 0, "Offhand", "Selected hotbar slot"));
     private final Setting.Bool onlyWhenEmpty = add(new Setting.Bool("Only when that slot has no totem", "Off: hovering a totem swaps it in even if you already hold one, which is how you stack totems across containers.", true));

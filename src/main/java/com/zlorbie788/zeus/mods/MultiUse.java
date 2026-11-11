@@ -4,11 +4,6 @@ import com.zlorbie788.zeus.core.Category;
 import com.zlorbie788.zeus.core.Module;
 import com.zlorbie788.zeus.core.Setting;
 
-/**
- * Do two things at once: eat and attack, hold a shield and attack, draw a bow and hit, mine while you eat, use an item while
- * you mine. The work is done by {@code MultiUseMixin}, which asks this module whether each "one thing at a time" rule of the
- * game still applies.
- */
 public final class MultiUse extends Module {
     private static volatile MultiUse self;
 
@@ -32,7 +27,6 @@ public final class MultiUse extends Module {
 
     @Override
     protected void cleanSlate() {
-        // nothing is kept between worlds
     }
 
     private static MultiUse on() {
@@ -40,10 +34,6 @@ public final class MultiUse extends Module {
         return m != null && m.enabled() ? m : null;
     }
 
-    /**
-     * For the key handling. While you use an item and still hold the use button, the answer is "no", so the attack clicks
-     * are handled. When the use button is let go the real answer is given, so the game stops using the item as usual.
-     */
     public static boolean keysUsing(boolean real, boolean useHeld) {
         MultiUse m = on();
         if (m == null || !real || !m.attack.on()) return real;

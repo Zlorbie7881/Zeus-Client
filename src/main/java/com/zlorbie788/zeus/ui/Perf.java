@@ -2,18 +2,12 @@ package com.zlorbie788.zeus.ui;
 
 import com.zlorbie788.zeus.mods.Brain;
 
-/**
- * Decides whether the decorations (thunder, sway, slide-ins, rain) are drawn at full quality or lighter. In Auto it looks
- * at the frame rate Zeus Brain measures: below 40 frames a second for a few seconds the effects get lighter, and they come
- * back above 55. Quality and Fast force one or the other.
- */
 public final class Perf {
     private Perf() {}
 
     private static boolean light;
     private static long since;
 
-    /** True when decorations should be drawn lighter. */
     public static boolean fast() {
         int mode = UiSettings.PERFORMANCE.index();
         if (mode == 1) return false;
@@ -32,25 +26,18 @@ public final class Perf {
     private static int highSamples;
     private static long refreshedAt;
 
-    /**
-     * How light the game side of Zeus runs right now: 0 Balanced, 1 Light, 2 Minimal. It is the mode you picked, or higher
-     * while the frame rate is low and "Lighten automatically" is on.
-     */
     public static int level() {
         return level;
     }
 
-    /** True when ESP lines and boxes should be drawn with fewer pieces (no halos). */
     public static boolean gameFast() {
         return level >= 1;
     }
 
-    /** Scanners run on every n-th tick: 1 in Balanced, 2 in Light, 4 in Minimal. */
     public static int stride() {
         return level == 0 ? 1 : level == 1 ? 2 : 4;
     }
 
-    /** Called once a tick: works out the level from the chosen mode and the measured frame rate. */
     public static void refresh() {
         long now = System.currentTimeMillis();
         if (now - refreshedAt < 500) return;
@@ -83,7 +70,6 @@ public final class Perf {
         level = Math.max(base, Math.min(2, want));
     }
 
-    /** How many of the optional bolts to draw: 1 for everything, less when the game struggles. */
     public static float density() {
         return fast() ? 0.35f : 1f;
     }

@@ -5,17 +5,7 @@ import net.minecraft.client.gui.GuiGraphics;
 
 import java.util.Random;
 
-/**
- * The night sky of the Atmosphere module: a deep gradient with a diagonal Milky Way, thousands of stars that twinkle, shooting
- * stars that cross the sky now and then, and banks of dark, finely textured clouds. (The northern lights are {@link AuroraSky}.)
- *
- * <p>Everything is placed by direction in the sky (bearing and elevation) and projected with the camera of the frame, so it
- * turns with you and stays exact when you look straight up, where a flat sky picture would smear. Nothing is rebuilt per frame:
- * the stars and cloud puffs are made once, the cloud pictures are baked on a background thread and the rest is a few hundred
- * to a few thousand small rectangles.</p>
- */
 public final class SkyScape {
-    // ------------------------------------------------------------------------------------------------------------ maths
     private static float clamp01(float x) {
         return x < 0f ? 0f : x > 1f ? 1f : x;
     }
@@ -100,8 +90,6 @@ public final class SkyScape {
                 | Math.round(clamp01(b) * 255f);
     }
 
-    // ------------------------------------------------------------------------------------------------------------ the Milky Way
-    // the pole of the band; it runs over the head at a slant, like the picture
     private static final double PX = 0.62;
     private static final double PY = 0.12;
     private static final double PZ = 0.78;
@@ -109,7 +97,6 @@ public final class SkyScape {
     private static final float QX = (float) (PX / PL);
     private static final float QY = (float) (PY / PL);
     private static final float QZ = (float) (PZ / PL);
-    // a direction inside the band plane, and the one across it
     private static final float AX;
     private static final float AY;
     private static final float AZ;
@@ -118,7 +105,6 @@ public final class SkyScape {
     private static final float BZ;
 
     static {
-        // A = normalize(P x up)
         double ax = QY * 0 - QZ * 1;
         double ay = QZ * 0 - QX * 0;
         double az = QX * 1 - QY * 0;
@@ -148,7 +134,6 @@ public final class SkyScape {
         return ((float) Math.exp(-t * t) * 0.85f + (float) Math.exp(-wide * wide) * 0.30f) * core;
     }
 
-    // ------------------------------------------------------------------------------------------------------------ stars
     private static final int MAXSTAR = 12000;
     private final float[] sdx = new float[MAXSTAR];
     private final float[] sdy = new float[MAXSTAR];
@@ -162,7 +147,6 @@ public final class SkyScape {
     private final float[] sb = new float[MAXSTAR];
     private final float[] pt = new float[2];
 
-    /** Only the shooting stars (the Atmosphere module draws the sky from a picture). */
     public SkyScape() {
     }
 
@@ -183,7 +167,6 @@ public final class SkyScape {
             float lane = f3(x * 5.5f, y * 5.5f, zz * 5.5f, 3, 4);
             float clump = f3(x * 14f, y * 14f, zz * 14f, 3, 6);
             if (!field) {
-                // stars of the band: they crowd along its centre, thin out in the dust lanes and clump
                 float p = band * band * (1.0f - 0.80f * smooth(0.46f, 0.70f, lane)) * (0.35f + 1.3f * clump);
                 if (rnd.nextFloat() > p * 1.25f) continue;
             }
@@ -196,20 +179,19 @@ public final class SkyScape {
             smag[n] = m;
             stw[n] = rnd.nextFloat() * 6.2832f;
             float t = rnd.nextFloat();
-            if (t < 0.50f) {            // blue-white
+            if (t < 0.50f) {
                 sr[n] = 0.70f; sg[n] = 0.82f; sb[n] = 1.0f;
-            } else if (t < 0.70f) {     // white
+            } else if (t < 0.70f) {
                 sr[n] = 0.96f; sg[n] = 0.97f; sb[n] = 1.0f;
-            } else if (t < 0.88f) {     // lilac
+            } else if (t < 0.88f) {
                 sr[n] = 0.82f; sg[n] = 0.74f; sb[n] = 1.0f;
-            } else {                    // warm
+            } else {
                 sr[n] = 1.0f; sg[n] = 0.86f; sb[n] = 0.68f;
             }
             n++;
         }
     }
 
-    /** Draws the stars, the brightest first in the list order being the faintest last; {@code count} caps how many. */
     public void renderStars(GuiGraphics g, SkyPhoto.View view, float gain, int count, float time, int gs) {
         if (gain <= 0.01f) return;
         count = Math.min(count, MAXSTAR);
@@ -227,7 +209,6 @@ public final class SkyScape {
             int x = (int) (pt[0] * gs);
             int y = (int) (pt[1] * gs);
             float m = smag[i];
-            // a little twinkle, more on the bright ones, and a fade into the haze at the horizon
             float tw = 0.80f + 0.20f * (float) Math.sin(time * (1.6f + 2.6f * (stw[i] % 1f)) + stw[i]);
             float a = (0.50f + 0.50f * m) * tw * gain * smooth(0.4f, 9f, el);
             if (m > 0.86f) {
@@ -253,15 +234,12 @@ public final class SkyScape {
         g.pose().popMatrix();
     }
 
-    // ------------------------------------------------------------------------------------------------------------ the haze
     private final float[] hout = new float[4];
 
-    // The Milky Way glow depends only on the direction, so it is worked out once on a grid (a half degree of bearing, a degree of
-    // elevation) by a background thread, and each frame only looks it up.
     private static final int GA = 720;
-    private static final int GE = 98;          // elevations -8 .. 89
+    private static final int GE = 98;
     private static final float GE0 = -8f;
-    private volatile float[] grid;             // r, g, b per cell
+    private volatile float[] grid;
 
     private void buildGrid() {
         Thread t = new Thread(() -> {
@@ -292,7 +270,6 @@ public final class SkyScape {
                         gr[k + 2] = lerp(0.92f, 0.90f, warm * 0.85f) * glow * 0.95f;
                     }
                 }
-                // a light blur so neighbouring columns never differ by more than a shade or two
                 float[] bl = new float[gr.length];
                 for (int e = 0; e < GE; e++) {
                     for (int i = 0; i < GA; i++) {
@@ -322,11 +299,9 @@ public final class SkyScape {
         t.start();
     }
 
-    /** The base colour and the Milky Way glow for a bearing and elevation: out = r, g, b, alpha. */
     private void haze(float az, float el, float gain, boolean milky, float[] out) {
         float e01 = clamp01(el / 90f);
         float pw = (float) Math.pow(e01, 0.55);
-        // the deep blue of the picture: nearly black at the top, a lighter teal-blue near the horizon
         float r = lerp(0.050f, 0.010f, pw);
         float gg = lerp(0.120f, 0.026f, pw);
         float b = lerp(0.230f, 0.080f, pw);
@@ -352,7 +327,6 @@ public final class SkyScape {
                 else b += v;
             }
         }
-        // hold the colour at the very horizon so it blends with the game's own haze
         float a = 0.95f * smooth(-1.5f, 5.5f, el);
         out[0] = r;
         out[1] = gg;
@@ -367,7 +341,6 @@ public final class SkyScape {
     private final float[] cb = new float[160];
     private final float[] ca = new float[160];
 
-    /** Draws the gradient and the Milky Way as thin vertical columns of colour, cut along the skyline of the land. */
     public void renderHaze(GuiGraphics g, int w, int h, SkyPhoto.View view, float gain, int colStep, int rowStep, boolean milky) {
         if (gain <= 0.01f) return;
         boolean land = view.hasSkyline();
@@ -423,14 +396,13 @@ public final class SkyScape {
         return azel[1] - view.skyline(azel[0]);
     }
 
-    // ------------------------------------------------------------------------------------------------------------ shooting stars
     private static final class Meteor {
-        float x, y, z;          // where it starts (unit vector)
-        float tx, ty, tz;       // the way it travels (unit, across the start)
-        float speed;            // degrees per second
+        float x, y, z;
+        float tx, ty, tz;
+        float speed;
         float age;
         float life;
-        float tail;             // degrees
+        float tail;
         float bright;
         float hue;
     }
@@ -441,7 +413,6 @@ public final class SkyScape {
     private float lastTime = -1f;
     private final float[] p2 = new float[2];
 
-    /** How often, as the average number of seconds between two: 0 never. */
     public void updateMeteors(float time, float meanGap) {
         float dt = lastTime < 0f ? 0f : Math.min(0.1f, Math.max(0f, time - lastTime));
         lastTime = time;
@@ -487,7 +458,7 @@ public final class SkyScape {
         m.tx = rx / l;
         m.ty = ry / l;
         m.tz = rz / l;
-        if (m.ty > 0f) {         // they fall
+        if (m.ty > 0f) {
             m.tx = -m.tx;
             m.ty = -m.ty;
             m.tz = -m.tz;
@@ -547,11 +518,10 @@ public final class SkyScape {
             float cg0 = lerp(0.95f, 1.0f, m.hue);
             float cb0 = 1.0f;
             for (int k = steps; k >= 0; k--) {
-                float f = k / (float) steps;               // 0 head, 1 tail end
+                float f = k / (float) steps;
                 float x = hx + (tx - hx) * f;
                 float y = hy + (ty - hy) * f;
                 if (view.hasSkyline()) {
-                    // stay above the land: skip points whose bearing and elevation fall below the skyline
                     if (view.at(x / gs, y / gs, azel) && azel[1] < view.skyline(azel[0])) continue;
                 }
                 float a = env * m.bright * gain * (float) Math.pow(1f - f, 1.7);
@@ -565,7 +535,6 @@ public final class SkyScape {
                     g.fill(xi - 1, yi - 1, xi + s + 1, yi + s + 1, argb(a2, 0.5f, 0.85f, 1f));
                 }
             }
-            // a soft glow at the head
             float ha = env * m.bright * gain;
             g.fill((int) hx - 3, (int) hy - 3, (int) hx + 5, (int) hy + 5, argb(ha * 0.10f, 0.7f, 0.9f, 1f));
             g.fill((int) hx - 1, (int) hy - 1, (int) hx + 3, (int) hy + 3, argb(ha * 0.55f, 1f, 1f, 1f));
@@ -573,7 +542,6 @@ public final class SkyScape {
         g.pose().popMatrix();
     }
 
-    // ------------------------------------------------------------------------------------------------------------ clouds
     private static final int SPRITES = 6;
     private static final int SPR = 384;
     private static final int[][] BAKED = new int[SPRITES][];
@@ -581,7 +549,6 @@ public final class SkyScape {
     private static volatile boolean baking;
     private static volatile boolean bakeDone;
 
-    /** Starts the background thread that paints the cloud pictures (once per game session). */
     private static void startBake() {
         if (baking) return;
         baking = true;
@@ -593,7 +560,6 @@ public final class SkyScape {
                         BAKED[i] = px;
                     }
                 } catch (RuntimeException | OutOfMemoryError e) {
-                    // that picture stays missing
                 }
             }
             bakeDone = true;
@@ -603,7 +569,6 @@ public final class SkyScape {
         t.start();
     }
 
-    /** Uploads one finished cloud picture per call; true when all of them are on the graphics card. */
     private static boolean uploadOne() {
         startBake();
         boolean all = true;
@@ -631,12 +596,6 @@ public final class SkyScape {
         return all && !done;
     }
 
-    /**
-     * One cloud puff, as a grey picture with its own transparency. It is a cauliflower: a few big domes, each carrying smaller
-     * domes round its rim, each of those carrying smaller ones again. The height of the pile at every pixel is the tallest dome
-     * there, and the grey is worked out from the slope of that height, with a light above and to the left, so every lump is lit
-     * on its upper edge and dark in the creases between lumps and on the underside. Tinted per puff when drawn.
-     */
     private static int[] paintPuff(int variant) {
         int S = SPR;
         Random r = new Random(9100 + variant * 7717L);
@@ -676,7 +635,6 @@ public final class SkyScape {
                 }
             }
         }
-        // tiny grain on the surface so it is not smooth like plastic
         int sd = 77 + variant * 13;
         int[] out = new int[S * S];
         float hs = 0.012f * S;
@@ -696,7 +654,6 @@ public final class SkyScape {
                 float nx = -gx / nl;
                 float ny = -gy / nl;
                 float nz = 1f / nl;
-                // light from the upper left and in front
                 float lam = Math.max(0f, nx * -0.30f + ny * -0.72f + nz * 0.62f);
                 float rim = (float) Math.pow(1f - nz, 1.5);
                 float ao = 0.30f + 0.70f * smooth(0f, S * 0.10f, hh);
@@ -710,14 +667,12 @@ public final class SkyScape {
         return out;
     }
 
-    /** Adds a dome and, round its rim, smaller ones, down a few levels. A lump is {x, y, radius, height scale}. */
     private static void grow(java.util.ArrayList<float[]> out, Random r, float x, float y, float rad, int level, float zs) {
         out.add(new float[] {x, y, rad, zs});
         if (level >= 4 || rad < 0.022f) return;
         int kids = level == 0 ? 9 : level == 1 ? 8 : level == 2 ? 6 : 5;
         for (int i = 0; i < kids; i++) {
             double a = r.nextDouble() * Math.PI * 2;
-            // most of the children sit on the upper half of the parent, like a billowing top
             if (Math.sin(a) > 0.4 && r.nextFloat() < 0.6f) a = -a;
             float d = rad * (0.62f + 0.34f * r.nextFloat());
             float cr = rad * (0.34f + 0.16f * r.nextFloat());
@@ -728,13 +683,13 @@ public final class SkyScape {
     private static final class Puff {
         float az;
         float el;
-        float rad;          // degrees
-        float flat;         // vertical squash
+        float rad;
+        float flat;
         int sprite;
-        float speed;        // degrees per second
+        float speed;
         float phase;
         float shade;
-        int tier;           // drawn from this quality tier up
+        int tier;
     }
 
     private Puff[] puffs = new Puff[0];
@@ -742,7 +697,6 @@ public final class SkyScape {
     private final float[] cp = new float[2];
     private final float[] cq = new float[2];
 
-    /** Makes the bank layout for a seed. Cheap; done again only when the seed changes. */
     private void layout(int seed) {
         puffSeed = seed;
         Random r = new Random(seed * 104729L + 5);
@@ -772,18 +726,13 @@ public final class SkyScape {
                 list.add(p);
             }
         }
-        // far to near: high puffs first, the low big ones in front
         list.sort((a, b) -> Float.compare(b.el, a.el));
         puffs = list.toArray(new Puff[0]);
     }
 
-    /**
-     * Draws the clouds. {@code detail} 1..4 picks how many puffs (tiers), {@code auroraGlow} 0..1 tints the lit edges green.
-     */
     public void renderClouds(GuiGraphics g, SkyPhoto.View view, float gain, int detail, float time, float windScale, float auroraGlow) {
         if (gain <= 0.01f || detail <= 0) return;
         if (!uploadOne() && IMGS[0] == null) {
-            // nothing painted yet: a few frames of waiting
             if (puffSeed < 0) layout(1);
             return;
         }
@@ -808,7 +757,6 @@ public final class SkyScape {
             double dy = Math.sin(re);
             double dz = -ce * Math.cos(ra);
             if (!Projector.project(ex + dx * 160, ey + dy * 160, ez + dz * 160, cp)) continue;
-            // the size on screen: how far one degree of bearing reaches here, in pixels
             float ra2 = (float) Math.toRadians(az + 1.5f);
             double dx2 = ce * Math.sin(ra2);
             double dz2 = -ce * Math.cos(ra2);
@@ -839,10 +787,8 @@ public final class SkyScape {
                 float over = el - view.skyline(az);
                 a *= smooth(-0.35f * p.rad, 0.55f * p.rad, over);
             }
-            // fade the puffs out as they reach the zenith, where a flat layer would end
             a *= 1f - 0.7f * smooth(60f, 82f, el);
             if (a < 0.01f) continue;
-            // cool grey-lilac, with a little green on the edges when the lights are strong
             float tr = lerp(0.60f, 0.46f, auroraGlow);
             float tg = lerp(0.66f, 0.90f, auroraGlow);
             float tb = lerp(1.30f, 1.20f, auroraGlow);

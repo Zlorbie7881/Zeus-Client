@@ -12,11 +12,6 @@ import java.awt.geom.Path2D;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 
-/**
- * The picture behind the panel: a deep blue night, soft glows, a header band and a little branching lightning in the
- * top-right corner, drawn once with Java2D and shown with a single image call per frame. It never touches the middle
- * where the module list sits, so text stays easy to read.
- */
 final class PanelArt {
     private PanelArt() {}
 
@@ -36,14 +31,11 @@ final class PanelArt {
         }
     }
 
-    // positions are fractions of the picture (x right, y down); the storm lives in the header corner and along the left edge
     private static final Bolt[] BOLTS = {
-        // down the left and right edges, faint
         new Bolt(0.006, 0.350, 0.013, 0.680, 0.05, 19, 0.9f),
         new Bolt(0.994, 0.560, 0.990, 0.740, 0.05, 24, 0.8f),
     };
 
-    /** The night behind the panel: a deep blue gradient, soft glows, a header band and a little lightning. */
     static int[] render(int w, int h, int radius) {
         BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = img.createGraphics();
@@ -59,7 +51,6 @@ final class PanelArt {
         g.fillRect(0, 0, w, head);
         g.setColor(new Color(96, 150, 255, 40));
         g.fillRect(0, head, w, Math.max(1, h / 900));
-        // lightning: the big storm only over the header, the thin ones along the edges
         double s = Math.max(0.5, w / 1672.0);
         Shape keep = g.getClip();
         for (int i = 0; i < BOLTS.length; i++) {

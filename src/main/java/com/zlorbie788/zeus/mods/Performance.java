@@ -16,14 +16,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-/**
- * Zeus keeps itself light: this page sets how light, and the monitor shows what is costing frame rate, module by module,
- * so a heavy module can be switched off or turned down instead of guessed at.
- */
 public final class Performance {
     private Performance() {}
 
-    /** The Performance page: the mode buttons, what is in effect, and a one-click way to find the costly modules. */
     public static final class Page extends Module {
         public Page() {
             super("performance", "Performance", "How much of your frame rate Zeus may use: Balanced, Light or Minimal, and automatic lightening when the game lags.", Category.INTERFACE);
@@ -71,7 +66,6 @@ public final class Performance {
         }
     }
 
-    /** A small box that lists the modules that use the most frame time. */
     public static final class Monitor extends Module {
         private final Setting.Choice corner = Hud.corner(this, 1);
         private final Setting.Num rows = add(new Setting.Num("Modules listed", "How many of the costliest modules are listed.", 6, 3, 12, 1, ""));
@@ -124,12 +118,6 @@ public final class Performance {
         }
     }
 
-    /**
-     * Performance Guard: when your frame rate stays under the limit it switches off the costliest heavy modules (ESPs and
-     * scanners), a few at a time, and when the frame rate has been healthy for a while it switches them back on. It never
-     * touches a module you switched on after it acted, and it gives up restoring a module that pulls the frame rate down
-     * three times, so it cannot flicker for ever.
-     */
     public static final class Guard extends Module {
         private final Setting.Num below = add(new Setting.Num("Switch off below", "The frame rate under which the guard acts. It needs to stay under for three seconds.", 40, 15, 200, 5, " fps"));
         private final Setting.Num above = add(new Setting.Num("Switch back on above", "The frame rate that has to hold for ten seconds before the modules it switched off come back.", 70, 20, 300, 5, " fps"));
@@ -200,11 +188,10 @@ public final class Performance {
         protected void onTick(Minecraft mc) {
             if (mc.level == null || mc.player == null || mc.screen != null) return;
             if (++sinceOff < 20) return;
-            sinceOff = 0; // once a second
+            sinceOff = 0;
             int fps = Brain.ctx().fps;
             if (fps <= 0) return;
             if (cooldown > 0) cooldown--;
-            // forget what the user switched back on by hand
             off.removeIf(Module::enabled);
             if (fps < below.i()) {
                 good = 0;

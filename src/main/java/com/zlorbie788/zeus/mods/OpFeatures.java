@@ -39,17 +39,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/**
- * The 0.9.8.0 power modules: Target Strafe (combat), Auto Farm, Chest Stealer, Inventory Cleaner and Loot Walker (automation),
- * Ore Compass (finding) and Entity Speed (movement). They only use the game's own calls: breaking, placing, clicking slots and
- * moving your own player.
- */
 public final class OpFeatures {
     private OpFeatures() {}
 
-    // ------------------------------------------------------------------ Target Strafe
-
-    /** Circles the target you are fighting at a set distance, so you stay on the move around it. */
     public static final class TargetStrafe extends Module {
         private final Targets.Pick who = Targets.pick(this::add, true, true, false);
         private final Setting.Num range = add(new Setting.Num("Range", "How far away a target can be for the circling to start.", 5.0, 2.0, 8.0, 0.1, " blocks"));
@@ -83,7 +75,6 @@ public final class OpFeatures {
                 else dir = -dir;
             }
             double sp = speed.get();
-            // sideways round the target, plus a nudge in or out to hold the circle's radius
             double tx = -dz / dist * dir, tz = dx / dist * dir;
             double pull = Math.max(-sp, Math.min(sp, (radius.get() - dist) * 0.5));
             double rx = dx / dist * pull, rz = dz / dist * pull;
@@ -103,9 +94,6 @@ public final class OpFeatures {
         }
     }
 
-    // ------------------------------------------------------------------ Auto Farm
-
-    /** Harvests ripe crops around you and plants them again. */
     public static final class AutoFarm extends Module {
         private final Setting.Num radius = add(new Setting.Num("Radius", "How far around you it looks for ripe crops. Your reach also limits this.", 4, 1, 6, 1, " blocks"));
         private final Setting.Bool replant = add(new Setting.Bool("Plant again", "Plants the crop back on the same soil with seeds, carrots, potatoes or nether wart from your hotbar.", true));
@@ -154,7 +142,6 @@ public final class OpFeatures {
                 cd--;
                 return;
             }
-            // first plant back what was just broken
             if (replantAt != null) {
                 BlockPos soil = replantAt.below();
                 if (Build.air(replantAt) && Build.distTo(replantAt) <= Build.REACH && Build.useOn(Build.top(soil), Inv.is(replantItem), swing.on())) {
@@ -203,9 +190,6 @@ public final class OpFeatures {
         }
     }
 
-    // ------------------------------------------------------------------ Chest Stealer
-
-    /** Moves the contents of an open chest, barrel, shulker box, hopper or dispenser into your inventory. */
     public static final class ChestStealer extends Module {
         private final Setting.Choice what = add(new Setting.Choice("Takes", "Everything: every stack. Valuables only: enchanted gear, diamonds, netherite, gold, emeralds, totems, golden apples, elytra, shulker boxes and similar.", 0, "Everything", "Valuables only"));
         private final Setting.Num delay = add(new Setting.Num("Delay", "Ticks between two stacks. 0 takes one stack every tick.", 1, 0, 10, 1, " ticks"));
@@ -246,7 +230,7 @@ public final class OpFeatures {
                 cd--;
                 return;
             }
-            int container = menu.slots.size() - 36;       // the player's own 36 slots come last
+            int container = menu.slots.size() - 36;
             boolean left = false;
             for (int i = 0; i < container; i++) {
                 ItemStack s = menu.slots.get(i).getItem();
@@ -266,12 +250,6 @@ public final class OpFeatures {
         }
     }
 
-    // ------------------------------------------------------------------ Inventory Cleaner
-
-    /** Throws junk out of your inventory so it never fills up. */
-    // ------------------------------------------------------------------ Inventory Cleaner
-
-    /** Throws junk out of your inventory so it never fills up. */
     public static final class InventoryCleaner extends Module {
         private final Setting.Bool blocks = add(new Setting.Bool("Common blocks", "Cobblestone, deepslate, dirt, gravel, stone types, netherrack and tuff.", true));
         private final Setting.Bool drops = add(new Setting.Bool("Mob junk", "Rotten flesh, spider eyes, poisonous potatoes, bones and tipped nothing.", true));
@@ -335,9 +313,6 @@ public final class OpFeatures {
         }
     }
 
-    // ------------------------------------------------------------------ Loot Walker
-
-    /** Walks toward the nearest dropped item, so what you broke or killed ends up in your pockets. */
     public static final class LootWalker extends Module {
         private final Setting.Num radius = add(new Setting.Num("Radius", "How far away it looks for dropped items.", 8, 2, 20, 1, " blocks"));
         private final Setting.Num speed = add(new Setting.Num("Speed", "How fast it walks, in blocks per tick.", 0.20, 0.05, 0.40, 0.01, ""));
@@ -391,9 +366,6 @@ public final class OpFeatures {
         }
     }
 
-    // ------------------------------------------------------------------ Entity Speed
-
-    /** Makes the horse, boat or other mount you ride go faster. */
     public static final class EntitySpeed extends Module {
         private final Setting.Num speed = add(new Setting.Num("Speed", "How fast the mount goes, in blocks per tick. A galloping horse is about 0.4, a boat about 0.4.", 1.2, 0.2, 3.0, 0.05, ""));
         private final Setting.Bool needKey = add(new Setting.Bool("Only while I hold a move key", "Keeps the mount's own speed while no move key is down, so you can still stop.", true));
@@ -432,9 +404,6 @@ public final class OpFeatures {
         }
     }
 
-    // ------------------------------------------------------------------ Ore Compass
-
-    /** A small panel: the nearest ore of each kind, how far, which way and how high or low. Reads only blocks the game already has. */
     public static final class OreCompass extends Module {
         private final Setting.Choice corner = Hud.corner(this, 0);
         private final Setting.Num radius = add(new Setting.Num("Radius", "How far around you it looks. A bigger radius costs more.", 16, 6, 32, 2, " blocks"));
@@ -504,7 +473,6 @@ public final class OpFeatures {
         }
 
         private static String heading(double dx, double dz) {
-            // yaw 0 is south: +z south, +x east, -z north, -x west
             double deg = Math.toDegrees(Math.atan2(dx, -dz));
             String[] n = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
             return n[(int) Math.floorMod(Math.round(deg / 45.0), 8L)];
@@ -516,7 +484,6 @@ public final class OpFeatures {
                 shown.clear();
                 return;
             }
-            // about once a second; the light modes slow the tick down further
             if (scan-- > 0) return;
             scan = 18;
             rescan(mc);

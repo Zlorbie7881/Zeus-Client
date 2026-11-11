@@ -8,12 +8,6 @@ import net.minecraft.client.gui.screens.LevelLoadingScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.TitleScreen;
 
-/**
- * The sky of the Zeus menu behind the game's other screens when no world is open: the server list, the world list, the
- * options, the disconnect and error screens. The screen's own widgets (lists, buttons, text) are drawn on top as usual, and a
- * soft dark layer keeps them readable. Screens that draw their own picture (the menu itself, the credits, the loading screens)
- * are left alone, and so is everything while a world is open.
- */
 public final class ZeusBackdrop {
     private ZeusBackdrop() {}
 
@@ -21,7 +15,6 @@ public final class ZeusBackdrop {
     private static boolean busy;
     private static boolean warned;
 
-    /** True when the Zeus sky was drawn, so the game's own background is skipped. */
     public static boolean draw(Screen s, GuiGraphics g) {
         if (busy) return false;
         try {

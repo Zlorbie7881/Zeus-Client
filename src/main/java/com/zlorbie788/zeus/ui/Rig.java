@@ -7,25 +7,12 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
-/**
- * A very small 3D renderer for the 2D screen. Things are built from boxes; each visible side of a box is a flat picture
- * that is placed on the screen with a 2x3 matrix, so the game's own quad drawing does the perspective-free "3D" and the
- * painters only have to draw ordinary rectangles in the side's own pixels. Sides are sorted far to near.
- *
- * <p>World axes: x to the right, y down, z away from you. One world unit is {@link #K} pixels in a side's own picture.
- * Box sides are numbered 0 +x, 1 -x, 2 +y, 3 -y, 4 +z, 5 -z. Looking at a side from outside, its picture runs left to
- * right along U and top to bottom along V:  -z: U=+x V=+y;  +z: U=-x V=+y;  +x: U=+z V=+y;  -x: U=-z V=+y;
- * +y: U=+x V=+z;  -y: U=+x V=-z.</p>
- */
 public final class Rig {
-    /** Pixels of a side's own picture per world unit. */
+
     public static final int K = 4;
     private static final float D = 90f;
     private static final float LX = -0.40f, LY = -0.55f, LZ = -0.73f;
 
-    // ------------------------------------------------------------------ transforms
-
-    /** A rotation and a position: where a part is and which way it faces. */
     public static final class T {
         public final float[] r = {1, 0, 0, 0, 1, 0, 0, 0, 1};
         public float x, y, z;
@@ -48,7 +35,6 @@ public final class Rig {
             return t;
         }
 
-        /** This transform followed by {@code c} (c is in this one's frame). */
         public T then(T c) {
             T o = new T();
             float[] a = r;
@@ -62,7 +48,6 @@ public final class Rig {
             return o;
         }
 
-        /** A rotation applied in the world frame, about the point (px,py,pz) of the world. */
         public T worldRot(T rotation, float px, float py, float pz) {
             T o = new T();
             float[] a = rotation.r;
@@ -128,18 +113,14 @@ public final class Rig {
         }
     }
 
-    // ------------------------------------------------------------------ painting
-
-    /** What a painter is told about the side it draws. */
     public static final class Ctx {
         public float alpha = 1f;
         public float shade = 1f;
-        /** The side's normal in the world, for glints. */
+
         public float nx, ny, nz;
-        /** 0..1, moves along a surface as it turns: where a shine would be. */
+
         public float glint;
 
-        /** The colour lit for this side (and faded). */
         public int col(int argb) {
             int a = Math.round(((argb >>> 24) & 255) * alpha);
             if (a <= 0) return 0;
@@ -149,7 +130,6 @@ public final class Rig {
             return (a << 24) | (r << 16) | (g << 8) | b;
         }
 
-        /** The colour faded but not lit (for glows and shine). */
         public int raw(int argb, float k) {
             int a = Math.round(((argb >>> 24) & 255) * alpha * k);
             return a <= 0 ? 0 : (Math.min(255, a) << 24) | (argb & 0xFFFFFF);
@@ -157,7 +137,7 @@ public final class Rig {
     }
 
     public interface Painter {
-        /** Draws side {@code face} of a box, in its own pixels 0..w, 0..h. */
+
         void paint(GuiGraphics g, Ctx c, int face, int w, int h);
     }
 
@@ -175,7 +155,6 @@ public final class Rig {
         faces.clear();
     }
 
-    /** Everything added from now on is drawn this faded. */
     public void alpha(float a) {
         alpha = a;
     }
@@ -184,15 +163,10 @@ public final class Rig {
         return faces.size();
     }
 
-    /**
-     * A box. {@code t} is the part's frame; the box is centred on (cx,cy,cz) of that frame and is sx by sy by sz.
-     * {@code twoSided} also draws the sides that face away (for paper-thin things).
-     */
     public void box(T t, float cx, float cy, float cz, float sx, float sy, float sz, Painter p, boolean twoSided) {
         box(t, cx, cy, cz, sx, sy, sz, p, twoSided, 0f);
     }
 
-    /** As above; {@code bias} moves the sorting only (positive: drawn earlier, behind the rest), for big parts such as an arm. */
     public void box(T t, float cx, float cy, float cz, float sx, float sy, float sz, Painter p, boolean twoSided, float bias) {
         float[] c = t.point(cx, cy, cz);
         float[] r = t.r;
@@ -257,7 +231,6 @@ public final class Rig {
                 }
             }
             float fx = c[0] + n[0] * half, fy = c[1] + n[1] * half, fz = c[2] + n[2] * half;
-            // visible when the side faces the eye at (0, 0, -D)
             float toEye = n[0] * (0f - fx) + n[1] * (0f - fy) + n[2] * (-D - fz);
             if (toEye <= 0f && !twoSided) continue;
             Face fc = new Face();
@@ -286,12 +259,10 @@ public final class Rig {
         return new float[] {-a[0], -a[1], -a[2]};
     }
 
-    // size helpers: box() takes sizes in world units but faces need pixels
     private int px(float units) {
         return Math.max(1, Math.round(units * K));
     }
 
-    /** Draws everything added so far (far to near) and empties the list. {@code unit} is screen pixels per world unit. */
     public void flush(GuiGraphics g, float unit) {
         faces.sort(Comparator.comparingDouble((Face f) -> -(f.cz + f.bias)));
         for (Face f : faces) {
@@ -318,7 +289,6 @@ public final class Rig {
         faces.clear();
     }
 
-    /** The box the faces added so far cover on screen at one pixel per world unit: {minX, minY, maxX, maxY}. Empty: all zeros. */
     public float[] extent() {
         float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
         for (Face f : faces) {
@@ -337,7 +307,6 @@ public final class Rig {
         return faces.isEmpty() ? new float[4] : new float[] {x0, y0, x1, y1};
     }
 
-    /** Screen position of a world point (for trails): x, y in pixels relative to the origin. */
     public static float[] project(float x, float y, float z, float unit) {
         float k = unit * D / (D + z);
         return new float[] {x * k, y * k};

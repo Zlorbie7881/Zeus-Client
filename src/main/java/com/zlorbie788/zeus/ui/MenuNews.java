@@ -2,57 +2,39 @@ package com.zlorbie788.zeus.ui;
 
 import net.minecraft.client.gui.GuiGraphics;
 
-/**
- * The 3D news scroll in the bottom right corner of the Zeus menu. Closed, it is a rolled-up parchment with bronze knobs that turns
- * slowly on the spot (seven pictures of the same roll seen from slightly different sides, blended into each other); a click unrolls
- * it, and a click on the top rod rolls it up again.
- *
- * <p>The unrolling is a real motion and not a fade: the roll rises while the bottom rod drops out of it on a spring (it swings a
- * little past its place and settles back), the roll gets thinner as the paper leaves it (sixteen ray cast pictures,
- * tools/make_scroll_unroll.py), its bands fall away, the paper ripples while it moves, and the title band is written in at the
- * end. Rolling up runs the same motion without the swing.</p>
- * Open, it is a long parchment with the news written on it: the top rod with the
- * title, the body (much taller than the screen, so a window of it is moved over the sheet) and the bottom rod. The wheel moves the
- * text while the pointer is over the scroll.
- *
- * <p>All pictures are made by {@code tools/make_news_scroll.py}, which ray casts the rods and the roll, so the shading is real
- * depth and not a drawn-on gradient. The pictures are built once at the full size and drawn smaller while the scroll opens, so
- * no picture is made in the middle of the animation.
- */
 final class MenuNews {
-    // sizes of the pictures, in picture pixels (printed by the generator)
     private static final float SRC_W = 580f;
     private static final float HEAD_H = 104f;
     private static final float FOOT_H = 80f;
     private static final float BODY_H = 691f;
-    /** The head and the foot fade out into the body over this many picture pixels, and the body goes under the fade. */
+
     private static final float FADE = 16f;
-    /** How much of the top picture is the rod and the title band (the click area). */
+
     private static final float HEAD_CLICK = 96f;
-    /** The roll is drawn from this many views; 3 is the one looking straight at it. */
+
     private static final int VIEWS = 7;
-    /** The unrolling pictures: this many frames one under the other, each as big as the head picture. */
+
     private static final int FRAMES = 16;
-    /** Where the middle of the top rod is in the head and in each frame; and of the bottom rod in the foot picture. */
+
     private static final float HEAD_ROD = 24f;
     private static final float FOOT_ROD = 52f;
-    /** The roll in the first and in the last frame: its radius and the height of its middle in the frame. */
+
     private static final float ROLL_R0 = 31f;
     private static final float ROLL_R1 = 13f;
     private static final float ROLL_CY0 = 36f;
-    /** Where the middle of the closed roll is in the closed roll picture. */
+
     private static final float CLOSED_CY = 96f;
 
     private int x;
-    /** Width on screen right now. */
+
     private int w;
-    /** The middle of the top rod (or of the closed roll) and of the bottom rod, on screen. */
+
     private float topC;
     private float footC;
     private float bottomLine;
-    /** Where the opening is (0 closed, 1 open; it swings a little past 1) and how fast it moves. */
+
     private float openVel;
-    /** Width of the open scroll and of the closed roll, in gui pixels. */
+
     private int wOpen;
     private int wClosed;
     private float s;
@@ -69,7 +51,6 @@ final class MenuNews {
     private int bottomMargin;
     private int rightMargin;
 
-    /** Works out how big the scroll can be; returns false when the window is too small for it. */
     boolean layout(int width, int height, int leftLimit, int bottomMargin, int rightMargin) {
         screenW = width;
         screenH = height;
@@ -82,7 +63,6 @@ final class MenuNews {
         return laidOut;
     }
 
-    /** Sets the size and the place for the current state of opening. */
     private void place() {
         float e = Math.max(0f, Math.min(1f, open));
         float se = e * e * (3f - 2f * e);
@@ -94,14 +74,13 @@ final class MenuNews {
         bodyViewMax = Math.max(40f * s, Math.min(BODY_H * s * 0.62f, space));
         x = screenW - rightMargin - w;
         bottomLine = screenH - bottomMargin;
-        float y0 = bottomLine - (FOOT_H + HEAD_H - CLOSED_CY) * s;                 // the closed roll
+        float y0 = bottomLine - (FOOT_H + HEAD_H - CLOSED_CY) * s;
         float dFull = (HEAD_H + FOOT_H - HEAD_ROD - FOOT_ROD + (FOOT_ROD - 28f)) * s + bodyViewMax;
-        float y1 = bottomLine - 28f * s - dFull;                                   // the top rod, open
+        float y1 = bottomLine - 28f * s - dFull;
         topC = y0 + (y1 - y0) * e;
         footC = topC + Math.max(0f, open) * dFull;
     }
 
-    /** Builds every picture at the size they will be drawn, so nothing is made in the middle of an animation. */
     void prepare() {
         if (!laidOut) return;
         pictures();
@@ -134,7 +113,6 @@ final class MenuNews {
         return laidOut && mx >= x - 3 && mx < x + w + 3 && my >= topC - 40f * s && my < topC + (HEAD_CLICK - HEAD_ROD) * s + 2;
     }
 
-    /** A click: returns true if the scroll used it. */
     boolean click(double mx, double my) {
         if (!contains(mx, my)) return false;
         if (onHeader(mx, my)) rolled = !rolled;
@@ -151,7 +129,6 @@ final class MenuNews {
         return true;
     }
 
-    /** Moves the opening on its spring: a little swing past the end when it opens, none when it rolls up. */
     private void step(float dt) {
         float goal = rolled ? 0f : 1f;
         float k = rolled ? 85f : 52f;
@@ -195,7 +172,6 @@ final class MenuNews {
         hot = onHeader(mx, my);
 
         float e = Math.max(0f, Math.min(1f, open));
-        // closed, the roll floats a little
         float bob = (1f - smooth(0f, 0.15f, e)) * 1.4f * s * (float) Math.sin(t * 1.3f);
         float tc = topC + bob;
         float fc = footC + bob;
@@ -203,10 +179,9 @@ final class MenuNews {
         int fd = Math.round(FADE * s);
         float rollR = (float) Math.sqrt(ROLL_R0 * ROLL_R0 + (ROLL_R1 * ROLL_R1 - ROLL_R0 * ROLL_R0) * e);
         float frameCy = ROLL_CY0 + (HEAD_ROD - ROLL_CY0) * e;
-        float yT = tc - frameCy * s;                       // top of the frame picture
+        float yT = tc - frameCy * s;
         int frameH = Math.round(HEAD_H * s);
 
-        // ---- the paper between the rods
         float bodyTop = yT + (HEAD_H - FADE) * s;
         float bodyBottom = fc - FOOT_ROD * s + fd;
         float openA = smooth(0.03f, 0.2f, e) * appear;
@@ -214,7 +189,7 @@ final class MenuNews {
         int bodyTopI = Math.round(bodyTop);
         if (bodyH > 2 && openA > 0.01f) {
             Tex.Img body = p[1];
-            float k = body.h / BODY_H;                      // texture pixels per picture pixel
+            float k = body.h / BODY_H;
             int tint = Draw.rgba(0xFFFFFFFF, openA);
             float speed = Math.abs(openVel);
             float amp = Math.min(4.5f * s, speed * 2.6f * s);
@@ -223,7 +198,6 @@ final class MenuNews {
                 int sy = Math.max(0, Math.min(body.h - sh, Math.round(scroll * k)));
                 body.drawPart(g, px, bodyTopI, w, bodyH, 0, sy, body.w, sh, tint);
             } else {
-                // the paper ripples while it moves: slices of the picture, each a little to one side
                 int slice = Math.max(4, Math.round(7f * s));
                 for (int ry = 0; ry < bodyH; ry += slice) {
                     int rh = Math.min(slice, bodyH - ry);
@@ -231,21 +205,19 @@ final class MenuNews {
                     int s1 = Math.round(scroll * k + (ry + rh) / s * k);
                     s0 = Math.max(0, Math.min(body.h - 1, s0));
                     s1 = Math.max(s0 + 1, Math.min(body.h, s1));
-                    float near = Math.min(1f, Math.min(ry, bodyH - ry) / (24f * s));          // still at both rods
+                    float near = Math.min(1f, Math.min(ry, bodyH - ry) / (24f * s));
                     float dx = amp * near * (float) Math.sin(ry * 0.055f / Math.max(0.4f, s) - t * 16f);
                     body.drawPart(g, px + Math.round(dx), bodyTopI + ry, w, rh, 0, s0, body.w, s1 - s0, tint);
                 }
             }
         }
 
-        // ---- the bottom rod, coming out of the roll (the roll is drawn over it)
         float footA = smooth(0.0f, 0.03f, e + (open > 1f ? 1f : 0f)) * appear;
         if (footA > 0.01f) {
             int tintF = Draw.rgba(0xFFFFFFFF, footA);
             p[2].draw(g, px, Math.round(fc - FOOT_ROD * s), w, Math.round(FOOT_H * s), tintF);
         }
 
-        // ---- the closed roll: turns slowly on its own, and towards the pointer while it is over it
         float rollA = 1f - smooth(0f, 0.05f, e);
         if (rollA > 0.01f) {
             float want = 3f + 2.4f * (float) Math.sin(t * 0.8f);
@@ -260,12 +232,10 @@ final class MenuNews {
             p[3 + a].draw(g, px, yc, w, hc, Draw.rgba(base, appear * rollA));
             if (frac > 0.02f) p[3 + a + 1].draw(g, px, yc, w, hc, Draw.rgba(base, appear * rollA * frac));
             if (hot && rolled) {
-                // a soft light round the roll while the pointer is on it
                 Lightning.bloom(g, px + w / 2f, tc, w * 0.62f, 0xFFB8CCFF, 0.10f * appear);
             }
         }
 
-        // ---- the roll that is opening: the frame for this much opening (two neighbours blended), as far down as the paper reaches
         float headA = smooth(0.84f, 1.0f, e) * appear;
         float tA = smooth(0f, 0.05f, e) * (1f - (headA >= 0.99f * appear ? 1f : 0f)) * appear;
         if (tA > 0.01f) {
@@ -273,7 +243,7 @@ final class MenuNews {
             int f0 = Math.min(FRAMES - 1, (int) Math.floor(fpos));
             int f1 = Math.min(FRAMES - 1, f0 + 1);
             float fr = fpos - f0;
-            float k = unroll.h / (HEAD_H * (float) FRAMES);           // texture pixels per picture pixel
+            float k = unroll.h / (HEAD_H * (float) FRAMES);
             float reach = Math.max(frameCy + rollR + 4f, Math.min(HEAD_H, (fc + 6f * s - yT) / s));
             int srcH = Math.max(1, Math.round(reach * k));
             int dstH = Math.max(1, Math.round(reach * s));
@@ -285,13 +255,11 @@ final class MenuNews {
             }
         }
 
-        // ---- the top rod with the title: written onto the paper at the end
         if (headA > 0.01f) {
             int ty = Math.round(tc - HEAD_ROD * s);
             int tintH = hot ? Draw.rgba(0xFFFFFFFF, headA) : Draw.rgba(0xFFEDEDF2, headA);
             p[0].draw(g, px, ty, w, frameH, tintH);
 
-            // a small arrow on the title band: up while the scroll is open
             int ax = px + w - Math.round(70 * s);
             int ay = ty + Math.round(79 * s);
             int arrow = Draw.rgba(hot ? 0xFF2A1C12 : 0xFF5C4430, headA);
@@ -301,7 +269,6 @@ final class MenuNews {
                 g.fill(ax - len, ay + i, ax + len + 1, ay + i + 1, arrow);
             }
 
-            // the scroll bar: a thin line at the right edge of the parchment
             float max = maxScroll();
             if (e > 0.6f && max > 1f && bodyH > 2) {
                 int tx = px + w - Math.round(52 * s) - Math.max(2, Math.round(3 * s));
@@ -317,7 +284,6 @@ final class MenuNews {
             }
         }
 
-        // ---- a label while the pointer is on the closed roll
         if (hot && rolled && open < 0.05f) {
             String tip = "News of Zeus";
             int tipW = Draw.width(tip) + 10;

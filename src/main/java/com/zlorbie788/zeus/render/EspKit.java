@@ -1,7 +1,5 @@
 package com.zlorbie788.zeus.render;
 
-
-
 import com.zlorbie788.zeus.core.Module;
 
 import com.zlorbie788.zeus.core.Setting;
@@ -21,35 +19,11 @@ import net.minecraft.world.phys.AABB;
 
 import net.minecraft.world.phys.shapes.VoxelShape;
 
-
-
 import java.util.concurrent.ConcurrentHashMap;
-
-
-
-/**
-
- * The look every ESP shares, so they all read the same and every one has the same switches: a style (outline, outline and
-
- * fill, fill, corners), a glow, a line width, tracers (a line from the crosshair, the bottom or the top of the screen that
-
- * points straight at the thing, and still points the right way when it is behind you) and a fade with distance.
-
- *
-
- * <p>Boxes follow the real shape of a block (a chest is lower and narrower than a full block, a spawner is a cage, a slab
-
- * is half high), so the outline sits only around the block itself. Drawing is done on the screen from the projected
-
- * corners, so it works through walls and with every renderer.</p>
-
- */
 
 public final class EspKit {
 
     public static final String[] STYLES = {"Outline", "Outline + fill", "Fill", "Corners"};
-
-
 
     public final Setting.Choice style;
 
@@ -69,8 +43,6 @@ public final class EspKit {
 
     public final Setting.Bool reveal;
 
-    /** False for things that move around (dropped items), which would restart the reveal every time they cross a block edge. */
-
     public boolean autoReveal = true;
 
     public final Setting.Choice color;
@@ -87,15 +59,9 @@ public final class EspKit {
 
     public final Setting.Bool tracerLabels;
 
-
-
     public static final String[] COLOR_NAMES = {"Automatic", "White", "Red", "Orange", "Yellow", "Green", "Cyan", "Blue", "Purple", "Pink"};
 
     public static final int[] COLOR_VALUES = {0, 0xFFFFFFFF, 0xFFFF4D5E, 0xFFFF9F43, 0xFFFFD84D, 0xFF4DFF88, 0xFF35E0D0, 0xFF4DA3FF, 0xFFB06BFF, 0xFFFF7AB6};
-
-
-
-    /** A colour picked in a "Colour" setting, or {@code auto} when it is set to Automatic. */
 
     public static int pick(Setting.Choice c, int auto) {
 
@@ -105,27 +71,17 @@ public final class EspKit {
 
     }
 
-
-
     private int tint(int auto) {
 
         return pick(color, auto);
 
     }
 
-
-
-    /** A setting that keeps its default and is not shown: the look these used to tune is fixed to what suits almost everyone. */
-
     private static <T extends Setting> T quiet(T s) {
 
         return s;
 
     }
-
-
-
-    /** Adds the shared settings to a module. {@code defaultStyle} is an index into {@link #STYLES}. */
 
     public EspKit(Module m, int defaultStyle, boolean tracersOn) {
 
@@ -163,19 +119,9 @@ public final class EspKit {
 
     }
 
-
-
-    // ------------------------------------------------------------------ shapes of blocks
-
-
-
     private static final ConcurrentHashMap<Long, AABB> SHAPES = new ConcurrentHashMap<>();
 
     private static long shapesAt;
-
-
-
-    /** The real box of the block at a position (relative to the world), cached for a few seconds. */
 
     public static AABB shape(Minecraft mc, int x, int y, int z) {
 
@@ -211,8 +157,6 @@ public final class EspKit {
 
                     AABB sb = vs.bounds();
 
-                    // thin shapes (a torch, a lantern chain) still get a box you can see
-
                     double pad = 0.01;
 
                     b = new AABB(x + sb.minX - pad, y + sb.minY - pad, z + sb.minZ - pad, x + sb.maxX + pad, y + sb.maxY + pad, z + sb.maxZ + pad);
@@ -223,8 +167,6 @@ public final class EspKit {
 
         } catch (RuntimeException ignored) {
 
-            // the full block it is
-
         }
 
         SHAPES.put(key, b);
@@ -233,31 +175,17 @@ public final class EspKit {
 
     }
 
-
-
-    // ------------------------------------------------------------------ the box
-
-
-
     private static final float[] T1 = new float[4];
-
-
 
     private final java.util.HashMap<Long, long[]> seen = new java.util.HashMap<>();
 
     private long purgeAt;
-
-
-
-    /** 0 to 1 over the first moments after something is first drawn; 1 when the reveal animation is off. */
 
     public float reveal(double cx, double cy, double cz) {
 
         return reveal(((long) Math.floor(cx) * 73856093L) ^ ((long) Math.floor(cy) * 19349663L) ^ ((long) Math.floor(cz) * 83492791L));
 
     }
-
-
 
     public float reveal(long key) {
 
@@ -295,10 +223,6 @@ public final class EspKit {
 
     }
 
-
-
-    /** How strongly something is shown at this distance. */
-
     public float alphaFor(double dist, double range) {
 
         if (!fade.on()) return 1f;
@@ -307,31 +231,17 @@ public final class EspKit {
 
     }
 
-
-
     public float pulse() {
 
         return animate.on() ? 0.82f + 0.18f * (float) Math.sin(System.currentTimeMillis() / 330.0) : 1f;
 
     }
 
-
-
-    /**
-
-     * Draws one box in the chosen style. {@code fillRoom} is false when many boxes are already filled this frame (a fill is
-
-     * more work than a line), in which case the style falls back to its outline.
-
-     */
-
     public void box(GuiGraphics g, AABB b, int color, float alpha, boolean fillRoom) {
 
         box(g, b.minX, b.minY, b.minZ, b.maxX, b.maxY, b.maxZ, color, alpha, fillRoom);
 
     }
-
-
 
     public void box(GuiGraphics g, double x1, double y1, double z1, double x2, double y2, double z2, int color, float alpha, boolean fillRoom) {
 
@@ -403,8 +313,6 @@ public final class EspKit {
 
             if (st == 3) {
 
-                // bright brackets on the corners (the first and last quarter of every edge) and a hairline between them
-
                 double lx = (dx - ax) * 0.26, ly = (dy - ay) * 0.26, lz = (dz - az) * 0.26;
 
                 if (Projector.projectLine(ax + lx, ay + ly, az + lz, dx - lx, dy - ly, dz - lz, T1)) {
@@ -427,29 +335,15 @@ public final class EspKit {
 
     }
 
-
-
     private static final double[] CORNER_X = new double[8];
 
     private static final double[] CORNER_Y = new double[8];
 
     private static final double[] CORNER_Z = new double[8];
 
-
-
     private static final int[][] EDGES = {
 
         {0, 1}, {1, 3}, {3, 2}, {2, 0}, {4, 5}, {5, 7}, {7, 6}, {6, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
-
-
-
-    /**
-
-     * One edge of the box: a single flat, crisp line 1.5 screen pixels wide at half strength, which is how an Anubis box
-
-     * reads. One sprite per edge instead of a dark keyline under a glowing stroke keeps a screen full of boxes cheap.
-
-     */
 
     private void line(GuiGraphics g, double x1, double y1, double z1, double x2, double y2, double z2, float thick, int core, int halo) {
 
@@ -461,14 +355,6 @@ public final class EspKit {
 
     }
 
-
-
-    // ------------------------------------------------------------------ filled faces
-
-
-
-    /** Tints the faces of the box that face you. A face is filled row by row from its projected corners. */
-
     public static void fillBox(GuiGraphics g, double x1, double y1, double z1, double x2, double y2, double z2, int color, float alpha) {
 
         double ex = Projector.eyeX();
@@ -477,13 +363,9 @@ public final class EspKit {
 
         double ez = Projector.eyeZ();
 
-        // inside the box or touching it: nothing to tint
-
         if (ex > x1 && ex < x2 && ey > y1 && ey < y2 && ez > z1 && ez < z2) return;
 
         float[] pts = new float[8];
-
-        // six faces: normal axis, sign, and the four corners
 
         for (int f = 0; f < 6; f++) {
 
@@ -495,7 +377,7 @@ public final class EspKit {
 
             double eye = axis == 0 ? ex : axis == 1 ? ey : ez;
 
-            if (hi ? eye <= plane : eye >= plane) continue; // the back of the box
+            if (hi ? eye <= plane : eye >= plane) continue;
 
             double[][] q = new double[4][];
 
@@ -525,8 +407,6 @@ public final class EspKit {
 
             if (!ok) continue;
 
-            // top faces catch the light, sides are a little darker, like a block
-
             float shade = axis == 1 ? (hi ? 1.0f : 0.55f) : axis == 0 ? 0.75f : 0.85f;
 
             quad(g, pts, Draw.rgba(Draw.darken(color, 1f - shade), alpha));
@@ -534,10 +414,6 @@ public final class EspKit {
         }
 
     }
-
-
-
-    /** Fills a convex four-cornered shape with rows of fills. */
 
     private static void quad(GuiGraphics g, float[] p, int color) {
 
@@ -589,14 +465,6 @@ public final class EspKit {
 
     }
 
-
-
-    // ------------------------------------------------------------------ tracers and labels
-
-
-
-    /** A line from the chosen start to a point in the world. */
-
     public void tracer(GuiGraphics g, int w, int h, double x, double y, double z, int color, float alpha) {
 
         if (!tracers.on()) return;
@@ -623,29 +491,13 @@ public final class EspKit {
 
     }
 
-
-
-    /** A name tag in the size and colour this ESP is set to. */
-
     public void tag(GuiGraphics g, String text, String right, int cx, int top, int color, float alpha, int w, int h) {
 
         label(g, text, right, cx, top, tint(color), alpha * opacity.f() / 100f, w, h, labelSize.f() / 100f);
 
     }
 
-
-
-    // ------------------------------------------------------------------ tracers
-
-
-
-    /** The three looks. Modern is the default: a tapered gradient stroke with a travelling glint. */
-
     public static final String[] TRACER_STYLES = {"Default", "Modern", "Beam", "Classic"};
-
-
-
-    /** The line itself. {@code from}: 0 crosshair, 1 bottom, 2 top, 3 your own body. */
 
     public static void tracerLine(GuiGraphics g, int w, int h, int from, double x, double y, double z, int color, float alpha) {
 
@@ -653,33 +505,11 @@ public final class EspKit {
 
     }
 
-
-
     public static void tracerLine(GuiGraphics g, int w, int h, int from, double x, double y, double z, int color, float alpha, float thick) {
 
         tracerLine(g, w, h, from, x, y, z, color, alpha, thick, 0, true, false, null);
 
     }
-
-
-
-    /**
-
-     * The line with a style, an optional travelling glint and an optional distance pill at the target end.
-
-     *
-
-     * <p>Modern draws the line as a gradient: nearly invisible and thin where it leaves you, full colour and thicker where
-
-     * it meets the target, with a soft glow underneath so it reads against sky, stone and lava alike. The glint is a short
-
-     * bright segment that runs from the start to the end on a loop, which makes a busy screen readable at a glance. The
-
-     * endpoint is a diamond bracket rather than a plus, so the eye lands on the thing instead of on the middle of a cross.
-
-     * Off-screen targets get the same treatment as an arrowhead on the edge of the screen, pointing the way.</p>
-
-     */
 
     public static void tracerLine(GuiGraphics g, int w, int h, int from, double x, double y, double z, int color, float alpha, float thick,
 
@@ -711,8 +541,6 @@ public final class EspKit {
 
         if (from == 3) {
 
-            // in third person your body is not at the middle of the screen: start the line where it actually is
-
             float[] body = bodyPoint();
 
             if (body != null) {
@@ -733,8 +561,6 @@ public final class EspKit {
 
         if (len < 6f) return;
 
-
-
         if (style == 0) {
 
             anubis(g, w, h, sx, sy, t[0], t[1], color, alpha, where, behind);
@@ -745,11 +571,7 @@ public final class EspKit {
 
         style -= 1;
 
-
-
         if (com.zlorbie788.zeus.ui.Perf.gameFast()) {
-
-            // Light and Minimal: one stroke and a dot, no gradient, glow, glint or bracket.
 
             Stroke.soft(g, sx, sy, t[0], t[1], thick, Draw.rgba(color, 0.9f * alpha));
 
@@ -771,30 +593,15 @@ public final class EspKit {
 
     }
 
-
-
-    /**
-
-     * The Anubis look: one flat line, 1.5 screen pixels wide, at half strength, from the start to the target, and nothing else.
-
-     * A target that is off the screen also gets a small filled arrow that blinks, a fixed distance from the middle of the
-
-     * screen, pointing the way. The line stays at its pixel width whatever the GUI scale.
-
-     */
-
-
-    /** Returns the screen position of an arrowhead pointing at an off-screen target, or null if on-screen. */
     private static float[] arrowTip(int w, int h, float sx, float sy, float tx, float ty, int where) {
         if (where == 0) return null;
         float[] t = new float[2];
-        int where2 = Projector.screenPoint(tx, ty, 0, 1f, t);  // Use the target position
-        if (where2 >= 0) return null;  // Already on screen
+        int where2 = Projector.screenPoint(tx, ty, 0, 1f, t);
+        if (where2 >= 0) return null;
         double ang = Math.atan2(ty - sy, tx - sx);
         float reach = 180f / com.zlorbie788.zeus.ui.Tex.guiScale();
         return new float[] {sx + reach * (float)Math.cos(ang), sy + reach * (float)Math.sin(ang)};
     }
-
 
     private static void anubis(GuiGraphics g, int w, int h, float sx, float sy, float tx, float ty, int color, float alpha, int where, boolean behind) {
 
@@ -803,8 +610,6 @@ public final class EspKit {
         float px = 1.5f / gs;
 
         int c = Draw.rgba(color, 0.5f * alpha);
-
-        // a target behind you has no true line on the screen: only the arrow shows which way to turn
 
         if (!behind) Stroke.hard(g, sx, sy, tx, ty, px, c);
 
@@ -828,17 +633,9 @@ public final class EspKit {
 
     }
 
-
-
     private static final float[] STEM = new float[4];
 
-
-
-    /** A vertical line from the feet to the top of a target, drawn in the Anubis tracer look. */
-
     public static void stem(GuiGraphics g, double x, double y, double z, double height, int color, float alpha) {
-
-        // only while the whole target is in front of the camera: a stem cut at the near plane would be a stray line
 
         if (Projector.depth(x, y, z) < 0.3 || Projector.depth(x, y + height, z) < 0.3) return;
 
@@ -849,10 +646,6 @@ public final class EspKit {
         Stroke.hard(g, STEM[0], STEM[1], STEM[2], STEM[3], 1.5f / gs, Draw.rgba(color, 0.5f * alpha));
 
     }
-
-
-
-    /** The Anubis colour of a kind of target: pale colours, so a lot of lines stay calm. {@code kind}: 0 player, 1 animal, 2 water animal, 3 monster, 4 ambient, 5 anything else, 6 friend. */
 
     public static int anubisColor(int kind) {
 
@@ -876,10 +669,6 @@ public final class EspKit {
 
     }
 
-
-
-    /** Red when it is right next to you, yellow halfway, green at 60 blocks and beyond. */
-
     public static int distanceColor(double dist) {
 
         double p = dist / 60.0;
@@ -893,10 +682,6 @@ public final class EspKit {
         return 0xFF000000 | r << 16 | gr << 8;
 
     }
-
-
-
-    /** Where your own body is on the screen this frame, or null when it is not on it (first person, or behind the camera). */
 
     private static float[] bodyPoint() {
 
@@ -918,12 +703,6 @@ public final class EspKit {
 
     }
 
-
-
-    /** Thin tail, bright swelling head, glow, travelling glint, diamond bracket on the target: four sprites in all. */
-
-
-    /** A steady line wrapped in a soft glow with a white-hot core, like a laser sight. */
     private static void beam(GuiGraphics g, int w, int h, float sx, float sy, float tx, float ty, int color, float alpha, float thick, int where) {
         Stroke.soft(g, sx, sy, tx, ty, thick * 1.5f, Draw.rgba(color, 0.75f * alpha));
         Stroke.soft(g, sx, sy, tx, ty, Math.max(0.6f, thick * 0.55f), Draw.rgba(Draw.mix(color, 0xFFFFFFFF, 0.6f), 0.85f * alpha));
@@ -937,7 +716,6 @@ public final class EspKit {
         }
     }
 
-    /** One clean stroke from start to target, with a small dot at the tip. */
     private static void classic(GuiGraphics g, int w, int h, float sx, float sy, float tx, float ty, int color, float alpha, float thick, int where) {
         Stroke.soft(g, sx, sy, tx, ty, thick, Draw.rgba(color, 0.85f * alpha));
         if (where == 0) {
@@ -949,7 +727,6 @@ public final class EspKit {
             }
         }
     }
-
 
     private static void modern(GuiGraphics g, int w, int h, float sx, float sy, float tx, float ty, int color, float alpha, float thick, boolean flow, int where) {
         Stroke.taper(g, sx, sy, tx, ty, thick * 1.25f, Draw.rgba(color, alpha));
@@ -974,7 +751,6 @@ public final class EspKit {
         }
     }
 
-    /** A small distance pill at the target end of a tracer. */
     private static void pill(GuiGraphics g, int w, int h, float x, float y, String text, int color, float alpha) {
         int size = Math.round(9 * com.zlorbie788.zeus.ui.Tex.guiScale());
         int bw = com.zlorbie788.zeus.ui.Draw.width(text) + 8;
@@ -983,7 +759,6 @@ public final class EspKit {
         Draw.textCenter(g, text, (int)x, (int)(y + 1), Draw.rgba(color, alpha));
     }
 
-    /** A name tag in the size and colour this ESP is set to. */
     public static void label(GuiGraphics g, String text, String right, int cx, int top, int color, float alpha, int w, int h, float scale) {
         int rh = Math.round(11 * scale);
         boolean hasRight = right != null && !right.isEmpty();
@@ -991,7 +766,6 @@ public final class EspKit {
         int room = Math.max(24, (w > 0 ? w : 320) - 14 - (hasRight ? rw + 8 : 0));
         String t = com.zlorbie788.zeus.ui.Draw.fit(text, room);
         int tw = com.zlorbie788.zeus.ui.Draw.width(t);
-        // the tag is as wide as both parts plus the gap between them, so the right column can never land on the name
         int w2 = 10 + tw + (hasRight ? 8 + rw : 0);
         int x = cx - w2 / 2;
         if (w > 0 && w2 + 4 <= w) x = Math.max(2, Math.min(x, w - 2 - w2));
@@ -1002,8 +776,6 @@ public final class EspKit {
         if (hasRight) Draw.textRight(g, right, x + w2 - 5, y + 2, Draw.rgba(color, alpha * 0.7f));
     }
 
-
-    /** An arrowhead on the edge of the screen pointing at an off-screen target. */
     public static void edgeMarker(GuiGraphics g, int w, int h, double x, double y, double z, int color, float alpha, float thick, String label) {
         float[] t = new float[2];
         int where = com.zlorbie788.zeus.render.Projector.screenPoint(x, y, z, 1f, t);

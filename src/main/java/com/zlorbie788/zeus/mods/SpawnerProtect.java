@@ -14,14 +14,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-/**
- * Stops you from destroying the spawners your farms are built on.
- *
- * <p>One stray click while fighting, one nuker pass, one lag spike, and the grinder you built is gone: vanilla sends the
- * break as soon as the block is finished, so a module that watches your own break has to stop it before it finishes. This
- * stops it on the first tick and tells you, and it also reports spawners that are too bright for anything to spawn in, which
- * is the other way a farm quietly stops working.</p>
- */
 public final class SpawnerProtect extends Module {
     private final Setting.Choice what = add(new Setting.Choice("Protect", "What you cannot break by accident.", 0, "Spawners", "Spawners and chests", "Spawners and every container"));
     private final Setting.Bool warnBreak = add(new Setting.Bool("Tell me when it stops me", "A toast when a break was stopped, so a refused click is never a mystery.", true));
@@ -36,7 +28,6 @@ public final class SpawnerProtect extends Module {
         light();
     }
 
-    /** Used by the aura and the nuker so they never swing at one either. */
     public static boolean protects(Minecraft mc, BlockPos pos) {
         if (mc.level == null || pos == null) return false;
         SpawnerProtect m = Zeus.get(SpawnerProtect.class);

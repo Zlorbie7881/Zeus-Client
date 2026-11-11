@@ -23,23 +23,11 @@ import java.util.List;
 import java.util.Random;
 import java.util.function.Predicate;
 
-/**
- * The Sword PvP Bot and the Crystal PvP Bot. A bot walks, turns and fights for you against the nearest player: it closes in,
- * strafes, times its hits (critical hits for the sword), keeps out of reach while its swing recharges, eats golden apples,
- * mends its armour with experience bottles when nobody is close, refills its hotbar from the inventory and throws an ender
- * pearl to close a gap. The Crystal Bot hands the explosions to Crystal Aura and Anchor Aura and keeps the fight at the right
- * distance for them.
- *
- * <p>Both bots lean on the modules that already exist in Zeus (Auto Totem, Auto Armor, Auto Eat, Exp Thrower, Auto Replenish,
- * Crystal Aura, Anchor Aura): they switch the ones they need on while they run and back off again when they stop. They never
- * target anyone on your friends list. Using a fighting bot on a server that does not allow it is your decision and your risk.</p>
- */
 public final class Bots {
     private Bots() {}
 
     private static final Random RNG = new Random();
 
-    /** Everything the two bots share. */
     abstract static class Bot extends Module {
         protected final Setting.Num range = add(new Setting.Num("Target range", "How far away a player is picked as the enemy.", 28, 8, 64, 2, " blocks"));
         protected final Setting.Bool strafe = add(new Setting.Bool("Strafe", "Moves sideways while fighting, switching direction at random.", true));
@@ -66,7 +54,6 @@ public final class Bots {
             super(id, name, desc, Category.COMBAT);
         }
 
-        /** The ids of the helper modules this bot wants. */
         protected abstract String[] helperIds();
 
         @Override
@@ -100,8 +87,6 @@ public final class Bots {
             return target == null ? null : target.getName().getString();
         }
 
-        // ---------------------------------------------------------------- keys and view
-
         protected void releaseKeys() {
             Minecraft mc = Minecraft.getInstance();
             if (mc.options == null) return;
@@ -122,7 +107,6 @@ public final class Bots {
             mc.options.keySprint.setDown(sprint);
         }
 
-        /** Turns your view toward a point by at most {@code step} degrees. Returns how many degrees are left to turn. */
         protected float face(Minecraft mc, Vec3 point, float step) {
             Vec3 eye = mc.player.getEyePosition();
             float wantYaw = com.zlorbie788.zeus.core.Aim.yawTo(eye, point);
@@ -143,8 +127,6 @@ public final class Bots {
             return deg;
         }
 
-        // ---------------------------------------------------------------- the enemy
-
         protected Player pick(Minecraft mc) {
             if (target != null && target.isAlive() && !target.isSpectator() && mc.player.distanceTo(target) <= range.get() * 1.25 && !Friends.protects(target)) return target;
             Player best = null;
@@ -160,7 +142,6 @@ public final class Bots {
             return best;
         }
 
-        /** The distance from your eyes to the nearest point of the enemy's body. */
         protected double reachTo(Minecraft mc, Entity e) {
             Vec3 eye = mc.player.getEyePosition();
             AABB b = e.getBoundingBox();
@@ -176,8 +157,6 @@ public final class Bots {
                 strafeLeft = 10 + RNG.nextInt(24);
             }
         }
-
-        // ---------------------------------------------------------------- upkeep
 
         protected void setMend(boolean on) {
             Module m = Zeus.get("expthrower");
@@ -197,7 +176,6 @@ public final class Bots {
             return worst;
         }
 
-        /** Mends while nobody is close. Returns true when it is busy with that and the fight should wait. */
         protected boolean mending(Minecraft mc, double dist) {
             boolean want = mend.on() && dist > 16 && armourPercent(mc) < mendBelow.get()
                     && (Inv.hotbar(Inv.is(Items.EXPERIENCE_BOTTLE)) >= 0 || Inv.offhand(Inv.is(Items.EXPERIENCE_BOTTLE)));
@@ -206,7 +184,6 @@ public final class Bots {
             return want;
         }
 
-        /** Puts missing supplies into free hotbar slots from the main inventory. */
         protected void refillHotbar(Minecraft mc, List<Predicate<ItemStack>> wanted) {
             if (!refill.on() || (tickNo % 20) != 0 || mc.screen != null) return;
             for (Predicate<ItemStack> want : wanted) {
@@ -228,14 +205,10 @@ public final class Bots {
                     return;
                 }
                 Inv.click(Inv.menuSlot(from), free, ClickType.SWAP);
-                return; // one swap a second is plenty
+                return;
             }
         }
 
-        /**
-         * Throws an ender pearl at a far enemy. The view is turned to the throwing angle first and held a few ticks so the
-         * server knows where you look. Returns true while it is busy with that.
-         */
         protected boolean pearl(Minecraft mc, double dist) {
             if (pearlCd > 0) pearlCd--;
             if (!pearls.on() || mc.player.isUsingItem()) {
@@ -260,7 +233,6 @@ public final class Bots {
             return true;
         }
 
-        /** A point in the air to look at so that a pearl thrown there comes down on the enemy. */
         static Vec3 pearlAim(Minecraft mc, Entity e) {
             Vec3 eye = mc.player.getEyePosition();
             Vec3 to = e.position();
@@ -279,7 +251,6 @@ public final class Bots {
                     px += vx * Math.pow(0.99, t);
                     py += vy;
                     vy = (vy - 0.03) * 0.99;
-                    // vy above is the velocity after drag; the x speed decays by the same drag each tick
                     if (py <= to.y && vy < 0) break;
                 }
                 double miss = Math.abs(px - flat);
@@ -308,9 +279,6 @@ public final class Bots {
         }
     }
 
-    // ================================================================== Sword PvP Bot
-
-    /** Fights the nearest player with a sword: crits, strafing, keeping out of reach while the swing recharges, gapples, pearls. */
     public static final class SwordBot extends Bot {
         private final Setting.Bool crits = add(new Setting.Bool("Critical hits", "Jumps and hits on the way down, so every hit is a critical hit.", true));
         private final Setting.Bool wtap = add(new Setting.Bool("W-tap", "Lets go of forward for a moment after each hit so the next hit knocks back again.", true));
@@ -350,7 +318,6 @@ public final class Bots {
             if (mending(mc, mc.player.distanceTo(target))) return;
             if (pearl(mc, mc.player.distanceTo(target))) return;
 
-            // eating: stay out of the way and do not swing
             if (mc.player.isUsingItem()) {
                 face(mc, target.getBoundingBox().getCenter(), turn.f());
                 strafeTick();
@@ -358,7 +325,6 @@ public final class Bots {
                 return;
             }
 
-            // the weapon
             if (!weapon(mc.player.getMainHandItem())) {
                 int slot = Inv.hotbar(Bot::sword);
                 if (slot < 0) slot = Inv.hotbar(Bot::weapon);
@@ -385,14 +351,12 @@ public final class Bots {
 
             boolean airborne = !mc.player.onGround();
             if (!ready) {
-                // recharging: stay just out of reach, circle
                 if (dist < reach.get() + 0.7) keys(mc, false, true, sl, sr, false, false);
                 else if (dist > reach.get() + 2.2) keys(mc, true, false, sl, sr, false, true);
                 else keys(mc, false, false, sl, sr, false, false);
                 return;
             }
             if (!inReach) {
-                // charged and not there yet: run in
                 keys(mc, true, false, sl, sr, mc.player.onGround() && mc.player.horizontalCollision, dist > 4.5);
                 return;
             }
@@ -402,13 +366,11 @@ public final class Bots {
             }
             if (crits.on()) {
                 if (!airborne) {
-                    // jump now; the hit comes on the way down
                     keys(mc, true, false, sl, sr, true, false);
                     return;
                 }
                 if (mc.player.getDeltaMovement().y < 0 && mc.player.fallDistance > 0.05f) {
                     if (mc.player.isSprinting()) {
-                        // a sprinting hit cannot be a critical one: let the sprint end first
                         mc.player.setSprinting(false);
                         keys(mc, false, false, sl, sr, false, false);
                         return;
@@ -431,9 +393,6 @@ public final class Bots {
         }
     }
 
-    // ================================================================== Crystal PvP Bot
-
-    /** Fights with crystals and anchors: it steers Crystal Aura and Anchor Aura and keeps the fight at the right distance. */
     public static final class CrystalBot extends Bot {
         private final Setting.Choice blast = add(new Setting.Choice("Explosives", "Which explosive module the bot switches on. Anchors only work in the Overworld and the End.", 0, "Crystals", "Anchors", "Both"));
         private final Setting.Bool knockUp = add(new Setting.Bool("Knock them up", "Hits the enemy with your sword when they stand on the ground next to you, to lift them into the air where a crystal does more.", true));

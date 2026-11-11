@@ -15,19 +15,12 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.util.function.Supplier;
 
-/**
- * Plays a Zeus intro film (the start-up one or the one of the Z key): a short film where the logo's ring draws itself 0 to 100 percent, then a thunderstorm breaks in the dark around the logo and it settles into a
- * steady glow. The game has no video player, so the film ships as a row of
- * pictures (one per frame, 40 a second) and a sound file. One picture is on the graphics card at a time; the next frame is
- * decoded when it is due. Any key or click skips it. Nothing starts until the game's own loading screen is gone.
- */
 public final class VideoIntroScreen extends Screen {
-    /** One film: its pictures, speed, sound and the extra thunder placed on its strikes (seconds, pitch, volume, 0 = thunder / 1 = impact). */
+
     public record Film(String path, int frames, float fps, String sound, float[][] cues) {}
 
-    /** The start-up film: the ring draws itself, then a thunderstorm. Its sound (tools/intro_sound.py) has the thunder in it, so the game adds none. */
     public static final Film STARTUP = new Film("intro/f%03d.jpg", 200, 40f, "intro", new float[0][]);
-    /** The film of the Z key: five seconds, its own sound only. Made by tools/panel_intro.py. */
+
     public static final Film PANEL = new Film("intro_panel/p%03d.jpg", 150, 30f, "panel_intro", new float[0][]);
     private static final int AHEAD = 8;
 
@@ -61,7 +54,6 @@ public final class VideoIntroScreen extends Screen {
         startWorker();
     }
 
-    /** Decodes the next few frames ahead of the clock on a side thread, so the game thread only has to upload a picture. */
     private void startWorker() {
         worker = new Thread(() -> {
             while (!stop) {
@@ -117,7 +109,6 @@ public final class VideoIntroScreen extends Screen {
 
     @Override
     public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-        // the picture is drawn in render
     }
 
     @Override
@@ -125,9 +116,8 @@ public final class VideoIntroScreen extends Screen {
         g.fill(0, 0, width, height, 0xFF000000);
         if (left) return;
         try {
-            if (minecraft.getOverlay() != null) return; // the game's loading screen is still up
+            if (minecraft.getOverlay() != null) return;
         } catch (RuntimeException ignored) {
-            // treat as loaded
         }
         long now = System.nanoTime();
         if (t0 == 0) {
@@ -152,16 +142,10 @@ public final class VideoIntroScreen extends Screen {
         if (idx != shown) load(idx);
         if (frame == null) return;
         drawFrame(g, t);
-        // a short fade in from black
         float in = Math.max(0f, 1f - t / 0.25f);
         if (in > 0.01f) g.fill(0, 0, width, height, Draw.rgba(0xFF000000, in));
     }
 
-    /**
-     * Draws the picture in the chosen way. The film is 16 : 9, the shape of most screens. Fit shows all of it and
-     * carries the lightning on across the empty sides: the outermost pixels of the picture are smeared outwards and fade
-     * to black, so the whole screen is alive and nothing is cut. Fill crops, Stretch widens.
-     */
     private void drawFrame(GuiGraphics g, float t) {
         int mode = UiSettings.INTRO_FIT.index();
         if (mode == 2) {
@@ -182,12 +166,11 @@ public final class VideoIntroScreen extends Screen {
         int y0 = (height - dh) / 2;
         float flare = 0.72f + 0.28f * (float) Math.sin(t * 9.0);
         if (x0 > 1) {
-            // left and right: the edge column of the picture, stretched, then faded out
             frame.drawPart(g, 0, y0, x0, dh, 0, 0, 2, vh, Draw.rgba(0xFFFFFFFF, 0.9f * flare));
             frame.drawPart(g, x0 + dw, y0, width - x0 - dw, dh, vw - 2, 0, 2, vh, Draw.rgba(0xFFFFFFFF, 0.9f * flare));
             int step = Math.max(2, x0 / 90);
             for (int i = 0; i < x0; i += step) {
-                float k = i / (float) x0; // 0 at the picture, 1 at the screen edge
+                float k = i / (float) x0;
                 int a = Draw.rgba(0xFF000000, (float) Math.min(1.0, Math.pow(k, 0.7) * 0.97 + 0.03));
                 g.fill(x0 - i - step, y0, x0 - i, y0 + dh, a);
                 g.fill(x0 + dw + i, y0, x0 + dw + i + step, y0 + dh, a);
@@ -208,7 +191,6 @@ public final class VideoIntroScreen extends Screen {
     }
 
     private void load(int idx) {
-        // the newest decoded frame that is not past the one that is due (a late frame is skipped, never waited for)
         int use = -1;
         for (int k = idx; k >= Math.max(0, idx - 6) && use < 0; k--) if (ready.containsKey(k)) use = k;
         if (use < 0 || use == shown) return;
@@ -237,7 +219,6 @@ public final class VideoIntroScreen extends Screen {
             sound = SimpleSoundInstance.forUI(ev, 1f, 1f);
             minecraft.getSoundManager().play(sound);
         } catch (Throwable ignored) {
-            // no sound must never stop the picture
         }
     }
 
@@ -247,7 +228,6 @@ public final class VideoIntroScreen extends Screen {
             var ev = c[3] == 0 ? net.minecraft.sounds.SoundEvents.LIGHTNING_BOLT_THUNDER : net.minecraft.sounds.SoundEvents.LIGHTNING_BOLT_IMPACT;
             minecraft.getSoundManager().play(SimpleSoundInstance.forUI(ev, c[1], c[2]));
         } catch (Throwable ignored) {
-            // the film's own sound is enough
         }
     }
 
@@ -258,7 +238,6 @@ public final class VideoIntroScreen extends Screen {
         try {
             if (sound != null) minecraft.getSoundManager().stop(sound);
         } catch (Throwable ignored) {
-            // already finished
         }
         Screen n = null;
         try {
@@ -291,7 +270,6 @@ public final class VideoIntroScreen extends Screen {
         try {
             if (sound != null && !left) minecraft.getSoundManager().stop(sound);
         } catch (Throwable ignored) {
-            // nothing to stop
         }
         if (frame != null) {
             frame.release();

@@ -33,11 +33,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.LinkedHashMap;
 
-/** Small, deliberately conservative integrations for Donut and Goliath servers. */
 public final class AdvancedFeatures {
     private AdvancedFeatures() {}
 
-    /** Donut/Goliath RTP helper. It leaves the server's own RTP workflow in control. */
     public static final class GoliathRtp extends Module {
         private final Setting.Text command = add(new Setting.Text("RTP command", "The server command used for random teleport. Do not include the leading slash.", "rtp", 48));
         private final Setting.Choice region = add(new Setting.Choice("Goliath region", "These are the Donut Goliath RTP region command names. Europe uses plain /rtp.", 2, "EU Central", "EU West", "Europe", "NA West", "NA East", "Asia", "Oceania"));
@@ -122,7 +120,6 @@ public final class AdvancedFeatures {
         @Override public String info() { return status; }
     }
 
-    /** Hits several nearby targets in one go. */
     public static final class MultiAura extends Module {
         private final Setting.Num range = add(new Setting.Num("Range", "Maximum target distance.", 3.8, 2.5, 5.5, 0.1, " blocks"));
         private final Setting.Num targets = add(new Setting.Num("Targets per cycle", "Maximum number of nearby targets attacked per cycle.", 3, 1, 5, 1, ""));
@@ -165,13 +162,11 @@ public final class AdvancedFeatures {
         }
 
         @Override protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
-            // nothing to draw: the target count is shown next to the module
         }
 
         @Override public String info() { return lastCount + " target(s)"; }
     }
 
-    /** Schematic import, file discovery and material preview. */
     public static final class SchematicLibrary extends Module {
         private final Setting.Info library = add(new Setting.Info("Schematic files", this::files));
         private final Setting.Action openPreview = add(new Setting.Action("Open schematic library / preview", "Imports Sponge and Litematica NBT, previews blocks and calculates a material list.", this::preview));
@@ -225,8 +220,6 @@ public final class AdvancedFeatures {
         @Override public String info(){return files.size()+" schematic(s)";}
     }
 
-
-    /** Guided schematic placement queue. Automatic placement is deliberately local-world only. */
     public static final class SchematicBuilder extends Module {
         private final Setting.Action openFolder = add(new Setting.Action("Open schematics folder", "Opens the folder scanned by the schematic library so you can drop .litematic and .schem files directly into it.", this::openSchematicFolder));
         private final Setting.Action setOrigin = add(new Setting.Action("Set build origin here", "The loaded schematic's minimum corner will be placed at your current block position.", this::anchor));
@@ -300,7 +293,6 @@ public final class AdvancedFeatures {
         @Override public String info(){return status;}
     }
 
-    /** Rolling latency and jitter monitor; simulated latency is a visual test value only. */
     public static final class FakeLagMonitor extends Module {
         private final Setting.Bool overlay = add(new Setting.Bool("Show latency overlay", "Show measured ping, rolling average and jitter.", true));
         private final Setting.Num simulated = add(new Setting.Num("Simulated latency", "Display-only latency for testing HUD layouts. Does not delay packets.", 250, 0, 2000, 25, " ms"));

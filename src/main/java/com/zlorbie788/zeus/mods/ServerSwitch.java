@@ -8,7 +8,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** A visible, non-toggleable settings page for reconnect/module persistence. */
 public final class ServerSwitch extends Module {
     private static final ServerSwitch INSTANCE = new ServerSwitch();
     private static final Map<String, Setting.Bool> KEEP = new LinkedHashMap<>();
@@ -26,7 +25,6 @@ public final class ServerSwitch extends Module {
 
     public static ServerSwitch instance() { return INSTANCE; }
 
-    /** Called once after the full module registry has been created. */
     public static void configure(List<Module> modules) {
         KEEP.clear();
         for (Module module : modules) {

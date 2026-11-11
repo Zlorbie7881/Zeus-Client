@@ -28,7 +28,6 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 
-/** Three everyday helpers: the keybind screen, the update checker and the death marker. */
 public final class Quality {
     private Quality() {}
 
@@ -41,9 +40,6 @@ public final class Quality {
                 .withHoverEvent(new HoverEvent.ShowText(Component.literal(hint))));
     }
 
-    // ================================================================== keybinds
-
-    /** The Keybinds page: opens the screen that lists every module and its key. */
     public static final class Keybinds extends Module {
         public Keybinds() {
             super("keybinds", "Keybinds", "Every module and its key on one screen. Click a box, press a key.", Category.INTERFACE);
@@ -68,13 +64,6 @@ public final class Quality {
         }
     }
 
-    // ================================================================== update checker
-
-    /**
-     * Update Checker: reads a small version.json from an address you set (the website build writes one), and when a newer
-     * version exists it tells you in chat and with a pop-up on screen for about five seconds, every time you join a world or a
-     * server. It only ever fetches that one file, never sends anything, and does nothing while the address is empty.
-     */
     public static final class UpdateCheck extends Module {
         private static final long POP_MS = 5000L;
 
@@ -109,7 +98,6 @@ public final class Quality {
             note = address.get().isBlank() ? "Set the version address first." : "Waiting for the next join.";
         }
 
-        /** True when a is a newer version than b. Versions are numbers separated by dots, like 0.9.7.0. */
         static boolean newer(String a, String b) {
             String[] x = a.trim().split("\\.");
             String[] y = b.trim().split("\\.");
@@ -198,7 +186,7 @@ public final class Quality {
         private void announceIfPending() {
             Minecraft mc = Minecraft.getInstance();
             if (!pending || mc.level == null || System.currentTimeMillis() - joinAt < 3000L) return;
-            if (busy && fetchedAt == 0) return; // the answer is still on its way
+            if (busy && fetchedAt == 0) return;
             pending = false;
             if (available()) {
                 toldThisRun = true;
@@ -223,7 +211,6 @@ public final class Quality {
                                 .append(Component.literal("  "))
                                 .append(button("Copy link", ChatFormatting.AQUA, new ClickEvent.CopyToClipboard(link), "Copy the download address")));
                     } catch (IllegalArgumentException ignored) {
-                        // a link that is not a valid address is left out
                     }
                 }
                 c.addMessage(rule());
@@ -243,7 +230,6 @@ public final class Quality {
             String versions = Zeus.VERSION + "  →  " + newest;
             int cw = Math.max(150, Math.max(Draw.width(title), Draw.width(versions)) + 44);
             int ch = notes.isBlank() ? 36 : 48;
-            // slides in from the right in the first third of a second and fades in the last half second
             float in = Math.min(1f, age / 320f);
             float out = age > POP_MS - 500 ? (POP_MS - age) / 500f : 1f;
             float ease = 1f - (1f - in) * (1f - in) * (1f - in);
@@ -254,7 +240,6 @@ public final class Quality {
             Draw.glow(g, x, y, cw, ch, 6, accent, 4, 0.16f * a);
             Hud.panelFade(g, x, y, cw, ch, a);
             Draw.rrectLine(g, x, y, cw, ch, Hud.round(4), Draw.rgba(accent, 0.9f * a));
-            // a small lightning bolt
             int bx = x + 14;
             int by = y + 9;
             int bc = Draw.rgba(0xFFFFD84D, a);
@@ -264,19 +249,11 @@ public final class Quality {
             Draw.text(g, title, x + 28, y + 7, Draw.rgba(0xFFFFFFFF, a));
             Draw.text(g, versions, x + 28, y + 19, Draw.rgba(0xFF5EE6A0, a));
             if (!notes.isBlank()) Draw.text(g, Draw.fit(notes, cw - 36), x + 28, y + 31, Draw.rgba(0xFF9FB2D6, a));
-            // the time left, as a thin line along the bottom
             int barW = Math.round((cw - 16) * (1f - age / (float) POP_MS));
             g.fill(x + 8, y + ch - 4, x + 8 + barW, y + ch - 3, Draw.rgba(accent, 0.85f * a));
         }
     }
 
-    // ================================================================== death marker
-
-    /**
-     * Death Marker: when you die, a tall beam and a label stay where it happened, with an arrow at the edge of the screen when
-     * it is out of view and a chat message with the coordinates you can copy. It clears when you walk back to the spot (to
-     * pick up your things), after a time you choose, or when a newer death replaces the oldest one.
-     */
     public static final class DeathMarker extends Module {
         private record Death(String dim, double x, double y, double z, long at) {}
 
@@ -387,7 +364,6 @@ public final class Quality {
                     Draw.rrect(g, x - tw / 2 - 3, y - 18, tw + 6, 12, 4, 0xB00B0E16);
                     Draw.text(g, text, x - tw / 2, y - 16, red);
                 } else if (side == 1 && arrow.on()) {
-                    // an arrow on the edge of the screen, pointing out of it towards the spot
                     float cx = w / 2f;
                     float cy = h / 2f;
                     float vx = p[0] - cx;

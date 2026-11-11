@@ -15,11 +15,6 @@ import net.minecraft.world.phys.AABB;
 
 import java.util.Locale;
 
-/**
- * Marks villagers (and wandering traders) through walls, with their job in the name tag and a colour per job, so a
- * librarian or a cleric is easy to find in a village or a trading hall. Boxes, outline, tracers, colours and labels share the
- * look of the other ESPs and can all be changed.
- */
 public final class VillagerEsp extends Module {
     private static volatile VillagerEsp self;
 
@@ -53,7 +48,6 @@ public final class VillagerEsp extends Module {
         return t == EntityType.ZOMBIE_VILLAGER && s.zombies.on();
     }
 
-    /** What the villager does: the game names a villager after its job ("Librarian"), or "Villager" when it has none. */
     private static String job(Entity e) {
         if (e.getType() == EntityType.WANDERING_TRADER) return "Wandering Trader";
         if (e.getType() == EntityType.ZOMBIE_VILLAGER) return "Zombie Villager";
@@ -87,8 +81,6 @@ public final class VillagerEsp extends Module {
         return mc.player.distanceToSqr(e) <= r * r;
     }
 
-    // --------------------------------------------------------------- the glow hooks (called through Esp)
-
     public static boolean outlines(Entity e) {
         VillagerEsp s = self;
         if (s == null || !s.enabled() || !s.outline.on()) return false;
@@ -98,8 +90,6 @@ public final class VillagerEsp extends Module {
     public static int outlineColor(Entity e) {
         return outlines(e) ? EspKit.pick(self.kit.color, self.colorFor(e)) : 0;
     }
-
-    // --------------------------------------------------------------- the screen overlay
 
     @Override
     protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {

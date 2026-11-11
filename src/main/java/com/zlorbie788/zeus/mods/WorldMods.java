@@ -25,11 +25,9 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
-/** World modules. */
 public final class WorldMods {
     private WorldMods() {}
 
-    /** Breaks blocks much faster. */
     public static final class FastBreak extends Module {
         private final Setting.Num speed = add(new Setting.Num("Mining speed", "How many times faster you break blocks on your screen. Servers put the block back if it breaks more than about 1.4x early, so that is the default.", 1.4, 1.1, 20, 0.1, "x"));
         private final Setting.Bool delay = add(new Setting.Bool("No pause between blocks", "Removes the short wait before the next block starts breaking.", true));
@@ -69,7 +67,6 @@ public final class WorldMods {
         }
     }
 
-    /** Places blocks without the wait between clicks. */
     public static final class FastPlace extends Module {
         private final Setting.Num ticks = add(new Setting.Num("Delay", "Ticks between two placements. 4 is normal, 0 is as fast as the game can go.", 0, 0, 3, 1, " ticks"));
 
@@ -84,15 +81,6 @@ public final class WorldMods {
         }
     }
 
-    /**
-     * Marks out a box with two corners and clears everything inside it.
-     *
-     * <p>Toggling the module on only arms the tool: it shows the outline of the block you look at, and waits. Left click
-     * sets the first corner, and a prompt asks you to press enter to confirm it. Pressing enter keeps that corner lit and
-     * asks for the second one the same way. Once both corners are confirmed a scan sweeps across the box, and then every
-     * block inside it is broken nearest first, with the best tool in your hotbar, through the game's own digging, so it
-     * works in survival and a server sees ordinary mining.</p>
-     */
     public static final class Nuker extends Module {
         private static final int PICK_A = 0;
         private static final int CONFIRM_A = 1;
@@ -107,7 +95,7 @@ public final class WorldMods {
         private static final int CYAN = 0xFF5FD4FF;
         private static final long CONFIRM_MS = 3000L;
         private static final long SCAN_MS = 1300L;
-        /** A box larger than this is refused rather than left to hang the game. */
+
         private static final int MAX_BLOCKS = 12000;
 
         private final Setting.Num reach = add(new Setting.Num("Reach", "How far from your eyes a block can be and still be broken. The game's own limit is about 4.5 blocks; a little more is accepted by most servers.", 4.5, 3, 6, 0.5, " blocks"));
@@ -124,11 +112,11 @@ public final class WorldMods {
         private BlockPos max;
         private final List<BlockPos> todo = new ArrayList<>();
         private BlockPos breaking;
-        /** How far along the list of blocks to break we are. */
+
         private int cursor;
-        /** Ticks since the remaining blocks were last put in reach order. */
+
         private int sortTicks;
-        /** Blocks that are left but too far away to reach right now. */
+
         private int waiting;
         private boolean wasAttack;
         private boolean wasEnter;
@@ -137,8 +125,6 @@ public final class WorldMods {
         public Nuker() {
             super("nuker", "Area Clearer", "Left click one corner, press enter to confirm it, do the same with a second corner, then it scans the box and breaks every block inside it with your best tool.", Category.WORLD);
         }
-
-        // ------------------------------------------------------------ selection
 
         private void begin() {
             phase = PICK_A;
@@ -206,7 +192,6 @@ public final class WorldMods {
                         a = look;
                         phase = CONFIRM_A;
                         phaseAt = now();
-                        // the click that picked the corner must not also start digging into it
                         mc.gameMode.stopDestroyBlock();
                     }
                 }
@@ -258,7 +243,6 @@ public final class WorldMods {
             }
         }
 
-        /** Turns the two corners into the box and the list of blocks to break. False when the box is unusable. */
         private boolean measure(Minecraft mc) {
             if (a == null || b == null || mc.level == null) return false;
             min = new BlockPos(Math.min(a.getX(), b.getX()), Math.min(a.getY(), b.getY()), Math.min(a.getZ(), b.getZ()));
@@ -282,11 +266,8 @@ public final class WorldMods {
             return true;
         }
 
-        // ------------------------------------------------------------ breaking
-
         private void clear(Minecraft mc) {
             if (mc.player == null || mc.level == null || mc.gameMode == null) return;
-            // the nearest block changes as you walk, so the rest of the list is put in reach order again once a second
             if (++sortTicks >= 20 && cursor < todo.size()) {
                 sortTicks = 0;
                 BlockPos eye = mc.player.blockPosition();
@@ -298,7 +279,6 @@ public final class WorldMods {
             while (cursor < todo.size()) {
                 BlockPos p = todo.get(cursor);
                 BlockState st = mc.level.getBlockState(p);
-                // already gone (it fell, or something else broke it), unbreakable, or out of arm's length
                 if (st.isAir() || st.getDestroySpeed(mc.level, p) < 0f
                         || mc.player.getEyePosition().distanceTo(net.minecraft.world.phys.Vec3.atCenterOf(p)) > reach.f()) {
                     cursor++;
@@ -309,7 +289,6 @@ public final class WorldMods {
             }
             if (target == null) {
                 if (cursor < todo.size()) {
-                    // only blocks you cannot reach yet are left: stand still and wait for the player to walk closer
                     if (mc.gameMode != null) mc.gameMode.stopDestroyBlock();
                     breaking = null;
                     waiting = todo.size() - cursor;
@@ -319,7 +298,6 @@ public final class WorldMods {
                 breaking = null;
                 if (previousSlot >= 0 && tools.on()) Inv.select(previousSlot);
                 previousSlot = -1;
-                // ready for the next area straight away
                 begin();
                 Zeus.toast("Area cleared", true);
                 return;
@@ -336,7 +314,6 @@ public final class WorldMods {
             if (swing.on()) mc.player.swing(net.minecraft.world.InteractionHand.MAIN_HAND);
         }
 
-        /** The side of the block that faces you, so the game draws the cracks on the side you can see. */
         private static Direction facing(Minecraft mc, BlockPos p) {
             double dx = mc.player.getX() - (p.getX() + 0.5);
             double dy = mc.player.getEyeY() - (p.getY() + 0.5);
@@ -365,8 +342,6 @@ public final class WorldMods {
             }
         }
 
-        // ------------------------------------------------------------ drawing
-
         @Override
         public String info() {
             return switch (phase) {
@@ -382,7 +357,6 @@ public final class WorldMods {
             Wire.box(g, x + 0.02, y + 0.02, z + 0.02, x + 0.98, y + 0.98, z + 0.98, thick, colour, true);
         }
 
-        /** A filled block: the outline plus a grid of thin lines so the inside reads as solid colour. */
         private static void filled(GuiGraphics g, BlockPos p, int colour, float thick) {
             double x = p.getX(), y = p.getY(), z = p.getZ();
             corner(g, p, colour, thick);
@@ -407,7 +381,6 @@ public final class WorldMods {
                 BlockPos look = lookedAt(mc);
                 if (look != null && !look.equals(a)) {
                     bracket(g, look, AMBER, thick * 1.1f);
-                    // while the second corner is being chosen, show the box the two would make
                     if (a != null) {
                         BlockPos lo = new BlockPos(Math.min(a.getX(), look.getX()), Math.min(a.getY(), look.getY()), Math.min(a.getZ(), look.getZ()));
                         BlockPos hi = new BlockPos(Math.max(a.getX(), look.getX()), Math.max(a.getY(), look.getY()), Math.max(a.getZ(), look.getZ()));
@@ -425,7 +398,6 @@ public final class WorldMods {
                 float t = Math.min(1f, age / (float) SCAN_MS);
                 double[] p = scanPlane(t);
                 Wire.box(g, p[0], p[1], p[2], p[3], p[4], p[5], 2.2f, CYAN, true);
-                // a fading stack of planes behind it, so the sweep reads as light moving across the box
                 for (int i = 1; i <= 4; i++) {
                     double[] q = scanPlane(Math.max(0f, t - i * 0.055f));
                     Wire.box(g, q[0], q[1], q[2], q[3], q[4], q[5], 1.1f, Draw.rgba(CYAN, 0.30f - i * 0.06f), false);
@@ -434,7 +406,6 @@ public final class WorldMods {
             drawPrompt(g, mc, w, h, age);
         }
 
-        /** The moving plane of the scan, as {x1,y1,z1,x2,y2,z2}, sweeping along the box's longest side. */
         private double[] scanPlane(float t) {
             double x1 = min.getX(), y1 = min.getY(), z1 = min.getZ();
             double x2 = max.getX() + 1, y2 = max.getY() + 1, z2 = max.getZ() + 1;
@@ -451,7 +422,6 @@ public final class WorldMods {
             return new double[] {x1, y1, z, x2, y2, z + 0.03};
         }
 
-        /** The status card at the bottom of the screen: what to do now, and how far along it is. */
         private void drawPrompt(GuiGraphics g, Minecraft mc, int w, int h, long age) {
             String title;
             String hint;
@@ -499,7 +469,6 @@ public final class WorldMods {
             int bh = bar >= 0f ? 45 : 39;
             int x = (w - bw) / 2;
             int y = h - 104;
-            // a soft drop shadow, a dark glass card, and one hairline of the accent colour along the left
             Draw.shadow(g, x, y, bw, bh, 9, 14, 0.6f);
             Draw.rrect(g, x, y, bw, bh, 9, 0xE00A0E17, 0xF20C1322);
             Draw.rrect(g, x + 1, y + 1, bw - 2, 1, 1, Draw.rgba(0xFFFFFFFF, 0.07f));
@@ -521,7 +490,6 @@ public final class WorldMods {
             }
         }
 
-        /** A small keycap: the key you press, drawn as a key. Returns its width. */
         private static int keycap(GuiGraphics g, int x, int y, String text, int colour) {
             int cw = Draw.widthBold(text) + 16;
             int ch = 17;
@@ -532,7 +500,6 @@ public final class WorldMods {
             return cw;
         }
 
-        /** The eight corner brackets of a block: it reads as a marker rather than a cage. */
         private static void bracket(GuiGraphics g, BlockPos p, int colour, float thick) {
             double x = p.getX(), y = p.getY(), z = p.getZ();
             double e = 0.98, l = 0.30;

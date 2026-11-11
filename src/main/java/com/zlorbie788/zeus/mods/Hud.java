@@ -24,22 +24,16 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-/** Extra things drawn on the game screen. They only read what your own game already knows. */
 public final class Hud {
 
-    // ------------------------------------------------------------------ presentation tokens
-
-    /** The panel background for HUD boxes: a dark, slightly blue-black that reads as premium on any accent. */
     static int panelBg() {
         return Draw.rgba(0xFF0D1018, (float) com.zlorbie788.zeus.ui.UiSettings.HUD_OPACITY.get() / 100f * widgetOpacity());
     }
 
-    /** The rounded-corner radius for a HUD box. Small modules stay tight; larger ones breathe. */
     static int round(int def) {
         return Math.max(0, Math.min(def + 6, com.zlorbie788.zeus.ui.UiSettings.HUD_ROUND.i() + (def - 4)));
     }
 
-    /** The accent colour of the box being drawn, or the panel default when the widget has none. */
     static int accent() {
         String id = CURRENT_WIDGET.get();
         if (id != null) {
@@ -54,31 +48,23 @@ public final class Hud {
         return id == null ? 1f : com.zlorbie788.zeus.ui.HudLayout.get(id).opacity;
     }
 
-    /** The opacity the HUD editor has given the widget being drawn, 1 when it has none. */
     static float opacity() {
         return widgetOpacity();
     }
 
-    /** A small filled dot used as an icon marker next to HUD text. */
     static void iconDot(GuiGraphics g, int x, int y, int color, float r) {
         g.fill(x - (int) Math.ceil(r) + 1, y - (int) Math.ceil(r) + 1, x + (int) Math.ceil(r), y + (int) Math.ceil(r), color);
     }
 
-    /** The look of every HUD box: a soft shadow, a filled rounded panel, an accent stripe if enabled, and a thin accent outline. */
     static void panel(GuiGraphics g, int x, int y, int w, int h) {
         body(g, x, y, w, h, 1f);
     }
 
-    /**
-     * The box itself: a soft drop shadow, a glass body that is a shade lighter at the top, a hairline of the accent
-     * around it and the accent stripe on the left.
-     */
     private static void body(GuiGraphics g, int x, int y, int w, int h, float f) {
         int r = round(4);
         int bg = panelBg();
         Draw.shadow(g, x, y, w, h, 7, 6, 0.30f * f);
         Draw.rrect(g, x, y, w, h, r, fade(Draw.lighten(bg, 0.055f), f), fade(Draw.darken(bg, 0.18f), f));
-        // the light catches the top edge, so the box reads as glass rather than a flat rectangle
         Draw.rrect(g, x + 1, y + 1, w - 2, 1, 1, Draw.rgba(0xFFFFFFFF, 0.055f * f));
         if (com.zlorbie788.zeus.ui.UiSettings.HUD_STRIPE.on()) {
             if (!Draw.cheap) Draw.glow(g, x + 1, y + 3, 2, h - 5, 4, accent(), 5, 0.55f * f);
@@ -87,25 +73,20 @@ public final class Hud {
         Draw.rrectLine(g, x, y, w, h, r, Draw.rgba(accent(), 0.55f * f));
     }
 
-    /** Multiplies the alpha channel of an ARGB colour, so a panel can fade in and out as one piece. */
     static int fade(int argb, float f) {
         int a = Math.round(((argb >>> 24) & 0xFF) * Math.max(0f, Math.min(1f, f)));
         return (a << 24) | (argb & 0x00FFFFFF);
     }
 
-    /** The same look as {@link #panel}, with every colour scaled by {@code fade}. */
     static void panelFade(GuiGraphics g, int x, int y, int w, int h, float fade) {
         body(g, x, y, w, h, Math.max(0f, Math.min(1f, fade)));
     }
 
-    // ------------------------------------------------------------------ placement
-
     private static final int[] USED = new int[4];
-    /** Height of the module list at the top right, so boxes in that corner start below it. */
+
     static int listHeight;
     private static final ThreadLocal<String> CURRENT_WIDGET = new ThreadLocal<>();
 
-    /** Where each widget drew this frame (in its own, unscaled coordinates) and where it drew on the last finished frame. */
     private static final java.util.Map<String, int[]> FRAME_BOUNDS = new java.util.HashMap<>();
     private static final java.util.Map<String, int[]> KNOWN_BOUNDS = new java.util.HashMap<>();
 
@@ -124,7 +105,6 @@ public final class Hud {
         CURRENT_WIDGET.remove();
     }
 
-    /** A widget tells the HUD editor which rectangle it just drew. Called again for every extra box; the boxes are joined. */
     public static void record(int x, int y, int w, int h) {
         String id = CURRENT_WIDGET.get();
         if (id == null || w <= 0 || h <= 0) return;
@@ -138,12 +118,10 @@ public final class Hud {
         }
     }
 
-    /** The rectangle {x0, y0, x1, y1} the widget drew on the last frame, or null when it drew nothing. */
     public static int[] bounds(String id) {
         return KNOWN_BOUNDS.get(id);
     }
 
-    /** Called once at the start of every frame so the boxes stack from scratch. */
     public static void newFrame() {
         USED[0] = 0;
         USED[1] = 0;
@@ -156,7 +134,6 @@ public final class Hud {
                 "Top left", "Top right", "Bottom left", "Bottom right"));
     }
 
-    /** Reserves a box of the given size in a corner and returns its top-left position. */
     public static int[] place(int corner, int bw, int bh, int w, int h) {
         boolean right = corner == 1 || corner == 3;
         boolean bottom = corner >= 2;
@@ -173,15 +150,11 @@ public final class Hud {
         return new int[]{x, y};
     }
 
-    // ------------------------------------------------------------------ the shared look of every widget
-
-    /** Inside padding, the row rhythm and the caption height, so every box lines up with the others. */
     static final int PAD = 9;
     static final int ROW = 20;
-    /** Where the content of a captioned box starts, below the caption and its rule. */
+
     static final int TOP = 23;
 
-    /** A caption: small spaced capitals, a shade dimmer than the text. */
     static void caption(GuiGraphics g, int x, int y, String text, int colour) {
         Draw.spaced(g, text.toUpperCase(Locale.ROOT), x, y, colour, 0.8f, 1, true);
     }
@@ -190,8 +163,6 @@ public final class Hud {
         return Draw.spacedWidth(text.toUpperCase(Locale.ROOT), 0.8f, 1, true);
     }
 
-    /** A hairline that separates the caption from what it names. */
-    /** The caption, the count and the rule every card opens with; returns how far down the first row starts. */
     static int header(GuiGraphics g, int x, int y, int w, String title, String count, int colour) {
         caption(g, x + PAD, y + 7, title, Draw.rgba(colour, 0.85f));
         if (count != null) chip(g, x + w - PAD, y + 5, count, colour);
@@ -204,7 +175,6 @@ public final class Hud {
         g.fill(x, y, x + w, y + 1, Draw.rgba(0xFFFFFFFF, 0.07f));
     }
 
-    /** A rounded track with a filled part, so every bar in the HUD reads as the same instrument. */
     static void bar(GuiGraphics g, int x, int y, int w, int h, float frac, int colour) {
         if (w <= 0 || h <= 0) return;
         int f = Math.max(0, Math.min(w, Math.round(w * Math.max(0f, Math.min(1f, frac)))));
@@ -215,13 +185,11 @@ public final class Hud {
         }
     }
 
-    /** The dark rounded square an item icon sits in, so icons of different items share one grid. */
     static void slot(GuiGraphics g, int x, int y, int size) {
         Draw.rrect(g, x, y, size, size, 4, Draw.rgba(0xFFFFFFFF, 0.055f));
         Draw.rrectLine(g, x, y, size, size, 4, Draw.rgba(0xFFFFFFFF, 0.075f));
     }
 
-    /** A number in a rounded chip: how a counter shows a quantity at a glance. */
     static void chip(GuiGraphics g, int xRight, int y, String text, int colour) {
         int cw = Draw.widthBold(text) + 12;
         int x = xRight - cw;
@@ -234,12 +202,9 @@ public final class Hud {
         return Draw.widthBold(text) + 12;
     }
 
-    /** The colour a value takes as it runs out: calm, then amber, then red. */
     static int health(float f) {
         return f > 0.5f ? 0xFF5EE6A0 : f > 0.22f ? 0xFFFFC857 : 0xFFFF5C6C;
     }
-
-    // ------------------------------------------------------------------ Armor HUD
 
     public static final class ArmorHud extends Module {
         private final Setting.Choice corner = corner(this, 3).resetOnRev();
@@ -290,8 +255,6 @@ public final class Hud {
         }
     }
 
-    // ------------------------------------------------------------------ Potion HUD
-
     public static final class PotionHud extends Module {
         private final Setting.Choice corner = corner(this, 0);
 
@@ -341,8 +304,6 @@ public final class Hud {
         }
     }
 
-    // ------------------------------------------------------------------ Keystrokes
-
     public static final class Keystrokes extends Module {
         private final Setting.Choice corner = corner(this, 3);
         private final Setting.Bool mouse = add(new Setting.Bool("Mouse buttons", "Show the left and right button with clicks per second.", true));
@@ -378,10 +339,6 @@ public final class Hud {
             wasR = r;
         }
 
-        /**
-         * One key of the pad. Held keys fill with a gradient of the accent and lift their glow off the panel; the rest
-         * sit a shade above it, so the whole thing reads as a keyboard rather than a grid of boxes.
-         */
         private void key(GuiGraphics g, int x, int y, int w, int hgt, String label, boolean down) {
             int r = 5;
             if (down) {
@@ -416,7 +373,6 @@ public final class Hud {
             int sy = y + (k + gap) * 2;
             boolean jump = mc.options.keyJump.isDown();
             key(g, x, sy, bw - 12, space, "", jump);
-            // a small bar instead of a word, the way a space bar looks on a keyboard
             g.fill(x + (bw - 12) / 2 - 9, sy + 4, x + (bw - 12) / 2 + 9, sy + 5, jump ? 0xFFFFFFFF : Accent.FAINT);
             if (ms) {
                 long now = System.currentTimeMillis();
@@ -427,8 +383,6 @@ public final class Hud {
             }
         }
     }
-
-    // ------------------------------------------------------------------ Target HUD
 
     public static final class TargetHud extends Module {
         private final Setting.Num hold = add(new Setting.Num("Keep showing", "Seconds the last target stays after you look away.", 3, 0, 10, 1, " s"));
@@ -459,7 +413,6 @@ public final class Hud {
             LivingEntity e = last;
             float max = Math.max(1f, e.getMaxHealth());
             shownHealth += (e.getHealth() - shownHealth) * 0.18f;
-            // the trailing bar lags behind the real one, so a hit shows as a bright edge that drains away
             trailHealth = Math.max(trailHealth, shownHealth);
             trailHealth += (shownHealth - trailHealth) * 0.035f;
             String name = e.getName().getString();
@@ -482,8 +435,6 @@ public final class Hud {
             Draw.textRight(g, right.trim(), x + bw - PAD, y + 31, Accent.FAINT);
         }
     }
-
-    // ------------------------------------------------------------------ Radar
 
     public static final class Radar extends Module {
         private final Setting.Choice corner = corner(this, 2);
@@ -518,7 +469,6 @@ public final class Hud {
             Draw.shadow(g, at[0] - 2, at[1] - 2, d + 4, d + 4, r + 2, 6, 0.32f);
             Draw.rrect(g, at[0], at[1], d, d, r, panelBg());
             Draw.ellipse(g, cx, cy, r, r, 0xA00B0E16);
-            // the dial: a soft centre, one ring for the middle of the range, a crosshair and its four ticks
             Draw.ellipse(g, cx, cy, Math.max(2, r / 2), Math.max(2, r / 2), 0x14FFFFFF);
             ring(g, cx, cy, r, Draw.rgba(accent(), 0.75f));
             ring(g, cx, cy, Math.max(2, r / 2), 0x22FFFFFF);
@@ -532,7 +482,6 @@ public final class Hud {
                 int y1 = cy + (int) Math.round(Math.sin(a) * (r - 1));
                 Draw.line(g, x0, y0, x1, y1, 1.2f, Draw.rgba(0xFFFFFFFF, 0.22f));
             }
-            // the sweep, so the dial reads as live rather than as a picture
             if (!Draw.cheap) {
                 double sw = (System.currentTimeMillis() % 3600L) / 3600.0 * 6.2832;
                 for (int i = 0; i < 7; i++) {
@@ -591,7 +540,6 @@ public final class Hud {
                 g.fill(dotx - 1, doty - 1, dotx + 2, doty + 2, 0xFF000000);
                 g.fill(dotx - 1, doty - 1, dotx + 1, doty + 1, col);
             }
-            // which way north is, written where north is on the dial
             int nx;
             int ny;
             if (rotate.on()) {
@@ -622,8 +570,6 @@ public final class Hud {
         }
     }
 
-    // ------------------------------------------------------------------ Compass
-
     public static final class Compass extends Module {
         private final Setting.Num width = add(new Setting.Num("Width", "Width of the strip.", 222, 120, 400, 10, " px"));
 
@@ -632,7 +578,6 @@ public final class Hud {
             anywhere();
         }
 
-        /** A soft dark fade along one end of the strip, so the marks dissolve instead of being cut off. */
         private static void fade(GuiGraphics g, int x, int y, int hgt, int w, boolean left, int bg) {
             for (int i = 0; i < w; i++) {
                 float f = left ? 1f - i / (float) w : i / (float) w;
@@ -674,14 +619,11 @@ public final class Hud {
             g.disableScissor();
             fade(g, x + 1, y + 1, bh - 2, 26, true, panelBg());
             fade(g, x + bw - 27, y + 1, bh - 2, 26, false, panelBg());
-            // the caret that says which way you are facing, and the number of degrees in a chip
             g.fill(x + bw / 2 - 1, y + 1, x + bw / 2 + 2, y + 5, accent());
             Draw.rrect(g, x + bw / 2 - 3, y + 1, 7, 2, 1, accent());
             chip(g, x + bw - 5, y + 4, Math.round(yaw) + "°", accent());
         }
     }
-
-    // ------------------------------------------------------------------ Item Counter
 
     public static final class ItemCounter extends Module {
         private final Setting.Choice corner = corner(this, 3);

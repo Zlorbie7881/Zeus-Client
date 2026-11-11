@@ -5,13 +5,11 @@ import com.zlorbie788.zeus.core.Module;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Every module, in the order the panel lists them. */
 public final class Mods {
     private Mods() {}
 
     public static List<Module> create() {
         List<Module> m = new ArrayList<>();
-        // combat
         m.add(new Combat.KillAura());
         m.add(new AdvancedFeatures.MultiAura());
         m.add(new CrystalAnchor.CrystalAura());
@@ -42,7 +40,6 @@ public final class Mods {
         m.add(new Defense.AutoWeb());
         m.add(new Defense.SelfWeb());
         m.add(new OpFeatures.TargetStrafe());
-        // movement
         m.add(new Movement.Flight());
         m.add(new QuickMods.ClickTp());
         m.add(new QuickMods.NoJumpDelay());
@@ -71,7 +68,6 @@ public final class Mods {
         m.add(new Motion.Sneak());
         m.add(new Motion.Scaffold());
         m.add(new OpFeatures.EntitySpeed());
-        // player
         m.add(new MultiUse());
         m.add(new PlayerMods.Resize());
         m.add(new Morph());
@@ -86,7 +82,6 @@ public final class Mods {
         m.add(new Gear.NoStatusEffects());
         m.add(new QuickMods.FastUse());
         m.add(new QuickMods.AntiTrap());
-        // world
         m.add(new XRay());
         m.add(new HoverTotem());
         m.add(new Ghost());
@@ -100,7 +95,6 @@ public final class Mods {
         m.add(new OpFeatures.AutoFarm());
         m.add(new OpFeatures.LootWalker());
         m.add(new TunnelMiner());
-        // render
         m.add(new Esp());
 
         m.add(new ItemEsp());
@@ -123,7 +117,6 @@ public final class Mods {
         m.add(new Extras.ChunkBorders());
         m.add(new Extras.BlockOutline());
         m.add(new QuickMods.SkinChange());
-        // scanner
         m.add(new SuspiciousChunks());
         m.add(new BaseFinder());
         m.add(new TunnelBaseFinder());
@@ -151,7 +144,6 @@ public final class Mods {
         m.add(new AntiVanish());
         m.add(new PlayerBypass());
         m.add(new ChunkScanner());
-        // utility
         m.add(new AdvancedFeatures.GoliathRtp());
         m.add(new AdvancedFeatures.SchematicLibrary());
         m.add(new AdvancedFeatures.SchematicBuilder());
@@ -171,7 +163,6 @@ public final class Mods {
         m.add(new DiscordPresence());
         m.add(new StaffLive());
         m.add(new Profiles());
-        // interface
         m.add(ServerSwitch.instance());
         m.add(new Interface.HudEditorLauncher());
         m.add(new Performance.Page());

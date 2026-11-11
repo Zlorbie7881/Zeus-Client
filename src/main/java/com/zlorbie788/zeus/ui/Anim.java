@@ -2,11 +2,6 @@ package com.zlorbie788.zeus.ui;
 
 import net.minecraft.client.gui.GuiGraphics;
 
-/**
- * Plays the animations that were rendered offline (tools/anim/make_arcs.py) as sprite sheets. Nothing here draws a bolt: it
- * only picks the frame for the current time and shows that picture, tinted with the accent colour. Everything is in screen
- * pixels (the panel and the windows draw with the pose scaled down by the GUI scale).
- */
 final class Anim {
     private Anim() {}
 
@@ -38,7 +33,6 @@ final class Anim {
         img.drawPart(g, x, y, w, h, sx, sy, fw, fh, tint);
     }
 
-    /** One flowing arc, {@code w} wide, centred on the line {@code cy}, {@code h} high. Phase shifts it in time so two arcs differ. */
     static void arc(GuiGraphics g, int x, int cy, int w, int h, float t, float phase, int glowTint, int coreTint, float alpha) {
         Tex.Img glow = sheet("arc_glow");
         Tex.Img core = sheet("arc_core");
@@ -48,7 +42,6 @@ final class Anim {
         frame(g, core, ARC_W, ARC_H, f, x, cy - h / 2, w, h, Draw.rgba(coreTint, alpha), false);
     }
 
-    /** An arc that circles a rounded-square button of {@code size} pixels whose top left corner is (x, y). */
     static void ring(GuiGraphics g, int x, int y, int size, float t, int glowTint, int coreTint, float alpha) {
         Tex.Img glow = sheet("ring_glow");
         Tex.Img core = sheet("ring_core");
@@ -61,7 +54,6 @@ final class Anim {
         frame(g, core, 160, 160, f, ox, oy, d, d, Draw.rgba(coreTint, alpha), false);
     }
 
-    /** One frame of the burst picked from {@code p}, 0 to 1 over its life, centred on (cx, cy), {@code size} wide. */
     static void burst(GuiGraphics g, float cx, float cy, int size, float p, int glowTint, int coreTint, float alpha) {
         Tex.Img glow = sheet("burst_glow");
         Tex.Img core = sheet("burst_core");
@@ -73,24 +65,17 @@ final class Anim {
         frame(g, core, BURST, BURST, f, x, y, size, size, Draw.rgba(coreTint, alpha), false);
     }
 
-    // ------------------------------------------------------------------ menu plates, round buttons, click flash
-
     private static final int PLATE_W = 512;
     private static final int PLATE_H = 96;
-    private static final int PLATE_M = 16;        // margin round the plate in the picture
-    private static final int PLATE_BODY_H = 64;   // the plate itself, in the picture
-    private static final int PLATE_CAP = 96;      // width of each end piece in the picture
+    private static final int PLATE_M = 16;
+    private static final int PLATE_BODY_H = 64;
+    private static final int PLATE_CAP = 96;
     private static final int PLATE_FRAMES = 24;
 
-    /** True when the menu sheets could be read, so the caller can fall back to something else when not. */
     static boolean menuReady() {
         return sheet("plate_glow") != null && sheet("plate_core") != null && sheet("circ_glow") != null && sheet("click") != null;
     }
 
-    /**
-     * Two arcs that chase each other round the edge of a plate whose top left corner is (x, y), {@code w} by {@code h}. The
-     * picture is cut in three (the two ends and the middle) so the corners keep their shape at any width.
-     */
     static void plate(GuiGraphics g, int x, int y, int w, int h, float t, int glowTint, int coreTint, float alpha) {
         Tex.Img glow = sheet("plate_glow");
         Tex.Img core = sheet("plate_core");
@@ -120,7 +105,6 @@ final class Anim {
         }
     }
 
-    /** Two arcs that circle a round button of radius {@code r} (pixels) centred on (cx, cy). */
     static void circ(GuiGraphics g, float cx, float cy, float r, float t, int glowTint, int coreTint, float alpha) {
         Tex.Img glow = sheet("circ_glow");
         Tex.Img core = sheet("circ_core");
@@ -133,10 +117,6 @@ final class Anim {
         frame(g, core, 160, 160, f, ox, oy, d, d, Draw.rgba(coreTint, alpha), false);
     }
 
-    /**
-     * The click: shock waves and bolts from (cx, cy), {@code p} 0 to 1 over its life. {@code reach} is the half width the waves
-     * grow to, in pixels.
-     */
     static void click(GuiGraphics g, float cx, float cy, float reach, float p, int tint, float alpha) {
         Tex.Img img = sheet("click");
         if (img == null || p < 0f || p >= 1f) return;

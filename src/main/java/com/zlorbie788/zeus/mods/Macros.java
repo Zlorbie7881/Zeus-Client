@@ -22,17 +22,9 @@ import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
-/**
- * The two macros: you aim, you hold the use button, and the whole explosive routine runs for you at the speed you set.
- * Unlike the auras they do not pick a target or a place; they work on the block you look at.
- */
 public final class Macros {
     private Macros() {}
 
-    /**
-     * Hold the use button while you look at obsidian or bedrock: an end crystal is placed on it, and the crystal is hit as
-     * soon as it exists, again and again.
-     */
     public static final class CrystalMacro extends Module {
         private final Setting.Num placeDelay = add(new Setting.Num("Place delay", "Ticks between two crystals. 20 ticks are one second.", 1, 0, 20, 1, " ticks"));
         private final Setting.Num breakDelay = add(new Setting.Num("Break delay", "Ticks between two hits on crystals.", 1, 0, 20, 1, " ticks"));
@@ -112,10 +104,6 @@ public final class Macros {
         }
     }
 
-    /**
-     * Hold the use button while you look at a respawn anchor: it is charged with glowstone and set off. Looking at any other
-     * block with "Place anchors" on puts an anchor there first, so one held button does all three steps.
-     */
     public static final class AnchorMacro extends Module {
         private final Setting.Num delay = add(new Setting.Num("Delay", "Ticks between the steps (place, charge, explode).", 1, 0, 20, 1, " ticks"));
         private final Setting.Num charges = add(new Setting.Num("Charges", "How many times the anchor is charged first. One charge is already a full explosion.", 1, 1, 4, 1, ""));

@@ -16,11 +16,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Consumer;
 
-/**
- * The picture icons of the panel. Each one is a small vector drawing (lines, arcs, a few filled shapes) painted with Java2D
- * at the exact size it is shown, white with a soft halo, and kept in one texture per size. The icon is then tinted by the
- * colour passed when drawing, so one drawing serves every colour and every state.
- */
 public final class Glyphs {
     private Glyphs() {}
 
@@ -29,8 +24,6 @@ public final class Glyphs {
     private static final Map<String, Integer> INDEX = new HashMap<>();
     private static final Map<Integer, Tex.Img> ATLAS = new HashMap<>();
     private static final int COLS = 8;
-
-    // ------------------------------------------------------------------ small drawing helpers (unit space 0..100)
 
     private static void ln(Graphics2D g, double x1, double y1, double x2, double y2) {
         Path2D.Double p = new Path2D.Double();
@@ -58,7 +51,6 @@ public final class Glyphs {
         g.fill(p);
     }
 
-    /** The ten corners of a five pointed star, as x, y pairs. */
     private static double[] starPoints(double cx, double cy, double outer, double inner) {
         double[] p = new double[20];
         for (int i = 0; i < 10; i++) {
@@ -87,7 +79,6 @@ public final class Glyphs {
     }
 
     private static void sword(Graphics2D g, double ax, double ay, double bx, double by) {
-        // a blade from the hilt (a) to the tip (b), a cross guard and a pommel
         double dx = bx - ax, dy = by - ay;
         double len = Math.hypot(dx, dy);
         double ux = dx / len, uy = dy / len, nx = -uy, ny = ux;
@@ -415,8 +406,6 @@ public final class Glyphs {
         for (int i = 0; i < NAMES.length; i++) INDEX.put(NAMES[i], i);
     }
 
-    // ------------------------------------------------------------------ which picture a module or page uses
-
     public static String forCategory(Category c) {
         return switch (c) {
             case COMBAT -> "swords";
@@ -478,8 +467,6 @@ public final class Glyphs {
         };
     }
 
-    // ------------------------------------------------------------------ the atlas
-
     private static Tex.Img atlas(int cell) {
         Tex.Img have = ATLAS.get(cell);
         if (have != null) return have;
@@ -498,7 +485,6 @@ public final class Glyphs {
         return img;
     }
 
-    /** One drawing at {@code cell} pixels square: a crisp white line drawing over a soft white halo. */
     static int[] render(String name, int cell) {
         int pad = Math.max(2, cell / 12);
         BufferedImage line = new BufferedImage(cell, cell, BufferedImage.TYPE_INT_ARGB);
@@ -553,7 +539,6 @@ public final class Glyphs {
         return cur;
     }
 
-    /** Draws icon {@code name}, centred on (cx, cy), {@code size} interface pixels square, tinted. */
     public static void draw(GuiGraphics g, String name, float cx, float cy, float size, int tint) {
         Integer idx = INDEX.get(name);
         if (idx == null) return;
@@ -568,7 +553,6 @@ public final class Glyphs {
         img.drawPart(g, x, y, dw, dw, sx, sy, cell, cell, tint);
     }
 
-    /** Draws icon {@code name}, centred on (cx, cy), exactly {@code px} device pixels square, tinted (for a screen drawn in device pixels). */
     public static void drawPx(GuiGraphics g, String name, float cx, float cy, int px, int tint) {
         Integer idx = INDEX.get(name);
         if (idx == null) return;

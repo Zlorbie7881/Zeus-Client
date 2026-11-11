@@ -9,7 +9,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** The game's "connecting to server" screen: the menu sky and the Zeus logo, and only the Cancel button on top (see {@link ZeusLoading}). */
 @Mixin(ConnectScreen.class)
 public abstract class ConnectScreenMixin {
     @Inject(method = "render", at = @At("HEAD"), cancellable = true, require = 0)

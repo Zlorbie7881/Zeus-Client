@@ -21,12 +21,6 @@ import java.util.Set;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.regex.Pattern;
 
-/**
- * Sends a message to a Discord channel (through a webhook you create yourself) when the finders discover something:
- * a spawner, a big base or a room full of storage. Everything goes through one background thread, one message at a time,
- * with a pause between messages, and a find is only ever sent once. The address is kept in your own config file and is only
- * ever used to post to Discord: it must look like a real Discord webhook address, otherwise it is refused.
- */
 public final class DiscordWebhook extends Module {
     private static final Pattern URL = Pattern.compile("^https://(?:(?:ptb|canary)\\.)?discord(?:app)?\\.com/api/webhooks/\\d{5,25}/[A-Za-z0-9_\\-]{20,120}$");
 
@@ -56,8 +50,6 @@ public final class DiscordWebhook extends Module {
         super("webhook", "Discord Webhook", "Sends spawners, big bases and storage rooms to a Discord channel as clean embeds.", Category.UTILITY);
     }
 
-    // ------------------------------------------------------------ settings and status
-
     private boolean ready() {
         return URL.matcher(address.get()).matches();
     }
@@ -86,7 +78,6 @@ public final class DiscordWebhook extends Module {
         try {
             clip = Minecraft.getInstance().keyboardHandler.getClipboard();
         } catch (RuntimeException ignored) {
-            // no clipboard
         }
         take(clip);
     }
@@ -123,8 +114,6 @@ public final class DiscordWebhook extends Module {
         field(e, "Version", Zeus.VERSION, true);
         push(wrap(e), address.get());
     }
-
-    // ------------------------------------------------------------ what the finders call
 
     private static DiscordWebhook live() {
         DiscordWebhook w = Zeus.get(DiscordWebhook.class);
@@ -164,15 +153,12 @@ public final class DiscordWebhook extends Module {
         return w == null ? 12 : w.storageMin.i();
     }
 
-    /** True the first time a find is reported, so nothing is sent twice. */
     private static boolean once(String key) {
         synchronized (SENT) {
             if (SENT.size() > 4000) SENT.clear();
             return SENT.add(key);
         }
     }
-
-    // ------------------------------------------------------------ building the message
 
     private JsonObject embed(String title, String text, int color) {
         JsonObject e = new JsonObject();
@@ -204,7 +190,6 @@ public final class DiscordWebhook extends Module {
             try {
                 if (mc.getCurrentServer() != null) s = mc.getCurrentServer().ip;
             } catch (RuntimeException ignored) {
-                // keep the default
             }
             field(e, "Server", "`" + s + "`", true);
         }
@@ -235,12 +220,10 @@ public final class DiscordWebhook extends Module {
         arr.add(embed);
         root.add("embeds", arr);
         JsonObject allowed = new JsonObject();
-        allowed.add("parse", new JsonArray()); // nothing in the message can ping anyone
+        allowed.add("parse", new JsonArray());
         root.add("allowed_mentions", allowed);
         return root.toString();
     }
-
-    // ------------------------------------------------------------ sending (one thread, one message at a time)
 
     private static void push(String body, String url) {
         push(body, url, 3);
@@ -273,7 +256,6 @@ public final class DiscordWebhook extends Module {
             try {
                 pauseMs = Math.max(1000, Integer.parseInt(parts[1]) * 1000);
             } catch (NumberFormatException ignored) {
-                // default
             }
             try {
                 HttpRequest req = HttpRequest.newBuilder(URI.create(parts[0]))

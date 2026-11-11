@@ -37,13 +37,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
-/** More modules that only change what your own game shows or does. */
 public final class Extras {
     private Extras() {}
 
-    // ------------------------------------------------------------------ Time Changer
-
-    /** Holds the sky at the time you choose. Only your screen changes, the world keeps its own time. */
     public static final class TimeChanger extends Module {
         private final Setting.Choice preset = add(new Setting.Choice("Time", "The time of day to show.", 1, "Sunrise", "Day", "Noon", "Sunset", "Night", "Midnight", "Custom"));
         private final Setting.Num custom = add(new Setting.Num("Custom time", "Ticks, 0 to 24000. 6000 is noon, 18000 is midnight.", 6000, 0, 24000, 250, "").showIf(() -> preset.index() == 6));
@@ -78,9 +74,6 @@ public final class Extras {
         }
     }
 
-    // ------------------------------------------------------------------ Weather Changer
-
-    /** Clear sky, rain or a storm on your screen. */
     public static final class WeatherChanger extends Module {
         private final Setting.Choice mode = add(new Setting.Choice("Weather", "The weather you see.", 0, "Clear", "Rain", "Thunderstorm"));
 
@@ -101,8 +94,6 @@ public final class Extras {
             return mode.value();
         }
     }
-
-    // ------------------------------------------------------------------ Chunk Borders
 
     public static final class ChunkBorders extends Module {
         private final Setting.Num radius = add(new Setting.Num("Chunks around", "0 shows only the chunk you are in.", 1, 0, 3, 1, ""));
@@ -142,8 +133,6 @@ public final class Extras {
         }
     }
 
-    // ------------------------------------------------------------------ Block Outline
-
     public static final class BlockOutline extends Module {
         private final Setting.Num thick = add(new Setting.Num("Line width", "Thickness of the outline.", 1.6, 1, 4, 0.2, " px"));
         private final Setting.Bool rainbow = add(new Setting.Bool("Colour shift", "The outline slowly changes colour.", true));
@@ -169,16 +158,8 @@ public final class Extras {
         }
     }
 
-    // ------------------------------------------------------------------ Zoom
-
-    /**
-     * Looks closer. The zoom is a smooth change of the game's own field of view, so everything that reads the renderer's
-     * view follows it exactly: third person, ESP boxes, tracers, name tags and the block outline all stay lined up while
-     * you are zoomed. Mouse sensitivity is scaled while zoomed so a high zoom can still be aimed, and the original values
-     * come back the moment the module is switched off.
-     */
     public static final class Zoom extends Module {
-        /** How much closer the renderer shows things right now (1 = not zoomed). Read by GameRendererMixin every frame. */
+
         private static volatile float live = 1f;
 
         public static float factorNow() {
@@ -195,7 +176,6 @@ public final class Extras {
         private int savedPerspective = -1;
         private boolean enabled;
         private int frames;
-        // fallback, only used when the renderer hook is not in place: the old way of changing the FOV option
         private int originalFov = -1;
 
         public Zoom() {
@@ -211,7 +191,6 @@ public final class Extras {
             if (Math.abs(mc.options.sensitivity().get() - want) > 1e-4) mc.options.sensitivity().set(want);
         }
 
-        /** Once per frame: slides the zoom towards its goal at a speed that does not depend on the frame rate. */
         private void frame(Minecraft mc) {
             long now = System.nanoTime() / 1_000_000L;
             float dt = lastMs == 0 ? 0.016f : Math.min(0.1f, (now - lastMs) / 1000f);
@@ -230,7 +209,6 @@ public final class Extras {
                     originalFov = -1;
                 }
             } else if (frames > 40) {
-                // the hook never ran: fall back to the FOV option so the zoom still works
                 if (originalFov < 0) originalFov = mc.options.fov().get();
                 int fov = Math.round((float) Math.max(30.0, originalFov / shown));
                 if (fov != mc.options.fov().get()) mc.options.fov().set(fov);
@@ -261,7 +239,6 @@ public final class Extras {
 
         @Override
         protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
-            // every frame, so the slide is smooth at your frame rate rather than at 20 ticks a second
             if (enabled && mc.screen == null && smooth.on()) frame(mc);
         }
 
@@ -288,9 +265,6 @@ public final class Extras {
         }
     }
 
-    // ------------------------------------------------------------------ Waypoints
-
-    /** Saved places, drawn as markers in the world. Everything is stored in config/zeus-waypoints.json. */
     public static final class Waypoints extends Module {
         private record Wp(String name, String dim, double x, double y, double z, int color) {}
 
@@ -371,7 +345,6 @@ public final class Extras {
             save();
         }
 
-        /** Saves a place found by another module (a base, for example). Returns false when the name is already saved there. */
         public boolean addAt(String name, double x, double y, double z) {
             Minecraft mc = Minecraft.getInstance();
             if (mc.level == null) return false;
@@ -485,7 +458,6 @@ public final class Extras {
                 int y = Math.round(p[1]);
                 if (x < -20 || x > w + 20 || y < -20 || y > h + 20) continue;
                 int c = wp.color();
-                // a diamond
                 Draw.line(g, x, y - 6, x + 5, y, 1.4f, c);
                 Draw.line(g, x + 5, y, x, y + 6, 1.4f, c);
                 Draw.line(g, x, y + 6, x - 5, y, 1.4f, c);
@@ -509,9 +481,6 @@ public final class Extras {
         }
     }
 
-    // ------------------------------------------------------------------ Auto Replenish
-
-    /** Puts a fresh stack in your hand when the one you are using runs low. */
     public static final class AutoReplenish extends Module {
         private final Setting.Num left = add(new Setting.Num("Refill at", "Swap in a new stack when this many or fewer are left.", 2, 1, 32, 1, " items"));
         private int cooldown;
@@ -541,8 +510,6 @@ public final class Extras {
             cooldown = 6;
         }
     }
-
-    // ------------------------------------------------------------------ Durability Alert
 
     public static final class DurabilityAlert extends Module {
         private final Setting.Num percent = add(new Setting.Num("Warn below", "Percent of durability left.", 10, 2, 50, 1, "%"));

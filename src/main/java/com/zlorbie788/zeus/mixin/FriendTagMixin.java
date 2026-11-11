@@ -8,10 +8,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/**
- * The game asks every living thing's renderer whether its name tag is shown. For a friend whose name tag Zeus draws itself
- * (see {@link Friends}) the answer is "no", so there are not two tags. Only the picture on your own screen changes.
- */
 @Mixin(LivingEntityRenderer.class)
 public abstract class FriendTagMixin {
     @Inject(method = "shouldShowName(Lnet/minecraft/world/entity/LivingEntity;D)Z", at = @At("RETURN"), cancellable = true, require = 0)

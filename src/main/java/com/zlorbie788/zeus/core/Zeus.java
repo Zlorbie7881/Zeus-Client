@@ -26,33 +26,30 @@ import java.util.Map;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
-/** The registry of modules, the saved settings and the short messages on the screen. */
 public final class Zeus {
     private Zeus() {}
 
     public static final Logger LOG = LoggerFactory.getLogger("Zeus");
     public static final String VERSION = "0.9.9.0";
 
-    /** Bumped when the default on/off state of a module changes, so an existing settings file picks the new one up once. */
     private static final int DEFAULTS_REV = 3;
 
     private static final Map<String, Module> MODULES = new LinkedHashMap<>();
     private static List<Module> ALL_MODULES = List.of();
     private static final Map<Category, List<Module>> CATEGORY_MODULES = new EnumMap<>(Category.class);
     private static boolean initialized;
-    /** The modules that are on right now. The tick and the draw loops walk this short array, not all of the modules. */
+
     private static Module[] active = new Module[0];
     private static boolean activeDirty = true;
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static boolean dirty;
     private static long dirtyAt;
     private static boolean wasInWorld;
-    /** Modules enabled before a world exit and selected by the user's reconnect policy. */
+
     private static final Set<String> reconnectModules = new LinkedHashSet<>();
-    /** Enabled modules saved at shutdown; restored only after a world is available. */
+
     private static final Set<String> launchRestoreModules = new LinkedHashSet<>();
 
-    // the panel and look settings (they are saved like module settings)
     public static final Module.Holder UI = new Module.Holder();
 
     public static void init() {
@@ -73,7 +70,6 @@ public final class Zeus {
         initialized = true;
     }
 
-    /** Called whenever a module switches on or off, so the short list of running modules is rebuilt before the next loop. */
     static void activeChanged() {
         activeDirty = true;
         activeVersion++;
@@ -81,7 +77,6 @@ public final class Zeus {
 
     private static int activeVersion;
 
-    /** Counts every on/off change; lets a cache (the module list) know when to rebuild. */
     public static int activeVersion() {
         return activeVersion;
     }
@@ -96,12 +91,10 @@ public final class Zeus {
         return active;
     }
 
-    /** Stable, immutable registry snapshot. Reused by the tick loop, keybinds and panel. */
     public static List<Module> all() {
         return ALL_MODULES;
     }
 
-    /** Stable, immutable category index; avoids rebuilding category lists every frame. */
     public static List<Module> in(Category c) {
         return CATEGORY_MODULES.getOrDefault(c, List.of());
     }
@@ -110,7 +103,6 @@ public final class Zeus {
         return MODULES.get(id);
     }
 
-    /** Finds a module by id, then by name or by any of its other names ("jesus" finds Water Walk). Null when there is none. */
     public static Module byName(String text) {
         if (text == null) return null;
         String key = squash(text);
@@ -137,7 +129,6 @@ public final class Zeus {
 
     private static final Map<Class<?>, Module> BY_TYPE = new java.util.concurrent.ConcurrentHashMap<>();
 
-    /** The module of the given class. Looked up once and remembered, because mixins and draw code ask for it every frame. */
     @SuppressWarnings("unchecked")
     public static <T extends Module> T get(Class<T> type) {
         Module known = BY_TYPE.get(type);
@@ -157,14 +148,12 @@ public final class Zeus {
         return n;
     }
 
-    // ------------------------------------------------------------ frame and tick
-
     private static boolean shouldReconnect(Module module) {
         return switch (com.zlorbie788.zeus.mods.ServerSwitch.mode()) {
-            case 1 -> false; // None
-            case 2 -> true;  // Everything
+            case 1 -> false;
+            case 2 -> true;
             case 3 -> com.zlorbie788.zeus.mods.ServerSwitch.keep(module.id);
-            default -> !module.startsOff(); // Safe only: explicitly world-independent modules
+            default -> !module.startsOff();
         };
     }
 
@@ -172,9 +161,6 @@ public final class Zeus {
         if (destroyed) return;
         boolean in = Env.inWorld();
         if (wasInWorld && !in) {
-            // Always tear modules down against the old world first. Selected modules are
-            // remembered and re-enabled only after a new world is available, avoiding stale
-            // entity/world references while preserving the user's reconnect preference.
             reconnectModules.clear();
             for (Module m : MODULES.values()) {
                 if (m.enabled() && shouldReconnect(m)) reconnectModules.add(m.id);
@@ -228,11 +214,9 @@ public final class Zeus {
 
     public static void hud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
         if (destroyed) return;
-        // F3 toggles all HUDs on/off
         if (mc.player != null && mc.options != null) {
             boolean f3down = mc.options.hideGui;
             if (f3down && !com.zlorbie788.zeus.ui.HudLayout.f3Toggled) {
-                // F3 just pressed - hide all HUD widgets
                 com.zlorbie788.zeus.ui.HudLayout.f3Toggled = true;
                 for (Module m : running()) {
                     if (!m.enabled() || !m.isHudWidget()) continue;
@@ -240,7 +224,6 @@ public final class Zeus {
                     layout.visible = false;
                 }
             } else if (!f3down) {
-                // F3 released - restore HUD visibility
                 com.zlorbie788.zeus.ui.HudLayout.f3Toggled = false;
                 for (Module m : running()) {
                     if (!m.enabled() || !m.isHudWidget()) continue;
@@ -252,8 +235,6 @@ public final class Zeus {
                 }
             }
         }
-        // While the panel is open its windows are the only thing on screen: the HUD boxes (base finder lists, friends, keystrokes...)
-        // would show through behind them and make the panel look cluttered. Messages are still drawn.
         if (Prof.on) Prof.roll();
         if (mc != null && mc.screen instanceof com.zlorbie788.zeus.ui.ZeusScreen) {
             drawToasts(g, mc, w, h);
@@ -269,7 +250,6 @@ public final class Zeus {
                 if (!layout.visible) continue;
                 g.pose().pushMatrix();
                 com.zlorbie788.zeus.mods.Hud.beginWidget(m.id);
-                // scale around the corner the widget sits nearest to, so a bigger widget grows towards the middle of the screen
                 float size = m.id.equals(com.zlorbie788.zeus.ui.HudLayout.actualSizeId)
                         ? 1f : com.zlorbie788.zeus.ui.HudLayout.scaleOf(layout);
                 float[] pivot = size == 1f || com.zlorbie788.zeus.mods.Hud.bounds(m.id) == null
@@ -284,7 +264,6 @@ public final class Zeus {
                     g.pose().popMatrix();
                 }
             }
-            // Non-panel modules can also draw transient overlays (projectiles, world markers, etc.).
             for (Module m : on) {
                 if (!m.enabled()) continue;
                 if (!m.isHudWidget()) m.hud(g, mc, partial, w, h);
@@ -297,18 +276,12 @@ public final class Zeus {
         drawToasts(g, mc, w, h);
     }
 
-    /** True after self destruction: no HUD, no panel, no menu and no module can be switched on. */
     private static boolean destroyed;
 
     public static boolean destroyed() {
         return destroyed;
     }
 
-    /**
-     * Self destruction. Everything Zeus adds is switched off and stays off, and the panel, the HUD and the menu are not
-     * drawn at all, so the game looks like it did before Zeus was installed. The settings are kept, and /zeus brings all
-     * of it back.
-     */
     public static void destroy() {
         for (Module m : MODULES.values()) m.quiet();
         destroyed = true;
@@ -318,28 +291,21 @@ public final class Zeus {
         save();
     }
 
-    /** Undoes self destruction: the panel, the HUD and every module are available again. */
     public static void revive() {
         destroyed = false;
         markDirty();
         save();
     }
 
-    /** Switches every module off. */
     public static void panic(boolean tell) {
         for (Module m : MODULES.values()) m.quiet();
         if (tell) toast("Everything is off", true);
     }
 
-    // ------------------------------------------------------------ messages
-
     private record Toast(String text, boolean good, long until) {}
 
     private static final List<Toast> TOASTS = new ArrayList<>();
 
-    // ------------------------------------------------------------ activity log (shown on the local website)
-
-    /** One line of the activity log. */
     public record Event(long id, long at, String text, boolean good) {}
 
     private static final List<Event> EVENT_LOG = new ArrayList<>();
@@ -353,7 +319,6 @@ public final class Zeus {
         }
     }
 
-    /** Events newer than {@code after} (an id from an earlier call; 0 for all that are kept). */
     public static List<Event> eventsAfter(long after) {
         synchronized (EVENT_LOG) {
             List<Event> out = new ArrayList<>();
@@ -385,8 +350,6 @@ public final class Zeus {
         }
     }
 
-    // ------------------------------------------------------------ saving
-
     public static Path file() {
         return FabricLoader.getInstance().getConfigDir().resolve("zeus.json");
     }
@@ -414,7 +377,6 @@ public final class Zeus {
             dirty = false;
             com.zlorbie788.zeus.mods.Profiles.onSaved(null);
         } catch (IOException | RuntimeException e) {
-            // Keep the dirty flag set: a transient disk/permission problem should not silently lose settings.
             dirty = true;
             dirtyAt = System.currentTimeMillis();
             LOG.warn("Could not save the Zeus settings; another save will be attempted", e);
@@ -422,11 +384,6 @@ public final class Zeus {
         }
     }
 
-    /**
-     * Every setting as one piece of JSON: the modules (only what differs from the default), the panel's own settings and the
-     * place of the windows. With {@code share} the private values (a webhook address) are left out, so the result is safe to
-     * hand to someone else.
-     */
     public static JsonObject snapshot(boolean share) {
         JsonObject root = new JsonObject();
         root.addProperty("schema", 2);
@@ -454,11 +411,6 @@ public final class Zeus {
         return root;
     }
 
-    /**
-     * Makes the given settings the current ones: everything goes back to the default first, then the saved values are put on
-     * top. Private values that the settings do not carry (a webhook address) are kept as they are. Modules that are running
-     * are restarted so they pick up their new values.
-     */
     public static void apply(JsonObject root) {
         JsonObject mods = objectOrEmpty(root, "modules");
         for (Module m : ALL_MODULES) {
@@ -505,8 +457,6 @@ public final class Zeus {
     }
 
     private static void load() {
-        // Restore defaults first, then the file, and only then enable modules. This ensures onEnable()
-        // sees the user's saved settings instead of stale constructor defaults.
         for (Module m : ALL_MODULES) for (Setting st : m.settings()) restoreSafely(st, new JsonObject(), m.id);
         for (Setting st : UI.settings()) restoreSafely(st, new JsonObject(), "ui");
 
@@ -521,8 +471,6 @@ public final class Zeus {
             LOG.warn("Could not read the Zeus settings; defaults will be used", e);
         }
 
-        // A module whose default changed (the module list, the watermark and the coordinates are on out of the box now) is
-        // switched on once for an older settings file, so an existing setup picks the new defaults up.
         int defaultsRev = root.has("defaults") && root.get("defaults").isJsonPrimitive() ? root.get("defaults").getAsInt() : 0;
         boolean newDefaults = defaultsRev < DEFAULTS_REV;
 

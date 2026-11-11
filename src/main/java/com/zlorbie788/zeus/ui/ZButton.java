@@ -8,10 +8,6 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.network.chat.Component;
 
-/**
- * The Z button: a small button with the Zeus logo in the corner of every title screen that is not the Zeus menu (the game's
- * own, or one another mod draws). Each click opens the Zeus menu, whatever the menu switch says, so there is always a way back.
- */
 public final class ZButton {
     private ZButton() {}
 
@@ -42,7 +38,6 @@ public final class ZButton {
 
     private static void draw(net.minecraft.client.gui.GuiGraphics g, int mx, int my) {
         boolean hot = mx >= 6 && mx < 6 + SIZE && my >= 6 && my < 6 + SIZE;
-        // an opaque tile first, so whatever another mod painted on the button is covered
         Draw.rrect(g, 6, 6, SIZE, SIZE, 5, hot ? 0xFF0F2A5E : 0xFF081330);
         Draw.rrectLine(g, 6, 6, SIZE, SIZE, 5, hot ? 0xFF5AA2FF : 0xFF2358B8);
         if (hot) Draw.glow(g, 6, 6, SIZE, SIZE, 5, 0xFF2F86FF, 3, 0.25f);

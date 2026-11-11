@@ -6,7 +6,6 @@ import com.zlorbie788.zeus.core.Setting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 
-/** One entry point for the auction listing helper, the market intelligence tools and the AH Sniper. */
 public final class AuctionHouseTweaks extends Module {
     private final AuctionBot seller = new AuctionBot();
     private final MarketHunter market = new MarketHunter();
@@ -22,7 +21,6 @@ public final class AuctionHouseTweaks extends Module {
         for (Setting setting : sniper.settings()) addSetting(setting);
     }
 
-    /** Configure visible-listing alerts (the dashboard never arms the sniper). */
     public void configureMarketFromDashboard(String watchedItems, String priceCeiling, double bargainPercent) {
         market.configureFromDashboard(watchedItems, priceCeiling, bargainPercent);
     }

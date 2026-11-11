@@ -4,7 +4,6 @@ import com.zlorbie788.zeus.core.Category;
 import com.zlorbie788.zeus.core.Module;
 import com.zlorbie788.zeus.core.Setting;
 
-/** Local-only stream overlay privacy. It hides selected HUD panels; it does not change server identity. */
 public final class StreamerPrivacy extends Module {
     private static volatile StreamerPrivacy instance;
     private final Setting.Bool hideTab = add(new Setting.Bool("Hide player list", "Hides the on-screen tab/player list while this module is enabled.", true));

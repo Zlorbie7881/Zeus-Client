@@ -9,30 +9,17 @@ import net.minecraft.world.level.chunk.LevelChunkSection;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * The other half of the evidence: what a chunk should have grown and did not.
- *
- * <p>A sapling grows, kelp reaches the surface, bamboo climbs, berries and wart ripen, cane and cactus add a block, crops
- * mature, vines lengthen. None of that needs a player. If a chunk was loaded and ticked, its plants are grown. So plants
- * that are still short after hours of being loaded prove the chunk was never ticked with anybody inside it, which is the
- * only thing that keeps a base from being found by walking past it. This measures that, per chunk, and nothing else: it
- * never looks at what a player placed, so it cannot be fooled by silk-touch farms or by a base built to look natural.</p>
- */
 final class Clearance {
     private Clearance() {}
 
-    /** Number of under-grown plants, how many kinds of them, and how many plants were looked at in total. */
     record Result(int owed, int kinds, int seen) {}
 
     private static final Result NONE = new Result(0, 0, 0);
 
-    /** Keeps one chunk from dominating the ring test when it is a whole jungle. */
     private static final int CAP = 40;
 
-    /** How many cells of each kind before it counts as a kind. */
     private static final int KIND_MIN = 2;
 
-    /** Registry path -> {kind, max age}. Anything not in here is not growth we can time. */
     private static final Map<String, int[]> RULES = Map.ofEntries(
             Map.entry("kelp", new int[] {0, 25}),
             Map.entry("bamboo", new int[] {1, 15}),
@@ -56,7 +43,7 @@ final class Clearance {
     );
 
     private static final Map<Block, int[]> CACHE = new ConcurrentHashMap<>();
-    /** Ages seen per block, so the age property is read once per block state and not per cell. */
+
     private static final Map<BlockState, Integer> STAGE = new ConcurrentHashMap<>();
 
     private static int[] rule(Block block) {
@@ -76,7 +63,6 @@ final class Clearance {
         return rule(block)[0] >= 0;
     }
 
-    /** True while the plant is shorter than a plant that has been left alone gets. */
     static boolean owed(BlockState state, Block block) {
         int[] r = rule(block);
         if (r[0] < 0) return false;
@@ -122,7 +108,6 @@ final class Clearance {
         if (owed == 0 && seen == 0) return NONE;
         int kinds = 0;
         for (int i = 0; i < 11; i++) {
-            // a single stray sapling is not proof of anything; a kind needs a few cells
             if ((bits & (1 << i)) != 0) kinds++;
         }
         if (kinds == 1 && owed < KIND_MIN) return new Result(owed, 1, seen);

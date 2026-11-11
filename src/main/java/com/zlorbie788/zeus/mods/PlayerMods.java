@@ -6,11 +6,9 @@ import com.zlorbie788.zeus.core.Module;
 import com.zlorbie788.zeus.core.Setting;
 import net.minecraft.client.Minecraft;
 
-/** Player modules. */
 public final class PlayerMods {
     private PlayerMods() {}
 
-    /** Makes you giant or tiny. */
     public static final class Resize extends Module {
         private final Setting.Num size = add(new Setting.Num("Size", "1x is normal. Below 1 you look tiny, above 1 you look like a giant. Tight gaps can still push you back.", 0.5, 0.1, 12.0, 0.1, "x"));
 

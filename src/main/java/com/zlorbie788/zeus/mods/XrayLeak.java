@@ -21,20 +21,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Brute-force anti-xray: finds the ores a server tried to hide, from the part of the chunk packet it cannot cheaply fake.
- *
- * <p>Anti-xray works by rewriting a section's block <em>data</em>: every hidden ore becomes stone, and fake ores are sprinkled
- * in. The section's <em>palette</em> is left alone, because rebuilding it per player costs the server real work. So the
- * server says "this 16x16x16 section contains diamond ore" while showing you none. That is the leak.</p>
- *
- * <p>A plugin can re-randomise on every send, which would make one reading worthless, so each section is read many times
- * and only an ore kind that leaks in most readings is reported. A section whose leaks keep changing is marked unstable and
- * shown differently, which is also how you can tell obfuscation from a real ore.</p>
- *
- * <p>A server in <em>replace</em> mode never puts the ore in the packet at all. Nothing client-side can recover data that
- * was never sent, so on those servers this reports nothing rather than pretending.</p>
- */
 final class XrayLeak {
     private static final Block[] ORES = {
             Blocks.COAL_ORE, Blocks.DEEPSLATE_COAL_ORE,
@@ -70,7 +56,6 @@ final class XrayLeak {
         });
     }
 
-    /** One 16x16x16 section that keeps claiming an ore it does not show. */
     private static final class Leak {
         final int x;
         final int y;
@@ -153,7 +138,6 @@ final class XrayLeak {
         });
     }
 
-    /** One reading of one chunk: for every section, what the palette claims against what is really there. */
     private void sample(Minecraft mc, int cx, int cz) {
         LevelChunk chunk = Env.chunk(mc, cx, cz);
         if (chunk == null) return;
@@ -199,7 +183,6 @@ final class XrayLeak {
         }
     }
 
-    /** The ore kinds that leaked in enough readings, as a bit mask. */
     private int confirmed(Leak leak) {
         int need = Math.max(minSamples.i(), (int) Math.ceil(leak.seen * 0.6));
         int mask = 0;
@@ -244,7 +227,6 @@ final class XrayLeak {
         return out;
     }
 
-    /** The same section showing different hidden kinds over time means the plugin shuffles them. */
     private static boolean isUnstable(Leak leak) {
         int kinds = 0;
         for (int k = 0; k < ORES.length; k++) if (leak.hits[k] > 0) kinds++;
@@ -293,7 +275,6 @@ final class XrayLeak {
         }
     }
 
-    /** Packs a section: 24 bits of chunk x, 8 of section y, 24 of chunk z. */
     private static long key(int cx, int cy, int cz) {
         return ((long) (cx & 0xFFFFFF) << 40) | ((long) (cy & 0xFF) << 32) | (cz & 0xFFFFFFFFL);
     }

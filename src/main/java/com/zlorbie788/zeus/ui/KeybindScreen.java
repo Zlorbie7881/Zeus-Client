@@ -18,11 +18,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
-/**
- * Every module and the key that switches it on and off, on one screen. Click a key box and press the key you want; Backspace,
- * Delete or a right click clears it; Escape cancels. A key that two modules share is marked, because both would switch at
- * once. The keys are the same ones the game's Controls screen shows, so they are saved with your game options.
- */
 public final class KeybindScreen extends Screen {
     private static final int ROW = 16;
     private static final int CHIP_W = 96;
@@ -82,7 +77,6 @@ public final class KeybindScreen extends Screen {
         return k.isUnbound() ? "None" : k.getTranslatedKeyMessage().getString();
     }
 
-    /** The module (or the menu) that already uses the same key, or null. */
     private String sharedWith(Module m) {
         if (!bound(m)) return null;
         String name = keyName(m.key);
@@ -122,7 +116,6 @@ public final class KeybindScreen extends Screen {
         String count = bound + " of " + all.size() + " bound";
         Draw.text(g, count, px + pw - 10 - Draw.width(count), py + 9, DIM);
 
-        // search and the "bound only" switch
         int sy = py + 26;
         Draw.rrect(g, px + 8, sy, pw - 16 - 78, 16, 3, 0xFF0A1226);
         Draw.rrectLine(g, px + 8, sy, pw - 16 - 78, 16, 3, search.isFocused() ? 0xFF3C92FF : 0xFF263860);
@@ -170,7 +163,6 @@ public final class KeybindScreen extends Screen {
         }
         g.disableScissor();
         if (shown.isEmpty()) Draw.text(g, "No module matches.", px + 16, listY + 6, DIM);
-        // a thin scroll bar
         if (maxScroll() > 0) {
             int bh2 = Math.max(12, Math.round(listH * (listH / (float) (shown.size() * ROW))));
             int by = listY + Math.round((listH - bh2) * (scroll / maxScroll()));

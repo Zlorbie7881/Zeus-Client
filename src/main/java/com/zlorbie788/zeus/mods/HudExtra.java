@@ -13,23 +13,15 @@ import net.minecraft.world.entity.player.Player;
 
 import java.util.Locale;
 
-/**
- * Three more panels on the same card as the rest: your own vitals, what is standing around you, and how healthy the
- * server's tick loop is. All three are off until switched on, and remember where you put them.
- */
 public final class HudExtra {
     private HudExtra() {}
 
-    /** A label, a value and a bar: the row every one of these three panels is built from. */
     private static void row(GuiGraphics g, int x, int y, int w, String label, String value, float frac, int colour) {
         Draw.text(g, label, x, y, 0xFF8290A6);
         if (value != null) Draw.textRight(g, value, x + w, y, Draw.mix(colour, 0xFFFFFFFF, 0.35f));
         Hud.bar(g, x, y + 11, w, 3, frac, colour);
     }
 
-    // ------------------------------------------------------------------ Vitals
-
-    /** Health, absorption, hunger, air and experience, as one calm card instead of five scattered numbers. */
     public static final class Vitals extends Module {
         private final Setting.Choice corner = Hud.corner(this, 3);
         private final Setting.Bool numbers = add(new Setting.Bool("Numbers", "The exact amount next to each bar.", true));
@@ -87,9 +79,6 @@ public final class HudExtra {
         }
     }
 
-    // ------------------------------------------------------------------ Nearby
-
-    /** What is around you, counted: the fastest way to notice a player creeping up behind the treeline. */
     public static final class Nearby extends Module {
         private final Setting.Choice corner = Hud.corner(this, 1);
         private final Setting.Num radius = add(new Setting.Num("Radius", "How far around you it counts.", 32, 8, 128, 8, " blocks"));
@@ -155,9 +144,6 @@ public final class HudExtra {
         }
     }
 
-    // ------------------------------------------------------------------ Ticks
-
-    /** How fast the server is actually running: twenty ticks a second is healthy, anything less feels like lag. */
     public static final class Ticks extends Module {
         private final Setting.Choice corner = Hud.corner(this, 0);
         private final Setting.Bool graph = add(new Setting.Bool("History", "A bar for each of the last forty seconds.", true));

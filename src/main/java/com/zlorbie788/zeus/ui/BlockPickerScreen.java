@@ -18,10 +18,8 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.function.Consumer;
 
-/** A menu to pick blocks from: a search bar, a grid of every block in the game, click to pick or drop one. The picked blocks
- * are shown on top and can be removed again with a click. Every change is reported at once, so there is no "save" step. */
 public final class BlockPickerScreen extends Screen {
-    /** One block of the game: what the game calls it, its id, and the words it can be found by. */
+
     public record Entry(Block block, String id, String name, String words) {}
 
     private static final int CELL = 22;
@@ -37,7 +35,6 @@ public final class BlockPickerScreen extends Screen {
     private List<Entry> shown = new ArrayList<>();
     private String shownFor = null;
 
-    // layout of the last frame, shared by render and the mouse handlers
     private int px;
     private int py;
     private int pw;
@@ -53,7 +50,6 @@ public final class BlockPickerScreen extends Screen {
         this(parent, title, start, 0, changed);
     }
 
-    /** {@code max} is how many blocks can be picked: 1 means a click replaces the pick, 0 means no limit. */
     public BlockPickerScreen(Screen parent, String title, Set<String> start, int max, Consumer<Set<String>> changed) {
         super(Component.literal(title));
         this.max = max;
@@ -63,7 +59,6 @@ public final class BlockPickerScreen extends Screen {
         this.changed = changed;
     }
 
-    /** Every block the game has, by name. Built once. */
     public static synchronized List<Entry> everything() {
         if (all != null) return all;
         List<Entry> out = new ArrayList<>();
@@ -89,7 +84,6 @@ public final class BlockPickerScreen extends Screen {
         return all;
     }
 
-    /** The entries that match what was typed: every word of it must be found, names that start with it first. */
     public static List<Entry> filter(List<Entry> src, String query) {
         String q = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
         if (q.isEmpty()) return new ArrayList<>(src);
@@ -132,7 +126,6 @@ public final class BlockPickerScreen extends Screen {
 
     @Override
     public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-        // drawn in render
     }
 
     @Override
@@ -197,7 +190,6 @@ public final class BlockPickerScreen extends Screen {
         String count = picked.isEmpty() ? "nothing picked" : picked.size() + " picked";
         Draw.textRight(g, count, px + pw - 12, py + 10, picked.isEmpty() ? 0xFF8EA2CC : 0xFF5CFF8A);
 
-        // the search bar
         int sy = py + 28;
         boolean focused = search.isFocused();
         Draw.rrect(g, px + 12, sy, pw - 24, 20, 5, 0xFF0A1226, 0xFF08101F);
@@ -206,12 +198,10 @@ public final class BlockPickerScreen extends Screen {
         search.setY(sy + 6);
         search.setWidth(pw - 24 - 40);
         search.render(g, mouseX, mouseY, partialTick);
-        // a small magnifying glass, drawn so it does not depend on the font having one
         Draw.ellipse(g, px + 21, sy + 9, 4, 4, 0xFF5AA2FF);
         Draw.ellipse(g, px + 21, sy + 9, 2, 2, 0xFF0A1226);
         Draw.line(g, px + 24, sy + 12, px + 28, sy + 16, 1.6f, 0xFF5AA2FF);
 
-        // the picked blocks, as small chips that remove themselves when clicked
         Draw.text(g, "Picked", px + 12, chipY + 2, 0xFF8EA2CC);
         List<String> ids = new ArrayList<>(picked);
         int per = chipsPerRow();
@@ -225,7 +215,6 @@ public final class BlockPickerScreen extends Screen {
                 try {
                     g.renderItem(new ItemStack(e.block().asItem()), cx + 1, chipY - 1);
                 } catch (RuntimeException ignored) {
-                    // a chip without a picture still works
                 }
             }
             if (hot) hover = (e == null ? ids.get(i) : e.name()) + "  (click to remove)";
@@ -237,7 +226,6 @@ public final class BlockPickerScreen extends Screen {
             Draw.textCenter(g, "Clear", px + pw - 12 - 27, chipY + 3, 0xFFFFB0B0);
         }
 
-        // the grid
         g.enableScissor(gx, gy, gx + gw + 6, gy + gh);
         int first = (int) (scroll / CELL);
         int last = Math.min(rows(), first + gh / CELL + 2);
@@ -256,7 +244,6 @@ public final class BlockPickerScreen extends Screen {
                 try {
                     g.renderItem(new ItemStack(e.block().asItem()), x + 2, y + 2);
                 } catch (RuntimeException ignored) {
-                    // an item without a picture can still be picked
                 }
                 if (hot) hover = e.name() + "  \u00b7  " + e.id();
             }
@@ -264,7 +251,6 @@ public final class BlockPickerScreen extends Screen {
         g.disableScissor();
         if (shown.isEmpty()) Draw.textCenter(g, "No block has \"" + q.trim() + "\" in its name.", px + pw / 2, gy + 20, 0xFF8EA2CC);
 
-        // scroll bar
         float ms = maxScroll();
         if (ms > 0) {
             int bx = gx + gw + 2;
@@ -274,7 +260,6 @@ public final class BlockPickerScreen extends Screen {
             g.fill(bx, ty, bx + 3, ty + th, 0xFF3C92FF);
         }
 
-        // the bottom row: hint and Done
         int dy = py + ph - 20;
         String hint = shown.size() + (shown.size() == 1 ? " block" : " blocks") + "  \u00b7  click to pick or drop, scroll for more";
         Draw.text(g, Draw.fit(hint, pw - 100), px + 12, dy + 4, 0xFF6F82AA);

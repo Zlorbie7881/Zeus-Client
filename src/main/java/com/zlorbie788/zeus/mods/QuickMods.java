@@ -33,14 +33,9 @@ import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
-/**
- * Small modules, each doing one job on your own side of the game: Crystal Optimizer, Spear Swap, FastXP, Fast Use, Click TP,
- * No Jump Delay, Anti Ghost Block, Auto Reconnect, Skin Change and Anti Trap.
- */
 public final class QuickMods {
     private QuickMods() {}
 
-    /** Called once a tick from the client tick, also while no world is open (the disconnect screen has no world). */
     public static void pulse(Minecraft mc) {
         AutoReconnect.pulse(mc);
         DiscordPresence.pulse(mc);
@@ -50,13 +45,6 @@ public final class QuickMods {
         return mc.player != null && mc.level != null && mc.gameMode != null && mc.screen == null;
     }
 
-    // ================================================================== Crystal Optimizer
-
-    /**
-     * The moment your hit lands on an end crystal, your game removes that crystal from your own view. The server breaks it a
-     * moment later (a ping later); until then the next crystal can already be placed in the same spot, which is what makes
-     * crystal fights fast. Only crystals you hit within reach are removed.
-     */
     public static final class CrystalOptimizer extends Module {
         private static volatile boolean on;
         private final Setting.Num reach = add(new Setting.Num("Reach", "Crystals you hit from further than this are left alone, so a hit the server will refuse does not hide a crystal that is still there.", 5.5, 3, 6.5, 0.5, " blocks"));
@@ -76,7 +64,6 @@ public final class QuickMods {
             on = false;
         }
 
-        /** Called by the game-mode hook after every attack you make. */
         public static void hit(Player who, Entity target) {
             if (!on || target == null || who == null) return;
             Minecraft mc = Minecraft.getInstance();
@@ -88,9 +75,6 @@ public final class QuickMods {
         }
     }
 
-    // ================================================================== Spear Swap
-
-    /** Swaps to your Lunge spear and lunges, then back. Reach Poke stabs players with the spear when they are past sword reach. */
     public static final class SpearSwap extends Module {
         private final Setting.Bool reachPoke = add(new Setting.Bool("Reach Poke", "While you hold something else and hold attack, stab a player who is further away than your hand reaches with the spear, then swap back.", false));
         private final Setting.Bool switchBack = add(new Setting.Bool("Switch back", "Return to the slot you were on after the lunge or the poke.", true));
@@ -123,7 +107,6 @@ public final class QuickMods {
             }
         }
 
-        /** The hotbar slot of the spear to use: one with Lunge first, else any spear, else -1. */
         private int pick(boolean wantLunge) {
             int any = -1;
             for (int i = 0; i < 9; i++) {
@@ -135,7 +118,6 @@ public final class QuickMods {
             return wantLunge ? -1 : any;
         }
 
-        /** Called when the key is pressed. */
         public void lunge(Minecraft mc) {
             if (!enabled() || !ready(mc)) return;
             int slot = pick(true);
@@ -146,7 +128,6 @@ public final class QuickMods {
             }
             if (backSlot < 0) backSlot = Inv.selected();
             Inv.select(slot);
-            // hit what the crosshair is on (a plain attack, the same call a click makes); with nothing there it just swings
             if (mc.hitResult instanceof net.minecraft.world.phys.EntityHitResult hit && hit.getEntity() != mc.player && !Friends.protects(hit.getEntity())) {
                 mc.gameMode.attack(mc.player, hit.getEntity());
             }
@@ -185,14 +166,11 @@ public final class QuickMods {
         }
     }
 
-    // ================================================================== FastXP and Fast Use
-
     private static void quicken(Minecraft mc, int delay) {
         MinecraftAccessor acc = (MinecraftAccessor) mc;
         if (acc.zeus$getRightClickDelay() > delay) acc.zeus$setRightClickDelay(delay);
     }
 
-    /** Throws experience bottles faster while use is held. */
     public static final class FastXp extends Module {
         private final Setting.Num delay = add(new Setting.Num("Delay", "Ticks between two bottles. 0 is as fast as the game allows.", 0, 0, 3, 1, " ticks"));
 
@@ -210,7 +188,6 @@ public final class QuickMods {
         }
     }
 
-    /** Places blocks and uses items faster while use is held. */
     public static final class FastUse extends Module {
         private final Setting.Num delay = add(new Setting.Num("Delay", "Ticks between two uses. 0 is as fast as the game allows.", 0, 0, 3, 1, " ticks"));
         private final Setting.Bool blocks = add(new Setting.Bool("Blocks", "Speed up placing blocks.", true));
@@ -231,9 +208,6 @@ public final class QuickMods {
         }
     }
 
-    // ================================================================== Click TP
-
-    /** Right click with an empty hand to move to the block you are looking at. Your game and the server must accept the move. */
     public static final class ClickTp extends Module {
         private final Setting.Num range = add(new Setting.Num("Range", "How far away the block may be.", 60, 10, 210, 5, " blocks"));
         private final Setting.Num cooldown = add(new Setting.Num("Cooldown", "Ticks between two teleports.", 10, 2, 40, 1, " ticks"));
@@ -267,7 +241,6 @@ public final class QuickMods {
             HitResult hit = mc.level.clip(new ClipContext(eye, eye.add(look.scale(range.get())), ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, mc.player));
             if (!(hit instanceof BlockHitResult bhr) || bhr.getType() != HitResult.Type.BLOCK) return;
             var side = bhr.getDirection();
-            // stand on top of a floor, or next to a wall, centred on the block
             double x = bhr.getBlockPos().getX() + 0.5 + side.getStepX() * (side.getStepY() == 0 ? 0.6 : 0.0);
             double y = bhr.getBlockPos().getY() + (side.getStepY() > 0 ? 1.0 : side.getStepY() < 0 ? -1.8 : 0.0);
             double z = bhr.getBlockPos().getZ() + 0.5 + side.getStepZ() * (side.getStepY() == 0 ? 0.6 : 0.0);
@@ -282,9 +255,6 @@ public final class QuickMods {
         }
     }
 
-    // ================================================================== No Jump Delay
-
-    /** Takes the pause between two jumps away, so holding jump bunny-hops at once. */
     public static final class NoJumpDelay extends Module {
         private final Setting.Num cooldown = add(new Setting.Num("Cooldown", "Ticks of pause that are left between jumps (the game uses 10).", 0, 0, 9, 1, " ticks"));
 
@@ -301,12 +271,6 @@ public final class QuickMods {
         }
     }
 
-    // ================================================================== Anti Ghost Block
-
-    /**
-     * A block you break stays on your screen until the server says it is gone. Without this the game removes the block at
-     * once and, when the server refuses the break, you are left walking through a hole that is not there.
-     */
     public static final class AntiGhostBlock extends Module {
         private static volatile boolean on;
 
@@ -325,15 +289,11 @@ public final class QuickMods {
             on = false;
         }
 
-        /** True while the game's own "remove it now" step should be skipped. */
         public static boolean holds() {
             return on && Minecraft.getInstance().getSingleplayerServer() == null;
         }
     }
 
-    // ================================================================== Auto Reconnect
-
-    /** Reconnects to the server you were on after you are disconnected without having chosen to leave. */
     public static final class AutoReconnect extends Module {
         private static volatile boolean on;
         private static net.minecraft.client.multiplayer.ServerData last;
@@ -395,9 +355,6 @@ public final class QuickMods {
         }
     }
 
-    // ================================================================== Skin Change
-
-    /** Wears another player's skin on your screen only. The player has to be online on the server you are on. */
     public static final class SkinChange extends Module {
         private static volatile boolean on;
         private static volatile String selfName = "";
@@ -440,7 +397,6 @@ public final class QuickMods {
             selfSkin = otherSkin = null;
         }
 
-        /** The skin to draw instead of the player's own, or null to leave it. Looked up at most twice a second. */
         public static PlayerSkin replace(AbstractClientPlayer p) {
             if (!on) return null;
             Minecraft mc = Minecraft.getInstance();
@@ -466,7 +422,7 @@ public final class QuickMods {
             var info = mc.getConnection().getPlayerInfo(name);
             return info == null ? null : info.getSkin();
         }
-        /** Opens the server-list picker; the name it returns is written into the text setting at once. */
+
         private void openPlayerPicker(Setting.Text t, String title, Consumer<String> done) {
             Minecraft mc = Minecraft.getInstance();
             mc.setScreen(new com.zlorbie788.zeus.ui.PlayerPickerScreen(mc.screen, title, t.get(), done));
@@ -474,9 +430,6 @@ public final class QuickMods {
 
     }
 
-    // ================================================================== Anti Trap
-
-    /** Removes armor stands and chest minecarts from your own world so they cannot hold you in place. */
     public static final class AntiTrap extends Module {
         private final Setting.Bool stands = add(new Setting.Bool("Armor stands", "Remove armor stands near you.", true));
         private final Setting.Bool carts = add(new Setting.Bool("Chest minecarts", "Remove minecarts with chests near you.", true));

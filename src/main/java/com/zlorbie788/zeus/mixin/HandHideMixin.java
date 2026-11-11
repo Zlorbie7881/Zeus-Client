@@ -10,10 +10,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/**
- * The butterfly knife has its own arm drawn over the screen; while it is in your hand the game's own hand and held item are not
- * drawn, so the two do not overlap. If this hook does not apply the knife still works, the game's arm is just visible behind it.
- */
 @Mixin(ItemInHandRenderer.class)
 public abstract class HandHideMixin {
     @Inject(method = "renderHandsWithItems", at = @At("HEAD"), cancellable = true, require = 0)

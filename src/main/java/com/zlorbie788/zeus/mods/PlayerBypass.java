@@ -26,25 +26,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-/**
- * Finds players and bases that the server is hiding from you.
- *
- * <p>A server can stop sending you a player (vanish), can keep a staff member in a chunk that is not rendered, and can hide
- * a base behind terrain it never sends. Three things still give it away, and every one of them is data the client is
- * entitled to:</p>
- *
- * <ul>
- *   <li><b>Vanished players.</b> A player entity that is removed while the player is still in the tab list, and did not die.
- *   Where it was is where they went.</li>
- *   <li><b>Light that nobody lit.</b> Chunks nobody has visited still tick nothing, but a player standing in a cave lights a
- *   torch, and block light is sent to you for every chunk you have. Lit air in a deep section of a chunk you have never been in
- *   is somebody else's torch.</li>
- *   <li><b>Blocks changing far away.</b> Activity already counts the block changes other players make; a chunk where blocks
- *   change with no entity in sight is a player working, hidden or not.</li>
- * </ul>
- *
- * <p>Each guess carries which of the three found it, so a light in a village does not read the same as a vanished player.</p>
- */
 public final class PlayerBypass extends Module {
     private final Setting.Bool vanish = add(new Setting.Bool("Vanished players", "Watch for a player entity that disappears while the player is still in the tab list.", true));
     private final Setting.Bool lights = add(new Setting.Bool("Light with no owner", "Deep chunk sections that are lit but hold no light source you can see: somebody's torch, or somebody's base.", true));
@@ -55,11 +36,10 @@ public final class PlayerBypass extends Module {
     private final Setting.Bool alert = add(new Setting.Bool("Tell me", "A toast the first time a vanished player is caught.", true));
     private final Setting.Info found = add(new Setting.Info("What it found", this::lines));
 
-    /** Where a vanished player was last sent to us. */
     private final Map<UUID, double[]> vanished = new HashMap<>();
-    /** Where every player we can see was, so a vanish has somewhere to point at. */
+
     private final Map<UUID, double[]> seenAt = new HashMap<>();
-    /** Chunk key -> {lights, activity weight, x, y, z}. */
+
     private final Map<Long, double[]> guesses = new HashMap<>();
     private final List<long[]> queue = new ArrayList<>();
     private int qi;
@@ -102,7 +82,6 @@ public final class PlayerBypass extends Module {
         }
     }
 
-    /** A player entity that leaves while the player is still on the server, and did not die. */
     private void watchVanish(Minecraft mc) {
         Set<UUID> now = new HashSet<>();
         for (Player p : mc.level.players()) {
@@ -118,13 +97,11 @@ public final class PlayerBypass extends Module {
             UUID id = e.getKey();
             if (now.contains(id) || !online.contains(id)) continue;
             double[] p = e.getValue();
-            // still on the server, entity gone, and it was not a death we saw: vanished
             if (p[3] <= 0) continue;
             if (vanished.putIfAbsent(id, new double[] {p[0], p[1], p[2]}) == null && alert.on()) {
                 com.zlorbie788.zeus.core.Zeus.toast("A player left the world without leaving the server: vanished", true);
             }
         }
-        // forget players who are no longer on the server at all
         vanished.keySet().removeIf(id -> !online.contains(id));
         seenAt.keySet().removeIf(id -> !online.contains(id));
     }
@@ -159,7 +136,6 @@ public final class PlayerBypass extends Module {
                 LevelChunkSection sec = sections[i];
                 if (sec == null || sec.hasOnlyAir()) continue;
                 int by = minY + i * 16;
-                // only deep sections: daylight explains everything near the surface
                 if (surface != Integer.MIN_VALUE && by > surface - 12) continue;
                 if (sec.maybeHas(st -> st.is(Blocks.TORCH) || st.is(Blocks.LANTERN) || st.is(Blocks.GLOWSTONE)
                         || st.is(Blocks.SEA_LANTERN) || st.is(Blocks.SHROOMLIGHT) || st.is(Blocks.CAMPFIRE)

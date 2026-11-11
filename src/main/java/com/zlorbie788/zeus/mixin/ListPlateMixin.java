@@ -9,10 +9,6 @@ import org.spongepowered.asm.mixin.injection.Coerce;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/**
- * The world list and the server list as rows of stone plates (a test: switch "Stone plate lists" off, or delete this class and
- * its line in zeus.mixins.json, to get the game's own lists back).
- */
 @Mixin(AbstractSelectionList.class)
 public abstract class ListPlateMixin {
     @Inject(method = "renderListBackground", at = @At("HEAD"), cancellable = true, require = 0)
