@@ -9,11 +9,10 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.world.entity.player.Player;
 
-/** A small Zeus logo and player coordinates display, shown above the health bar. */
 public final class Zeuscope extends Module {
     private static Zeuscope self;
 
-    private final Setting.Choice corner = Hud.corner(this, 1); // Top right default
+    private final Setting.Choice corner = Hud.corner(this, 1);
 
     public Zeuscope() {
         super("zeuscope", "Zeuscope", "A small Zeus logo with your coordinates, shown above the health bar.", Category.PANELS);
@@ -35,16 +34,13 @@ public final class Zeuscope extends Module {
         int logoSize = 10;
         int gap = 4;
 
-        // Draw Zeus logo
         Logo.bolt(g, x, y + 3, logoSize, Hud.accent());
 
-        // Draw coordinates text
         int cx = x + logoSize + gap;
         int cy = y + 11;
         String coords = String.format("%d, %d", Math.round(p.getX()), Math.round(p.getZ()));
         Draw.text(g, coords, cx, cy, 0xFFE6EDFA);
-        
-        // Record the widget bounds for the HUD editor
+
         Hud.record(x, y, logoSize + gap + Draw.width(coords), 14);
     }
 }

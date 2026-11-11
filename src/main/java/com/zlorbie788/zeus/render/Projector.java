@@ -5,15 +5,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3fc;
 
-/**
- * Turns points in the world into points on the screen, so boxes, lines and labels can be drawn over everything (through
- * walls too).
- *
- * <p>It reads the game's own camera rather than your player: the same camera the picture is drawn from. That is why
- * overlays sit on the right spot in third person (where the camera is behind you), while freecam flies (the camera is
- * somewhere else entirely) and even when the view is tilted. The field of view comes from the renderer for the current
- * frame, so zooming, sprinting (which widens the view a little) and FOV effects all line up.</p>
- */
 public final class Projector {
     private Projector() {}
 
@@ -25,17 +16,14 @@ public final class Projector {
     private static int sh;
     private static boolean ready;
 
-    /** The field of view the renderer uses this frame, handed over by the game (see GameRendererMixin). */
     private static volatile float liveFov;
     private static volatile long liveFovAt;
     private static volatile boolean hookSeen;
 
-    /** True once the renderer has handed over a field of view at least once, so the zoom knows its hook is in place. */
     public static boolean hookSeen() {
         return hookSeen;
     }
 
-    /** Called by the renderer for every frame it computes a field of view. */
     public static void offerFov(float fov) {
         if (fov >= 1f && fov <= 179f) {
             liveFov = fov;
@@ -44,7 +32,6 @@ public final class Projector {
         }
     }
 
-    /** The field of view actually used this frame: the renderer's own number when it just gave one, the option otherwise. */
     public static double fov(Minecraft mc) {
         long now = System.currentTimeMillis();
         float live = liveFov;
@@ -52,7 +39,6 @@ public final class Projector {
         return mc.options.fov().get();
     }
 
-    /** Reads the camera for this frame. Call once per frame before projecting. */
     public static boolean prepare(Minecraft mc, float partial, int screenW, int screenH) {
         ready = false;
         Stroke.frame(mc.getFrameTimeNs());
@@ -60,8 +46,6 @@ public final class Projector {
         boolean camPos = CameraControl.overridingPosition();
         boolean camLook = CameraControl.overridingLook();
         if (camPos || camLook) {
-            // Freecam and Free Look move the game's camera too; read it like any other frame, and only fall back to the
-            // module's own numbers if the camera has not been placed yet.
             Camera cam = mc.gameRenderer.getMainCamera();
             if (cam != null && cam.isInitialized()) {
                 Vec3 p = cam.position();
@@ -97,14 +81,12 @@ public final class Projector {
         ex = px;
         ey = py;
         ez = pz;
-        // the camera's own axes, so a tilted camera (spectator, freecam, damage roll) still projects true
         fx = f.x();
         fy = f.y();
         fz = f.z();
         ux = up.x();
         uy = up.y();
         uz = up.z();
-        // "left" is the camera's left; the screen's right is the opposite
         rx = -left.x();
         ry = -left.y();
         rz = -left.z();
@@ -130,7 +112,6 @@ public final class Projector {
         norm();
     }
 
-    /** Guards against a degenerate basis (a camera that has not been placed yet) so nothing divides by zero. */
     private static void norm() {
         double fl = Math.sqrt(fx * fx + fy * fy + fz * fz);
         if (fl < 1e-6) {
@@ -176,10 +157,6 @@ public final class Projector {
         return ez;
     }
 
-    /**
-     * The direction (a unit vector, in world axes) of the ray through a screen point, the opposite of {@link #project}. False
-     * when the camera has not been read yet.
-     */
     public static boolean ray(float sx, float sy, double[] out) {
         if (!ready) return false;
         double cx = (sx - sw / 2.0) / (sw / 2.0) * tanY * aspect;
@@ -195,12 +172,10 @@ public final class Projector {
         return true;
     }
 
-    /** Depth of a point in front of the camera (negative: behind). */
     public static double depth(double x, double y, double z) {
         return (x - ex) * fx + (y - ey) * fy + (z - ez) * fz;
     }
 
-    /** Projects a point; fills out[0], out[1] with GUI coordinates and returns false if it is behind the camera. */
     public static boolean project(double x, double y, double z, float[] out) {
         if (!ready) return false;
         double dx = x - ex;
@@ -215,10 +190,6 @@ public final class Projector {
         return true;
     }
 
-    /**
-     * Projects a line between two world points, cut at the near plane so lines that pass behind the camera still draw.
-     * Returns false if nothing is in front.
-     */
     public static boolean projectLine(double x1, double y1, double z1, double x2, double y2, double z2, float[] out) {
         double d1 = depth(x1, y1, z1);
         double d2 = depth(x2, y2, z2);
@@ -245,11 +216,6 @@ public final class Projector {
         return true;
     }
 
-    /**
-     * Where a world point is on the screen, for a tracer. A point in front of the view gives its real place (return 0). A
-     * point off to the side, above, below or behind the camera gives the spot on the edge of the screen it lies towards
-     * (return 1), so a line to it still points the right way.
-     */
     public static int screenPoint(double x, double y, double z, float margin, float[] out) {
         lastBehind = false;
         if (!ready) return -1;
@@ -270,9 +236,6 @@ public final class Projector {
                 return 0;
             }
         } else {
-            // behind the camera: point the way you would turn to face it (a target behind you on the right is on the right).
-            // Straight behind there is no side to prefer, so the direction eases to "right" as the target nears that line;
-            // that keeps the arrow from flipping from side to side with every small movement.
             double m = Math.hypot(cx, cy);
             double len3 = Math.sqrt(cx * cx + cy * cy + cz * cz);
             double q = len3 < 1e-9 ? 0.0 : Math.min(1.0, (m / len3) / 0.30);
@@ -296,7 +259,6 @@ public final class Projector {
 
     private static boolean lastBehind;
 
-    /** True when the last {@link #screenPoint} call was for a point behind the camera. */
     public static boolean lastBehind() {
         return lastBehind;
     }

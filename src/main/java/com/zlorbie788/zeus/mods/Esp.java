@@ -1,7 +1,5 @@
 package com.zlorbie788.zeus.mods;
 
-
-
 import com.zlorbie788.zeus.core.Env;
 
 import com.zlorbie788.zeus.core.Category;
@@ -36,8 +34,6 @@ import net.minecraft.world.entity.player.Player;
 
 import net.minecraft.world.phys.AABB;
 
-
-
 import java.util.ArrayList;
 
 import java.util.HashMap;
@@ -47,20 +43,6 @@ import java.util.IdentityHashMap;
 import java.util.List;
 
 import java.util.Map;
-
-
-
-/**
-
- * Marks mobs, players and items so you see them through walls. The main way is the game's own glowing outline: the
-
- * entity's real shape is traced in a colour (red monsters, green animals, cyan players, gold items), visible through
-
- * blocks, with nothing drawn over the screen. Boxes, names, health bars, distances and lines are extras that are off by
-
- * default; when they are on they are kept inside the screen so they never cover it.
-
- */
 
 public final class Esp extends Module {
 
@@ -72,21 +54,13 @@ public final class Esp extends Module {
 
     private static final int ITEM = 0xFFFFD24D;
 
-
-
     private static volatile Esp self;
-
-
-
-    /** A setting that keeps its default and is not shown. */
 
     private static <T extends Setting> T quiet(T s) {
 
         return s;
 
     }
-
-
 
     private final Setting.Bool hostiles = add(new Setting.Bool("Monsters", "Mark hostile mobs (red).", true));
 
@@ -180,8 +154,6 @@ public final class Esp extends Module {
 
     private final Setting.Num ghostTime = add(new Setting.Num("Ghost time", "How long the last known spot of a disappeared entity keeps its marker.", 12, 2, 60, 1, " s")).showIf(ghosts::on);
 
-
-
     private int marked;
 
     private List<Entity> targets = List.of();
@@ -190,17 +162,9 @@ public final class Esp extends Module {
 
     private final Map<Integer, Long> firstSeen = new HashMap<>();
 
-
-
-    /** Where something was the last time it was on your screen. */
-
     private record Ghost(double x, double y, double z, double height, int color, String name, long at) {}
 
-
-
     private final Map<Integer, Ghost> ghostsById = new HashMap<>();
-
-
 
     public Esp() {
 
@@ -210,19 +174,11 @@ public final class Esp extends Module {
 
     }
 
-
-
-    /** Which of the shapes draws what, so the glow/box/fill shapes and the older custom settings share one path. */
-
     private boolean glowOn() {
 
         return shape.index() == 0 ? glow.on() : shape.index() == 1;
 
     }
-
-
-
-    /** 0 3D box, 1 2D box, 2 corners, 3 nothing, 4 solid 3D box, 5 3D box and solid. */
 
     private int boxMode() {
 
@@ -242,12 +198,6 @@ public final class Esp extends Module {
 
     }
 
-
-
-    // --------------------------------------------------------------- the glow hooks (called by the mixin)
-
-
-
     public static boolean outlines(Entity e) {
 
         Esp s = self;
@@ -257,8 +207,6 @@ public final class Esp extends Module {
         return ItemEsp.outlines(e) || VillagerEsp.outlines(e);
 
     }
-
-
 
     public static int outlineColor(Entity e) {
 
@@ -273,10 +221,6 @@ public final class Esp extends Module {
         return item != 0 ? item : VillagerEsp.outlineColor(e);
 
     }
-
-
-
-    /** The colour this entity is marked in, or 0 when it is not marked at all (wrong kind, out of range, dead, a spectator). */
 
     private int colorOf(Entity e) {
 
@@ -319,10 +263,6 @@ public final class Esp extends Module {
         return d2 <= r * r && (e == mc.player || d2 >= lo * lo) ? c : 0;
 
     }
-
-
-
-    /** Picks what to mark once per tick: players first, then the nearest, at most "Max entities". */
 
     @Override
 
@@ -374,8 +314,6 @@ public final class Esp extends Module {
 
         if (firstSeen.size() > 512) firstSeen.clear();
 
-        // keep the last known spot of everything marked, so a vanish or a teleport cannot simply delete it from the screen
-
         long now = System.currentTimeMillis();
 
         if (ghosts.on()) {
@@ -400,8 +338,6 @@ public final class Esp extends Module {
 
     }
 
-
-
     @Override
 
     public String info() {
@@ -409,12 +345,6 @@ public final class Esp extends Module {
         return marked > 0 ? Integer.toString(marked) : null;
 
     }
-
-
-
-    // --------------------------------------------------------------- the screen overlay
-
-
 
     @Override
 
@@ -478,8 +408,6 @@ public final class Esp extends Module {
             double x1 = bb.minX + sx, y1 = bb.minY + sy, z1 = bb.minZ + sz, x2 = bb.maxX + sx, y2 = bb.maxY + sy, z2 = bb.maxZ + sz;
 
             float[] r = Wire.bounds(x1, y1, z1, x2, y2, z2);
-
-            // partly behind you or off the screen: instead of losing it, point at it from the edge
 
             boolean lost = r == null;
 
@@ -605,16 +533,6 @@ public final class Esp extends Module {
 
     }
 
-
-
-    /**
-
-     * The last known spot of everything that disappeared while it was marked. A vanished player, a teleport, a mob that left
-
-     * the loaded area: the box, the name and the edge arrow stay and fade for as long as the setting says.
-
-     */
-
     private void drawGhosts(GuiGraphics g, int w, int h, long nowMs) {
 
         long keep = (long) (ghostTime.get() * 1000.0);
@@ -623,7 +541,7 @@ public final class Esp extends Module {
 
             Ghost gh = en.getValue();
 
-            if (nowMs - gh.at() < 120L) continue; // refreshed this tick: still there, drawn normally
+            if (nowMs - gh.at() < 120L) continue;
 
             float life = 1f - (nowMs - gh.at()) / (float) keep;
 
@@ -659,10 +577,6 @@ public final class Esp extends Module {
 
     }
 
-
-
-    /** A plain 2D box: four smooth sides. */
-
     private static void frame2d(GuiGraphics g, float x1, float y1, float x2, float y2, float thick, int color, float alpha) {
 
         int core = Draw.rgba(color, 0.95f * alpha);
@@ -676,10 +590,6 @@ public final class Esp extends Module {
         for (float[] p : pts) Stroke.soft(g, p[0] - (p[0] == p[2] ? 0 : Math.signum(p[2] - p[0]) * t * 0.5f), p[1], p[2] + (p[0] == p[2] ? 0 : Math.signum(p[2] - p[0]) * t * 0.5f), p[3], t, core);
 
     }
-
-
-
-    /** The corners of a 2D box: a bright bracket on each, with a faint line between them. */
 
     private static void corners(GuiGraphics g, float x1, float y1, float x2, float y2, float thick, int color, float alpha) {
 
@@ -703,8 +613,6 @@ public final class Esp extends Module {
 
         for (float[] a : arms) Stroke.soft(g, a[0], a[1], a[2], a[3], t, core);
 
-        // hairline between the brackets
-
         Stroke.soft(g, x1 + lw, y1, x2 - lw, y1, 0.5f, faint);
 
         Stroke.soft(g, x1 + lw, y2, x2 - lw, y2, 0.5f, faint);
@@ -714,10 +622,6 @@ public final class Esp extends Module {
         Stroke.soft(g, x2, y1 + lh, x2, y2 - lh, 0.5f, faint);
 
     }
-
-
-
-    /** 0 player, 1 animal, 2 water animal, 3 monster, 4 ambient, 5 anything else, 6 a friend (the Anubis tracer colours). */
 
     private static int kindOf(Entity e) {
 
@@ -741,8 +645,6 @@ public final class Esp extends Module {
 
     }
 
-
-
     private static double lerp(float t, double a, double b) {
 
         return a + (b - a) * t;
@@ -750,4 +652,3 @@ public final class Esp extends Module {
     }
 
 }
-

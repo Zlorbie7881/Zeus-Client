@@ -11,17 +11,11 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/**
- * Decides whether a player's tab-list text says "staff". Written to follow the common DonutSMP staff conventions and kept
- * compatible with it: rank words (also written in small capitals or with accents), marker glyphs (stars and private-use icon
- * glyphs), a team name that starts with a two digit rank number, and a list of names that are always staff.
- */
 public final class StaffMatcher {
     public static final String DEFAULT_RANK_WORDS = "owner, co-owner, manager, admin, administrator, developer, dev, sr-admin, sr-mod, senior-mod, moderator, mod, trial-mod, sr-helper, senior-helper, helper, trial-helper, support, staff";
     public static final String DEFAULT_MARKERS = "U+2605 U+2606 U+2726 U+2727 U+272A U+272F U+2730 U+2B50";
     public static final String[] MODES = {"Ranks + Markers + Team", "Ranks", "Markers", "Team Rank"};
 
-    /** How a match was made, from the strongest to the weakest evidence. */
     public static final int KIND_KNOWN = 0;
     public static final int KIND_RANK = 1;
     public static final int KIND_TEAM = 2;
@@ -71,7 +65,6 @@ public final class StaffMatcher {
         this.ignoredNames = parseNames(ignoredNames);
     }
 
-    /** The result of a match: the rank to show, how senior it is (lower is more senior) and how it was found. */
     public record Match(String rank, int seniority, int kind) {}
 
     private record Word(String folded, String label) {}

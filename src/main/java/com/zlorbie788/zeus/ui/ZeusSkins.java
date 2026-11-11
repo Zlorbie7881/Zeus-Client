@@ -13,27 +13,15 @@ import net.minecraft.client.gui.screens.worldselection.SelectWorldScreen;
 
 import java.util.IdentityHashMap;
 
-/**
- * The Zeus look on the game's own screens: the stone plate with silver lettering on the buttons, the Zeus lettering for the
- * title, and on the pause menu the medallion above the buttons.
- *
- * <p>Nothing of the game's own widgets is changed. After the screen has drawn itself the buttons are covered by a stone plate with
- * the same text in the Zeus lettering (so clicks, tooltips and keys all keep working), and the title the game draws is hidden
- * before it is drawn. Switch it off in the settings ("Zeus pause menu" and "Stone plate lists") and the game's own look returns.
- * To remove it for good: delete this class and {@code ScreenSkinMixin}, {@code ListPlateMixin}, {@code PauseTitleMixin} and their
- * lines in {@code zeus.mixins.json}.
- */
 public final class ZeusSkins {
     private ZeusSkins() {}
 
     private static final IdentityHashMap<AbstractWidget, float[]> STATE = new IdentityHashMap<>();
     private static Screen current;
     private static long last;
-    // the box the pause menu's logo was given
     private static final int[] LOGO = new int[4];
     private static Screen logoFor;
 
-    /** 1 = pause menu, 2 = world or server list, 0 = nothing of ours. */
     static int kind(Screen s) {
         if (s == null) return 0;
         Minecraft mc = Minecraft.getInstance();
@@ -44,12 +32,10 @@ public final class ZeusSkins {
         return 0;
     }
 
-    /** True when the pause menu's own "Game Menu" title should not be drawn (the logo is there). */
     public static boolean hidesTitle(Screen s) {
         return kind(s) == 1 && logoFor == s;
     }
 
-    /** Before the screen draws: hides the title the game would draw, if it is a widget. */
     public static void before(Screen s) {
         try {
             if (kind(s) == 0) return;
@@ -62,7 +48,6 @@ public final class ZeusSkins {
         }
     }
 
-    /** After the screen has drawn: the plates, the lettering and the logo. */
     public static void after(Screen s, GuiGraphics g, int mx, int my) {
         int kind = kind(s);
         if (kind == 0) return;
@@ -76,8 +61,6 @@ public final class ZeusSkins {
             }
             float t = (now / 1_000_000L % 100_000_000L) / 1000f;
             if (kind == 1) {
-                // A proper backdrop first: the world and the game's own widgets are pushed well back, so the plates and the
-                // logo are all the eye is drawn to, instead of a bright world showing through a half-skinned menu.
                 g.fill(0, 0, s.width, s.height, Draw.rgba(0xFF04060C, 0.66f));
                 logo(s, g);
             } else {
@@ -98,9 +81,6 @@ public final class ZeusSkins {
         warned = true;
     }
 
-    // ------------------------------------------------------------------ pause menu layout
-
-    /** After the pause menu has built its buttons: makes room above them for the logo. */
     public static void pauseInit(Screen s) {
         try {
             if (kind(s) != 1) return;
@@ -139,11 +119,6 @@ public final class ZeusSkins {
         }
     }
 
-    /**
-     * The game lays the pause menu out as a grid of buttons of different widths, with the two half-width ones side by side and
-     * whatever other mods added squeezed in wherever they fit, which reads as a mess under the plates. This puts every button
-     * in one column of the same width, centred under the logo, in the order the game had them.
-     */
     private static void column(Screen s, int logoH) {
         java.util.List<AbstractWidget> buttons = new java.util.ArrayList<>();
         for (var child : s.children()) {
@@ -178,7 +153,6 @@ public final class ZeusSkins {
         img.draw(g, x, LOGO[0], w, h, 0xFFFFFFFF);
     }
 
-    /** The title of a list screen, in the Zeus lettering, where the game's own title was. */
     private static void title(Screen s, GuiGraphics g) {
         String title = s.getTitle().getString();
         int cap = 11;
@@ -191,8 +165,6 @@ public final class ZeusSkins {
         }
         GreekFont.drawCentered(g, title, s.width / 2, y, cap, 0xFFE4E8F2, true);
     }
-
-    // ------------------------------------------------------------------ buttons
 
     private static void skin(GuiGraphics g, Button b, int mx, int my, float dt, float t) {
         int x = b.getX();

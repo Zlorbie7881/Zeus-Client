@@ -20,15 +20,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Sharp text and smooth shapes for the panel. Everything here works in real screen pixels (the panel draws with the pose
- * scaled down by the GUI scale), so a letter or a rounded corner covers exactly the pixels it was made for.
- *
- * <p>Text is Inter, drawn once by Java2D (with kerning and anti-aliasing) into a shared picture, and every later frame is one
- * picture call per string. Rounded boxes are made the same way: a small white corner picture per radius, tinted when drawn,
- * so any colour or fade costs nothing extra and the picture never grows. Both live in a few big pictures, so the whole
- * panel is drawn from two textures. A string or shape is only made the first time it is seen.
- */
 final class Ty {
     private Ty() {}
 
@@ -48,8 +39,6 @@ final class Ty {
     static {
         for (int i = 0; i < 256; i++) BOOST[i] = Math.min(255, (int) Math.round(255.0 * Math.pow(i / 255.0, 0.80)));
     }
-
-    // ------------------------------------------------------------------ fonts
 
     static boolean ready() {
         if (!tried) {
@@ -89,7 +78,6 @@ final class Ty {
 
     private static final Map<String, Boolean> SUPPORTED = new HashMap<>();
 
-    /** True when every character of the text is in the panel font. */
     private static boolean supported(String s) {
         Boolean b = SUPPORTED.get(s);
         if (b == null) {
@@ -105,8 +93,6 @@ final class Ty {
         }
         return b;
     }
-
-    // ------------------------------------------------------------------ the shared pictures
 
     private static final class Page {
         final int w;
@@ -219,7 +205,6 @@ final class Ty {
 
     private record ShapeKey(char kind, int r, int extra) {}
 
-    /** Call at the start of a frame: starts over with empty pictures when the last frame ran out of room. */
     static void begin() {
         if (TEXT.full) {
             TEXT.reset();
@@ -231,13 +216,11 @@ final class Ty {
         }
     }
 
-    /** Call at the end of a frame: sends what was made this frame to the graphics card (once). */
     static void flush() {
         TEXT.flush();
         SHAPES.flush();
     }
 
-    /** Gives the pictures back (the window was resized a lot, or the screen closed for good). */
     static void release() {
         TEXT.release();
         SHAPES.release();
@@ -245,15 +228,12 @@ final class Ty {
         SHAPE_SLOTS.clear();
     }
 
-    // ------------------------------------------------------------------ text
-
     private static final int PAD = 2;
 
     private static int size2(float px) {
         return Math.max(14, Math.round(px * 2f));
     }
 
-    /** Width of the text in pixels. */
     static int w(String s, float px, int weight) {
         if (s == null || s.isEmpty()) return 0;
         if (!ready() || !supported(s)) return Math.round(Draw.width(s) * Math.max(1f, px / 9.6f));
@@ -317,7 +297,6 @@ final class Ty {
         Draw.textS(g, s, x, cy - Math.round(4 * sc), color, sc);
     }
 
-    /** Left aligned text, vertically centred on {@code cy}. */
     static void text(GuiGraphics g, String s, int x, int cy, float px, int weight, int color) {
         if (s == null || s.isEmpty() || (color >>> 24) == 0) return;
         if (!ready() || !supported(s)) {
@@ -329,7 +308,6 @@ final class Ty {
             fallback(g, s, x, cy, px, color);
             return;
         }
-        // the middle of a capital letter sits on cy
         int baseline = cy + Math.round(px * 0.364f);
         ensure(sl);
         part(g, sl, x - PAD, baseline - sl.base(), sl.w(), sl.h(), 0, 0, sl.w(), sl.h(), color);
@@ -343,7 +321,6 @@ final class Ty {
         text(g, s, xr - w(s, px, weight), cy, px, weight, color);
     }
 
-    /** The start of the text that fits in {@code max} pixels, with an ellipsis when cut. */
     static String fit(String s, int max, float px, int weight) {
         if (s == null || w(s, px, weight) <= max) return s;
         int lo = 0;
@@ -355,8 +332,6 @@ final class Ty {
         }
         return s.substring(0, lo).stripTrailing() + "…";
     }
-
-    // ------------------------------------------------------------------ shapes
 
     private static Slot shape(char kind, int r, int extra) {
         ShapeKey k = new ShapeKey(kind, r, extra);
@@ -406,7 +381,6 @@ final class Ty {
         return sl;
     }
 
-    /** Blurs the white box and keeps only what lies outside it: a soft halo. */
     private static int[] glowPixels(int[] box, int size, int spread) {
         float[] a = new float[size * size];
         for (int i = 0; i < a.length; i++) a[i] = (box[i] >>> 24) / 255f;
@@ -455,7 +429,6 @@ final class Ty {
         sl.page().tex.drawPart(g, dx, dy, dw, dh, sl.x() + sx, sl.y() + sy, sw, sh, tint);
     }
 
-    /** A filled rounded box with smooth corners. */
     static void fill(GuiGraphics g, int x, int y, int w, int h, int r, int color) {
         if (w <= 0 || h <= 0 || (color >>> 24) == 0) return;
         r = Math.max(0, Math.min(r, Math.min(w, h) / 2));
@@ -478,7 +451,6 @@ final class Ty {
         part(g, sl, x + w - r, y + h - r, r, r, r, r, r, r, color);
     }
 
-    /** The left end of a rounded box only: the two rounded corners and the strip between them, {@code r} pixels wide. */
     static void fillLeftEnd(GuiGraphics g, int x, int y, int h, int r, int color) {
         if (h <= 0 || r < 2 || (color >>> 24) == 0) return;
         r = Math.min(r, h / 2);
@@ -493,7 +465,6 @@ final class Ty {
         part(g, sl, x, y + h - r, r, r, 0, r, r, r, color);
     }
 
-    /** A thin smooth outline of a rounded box, {@code bw} pixels thick. */
     static void ring(GuiGraphics g, int x, int y, int w, int h, int r, int bw, int color) {
         if (w <= 1 || h <= 1 || (color >>> 24) == 0) return;
         r = Math.max(0, Math.min(r, Math.min(w, h) / 2));
@@ -518,7 +489,6 @@ final class Ty {
         part(g, sl, x + w - r, y + h - r, r, r, r, r, r, r, color);
     }
 
-    /** A soft halo around a rounded box (nothing inside it). The colour's alpha is the strength. */
     static void glow(GuiGraphics g, int x, int y, int w, int h, int r, int spread, int color) {
         if (w <= 0 || h <= 0 || spread < 2 || (color >>> 24) == 0) return;
         r = Math.max(2, Math.min(r, Math.min(w, h) / 2));
@@ -541,7 +511,6 @@ final class Ty {
     }
 
     private static void ensure(Slot sl) {
-        // the page picture exists only once something was sent to the card; flush() is called at the end of the frame
         if (sl.page().tex == null) {
             sl.page().tex = Tex.blank(sl.page().w, sl.page().h);
             sl.page().dirty(0, sl.page().h);

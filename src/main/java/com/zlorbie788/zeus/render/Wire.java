@@ -3,7 +3,6 @@ package com.zlorbie788.zeus.render;
 import com.zlorbie788.zeus.ui.Draw;
 import net.minecraft.client.gui.GuiGraphics;
 
-/** Draws 3D shapes (boxes, lines) as clean screen lines on top of the picture. Needs {@link Projector#prepare} first. */
 public final class Wire {
     private Wire() {}
 
@@ -12,7 +11,6 @@ public final class Wire {
 
     private static final float[] LINE = new float[4];
 
-    /** One 3D line with a dark halo under it so it reads on any background. */
     public static void line(GuiGraphics g, double x1, double y1, double z1, double x2, double y2, double z2, float thick, int color, boolean halo) {
         if (!Projector.projectLine(x1, y1, z1, x2, y2, z2, LINE)) return;
         if (halo && !com.zlorbie788.zeus.ui.Perf.gameFast()) Stroke.keyline(g, LINE[0], LINE[1], LINE[2], LINE[3], thick, 0.45f * (color >>> 24) / 255f);
@@ -23,7 +21,6 @@ public final class Wire {
     private static final double[] CY = new double[8];
     private static final double[] CZ = new double[8];
 
-    /** A wireframe box. In Light and Minimal mode the dark halo is left out, which halves the pieces drawn. */
     public static void box(GuiGraphics g, double x1, double y1, double z1, double x2, double y2, double z2, float thick, int color, boolean halo) {
         int i = 0;
         for (int xi = 0; xi < 2; xi++) {
@@ -46,7 +43,6 @@ public final class Wire {
         }
     }
 
-    /** A flat square on the ground (or any y), drawn as an outline plus a cross so it is easy to see. */
     public static void floor(GuiGraphics g, double x, double y, double z, double size, float thick, int color) {
         line(g, x, y, z, x + size, y, z, thick, color, true);
         line(g, x + size, y, z, x + size, y, z + size, thick, color, true);
@@ -54,7 +50,6 @@ public final class Wire {
         line(g, x, y, z + size, x, y, z, thick, color, true);
     }
 
-    /** Projected screen rectangle of a box, or null when any corner is behind the camera. Returns {minX, minY, maxX, maxY}. */
     public static float[] bounds(double x1, double y1, double z1, double x2, double y2, double z2) {
         float[] t = new float[2];
         float minX = Float.MAX_VALUE;

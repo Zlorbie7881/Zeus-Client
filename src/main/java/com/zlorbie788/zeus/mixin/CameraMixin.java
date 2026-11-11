@@ -9,11 +9,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/**
- * Freecam and Free Look: after the game has placed its camera on your player, the camera is moved to where the module
- * wants it. Only the picture changes. Both method names are listed because the game's camera class has been reworked
- * between versions; if neither is found the module says so and switches itself off.
- */
 @Mixin(Camera.class)
 public abstract class CameraMixin {
     @Shadow
@@ -34,7 +29,6 @@ public abstract class CameraMixin {
             try {
                 ((CameraAccessor) (Object) this).zeus$detached(true);
             } catch (ClassCastException | LinkageError ignored) {
-                // without this your own body is not drawn; the freecam still works
             }
         }
     }

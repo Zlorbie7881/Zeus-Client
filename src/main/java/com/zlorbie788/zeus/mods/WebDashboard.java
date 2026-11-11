@@ -15,11 +15,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * The Zeus website, served from your own computer. Switching this module on starts a small web server that listens only on
- * 127.0.0.1 (never on the network); the same pages can be hosted anywhere as a plain website, but only this copy can control
- * the game. The pages are public to your computer; everything that reads or changes the game needs the access token.
- */
 public final class WebDashboard extends Module {
     private static volatile WebDashboard instance;
 
@@ -40,8 +35,6 @@ public final class WebDashboard extends Module {
         instance = this;
     }
 
-    // ------------------------------------------------------------------ the values the website shows (read by the server)
-
     public static String discordUrl() { return link(instance == null ? "" : instance.discord.get()); }
     public static String downloadUrl() { return link(instance == null ? "" : instance.download.get()); }
     public static String youtubeUrl() { return link(instance == null ? "" : instance.youtube.get()); }
@@ -50,14 +43,11 @@ public final class WebDashboard extends Module {
     public static boolean keepTokenOn() { return instance != null && instance.keepToken.on(); }
     public static int portNow() { return instance == null ? 8765 : instance.port.i(); }
 
-    /** Only plain http(s) addresses are passed on to the website. */
     private static String link(String raw) {
         String t = raw == null ? "" : raw.trim();
         String lower = t.toLowerCase(java.util.Locale.ROOT);
         return lower.startsWith("https://") || lower.startsWith("http://") ? t : "";
     }
-
-    // ------------------------------------------------------------------ the server follows the switch
 
     @Override
     protected void onEnable() {
@@ -69,7 +59,6 @@ public final class WebDashboard extends Module {
         LocalControlServer.stop();
     }
 
-    /** Starts the server (if it is not running) and, when asked, prints the link and token in chat. */
     public static boolean startServer(boolean tell) {
         WebDashboard d = instance;
         try {
@@ -100,7 +89,6 @@ public final class WebDashboard extends Module {
                 .withHoverEvent(new HoverEvent.ShowText(Component.literal(hint))));
     }
 
-    /** Prints the website card: the address, a hidden token and buttons to open the site and copy the link or the token. */
     public static void announceNow() {
         Minecraft mc = Minecraft.getInstance();
         String url = LocalControlServer.url();

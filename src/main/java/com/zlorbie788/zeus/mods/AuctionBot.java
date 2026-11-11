@@ -40,21 +40,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
-/**
- * Auction Bot: the idea of the DonutSMP Automation bot (list an item on the auction house over and over, check that the
- * listing went through, retry when it did not, and keep count) built into the client, so no separate program, no console
- * client and no second account session is needed.
- *
- * <p>You pick the item from a menu with a search bar, say how many go into each listing and for what price. Every round it
- * looks in your inventory for that item, puts exactly that many into your hand (splitting a bigger stack the way you would
- * with the mouse), types {@code /ah sell <price>}, and waits for the server to confirm: either a chat line that matches the
- * confirmation pattern, or the items leaving your hand. If nothing confirms it in time it tries again, up to the number of
- * tries you set, and counts a failure. Sales, items, income and failures are kept between sessions, and the last log lines
- * are shown in the panel.</p>
- *
- * <p>It does only what you could do by hand, with a pause between steps. Check that the server allows automation: that is your
- * decision and your account.</p>
- */
 public final class AuctionBot extends Module {
     private static final Pattern PRICE = Pattern.compile("([0-9]+(?:\\.[0-9]+)?)\\s*([kmbt])?");
     private static final String DEFAULT_CONFIRM = "(?i)(?:listed|auctioned|sold).*?(\\d+)";
@@ -89,7 +74,6 @@ public final class AuctionBot extends Module {
 
     private enum P { CHECK, PREP, SEND, WAIT, GAP }
 
-    /** What is kept between sessions. */
     static final class Stats {
         long sales;
         long items;
@@ -125,8 +109,6 @@ public final class AuctionBot extends Module {
         incoming.add(message.getString());
         while (incoming.size() > 60) incoming.poll();
     }
-
-    // ------------------------------------------------------------------ settings helpers
 
     String itemId() {
         String s = item.get().trim().toLowerCase(Locale.ROOT);
@@ -171,7 +153,6 @@ public final class AuctionBot extends Module {
         return n;
     }
 
-    /** The price as a number, or -1 when it is not written like one. Understands 500, 1.5k, 2m, 3b, 1t and commas. */
     static double parsePrice(String text) {
         if (text == null) return -1;
         Matcher m = PRICE.matcher(text.trim().toLowerCase(Locale.ROOT).replace(",", "").replace("$", ""));
@@ -193,7 +174,6 @@ public final class AuctionBot extends Module {
         return v;
     }
 
-    /** The price as the command wants it. */
     String priceArg() {
         double v = parsePrice(price.get());
         if (v <= 0) return "";
@@ -207,12 +187,6 @@ public final class AuctionBot extends Module {
         return c + " " + priceArg();
     }
 
-    /**
-     * The clicks that leave exactly {@code want} items in the hotbar slot {@code to}, from a stack of {@code have} in the
-     * menu slot {@code from}: nothing when it is already there, one swap for an exact stack, otherwise the way a player splits
-     * a stack (pick it up, right-click one item at a time into the empty slot, put the rest back). Each entry is
-     * {menu slot, button, click type: 0 pickup, 1 swap}.
-     */
     static List<int[]> clicks(int from, int have, int to, int toHotbar, int want) {
         List<int[]> out = new ArrayList<>();
         if (from == to && have == want) return out;
@@ -225,8 +199,6 @@ public final class AuctionBot extends Module {
         out.add(new int[] {from, 0, 0});
         return out;
     }
-
-    // ------------------------------------------------------------------ status
 
     private void wipeLog() {
         log.clear();
@@ -250,7 +222,6 @@ public final class AuctionBot extends Module {
         return out;
     }
 
-    /** For tests. */
     String totalsText() {
         return totalLines().get(0);
     }
@@ -271,8 +242,6 @@ public final class AuctionBot extends Module {
     public String info() {
         return enabled() && session > 0 ? Integer.toString(session) : null;
     }
-
-    // ------------------------------------------------------------------ statistics file
 
     private static Path file() {
         return FabricLoader.getInstance().getConfigDir().resolve("zeus-auctionbot.json");
@@ -306,8 +275,6 @@ public final class AuctionBot extends Module {
             Zeus.LOG.warn("Could not save the auction bot statistics", e);
         }
     }
-
-    // ------------------------------------------------------------------ the loop
 
     @Override
     protected void onEnable() {
@@ -401,7 +368,6 @@ public final class AuctionBot extends Module {
                     stop("Done: " + session + " listed.", true);
                     return;
                 }
-                // find the stack to sell: an exact one in the hotbar first, then any exact one, then the smallest big enough
                 int src = -1;
                 int best = Integer.MAX_VALUE;
                 for (int i = 0; i < 36; i++) {
@@ -420,7 +386,6 @@ public final class AuctionBot extends Module {
                     return;
                 }
                 int have = Inv.get(src).getCount();
-                // where it goes: the slot it is in if it fits exactly, else the selected hotbar slot or any empty hotbar slot
                 int to = -1;
                 if (src < 9 && have == want) {
                     to = src;
@@ -467,7 +432,7 @@ public final class AuctionBot extends Module {
                 Inv.select(dst);
                 attempt = 1;
                 phase = P.SEND;
-                cd = 3; // the game tells the server about the new slot on its next tick
+                cd = 3;
             }
             case SEND -> {
                 if (Inv.selected() != dst || !inHand(id, want)) {

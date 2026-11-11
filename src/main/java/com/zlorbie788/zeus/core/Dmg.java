@@ -8,11 +8,9 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
-/** A rough estimate of how much an explosion hurts something. It ignores enchantments and effects. */
 public final class Dmg {
     private Dmg() {}
 
-    /** How much of the body can be reached from the blast (0 to 1), checked at three points. */
     private static float exposure(Minecraft mc, Vec3 center, Entity e) {
         AABB bb = e.getBoundingBox();
         double cx = (bb.minX + bb.maxX) / 2;
@@ -27,7 +25,6 @@ public final class Dmg {
         return seen / 3f;
     }
 
-    /** Damage of an explosion of the given power (crystal 6, charged anchor 5) at {@code center}. */
     public static float explosion(Minecraft mc, Vec3 center, Entity e, float power) {
         double radius = power * 2.0;
         double dist = Math.sqrt(e.distanceToSqr(center.x, center.y, center.z)) / radius;

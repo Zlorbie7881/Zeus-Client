@@ -10,14 +10,6 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
-/**
- * Riptide, whenever it is actually allowed, with no fumbling.
- *
- * <p>A trident only riptides in water or rain, so people carry one in the hotbar and lose a second switching to it and
- * another switching back. This does the switching: press use with any item and a trident comes out, the use is held long
- * enough for a real riptide, and your sword is back in your hand afterwards. While you fall it can also throw the riptide
- * upward for you, which is the fastest way out of a fall that would otherwise kill you.</p>
- */
 public final class TridentUtil extends Module {
     private final Setting.Bool onUse = add(new Setting.Bool("Draw it when I use", "Pressing use with anything else in your hand takes the trident out first.", true));
     private final Setting.Bool giveBack = add(new Setting.Bool("Give my item back", "Return to the slot you were holding once the riptide is done.", true));
@@ -54,7 +46,6 @@ public final class TridentUtil extends Module {
         restoreIn = 0;
     }
 
-    /** Riptide needs water or rain, the same test the server runs. */
     private static boolean possible(Minecraft mc) {
         return mc.player != null && (mc.player.isInWaterOrRain() || mc.player.isInWater());
     }

@@ -7,7 +7,6 @@ import com.google.gson.JsonPrimitive;
 import java.util.Locale;
 import java.util.function.BooleanSupplier;
 
-/** One option of a module. The panel draws each kind differently. */
 public abstract class Setting {
     public final String name;
     public final String desc;
@@ -20,7 +19,6 @@ public abstract class Setting {
         this.desc = desc;
     }
 
-    /** A value that is dropped back to its default the next time the client's defaults change, and saved normally after that. */
     private boolean resetOnRev;
 
     @SuppressWarnings("unchecked")
@@ -49,7 +47,6 @@ public abstract class Setting {
         return (T) this;
     }
 
-    /** This setting is only a window onto something kept elsewhere (for example the friend picked in the Friends list): it is never saved or shared with the module. */
     @SuppressWarnings("unchecked")
     public <T extends Setting> T notSaved() {
         this.notSaved = true;
@@ -68,7 +65,6 @@ public abstract class Setting {
         try {
             onChange.run();
         } catch (RuntimeException ignored) {
-            // a setting hook must never break the panel
         }
         Zeus.markDirty();
     }
@@ -76,8 +72,6 @@ public abstract class Setting {
     abstract void save(JsonObject o);
 
     abstract void load(JsonObject o);
-
-    // ------------------------------------------------------------------ kinds
 
     public static final class Bool extends Setting {
         private boolean value;
@@ -89,7 +83,6 @@ public abstract class Setting {
             this.def = def;
         }
 
-        /** The value the setting starts with. */
         public boolean initial() {
             return def;
         }
@@ -137,7 +130,6 @@ public abstract class Setting {
             this.unit = unit;
         }
 
-        /** The value the setting starts with. */
         public double initial() {
             return def;
         }
@@ -201,7 +193,6 @@ public abstract class Setting {
             this.index = def;
         }
 
-        /** The option the setting starts on. */
         public String initialOption() {
             return def >= 0 && def < options.length ? options[def] : "";
         }
@@ -232,14 +223,10 @@ public abstract class Setting {
         }
     }
 
-    /**
-     * A long list of choices shown as a grid of small buttons, for picks such as a mob. Saved by id, so the list can grow
-     * or change between versions without the saved pick pointing at the wrong thing.
-     */
     public static final class Pick extends Setting {
         public final String[] ids;
         public final String[] labels;
-        /** How many button rows the panel needed last time it drew this (the panel updates it). */
+
         public int rows = 8;
         private int index;
         private final int def;
@@ -275,7 +262,6 @@ public abstract class Setting {
             }
         }
 
-        /** Picks a random entry and returns its index. */
         public int random(java.util.Random r) {
             if (ids.length == 0) return 0;
             int i = r.nextInt(ids.length);
@@ -297,14 +283,12 @@ public abstract class Setting {
         }
     }
 
-    /** A short piece of text you type into a box in the panel (a name, an amount, a command). */
     public static final class Text extends Setting {
         public final int max;
         private String value;
         private final String def;
         private boolean temporary;
 
-        /** A field that is only a way to type something in for a button next to it: it is not saved and not shared. */
         public Text temporary() {
             temporary = true;
             return this;
@@ -342,7 +326,6 @@ public abstract class Setting {
         }
     }
 
-    /** A button. */
     public static final class Action extends Setting {
         private final Runnable run;
 
@@ -364,7 +347,6 @@ public abstract class Setting {
         void load(JsonObject o) {}
     }
 
-    /** A read-only block of live text, for lists such as the flagged chunks. */
     public static final class Info extends Setting {
         private final java.util.function.Supplier<java.util.List<String>> lines;
 
@@ -386,7 +368,6 @@ public abstract class Setting {
         void load(JsonObject o) {}
     }
 
-    /** A hidden text value that is saved with the module (a webhook address, for example). It is never drawn in the panel. */
     public static final class Secret extends Setting {
         private String value = "";
 

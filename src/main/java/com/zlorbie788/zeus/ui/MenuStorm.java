@@ -7,20 +7,9 @@ import net.minecraft.sounds.SoundEvents;
 
 import java.util.Random;
 
-/**
- * The storm that now and then rolls over the Zeus main menu. After about a minute on the menu (a random 60 to 100 seconds)
- * clouds gather, rain starts and lightning begins to strike with thunder behind it; two minutes after it began it has cleared
- * again, and the next one comes after another quiet spell of one and a half to three and a half minutes. Time only counts
- * while the menu (or the credits) is on the screen: leaving it for more than a couple of seconds starts the wait again.
- *
- * <p>The state is static and is advanced by {@link ZeusTitleScreen#scene}, which draws the result: {@link #level} says how
- * much of a storm there is (0 clear, 1 full), the clouds and the sky darken with it, {@link #rain} draws the rain, and
- * {@link #flash}, {@link #bolt} the lightning.
- */
 final class MenuStorm {
     private MenuStorm() {}
 
-    /** How long a storm lasts from the first cloud to the last drop, in seconds; the first and last few seconds are the build-up and the clearing. */
     static final float LENGTH = 120f;
     private static final float RAMP_UP = 24f;
     private static final float RAMP_DOWN = 20f;
@@ -33,16 +22,13 @@ final class MenuStorm {
     private static boolean storming;
     private static float clock;
 
-    /** 0 = clear sky, 1 = the full storm. */
     static float level;
-    /** True while the storm is building, false while it is clearing (the moon is swallowed from one side and comes back from the other). */
+
     static boolean rising = true;
-    /** A clock that runs faster while it storms; the clouds are moved by it so they never jump when the wind picks up. */
+
     static float cloudClock;
     private static float rainClock;
 
-    // lightning
-    /** The brightness of the sky flash right now (0..1) and where it is, as fractions of the screen. */
     static float flash;
     static float flashX = 0.5f;
     static float flashY = 0.3f;
@@ -61,7 +47,6 @@ final class MenuStorm {
         return 60f + 40f * RNG.nextFloat();
     }
 
-    /** Starts the wait again (a new visit to the menu). */
     static void reset() {
         visit = 0f;
         nextStart = pickFirst();
@@ -75,13 +60,11 @@ final class MenuStorm {
         last = 0;
     }
 
-    /** Moves time on by what has passed since the last call; returns the cloud clock. */
     static float update() {
         long now = System.nanoTime();
         float dt = last == 0 ? 0f : (now - last) / 1e9f;
         last = now;
         if (dt > 2.5f) {
-            // the menu was away: a new visit
             float keep = cloudClock;
             reset();
             last = now;
@@ -100,7 +83,7 @@ final class MenuStorm {
             }
         } else {
             clock += dt;
-            if (!allowed) clock = Math.max(clock, LENGTH - RAMP_DOWN);   // switched off: it clears now
+            if (!allowed) clock = Math.max(clock, LENGTH - RAMP_DOWN);
             if (clock >= LENGTH) {
                 storming = false;
                 visit = 0f;
@@ -127,7 +110,6 @@ final class MenuStorm {
         flash = 0f;
         if (!storming || level < 0.3f) return;
         if (UiSettings.CALM.on() || Perf.fast()) {
-            // no flashes: the thunder alone still follows now and then
             if (clock >= nextStrike) {
                 nextStrike = clock + 6f + RNG.nextFloat() * 10f;
                 scheduleThunder(0.4f + RNG.nextFloat());
@@ -143,13 +125,11 @@ final class MenuStorm {
             boltDepth = 0.45f + 0.30f * RNG.nextFloat();
             flashX = strikeBolt ? boltX : 0.15f + 0.7f * RNG.nextFloat();
             flashY = 0.22f + 0.2f * RNG.nextFloat();
-            // the stronger the storm, the closer one strike follows another
             nextStrike = clock + (2.0f + 6.5f * RNG.nextFloat()) * (1.5f - 0.55f * level);
             scheduleThunder(0.25f + 1.4f * RNG.nextFloat());
         }
         float e = clock - strikeAt;
         if (e < 0f || e > 1.1f) return;
-        // two quick pulses, then a slow fade
         float v = e < 0.07f ? e / 0.07f : e < 0.15f ? 0.30f : e < 0.24f ? 1f : Math.max(0f, 1f - (e - 0.24f) / 0.8f);
         flash = v * (0.55f + 0.45f * level);
     }
@@ -171,26 +151,21 @@ final class MenuStorm {
                 mc.getSoundManager().play(SimpleSoundInstance.forUI(ev, thunderPitch, thunderVolume * (0.4f + 0.6f * level)));
             }
         } catch (Throwable ignored) {
-            // no sound must never stop the picture
         }
     }
 
-    /** Seconds since the last strike began, or -1 when there is none in a storm. The medallion reacts to it. */
     static float sinceStrike() {
         return storming && strikeAt > -5f ? clock - strikeAt : -1f;
     }
 
-    /** A number that changes with every strike. */
     static int strikeId() {
         return strikeSeed;
     }
 
-    /** True while there is anything of a storm to draw. */
     static boolean on() {
         return level > 0.004f;
     }
 
-    /** The bolt of the current strike, from the cloud ceiling down towards the ground. Drawn behind the clouds, so it comes out of them. */
     static void bolt(GuiGraphics g, int width, int height) {
         if (!strikeBolt || level < 0.3f || UiSettings.CALM.on() || Perf.fast()) return;
         float e = clock - strikeAt;
@@ -205,17 +180,10 @@ final class MenuStorm {
         if (grow >= 1f) Lightning.bloom(g, x1, y1, height * 0.10f, 0xFFB4D2FF, 0.55f * fl);
     }
 
-    /** The rain's pictures are never made bigger than this, whatever the window: they are stretched a little, which only softens the streaks. */
     private static final int RAIN_TEX = 512;
 
-    /**
-     * The rain: two pictures of streaks, each tiling both ways, drawn over the whole window and slid along the way the streaks lean
-     * (down and a little to the left) at two speeds, so there is depth in it. Light on the graphics card by design: two layers
-     * instead of three, tiles about as big as the window (a handful of quads), and pictures of at most 512 pixels a side that are
-     * stretched up (the streaks are soft anyway). The pictures are made once, so nothing is made while the rain falls.
-     */
     static void rain(GuiGraphics g, int width, int height) {
-        if (!on() || UiSettings.CALM.on() || Perf.fast() || MenuSnow.level() > 0.5f) return;   // in the snow season the storm is a blizzard
+        if (!on() || UiSettings.CALM.on() || Perf.fast() || MenuSnow.level() > 0.5f) return;
         String[] names = {"mid", "near"};
         float[] side = {1.0f, 1.45f};
         float[] speed = {1.7f, 2.6f};
@@ -242,7 +210,6 @@ final class MenuStorm {
         }
     }
 
-    /** Builds the storm's pictures ahead of time (the window size is known), so the first storm does not stall. */
     static void warm(int width, int height, float cs, int gs, int cloudPx) {
         try {
             int kh = Math.round(cloudPx * 700f / 2560f);

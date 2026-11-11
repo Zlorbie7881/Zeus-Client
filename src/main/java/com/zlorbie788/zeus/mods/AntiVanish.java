@@ -19,18 +19,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * Anti Vanish: looks for the small tells a vanished player leaves behind. A vanish plugin hides a player by not sending
- * them to you, and a good one leaves nothing. Many leave something, so two checks run:
- * <ul>
- * <li><b>Visible but not in the player list.</b> A player body you can see that is missing from the tab list is vanished
- * (or a plugin's fake player: those are filtered by how long they stay and by moving).</li>
- * <li><b>Unseen digger.</b> The server tells everyone nearby when a player is breaking a block. If the player doing it is
- * not one you can see, somebody invisible is mining close to you.</li>
- * </ul>
- * When one is found, a card with the player's head ("NAME is watching you", and "Good luck, Zeus user" below it) slides in.
- * Nothing is sent to anyone: it only reads what your game already received.
- */
 public final class AntiVanish extends Module {
     private static volatile AntiVanish self;
     private final Setting.Bool tab = add(new Setting.Bool("Body missing from the player list", "Flag a player you can see who is not in the tab list.", true));
@@ -62,7 +50,6 @@ public final class AntiVanish extends Module {
         self = this;
     }
 
-    /** Called when the server announces that an entity is breaking a block. */
     public static void leak(int entityId, BlockPos pos) {
         AntiVanish a = self;
         if (a == null || !a.enabled() || !a.digger.on()) return;
@@ -75,7 +62,6 @@ public final class AntiVanish extends Module {
         a.raise(null, "Unknown player", "block-breaking packet from an entity not present in your client world", pos.getX(), pos.getY(), pos.getZ(), 45);
     }
 
-    /** Captures UUIDs from the tab-removal packet before vanilla removes their PlayerInfo entries. */
     public static void noteTabRemoval(Object packet) {
         AntiVanish a = self;
         if (a == null || !a.enabled() || !a.tabPacket.on() || packet == null) return;
@@ -94,7 +80,6 @@ public final class AntiVanish extends Module {
                 }
             }
         } catch (ReflectiveOperationException | RuntimeException ignored) {
-            // Mapping changes must never break packet processing; the normal entity/tab checks still run.
         }
     }
 
@@ -140,7 +125,6 @@ public final class AntiVanish extends Module {
         if (mc.level == null || mc.player == null || mc.getConnection() == null) return;
         if (++ticks % 10 != 0) return;
         long now = System.currentTimeMillis();
-        // Correlate a packet-level tab removal with a still-loaded player body. A removal alone is not proof.
         if (tabPacket.on()) {
             for (var entry : new java.util.ArrayList<>(removedFromTab.entrySet())) {
                 UUID id = entry.getKey();
@@ -174,7 +158,6 @@ public final class AntiVanish extends Module {
                 pending.remove(id);
                 continue;
             }
-            // wait a moment: right after a player arrives, the list entry can come a few ticks later
             Long first = pending.putIfAbsent(id, now);
             if (first == null || now - first < 1800) continue;
             Long last = alerted.get(id);
@@ -215,7 +198,6 @@ public final class AntiVanish extends Module {
         Draw.shadow(g, x, y, cw, ch, 10, 8, 0.5f * a);
         Draw.rrect(g, x, y, cw, ch, 10, Draw.rgba(0xFF0D1220, 0.94f * a), Draw.rgba(0xFF171D31, 0.94f * a));
         Draw.rrectLine(g, x, y, cw, ch, 10, Draw.rgba(danger, 0.8f * a));
-        // the head, with a pulsing red ring
         int hs = 40;
         int hx = x + 12;
         int hy = y + (ch - hs) / 2;
@@ -257,7 +239,6 @@ public final class AntiVanish extends Module {
         }
     }
 
-    /** Lines for the panel card. */
     public static List<String> help() {
         return List.of("Correlates visible-but-unlisted entities, tab-removal packets, spectator state and unseen block-breaking packets.",
                 "Scores are heuristic evidence, not proof. The client cannot detect players the server never sends.");

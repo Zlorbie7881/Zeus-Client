@@ -13,11 +13,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/**
- * Hands every sound the client is about to play to Sound ESP: the id, the category, the position and who caused it.
- * Both entry points are hooked, because sounds the server sends and sounds played locally (records, for example) take
- * different paths. Nothing is changed or cancelled here, the sound plays exactly as it normally would.
- */
 @Mixin(ClientLevel.class)
 public abstract class ClientLevelSoundMixin {
 

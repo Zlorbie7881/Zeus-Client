@@ -3,19 +3,12 @@ package com.zlorbie788.zeus.core;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Measures what every module costs. Timing only runs while the Performance Monitor is on (a flag check otherwise), so it
- * adds nothing for everyone else. Every module runs on the game thread, so the share of one second it used is the share of
- * your frame rate it takes.
- */
 public final class Prof {
     private Prof() {}
 
-    /** True while somebody is looking at the numbers. */
     public static volatile boolean on;
     private static final java.util.Set<String> HOLDERS = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
-    /** Asks for the measuring to run (or stops asking). The timing only runs while at least one holder wants it. */
     public static void hold(String who, boolean want) {
         boolean changed = want ? HOLDERS.add(who) : HOLDERS.remove(who);
         if (!changed) return;
@@ -25,7 +18,6 @@ public final class Prof {
         else if (!on && was) reset();
     }
 
-    /** One row of the report. */
     public record Row(Module module, double percent, double msPerFrame) {}
 
     private static long windowStart;
@@ -35,14 +27,12 @@ public final class Prof {
 
     private static boolean costWanted;
 
-    /** Keeps the measuring in step with the "Show what each module costs" setting. */
     public static void sync(boolean wanted) {
         if (wanted == costWanted) return;
         costWanted = wanted;
         hold("cost", wanted);
     }
 
-    /** Called once a frame by the monitor: rolls the window over once a second. */
     public static void roll() {
         long now = System.nanoTime();
         frames++;
@@ -78,7 +68,6 @@ public final class Prof {
         return report;
     }
 
-    /** What all Zeus modules together used of the last second, in percent of the game thread. */
     public static double total() {
         return totalPercent;
     }

@@ -2,17 +2,6 @@ package com.zlorbie788.zeus.ui;
 
 import net.minecraft.client.gui.GuiGraphics;
 
-/**
- * How the medallion on the menu reacts to a lightning strike.
- *
- * <ul>
- *   <li><b>It is lit from the side of the strike.</b> The picture is lit in a grid of small pieces, and the pieces facing the
- *       strike take the light most, so a bolt on the left lights the left of the face and leaves the right in shade.</li>
- *   <li><b>An arc leaps</b> from the rim, on the side of the strike, out towards the bolt, flickering with the flash.</li>
- *   <li><b>A shock ring</b> leaves the rim at the peak of the flash and spreads.</li>
- *   <li><b>Sparks crawl round the rim</b> while the flash lasts and a little longer, fading with it.</li>
- * </ul>
- */
 final class MedallionFx {
     private MedallionFx() {}
 
@@ -27,7 +16,6 @@ final class MedallionFx {
         boolean afterglow = e >= 0f && e < 2.2f;
         if (fl <= 0.03f && !afterglow) return;
 
-        // which way the light came from
         float dx = ZeusTitleScreen.flashX - cx;
         float dy = ZeusTitleScreen.flashY - cy;
         float dl = (float) Math.sqrt(dx * dx + dy * dy);
@@ -40,7 +28,6 @@ final class MedallionFx {
         }
 
         if (fl > 0.03f) {
-            // the whole picture lit, a grid of pieces, the ones facing the strike the most
             int sw = logo.w;
             int sh = logo.h;
             for (int j = 0; j < ROWS; j++) {
@@ -61,7 +48,6 @@ final class MedallionFx {
                     if (a > 0.01f) logo.drawPart(g, x0, y0, x1 - x0, y1 - y0, sx0, sy0, sx1 - sx0, sy1 - sy0, Draw.rgba(0xFFC4DAFF, a));
                 }
             }
-            // the light on the side of the strike spills over the rim
             Lightning.bloom(g, cx + dx * r * 0.55f, cy + dy * r * 0.55f, r * 0.95f, 0xFFB4D2FF, 0.26f * fl * appear);
             Lightning.bloom(g, cx, cy, r * 1.3f, 0xFFB4D2FF, 0.18f * fl * appear);
             Thunder.ring(g, cx, cy, r * 0.99f, t, fl * appear, k);
@@ -69,7 +55,6 @@ final class MedallionFx {
         }
 
         if (e >= 0.05f && e < 0.55f && fl > 0.2f) {
-            // an arc leaps from the rim towards the bolt, redrawn from new noise a dozen times a second
             int slot = (int) (t * 12f);
             float fx = cx + dx * r;
             float fy = cy + dy * r;
@@ -81,7 +66,6 @@ final class MedallionFx {
         }
 
         if (e >= 0.10f && e < 0.95f) {
-            // the shock ring leaves the rim
             float q = (e - 0.10f) / 0.85f;
             float rad = r * (1.0f + 0.75f * (1f - (1f - q) * (1f - q)));
             float a = (1f - q) * (1f - q) * 0.55f * appear;
@@ -90,7 +74,6 @@ final class MedallionFx {
         }
 
         if (afterglow && e > 0.25f) {
-            // little sparks go on crawling round the rim as the light dies
             float f = (float) Math.pow(1f - (e - 0.25f) / 1.95f, 1.6);
             Thunder.ring(g, cx, cy, r * 0.99f, t * 0.8f + 4f, f * 0.55f * appear, k);
             Lightning.bloom(g, cx, cy, r * 1.15f, 0xFF9CBCFF, 0.10f * f * appear);

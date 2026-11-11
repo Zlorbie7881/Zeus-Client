@@ -18,15 +18,6 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 
-/**
- * Highlights dropped items. It works from a list of items with a colour each: only the listed items
- * are marked (diamonds, netherite, elytra, totems...) and each one has the colour you gave it. Switch "Only listed items"
- * off to mark every dropped item. Items get the game's glow outline through walls, a box and an optional tracer.
- *
- * <p>The list is plain text: {@code diamond:cyan, netherite_ingot:purple, shulker_box:#FF66CC}. A name is the item id without
- * {@code minecraft:}; it may end with a star to mean "starts with" ({@code diamond_*}) or start with one ({@code *_ore}).
- * A colour is one of the colour names of the other ESPs or a hex code. A name with no colour uses the default colour.</p>
- */
 public final class ItemEsp extends Module {
     public static final String DEFAULT_LIST = "diamond:cyan, emerald:green, netherite_ingot:purple, ancient_debris:purple, elytra:orange, totem_of_undying:yellow, trident:cyan, "
             + "enchanted_golden_apple:pink, golden_apple:yellow, nether_star:white, heart_of_the_sea:cyan, end_crystal:pink, shulker_box:pink, gold_ingot:yellow, gold_block:yellow, gold_nugget:yellow";
@@ -54,8 +45,6 @@ public final class ItemEsp extends Module {
     }
 
     @Override public String info() { return shown == 0 ? null : Integer.toString(shown); }
-
-    // --------------------------------------------------------------- the list
 
     private static int colorByName(String word) {
         if (word.startsWith("#")) {
@@ -96,7 +85,6 @@ public final class ItemEsp extends Module {
         }
     }
 
-    /** The colour for a dropped item, or 0 when it is not marked. */
     private int colorOf(ItemEntity item) {
         if (item.isRemoved() || !item.isAlive()) return 0;
         if (!onlyListed.on()) return item.getItem().isEnchanted() ? 0xFFB06BFF : 0xFF70D6FF;
@@ -124,8 +112,6 @@ public final class ItemEsp extends Module {
         return mc.player != null && mc.player.distanceToSqr(e) <= r * r;
     }
 
-    // --------------------------------------------------------------- the glow hooks (called through Esp)
-
     public static boolean outlines(Entity e) {
         ItemEsp s = self;
         if (s == null || !s.enabled() || !s.outline.on() || !(e instanceof ItemEntity item)) return false;
@@ -137,8 +123,6 @@ public final class ItemEsp extends Module {
         if (s == null || !s.enabled() || !s.outline.on() || !(e instanceof ItemEntity item)) return 0;
         return s.inRange(Minecraft.getInstance(), e) ? s.colorOf(item) & 0xFFFFFF : 0;
     }
-
-    // --------------------------------------------------------------- the overlay
 
     @Override protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
         shown = 0;

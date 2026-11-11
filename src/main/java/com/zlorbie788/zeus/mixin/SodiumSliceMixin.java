@@ -8,12 +8,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/**
- * Sodium (and Embeddium) build chunk meshes from their own view of the world instead of the game's, so the X-Ray hook on the
- * game's view never runs when one of them is installed. This is the same hook on their view. The class is only touched when
- * the mod is there ({@code @Pseudo}), and every name is looked up by name only, so a different version simply does nothing
- * and the module falls back to Block ESP by itself.
- */
 @Pseudo
 @Mixin(targets = {
     "net.caffeinemc.mods.sodium.client.world.LevelSlice",

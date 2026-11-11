@@ -3,12 +3,6 @@ package com.zlorbie788.zeus.core;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.phys.Vec3;
 
-/**
- * Vanilla kicks a survival player who hovers in the air for four seconds ("Flying is not enabled on this server"), and a
- * singleplayer world runs the same check on its own built-in server. In your own singleplayer world Zeus dips you a tenth
- * of a block now and then while a module that keeps you in the air is on, so that check never fires. This is only active
- * in singleplayer: on a multiplayer server it does nothing at all.
- */
 public final class AntiKick {
     private AntiKick() {}
 

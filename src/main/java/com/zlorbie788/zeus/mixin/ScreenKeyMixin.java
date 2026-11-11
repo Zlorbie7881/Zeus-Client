@@ -11,11 +11,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/**
- * Ctrl+K opens the command palette from any screen, not just from in the game: the pause menu, a chest, the chat. The
- * palette puts itself back on close. Screens that want their own Ctrl+K can override keyPressed, since this only runs
- * when the screen does not handle the key first — it is at the head, and only claims the combination itself.
- */
 @Mixin(Screen.class)
 public abstract class ScreenKeyMixin {
     @Inject(method = "keyPressed", at = @At("HEAD"), cancellable = true, require = 0)

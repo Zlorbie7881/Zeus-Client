@@ -17,12 +17,6 @@ import java.util.Locale;
 import java.util.Random;
 import java.util.Set;
 
-/**
- * Sells what is in your hotbar on the auction house by typing the sell command for you, once for every item, with a pause
- * between the commands. It does what you would do by hand: pick the slot, type {@code /ah sell <price>}, and press the confirm
- * button if the server asks for one. You choose the command, the price (with thousand, million, billion and trillion), which
- * slots, and how fast. Check that the server allows this kind of help: that is your decision and your account.
- */
 public final class AutoSell extends Module {
     private final Setting.Text command = add(new Setting.Text("Command", "The command without the slash and without the price. The price is added after it.", "ah sell", 30));
     private final Setting.Num price = add(new Setting.Num("Price", "What each item is listed for, in the unit below.", 1, 0, 999, 0.01, ""));
@@ -66,9 +60,6 @@ public final class AutoSell extends Module {
         return enabled() && sold > 0 ? Integer.toString(sold) : null;
     }
 
-    // ------------------------------------------------------------ the price
-
-    /** The price as the command wants it. */
     private String priceText() {
         BigDecimal v = BigDecimal.valueOf(price.get()).setScale(2, java.math.RoundingMode.HALF_UP);
         double mult = switch (unit.index()) {
@@ -96,8 +87,6 @@ public final class AutoSell extends Module {
         return c + " " + priceText();
     }
 
-    // ------------------------------------------------------------ which slots
-
     private boolean wanted(int i) {
         return switch (what.index()) {
             case 0 -> Inv.selected() == i || i == selectedBefore;
@@ -120,8 +109,6 @@ public final class AutoSell extends Module {
         }
         return -1;
     }
-
-    // ------------------------------------------------------------ the loop
 
     @Override
     protected void onEnable() {
@@ -192,7 +179,7 @@ public final class AutoSell extends Module {
                 before = Inv.get(s).copy();
                 count = before.getCount();
                 phase = P.SENT;
-                cd = 2; // the game tells the server about the new slot on its next tick
+                cd = 2;
                 note = "Selected slot " + (s + 1) + ".";
             }
             case SENT -> {
@@ -218,7 +205,6 @@ public final class AutoSell extends Module {
                         cd = 8;
                         return;
                     }
-                    // a window without a confirm button: leave it
                     mc.setScreen(null);
                 }
                 phase = P.CHECK;
@@ -247,7 +233,6 @@ public final class AutoSell extends Module {
         }
     }
 
-    /** A button that confirms: a slot whose name says confirm, accept, yes or list. */
     private static int confirmSlot(AbstractContainerMenu menu) {
         int n = Math.max(0, menu.slots.size() - 36);
         for (int i = 0; i < n; i++) {

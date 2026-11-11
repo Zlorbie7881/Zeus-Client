@@ -18,34 +18,30 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 import org.lwjgl.glfw.GLFW;
 
-/** Zeus: client entry point. */
 public class ZeusClient implements ClientModInitializer {
     public static final String MOD_ID = "zeus";
 
     public static final KeyMapping.Category CATEGORY = KeyMapping.Category.register(Identifier.fromNamespaceAndPath(MOD_ID, "main"));
-    /** The key that opens the panel. Change it in the panel itself or in Options > Controls. */
+
     public static KeyMapping OPEN;
-    /** Plays the butterfly knife trick that is chosen in its settings. */
+
     public static KeyMapping TRICK;
-    /** Chooses the next trick. */
+
     public static KeyMapping TRICK_NEXT;
-    /** Hotbar sword/mace or custom-slot swap. */
+
     public static KeyMapping ATTRIBUTE_SWAP;
     public static KeyMapping SPEAR_LUNGE;
-    /** Ctrl+K opens the command palette; the plain key on its own does nothing. */
+
     public static KeyMapping PALETTE;
 
     private static boolean pendingOpen;
     private static boolean pendingHudEditor;
     private static boolean pendingKeybinds;
 
-    /** Opens the panel on the next tick, so the chat screen cannot close it again. */
     public static void openLater() {
         pendingOpen = true;
     }
 
-    /** Defers the HUD editor until the chat/command screen has released focus. */
-    /** Defers the keybind screen until the chat/command screen has released focus. */
     public static void openKeybindsLater() {
         pendingKeybinds = true;
     }
@@ -74,7 +70,6 @@ public class ZeusClient implements ClientModInitializer {
             Minecraft mc = Minecraft.getInstance();
             com.zlorbie788.zeus.ui.ZeusLoading.worldFade(g, mc.getWindow().getGuiScaledWidth(), mc.getWindow().getGuiScaledHeight());
             if (mc.options.hideGui) return;
-            // the pause menu paints its own dark backdrop: the panels behind it would only show through as clutter
             if (mc.screen instanceof net.minecraft.client.gui.screens.PauseScreen) return;
             Zeus.hud(g, mc, tracker.getGameTimeDeltaPartialTick(false), mc.getWindow().getGuiScaledWidth(), mc.getWindow().getGuiScaledHeight());
         });
@@ -88,7 +83,6 @@ public class ZeusClient implements ClientModInitializer {
 
     private static void onTick(Minecraft mc) {
         if (Zeus.destroyed()) {
-            // self destruction: no key opens anything until /zeus brings it back
             if (mc.screen instanceof ZeusScreen) mc.setScreen(null);
             return;
         }
@@ -130,23 +124,18 @@ public class ZeusClient implements ClientModInitializer {
                 }
             }
         } else {
-            // presses made while a screen was open must not fire later
             while (OPEN.consumeClick()) {
-                // drained
             }
             while (TRICK.consumeClick()) {
-                // drained
             }
             while (TRICK_NEXT.consumeClick()) {
-                // drained
             }
-            while (ATTRIBUTE_SWAP.consumeClick()) { /* drained while a screen is open */ }
-            while (SPEAR_LUNGE.consumeClick()) { /* drained while a screen is open */ }
-            while (PALETTE.consumeClick()) { /* drained while a screen is open: Ctrl+K is handled by the screen itself */ }
+            while (ATTRIBUTE_SWAP.consumeClick()) {  }
+            while (SPEAR_LUNGE.consumeClick()) {  }
+            while (PALETTE.consumeClick()) {  }
             for (Module m : Zeus.all()) {
                 if (m.key == null) continue;
                 while (m.key.consumeClick()) {
-                    // drained
                 }
             }
         }
@@ -154,7 +143,6 @@ public class ZeusClient implements ClientModInitializer {
         Zeus.tick(mc);
     }
 
-    /** Whether either Ctrl is held right now, which is what turns K into the palette key. */
     private static boolean controlDown(Minecraft mc) {
         try {
             return InputConstants.isKeyDown(mc.getWindow(), GLFW.GLFW_KEY_LEFT_CONTROL)

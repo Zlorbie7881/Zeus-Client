@@ -11,11 +11,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/**
- * The chunk builder reads its blocks through this view of the world. While X-ray is on, every block that is not one of
- * the blocks you want to see is reported as air, and so is every fluid whose block is not wanted (water, mostly). The
- * lighting is handled by the module itself, not here.
- */
 @Mixin(RenderSectionRegion.class)
 public abstract class RenderSectionRegionMixin {
     @Inject(method = "getBlockState", at = @At("RETURN"), cancellable = true, require = 0)

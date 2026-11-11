@@ -23,17 +23,12 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Predicate;
 
-/** The two explosive auras. */
 public final class CrystalAnchor {
     private CrystalAnchor() {}
 
-    /**
-     * Coordinates the two explosive modules. Both modules may remain enabled, but only one
-     * may send a placement/attack interaction during a short shared window. Alternating the
-     * owner prevents the first module in the tick list from permanently starving the other.
-     */
     private static final class ActionCoordinator {
         private static long nextAllowedNanos;
         private static String lastOwner = "";
@@ -45,7 +40,7 @@ public final class CrystalAnchor {
             if (owner.equals(lastOwner) && !owner.equals(preferredOwner)) return false;
             lastOwner = owner;
             preferredOwner = owner.equals("crystal") ? "anchor" : "crystal";
-            nextAllowedNanos = now + 65_000_000L;
+            nextAllowedNanos = now + 60_000_000L + ThreadLocalRandom.current().nextLong(35_000_000L);
             return true;
         }
     }
@@ -57,10 +52,10 @@ public final class CrystalAnchor {
         return s.is(Blocks.OBSIDIAN) || s.is(Blocks.BEDROCK);
     }
 
-    /**
-     * Places end crystals next to a target and blows them up. It can lay the obsidian first, picks the spot where the
-     * target takes the most damage and you take the least, and never places a crystal that would hurt you more than you allow.
-     */
+    private static int jitterTicks(int ticks) {
+        return ticks <= 0 ? ticks : Math.max(1, ticks + ThreadLocalRandom.current().nextInt(3) - 1);
+    }
+
     public static final class CrystalAura extends Module {
         private final Targets.Pick who = Targets.pick(this::add, true, true, false);
         private final Setting.Num targetRange = add(new Setting.Num("Target range", "How far away a target is picked.", 10, 4, 20, 1, " blocks"));
@@ -75,6 +70,7 @@ public final class CrystalAnchor {
         private final Setting.Num obsidianDelay = add(new Setting.Num("Obsidian delay", "Ticks between two obsidian blocks.", 4, 0, 20, 1, " ticks")).showIf(() -> obsidian.on());
         private final Setting.Bool onlyUseful = add(new Setting.Bool("Break only useful crystals", "Only hit crystals that hurt the target. Off: hit every crystal in reach.", true));
         private final Setting.Bool pauseEat = add(new Setting.Bool("Pause while eating", "Do nothing while you use an item.", true));
+        private final Setting.Bool los = add(new Setting.Bool("Line of sight only", "Only work on crystals and targets you can actually see.", true));
         private final Setting.Bool rotate = add(new Setting.Bool("Look at it", "Tells the server you look at the crystal or block before you hit or place it (your own view does not move). Some servers refuse hits at things you do not face.", true));
         private final Setting.Bool swing = add(new Setting.Bool("Swing arm", "Show the arm swinging.", true));
 
@@ -117,17 +113,17 @@ public final class CrystalAnchor {
             if (obsCd > 0) obsCd--;
             LivingEntity target = Targets.nearest(mc, who, targetRange.get());
             if (target == null) return;
+            if (los.on() && !mc.player.hasLineOfSight(target)) return;
             info = target.getName().getString();
 
-            // 1. hit a crystal that is already there
             if (breakCd == 0) {
                 Entity bestCrystal = null;
                 float bestScore = -1e9f;
                 for (Entity e : com.zlorbie788.zeus.core.Env.entities(mc, breakRange.get() + 1.0)) {
                     if (e.getType() != EntityType.END_CRYSTAL || !e.isAlive()) continue;
-                    // a crystal the server has not answered a single swing at is not worth another
                     if (Hits.cold(e.getId())) continue;
                     if (mc.player.getEyePosition().distanceTo(e.position()) > breakRange.get()) continue;
+                    if (los.on() && !mc.player.hasLineOfSight(e)) continue;
                     float dt = Dmg.explosion(mc, e.position(), target, 6f);
                     float ds = selfDamage(mc, e.position());
                     if (!selfSafe(mc, ds)) continue;
@@ -144,12 +140,11 @@ public final class CrystalAnchor {
                     Hits.attempt(bestCrystal);
                     mc.gameMode.attack(mc.player, bestCrystal);
                     if (swing.on()) mc.player.swing(InteractionHand.MAIN_HAND);
-                    breakCd = breakDelay.i();
+                    breakCd = jitterTicks(breakDelay.i());
                     return;
                 }
             }
 
-            // 2. place a crystal on obsidian or bedrock
             BlockPos tp = target.blockPosition();
             if (placeCd == 0) {
                 BlockPos bestBase = null;
@@ -180,7 +175,7 @@ public final class CrystalAnchor {
                     if (!ActionCoordinator.claim("crystal")) return;
                     if (rotate.on()) Aim.look(new Vec3(bestBase.getX() + 0.5, bestBase.getY() + 1.0, bestBase.getZ() + 0.5));
                     if (Build.useOn(Build.top(bestBase), CRYSTAL, swing.on())) {
-                        placeCd = placeDelay.i();
+                        placeCd = jitterTicks(placeDelay.i());
                         info = target.getName().getString() + " " + Math.round(bestScore);
                     } else if (System.currentTimeMillis() - warned > 5000) {
                         warned = System.currentTimeMillis();
@@ -190,8 +185,6 @@ public final class CrystalAnchor {
                 }
             }
 
-            // 3. nothing to place on: lay obsidian where a crystal would hurt the target. The block goes at the target's feet
-            // level (on the ground next to it) or in a hole one lower, so the crystal sits on top of it
             if (obsidian.on() && obsCd == 0 && (Inv.hotbar(OBSIDIAN) >= 0 || Inv.offhand(OBSIDIAN))) {
                 BlockPos mine = mc.player.blockPosition();
                 BlockPos bestSpot = null;
@@ -220,16 +213,12 @@ public final class CrystalAnchor {
                 if (bestSpot != null) {
                     if (!ActionCoordinator.claim("crystal")) return;
                     if (rotate.on()) Aim.look(Vec3.atCenterOf(bestSpot));
-                    if (Build.place(bestSpot, OBSIDIAN, swing.on(), Build.REACH)) obsCd = obsidianDelay.i();
+                    if (Build.place(bestSpot, OBSIDIAN, swing.on(), Build.REACH)) obsCd = jitterTicks(obsidianDelay.i());
                 }
             }
         }
     }
 
-    /**
-     * Places a respawn anchor next to a target, charges it with glowstone and sets it off. Anchors do not explode in the
-     * Nether, so this module needs the Overworld or the End.
-     */
     public static final class AnchorAura extends Module {
         private final Targets.Pick who = Targets.pick(this::add, true, true, false);
         private final Setting.Num targetRange = add(new Setting.Num("Target range", "How far away a target is picked.", 8, 3, 16, 1, " blocks"));
@@ -241,6 +230,8 @@ public final class CrystalAnchor {
         private final Setting.Bool antiSuicide = add(new Setting.Bool("Anti suicide", "Never use an anchor that could kill you.", true));
         private final Setting.Bool rotate = add(new Setting.Bool("Look at it", "Tells the server you look at the anchor before you place, charge or set it off (your own view does not move).", true));
         private final Setting.Bool swing = add(new Setting.Bool("Swing arm", "Show the arm swinging.", true));
+        private final Setting.Bool los = add(new Setting.Bool("Line of sight only", "Only work on targets and anchors you can actually see.", true));
+        private final Setting.Bool pauseUse = add(new Setting.Bool("Pause while eating", "Do nothing while you use an item.", true));
 
         private BlockPos anchor;
         private long ticks;
@@ -262,14 +253,12 @@ public final class CrystalAnchor {
             ticks = 0;
         }
 
-        /** The charge the block really has, or -1 when it cannot be read. */
         static int chargeOf(BlockState st) {
             try {
                 for (net.minecraft.world.level.block.state.properties.Property<?> p : st.getProperties()) {
                     if (p.getName().equals("charges") && p instanceof net.minecraft.world.level.block.state.properties.IntegerProperty ip) return st.getValue(ip);
                 }
             } catch (RuntimeException ignored) {
-                // not an anchor
             }
             return -1;
         }
@@ -300,6 +289,7 @@ public final class CrystalAnchor {
         protected void onTick(Minecraft mc) {
             info = null;
             if (mc.player == null || mc.level == null || mc.gameMode == null || mc.screen != null) return;
+            if (pauseUse.on() && mc.player.isUsingItem()) return;
             ticks++;
             if (cd > 0) {
                 cd--;
@@ -314,15 +304,17 @@ public final class CrystalAnchor {
                 anchor = null;
                 return;
             }
+            if (los.on() && !mc.player.hasLineOfSight(target)) {
+                anchor = null;
+                return;
+            }
             info = target.getName().getString();
             if (anchor != null && !isAnchor(anchor)) {
-                // just placed: the server has not answered yet, so give it a moment. Later: it has been used up or broken
                 if (ticks - placedAt < 12) return;
                 anchor = null;
                 charged = 0;
             }
             if (anchor != null && charged > 0) {
-                // trust the block over the counter once the server has had time to answer
                 int real = chargeOf(Build.state(anchor));
                 if (real >= 0 && ticks - chargedAt > 8) charged = real;
             }
@@ -355,7 +347,7 @@ public final class CrystalAnchor {
                     anchor = best;
                     placedAt = ticks;
                     charged = 0;
-                    cd = delay.i();
+                    cd = jitterTicks(delay.i());
                 } else {
                     warn("Anchor Aura: no respawn anchor in your hotbar");
                 }
@@ -373,13 +365,12 @@ public final class CrystalAnchor {
                 if (Build.useOn(click, Inv.is(Items.GLOWSTONE), swing.on())) {
                     charged++;
                     chargedAt = ticks;
-                    cd = Math.max(delay.i(), 1);
+                    cd = Math.max(jitterTicks(delay.i()), 1);
                 } else {
                     warn("Anchor Aura: no glowstone in your hotbar");
                 }
                 return;
             }
-            // a hotbar slot that does not hold glowstone, so the click sets the anchor off instead of charging it
             int slot = Inv.hotbar(s -> !s.is(Items.GLOWSTONE));
             if (slot < 0) {
                 for (int i = 0; i < 9; i++) if (!Inv.get(i).is(Items.GLOWSTONE)) slot = i;
@@ -395,7 +386,7 @@ public final class CrystalAnchor {
             });
             charged = 0;
             anchor = null;
-            cd = delay.i();
+            cd = jitterTicks(delay.i());
         }
     }
 }

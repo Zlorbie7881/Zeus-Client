@@ -27,13 +27,6 @@ import java.util.zip.GZIPInputStream;
 import java.util.zip.Deflater;
 import java.util.zip.Inflater;
 
-/**
- * Twenty profiles. A profile is a complete copy of your settings (every module, the panel, the place of the windows). They
- * are kept in their own file, so they are still there the next time you start the game. One profile can be the active one:
- * while it is, every change you make is also written into it, so it never goes out of date. A profile can be turned into a
- * share code (a short piece of text) and a code from someone else can be put into any profile. Private values such as a
- * Discord webhook address are never part of a code.
- */
 public final class Profiles extends Module {
     public static final int SLOTS = 20;
     private static final String PREFIX = "ZEUS2-";
@@ -44,11 +37,11 @@ public final class Profiles extends Module {
     private static final String[] NAMES = new String[SLOTS];
     private static final JsonObject[] DATA = new JsonObject[SLOTS];
     private static final String[] SAVED = new String[SLOTS];
-    /** The custom ID of each profile: letters, digits, - and _ (up to 16), never the same for two profiles. Empty until you set one. */
+
     private static final String[] IDS = new String[SLOTS];
     private static int active = -1;
     private static boolean loaded;
-    /** Which profile (0-based slot) to load when you join a server; the key is the server address, or "singleplayer". */
+
     private static final java.util.Map<String, Integer> SERVERS = new java.util.LinkedHashMap<>();
     private static boolean autoOn = true;
 
@@ -97,9 +90,6 @@ public final class Profiles extends Module {
         autoOn = autoSwitch.on();
     }
 
-    // ------------------------------------------------------------ one profile per server
-
-    /** The address of the server you are on, lower case and without the usual port, or "singleplayer". */
     static String serverKey() {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || com.zlorbie788.zeus.core.Env.local() || mc.getCurrentServer() == null || mc.getCurrentServer().ip == null) return "singleplayer";
@@ -108,7 +98,6 @@ public final class Profiles extends Module {
         return ip.isEmpty() ? "singleplayer" : ip;
     }
 
-    /** Called once each time a world opens: loads the profile assigned to this server, if there is one and it is not already active. */
     public static void onWorldEntered() {
         load();
         if (!autoOn || SERVERS.isEmpty()) return;
@@ -164,13 +153,10 @@ public final class Profiles extends Module {
         }
     }
 
-    // ------------------------------------------------------------ the file
-
     private static Path file() {
         return FabricLoader.getInstance().getConfigDir().resolve("zeus-profiles.json");
     }
 
-    /** How many of the profile places hold a profile (for the count shown on the panel). */
     public static int savedCount() {
         load();
         int n = 0;
@@ -197,7 +183,6 @@ public final class Profiles extends Module {
                         int v = e.getValue().getAsInt();
                         if (v >= 0 && v < SLOTS) SERVERS.put(e.getKey(), v);
                     } catch (RuntimeException ignored) {
-                        // a broken entry does not stop the others
                     }
                 }
             }
@@ -256,7 +241,6 @@ public final class Profiles extends Module {
         }
     }
 
-    /** Called after the normal settings were written: the active profile gets the same settings. */
     public static void onSaved(JsonObject snapshot) {
         if (!loaded || !followOn || active < 0 || active >= SLOTS || DATA[active] == null && NAMES[active] == null) return;
         DATA[active] = Zeus.snapshot(true);
@@ -279,7 +263,6 @@ public final class Profiles extends Module {
         return r.isEmpty() ? null : r;
     }
 
-    /** An ID is lower case letters, digits, - and _ only, 1 to 16 long; anything else is dropped. */
     static String cleanId(String s) {
         if (s == null) return null;
         StringBuilder b = new StringBuilder();
@@ -290,15 +273,12 @@ public final class Profiles extends Module {
         return b.length() == 0 ? null : b.toString();
     }
 
-    /** The slot (0-based) that has this ID, or -1. */
     static int slotOfId(String id) {
         String c = cleanId(id);
         if (c == null) return -1;
         for (int i = 0; i < SLOTS; i++) if (c.equals(IDS[i])) return i;
         return -1;
     }
-
-    // ------------------------------------------------------------ what the panel shows
 
     private void refreshLabels() {
         for (int i = 0; i < SLOTS; i++) {
@@ -327,8 +307,6 @@ public final class Profiles extends Module {
         Zeus.toast(m, true);
     }
 
-    // ------------------------------------------------------------ the buttons
-
     private void saveHere() {
         int i = chosen();
         DATA[i] = Zeus.snapshot(true);
@@ -356,7 +334,6 @@ public final class Profiles extends Module {
         try {
             clip = Minecraft.getInstance().keyboardHandler.getClipboard();
         } catch (RuntimeException ignored) {
-            // no clipboard
         }
         nameWith(clip);
     }
@@ -389,7 +366,6 @@ public final class Profiles extends Module {
         try {
             clip = Minecraft.getInstance().keyboardHandler.getClipboard();
         } catch (RuntimeException ignored) {
-            // no clipboard
         }
         idWith(clip);
     }
@@ -467,7 +443,6 @@ public final class Profiles extends Module {
         try {
             clip = Minecraft.getInstance().keyboardHandler.getClipboard();
         } catch (RuntimeException ignored) {
-            // no clipboard
         }
         codeWith(clip);
     }
@@ -482,7 +457,6 @@ public final class Profiles extends Module {
         int i = chosen();
         DATA[i] = (JsonObject) got[1];
         if (got[0] != null) NAMES[i] = (String) got[0];
-        // the ID that came with the code is kept only if no other profile already uses it
         if (got.length > 2 && got[2] != null) {
             int other = slotOfId((String) got[2]);
             if (other < 0 || other == i) IDS[i] = (String) got[2];
@@ -494,12 +468,6 @@ public final class Profiles extends Module {
         say("Code put into profile " + (i + 1) + " and loaded");
     }
 
-    // ------------------------------------------------------------ share codes
-
-    /**
-     * A code is the shared settings (the modules and the panel's own settings, not where the windows stand) as compact JSON,
-     * squeezed with deflate and written as URL-safe text behind a short label.
-     */
     public static String encode(String name, JsonObject data) throws IOException {
         return encode(name, null, data);
     }
@@ -523,7 +491,6 @@ public final class Profiles extends Module {
         return PREFIX + Base64.getUrlEncoder().withoutPadding().encodeToString(bytes.toByteArray());
     }
 
-    /** Returns {name or null, data} or null when the text is not a code. Codes of the older kind (ZEUS1-) still work. */
     public static Object[] decode(String text) {
         if (text == null) return null;
         String t = text.trim().replaceAll("\\s+", "");
@@ -538,7 +505,7 @@ public final class Profiles extends Module {
                     int n;
                     while ((n = z.read(buf)) > 0) {
                         out.write(buf, 0, n);
-                        if (out.size() > 4_000_000) return null; // a code that unpacks to something huge is refused
+                        if (out.size() > 4_000_000) return null;
                     }
                 }
             } else {
@@ -572,7 +539,6 @@ public final class Profiles extends Module {
         }
     }
 
-    /** A code never sets a private value, even if someone edited one into it by hand. */
     private static void stripSecrets(JsonObject data) {
         try {
             if (!data.has("modules") || !data.get("modules").isJsonObject()) return;
@@ -585,7 +551,6 @@ public final class Profiles extends Module {
                 for (Setting st : m.settings()) if (st instanceof Setting.Secret) s.remove(st.name);
             }
         } catch (RuntimeException ignored) {
-            // nothing to strip
         }
     }
 

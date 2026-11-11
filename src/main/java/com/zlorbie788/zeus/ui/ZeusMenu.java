@@ -4,24 +4,17 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.TitleScreen;
 
-/**
- * Puts the Zeus main menu in place of the game's title screen. The game is asked to show its title screen from several
- * places (start-up, leaving a world, closing a sub menu), so the swap is done where every screen is set; a check each tick
- * does the same job if that hook is ever not available.
- */
 public final class ZeusMenu {
     private ZeusMenu() {}
 
-    /** The version shown on the menu, as asked for. The mod's own version is in {@code Zeus.VERSION}. */
     public static final String MENU_VERSION = com.zlorbie788.zeus.core.Zeus.VERSION;
 
     private static boolean launched;
     private static boolean warned;
 
-    /** The screen to show instead of {@code s}: the Zeus menu for the game's title screen, {@code s} itself for anything else. */
     public static Screen swap(Screen s) {
         if (com.zlorbie788.zeus.core.Zeus.destroyed()) return s;
-        if (!(s instanceof TitleScreen)) return s; // also the title screens other mods build on top of the game's
+        if (!(s instanceof TitleScreen)) return s;
         try {
             if (!UiSettings.MENU.on()) return s;
             boolean first = !launched;

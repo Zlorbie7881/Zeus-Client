@@ -31,29 +31,10 @@ import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-/**
- * Media Base Finder: tells you which DonutSMP media (content creators) are on the Goliath you land on, and roughly where
- * their base is.
- *
- * <p>The finding is strict by design. After you arrive on a Goliath (a /rtp, a server hop, a respawn) the
- * module waits three seconds for the scoreboard to settle and then reads the scoreboard teams. A media account sits in a
- * team whose name starts with <b>09-</b> or whose display name carries the camera sign. A team member counts as being on
- * your Goliath when the tab list does <i>not</i> list them (the server hides media from the tab list but keeps their team),
- * or when a game-mode update packet for that account was seen, which proves the server is sending that account to you.
- * Every ten ticks it scans again and tells you who joined.</p>
- *
- * <p>On top of that Zeus gives an <b>estimated base area</b>. The Goliath is a fixed rectangle of the map, so a base on it
- * lies inside that rectangle: Zeus shows its X and Z range, its centre, and how far and in which direction that centre is
- * from you. When a media player's body is loaded in your world (they are close) their exact position is shown instead, and
- * the last place each one was seen is remembered. The area is large (a Goliath is 25k by 50k blocks or bigger): it narrows
- * the search to one Goliath, it does not point at a block.</p>
- *
- * <p>Nothing is sent to the server. The module only reads the scoreboard, the tab list and packets your game already got.</p>
- */
 public final class MediaBaseFinder extends Module {
     private static volatile MediaBaseFinder instance;
 
-    private static final String MEDIA_PREFIX = "\uD83D\uDCF9"; // the camera sign, written as an escape so no file encoding can change it
+    private static final String MEDIA_PREFIX = "\uD83D\uDCF9";
     private static final String MEDIA_TEAM = "09-";
     private static final int SETTLE_TICKS = 60;
     private static final int SCAN_TICKS = 10;
@@ -84,7 +65,6 @@ public final class MediaBaseFinder extends Module {
     private final Setting.Action addWaypoint = add(new Setting.Action("Add the area centre as a waypoint", "Saves the centre of this Goliath as a Zeus waypoint so you can fly towards it.", this::waypoint));
     private final Setting.Action copy = add(new Setting.Action("Copy the estimate", "Copies the Goliath, the media names and the area to the clipboard.", this::copyEstimate));
 
-    /** What the module remembers about one media account. */
     private static final class Sighting {
         String name;
         String goliath = "";
@@ -124,9 +104,6 @@ public final class MediaBaseFinder extends Module {
         instance = this;
     }
 
-    // ------------------------------------------------------------------ hooks called by the mixins
-
-    /** Called for every player-info packet before the game applies it. A game-mode action on an account proves the server sends it to you. */
     public static void notePlayerInfoUpdate(ClientboundPlayerInfoUpdatePacket packet) {
         MediaBaseFinder f = instance;
         if (f == null || !f.enabled() || packet == null) return;
@@ -137,19 +114,15 @@ public final class MediaBaseFinder extends Module {
                 if (entry != null && entry.profileId() != null) f.modeUpdates.offer(entry.profileId());
             }
         } catch (RuntimeException ignored) {
-            // a changed packet layout must never break packet handling
         }
     }
 
-    /** Called with every command your game sends, without the slash. A /rtp followed by a Goliath change makes the arrival an RTP arrival. */
     public static void noteOutboundCommand(String command) {
         MediaBaseFinder f = instance;
         if (f == null || !f.enabled() || command == null) return;
         String text = command.trim().toLowerCase(Locale.ROOT);
         if (text.equals("rtp") || text.startsWith("rtp ")) f.rtpAt = System.currentTimeMillis();
     }
-
-    // ------------------------------------------------------------------ life cycle
 
     @Override
     protected void onEnable() {
@@ -215,8 +188,6 @@ public final class MediaBaseFinder extends Module {
         }
     }
 
-    // ------------------------------------------------------------------ the finding (strict rules)
-
     private boolean isMedia(PlayerTeam team) {
         if (team == null) return false;
         String prefix = teamPrefix.get();
@@ -241,7 +212,6 @@ public final class MediaBaseFinder extends Module {
         return false;
     }
 
-    /** A team name without colour codes and leading symbols, lower case. */
     private static String clean(String text) {
         StringBuilder out = new StringBuilder(text.length());
         for (int i = 0; i < text.length(); i++) {
@@ -356,8 +326,6 @@ public final class MediaBaseFinder extends Module {
         return out.toString();
     }
 
-    // ------------------------------------------------------------------ the Goliath and the estimated area
-
     static boolean overworld(Minecraft mc) {
         return mc.level != null && mc.level.dimension().equals(Level.OVERWORLD);
     }
@@ -373,7 +341,6 @@ public final class MediaBaseFinder extends Module {
         return GoliathGrid.label(GoliathGrid.at(mc.player.getX(), mc.player.getZ()));
     }
 
-    /** "25k x 50k", the size of your Goliath in blocks as the Goliath map writes it, or null off the map. */
     private static String areaText(Minecraft mc) {
         int c = codeNow(mc);
         if (c == OFF_MAP) return null;
@@ -393,7 +360,6 @@ public final class MediaBaseFinder extends Module {
         return String.format(Locale.ROOT, "%,d", Math.round(v));
     }
 
-    /** The estimate as one chat line: where on the map the base can be, and how far the middle of that area is from you. */
     private String estimateLine(Minecraft mc) {
         if (mc.player == null) return null;
         double[] a = GoliathGrid.blockArea(code == OFF_MAP ? codeNow(mc) : code);
@@ -417,8 +383,6 @@ public final class MediaBaseFinder extends Module {
         int i = (int) Math.floor(((ang % 360 + 360) % 360 + 22.5) / 45.0) % 8;
         return names[i];
     }
-
-    // ------------------------------------------------------------------ sightings
 
     private void noteSightings(Minecraft mc, Set<String> now, String server) {
         long t = System.currentTimeMillis();
@@ -450,9 +414,6 @@ public final class MediaBaseFinder extends Module {
         return sightings.get(server + "|" + name.toLowerCase(Locale.ROOT));
     }
 
-    // ------------------------------------------------------------------ diagnostics
-
-    /** A short reason for an empty result, shown on the card. */
     private String shortReason() {
         if (dbgScans == 0) return "No scan yet";
         if (dbgTeams == 0) return "No teams on this server";
@@ -514,8 +475,6 @@ public final class MediaBaseFinder extends Module {
             Zeus.toast("Could not reach the clipboard", false);
         }
     }
-
-    // ------------------------------------------------------------------ settings pages
 
     private List<String> hereLines() {
         if (settle > 0) return List.of("Checking... " + (settle / 20 + 1) + " s");
@@ -593,8 +552,6 @@ public final class MediaBaseFinder extends Module {
         return settle > 0 ? "..." : found.isEmpty() ? null : Integer.toString(found.size());
     }
 
-    // ------------------------------------------------------------------ drawing
-
     @Override
     protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
         if (mc.player == null) return;
@@ -656,7 +613,6 @@ public final class MediaBaseFinder extends Module {
                         PlayerFaceRenderer.draw(g, info.getSkin(), x, y - 1, fs, 0xFFFFFFFF);
                         drawn = true;
                     } catch (RuntimeException ignored) {
-                        // fall through to the plain tile
                     }
                 }
                 if (!drawn) {
@@ -685,9 +641,6 @@ public final class MediaBaseFinder extends Module {
         }
     }
 
-    // ------------------------------------------------------------------ Goliath tracker
-
-    /** Notices that you arrived somewhere new: another level, another player body, another Goliath or another server brand. */
     static final class Tracker {
         private Object level;
         private net.minecraft.world.entity.player.Player self;
@@ -703,7 +656,6 @@ public final class MediaBaseFinder extends Module {
             net.minecraft.world.entity.player.Player nowSelf = mc.player;
             String nowBrand = brand(mc.getConnection());
             int nowGoliath = codeNow(mc);
-            // the four tests that start a new search: another level, another body (unless the old one died), another Goliath, another server brand
             boolean moved = level != null && (nowLevel != level || (nowSelf != self && !self.isDeadOrDying()) || nowGoliath != goliath
                     || (nowBrand != null && brand != null && !nowBrand.equals(brand)));
             level = nowLevel;
@@ -723,7 +675,6 @@ public final class MediaBaseFinder extends Module {
         private static java.lang.reflect.Method brandMethod;
         private static boolean brandSearched;
 
-        /** The server brand string, read by name so a renamed accessor only costs the brand check, not the build. */
         private static String brand(ClientPacketListener connection) {
             if (connection == null) return null;
             try {

@@ -26,13 +26,6 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/**
- * Read-only Auction House market assistant.
- *
- * It only inspects item stacks in an Auction House container the player has opened.
- * It does not click slots, send chat/commands, interact with packets, or buy listings.
- * Price history is session-local and is learned from unique prices observed on screen.
- */
 public final class MarketHunter extends Module {
     private static final Pattern CURRENCY_PRICE = Pattern.compile(
         "(?i)(?:\\$\\s*|\\b)([0-9][0-9,]*(?:\\.[0-9]+)?)\\s*([kmb])?\\s*(?:coins?|coin|dollars?|usd|\\$)");
@@ -97,7 +90,6 @@ public final class MarketHunter extends Module {
             Category.UTILITY);
     }
 
-    /** Dashboard configuration for the alert-only auction monitor. */
     public void configureFromDashboard(String watchedItems, String priceCeiling, double bargainPercent) {
         watch.set(watchedItems == null ? "" : watchedItems);
         maxPrice.set(priceCeiling == null ? "0" : priceCeiling);
@@ -183,7 +175,6 @@ public final class MarketHunter extends Module {
         totalScans++;
 
         AbstractContainerMenu menu = mc.player.containerMenu;
-        // Standard chest-like screens place the player's 36 inventory slots at the end.
         int listingSlots = Math.max(0, menu.slots.size() - 36);
         if (listingSlots == 0) {
             last = "Auction window found, but no listing slots were detected.";
@@ -219,14 +210,11 @@ public final class MarketHunter extends Module {
             double averageBefore = average(history);
             int samplesBefore = history.size();
 
-            // Learn only one sample per distinct item-price pair, preventing repeated
-            // scans of the same page from skewing the average.
             String sampleKey = itemKey + "|" + Math.round(price * 100.0);
             if (sampledPrices.add(sampleKey)) {
                 history.addLast(price);
                 while (history.size() > (int)historySize.get()) history.removeFirst();
                 if (sampledPrices.size() > 2500) sampledPrices.clear();
-                // the same sighting feeds the shared table the AH Sniper prices against
                 learn(itemKey, price, (int) historySize.get());
             }
 
@@ -268,7 +256,6 @@ public final class MarketHunter extends Module {
         bestName = "";
     }
 
-    /** User-triggered navigation to a bargain; never sends a second confirmation click. */
     private void openBestListing() {
         Minecraft mc = Minecraft.getInstance();
         if (bestSlot < 0 || mc.player == null || mc.gameMode == null || mc.screen == null) {
@@ -373,13 +360,6 @@ public final class MarketHunter extends Module {
         return value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", " ").trim();
     }
 
-    // ------------------------------------------------------------------ what the market pays
-
-    /**
-     * Prices seen across every scan, by normalised item name, shared with the AH Sniper so a rule without a price still has
-     * a ceiling and "a bargain" means below what the item really sells for. Kept small and capped like the module's own
-     * history; it lives in memory for the session.
-     */
     private static final Map<String, Deque<Double>> LEARNED = new java.util.concurrent.ConcurrentHashMap<>();
     private static final int LEARNED_MAX = 4000;
 
@@ -387,7 +367,6 @@ public final class MarketHunter extends Module {
         return name == null ? "" : name.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", " ").trim();
     }
 
-    /** Records one observed price for an item name. */
     static void learn(String name, double price, int keep) {
         String key = norm(name);
         if (key.isEmpty() || price <= 0) return;
@@ -406,10 +385,6 @@ public final class MarketHunter extends Module {
         }
     }
 
-    /**
-     * The average price the client has seen for an item name, or -1 when it has not seen it enough times to be worth
-     * trusting. Three sightings is the floor: one lucky listing must not set the value of an item.
-     */
     static double learnedFor(String name) {
         Deque<Double> list = LEARNED.get(norm(name));
         if (list == null) return -1;
@@ -445,7 +420,6 @@ public final class MarketHunter extends Module {
         }
         if (found >= 0) return found;
 
-        // Fallback for common server lore formats such as "Price: 125k".
         String[] lines = text.split("\\\\R");
         for (String line : lines) {
             String lower = line.toLowerCase(Locale.ROOT);

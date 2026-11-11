@@ -8,10 +8,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/**
- * Boat NoClip: the boat you drive cannot be collided with while the module is on, so mobs, minecarts and blocks cannot stop
- * it. Only the client copy of your own boat is affected.
- */
 @Mixin(AbstractBoat.class)
 public abstract class BoatNoclipCollisionMixin {
     @Inject(method = "canBeCollidedWith", at = @At("RETURN"), cancellable = true, require = 1)

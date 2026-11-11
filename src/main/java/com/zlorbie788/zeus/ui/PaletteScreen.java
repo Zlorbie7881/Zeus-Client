@@ -16,11 +16,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-/**
- * The command palette: Ctrl+K from anywhere, type a few letters, and act on anything in the mod. Modules can be
- * switched on and off without opening the panel, and a setting takes you straight to the page it lives on. It reads
- * the same list the panel searches, so it knows every module, alias and setting name.
- */
 public final class PaletteScreen extends Screen {
     private static final int TEXT = 0xFFE6EDFA;
     private static final int DIM = 0xFF8FA0BE;
@@ -40,7 +35,6 @@ public final class PaletteScreen extends Screen {
     private int pw;
     private int ph;
 
-    /** One thing the palette can act on: a module, or one setting inside a module. */
     private static final class Entry {
         final Module module;
         final Setting setting;
@@ -84,7 +78,6 @@ public final class PaletteScreen extends Screen {
         return list;
     }
 
-    /** Prefix first, then a word start, then anywhere, then a loose letter match: the usual order of a good search. */
     private static int score(String hay, String q) {
         int at = hay.indexOf(q);
         if (at == 0) return 1000 - Math.min(60, hay.length());
@@ -155,14 +148,12 @@ public final class PaletteScreen extends Screen {
         g.fill(0, 0, width, height, 0xB4000000);
         boolean world = mc.level != null;
         if (world) {
-            // keep the game readable behind the palette instead of hiding it
             g.fill(0, 0, width, height, Draw.rgba(0xFF050910, 0.25f));
         }
         Draw.shadow(g, px, py, pw, ph, 8, 6, 0.5f);
         Draw.rrect(g, px, py, pw, ph, 8, 0xFF101A2C, 0xFF0A1220);
         Draw.rrectLine(g, px, py, pw, ph, 8, Draw.rgba(accent(), 0.45f));
 
-        // the search row, with a small mark so it reads as a field and not a title
         Draw.rrect(g, px + PAD, py + 6, pw - PAD * 2, 18, 5, 0xFF152035);
         Draw.rrectLine(g, px + PAD, py + 6, pw - PAD * 2, 18, 5, Draw.rgba(accent(), 0.3f));
         Draw.ellipse(g, px + 15, py + 14, 4, 4, Draw.rgba(accent(), 0.85f));

@@ -10,7 +10,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 
-/** Movement modules that work by steering your own player, on your side of the game. */
 public final class Motion {
     private Motion() {}
 
@@ -22,7 +21,6 @@ public final class Motion {
         return mc.player != null && mc.level != null && mc.screen == null;
     }
 
-    /** Jump again in mid-air. */
     public static final class AirJump extends Module {
         private final Setting.Num power = add(new Setting.Num("Power", "How strong each jump is.", 0.42, 0.2, 1.0, 0.02, ""));
         private final Setting.Num limit = add(new Setting.Num("Jumps in a row", "How many times you can jump before you land (0 = no limit).", 0, 0, 20, 1, ""));
@@ -49,7 +47,6 @@ public final class Motion {
         }
     }
 
-    /** Lifts you back up before you fall out of the world. */
     public static final class AntiVoid extends Module {
         public AntiVoid() {
             super("antivoid", "Anti Void", "Catches you and lifts you up before you fall out of the world.", Category.MOVEMENT);
@@ -66,7 +63,6 @@ public final class Motion {
         }
     }
 
-    /** Hops over blocks and across gaps. */
     public static final class AutoJump extends Module {
         private final Setting.Bool edges = add(new Setting.Bool("Jump at edges", "Also jump when you are about to run off an edge (parkour).", false));
 
@@ -84,7 +80,6 @@ public final class Motion {
         }
     }
 
-    /** Holds the forward key for you. */
     public static final class AutoWalk extends Module {
         public AutoWalk() {
             super("autowalk", "Auto Walk", "Walks forward for you.", Category.MOVEMENT);
@@ -101,7 +96,6 @@ public final class Motion {
         }
     }
 
-    /** Climbs ladders and vines quickly. */
     public static final class FastClimb extends Module {
         private final Setting.Num speed = add(new Setting.Num("Speed", "Blocks per tick going up.", 0.3, 0.15, 1.0, 0.05, ""));
 
@@ -119,7 +113,6 @@ public final class Motion {
         }
     }
 
-    /** Climbs walls. */
     public static final class Spider extends Module {
         private final Setting.Num speed = add(new Setting.Num("Speed", "Blocks per tick up a wall.", 0.2, 0.1, 0.6, 0.05, ""));
 
@@ -137,12 +130,6 @@ public final class Motion {
         }
     }
 
-    /**
-     * Walks on water. The game already has a rule for standing on a fluid (it is how striders walk on lava): an entity can
-     * answer "yes" when asked whether it can stand on a fluid. Water Walk (once called Jesus) answers yes for your own player, so the water is a real
-     * floor, with normal walking, jumping and sprinting. Sneaking sinks you. If you are already under the surface, a gentle
-     * push lifts you out. If the game's rule cannot be reached, the old way (a small steady lift in the water) takes over.
-     */
     public static final class Jesus extends Module {
         private static volatile boolean on;
         private static volatile boolean lavaToo;
@@ -158,7 +145,6 @@ public final class Motion {
             lava.onChange(() -> lavaToo = lava.on());
         }
 
-        /** Called from the game's "can this entity stand on this fluid" question. */
         public static boolean wants(Object entity, net.minecraft.world.level.material.FluidState fluid) {
             if (!on) return false;
             Minecraft mc = Minecraft.getInstance();
@@ -194,10 +180,8 @@ public final class Motion {
             if (!in) return;
             Vec3 v = mc.player.getDeltaMovement();
             if (hooked) {
-                // under the surface: rise until the water holds you up
                 if (v.y < 0.18) mc.player.setDeltaMovement(v.x, Math.min(0.18, v.y + 0.12), v.z);
             } else if (ticks > 40 && !mc.options.keyJump.isDown()) {
-                // the game's rule is not reachable: hold yourself at the surface instead
                 mc.player.setDeltaMovement(v.x, 0.11, v.z);
                 mc.player.fallDistance = 0;
             }
@@ -209,7 +193,6 @@ public final class Motion {
         }
     }
 
-    /** A long, flat jump. */
     public static final class LongJump extends Module {
         private final Setting.Num boost = add(new Setting.Num("Boost", "How far the jump carries you forward.", 1.6, 1.1, 4.0, 0.1, "x"));
         private boolean was;
@@ -231,11 +214,6 @@ public final class Motion {
         }
     }
 
-    /**
-     * Never falls off an edge. The game has one rule for this (it is what sneaking does: a player who "stays on the ground
-     * surface" is stopped at the edge of a block), and Safe Walk asks the game to apply it without sneaking: the pose, the
-     * speed and the camera stay as they are. If that rule cannot be reached, it falls back to steering your speed at an edge.
-     */
     public static final class SafeWalk extends Module {
         private static volatile boolean on;
         private static volatile boolean hooked;
@@ -245,7 +223,6 @@ public final class Motion {
             super("safewalk", "Safe Walk", "You cannot walk off the edge of a block, without sneaking.", Category.MOVEMENT);
         }
 
-        /** Called from the game's "is this player staying on the ground surface" question. */
         public static boolean wants(Object entity) {
             if (!on) return false;
             Minecraft mc = Minecraft.getInstance();
@@ -269,7 +246,6 @@ public final class Motion {
         @Override
         protected void onTick(Minecraft mc) {
             if (!ready(mc) || hooked || ++ticks < 30 || !mc.player.onGround()) return;
-            // fallback: the game's rule was never asked, so keep the next step on the block
             Vec3 v = mc.player.getDeltaMovement();
             if (v.y > 0.05) return;
             double dx = v.x * 2.2 + Math.signum(v.x) * 0.1;
@@ -288,7 +264,6 @@ public final class Motion {
         }
     }
 
-    /** Snaps you back down when you step off a ledge. */
     public static final class ReverseStep extends Module {
         private final Setting.Num height = add(new Setting.Num("Height", "Furthest drop that is cut short.", 2, 1, 4, 0.5, " blocks"));
 
@@ -307,7 +282,6 @@ public final class Motion {
         }
     }
 
-    /** Pushes you forward faster while gliding. */
     public static final class ElytraBoost extends Module {
         private final Setting.Num power = add(new Setting.Num("Boost", "How hard each tick pushes while you hold forward.", 0.05, 0.01, 0.2, 0.01, ""));
         private final Setting.Num cap = add(new Setting.Num("Top speed", "Blocks per tick you will not go faster than.", 2.5, 1.0, 6.0, 0.25, ""));
@@ -326,7 +300,6 @@ public final class Motion {
         }
     }
 
-    /** Sneaks all the time. */
     public static final class Sneak extends Module {
         public Sneak() {
             super("sneak", "Sneak", "Holds sneak for you.", Category.MOVEMENT);
@@ -343,7 +316,6 @@ public final class Motion {
         }
     }
 
-    /** Builds a bridge under your feet. */
     public static final class Scaffold extends Module {
         private final Setting.Bool tower = add(new Setting.Bool("Tower", "Hold jump to build straight up.", true));
         private final Setting.Num expand = add(new Setting.Num("Expand", "Also fills this many blocks ahead.", 0, 0, 4, 1, " blocks"));
@@ -377,7 +349,6 @@ public final class Motion {
         }
     }
 
-    /** Jumps by itself at the edge of a block, so you can run across gaps without timing the jump. */
     public static final class Parkour extends Module {
         private final Setting.Num ahead = add(new Setting.Num("Look ahead", "How far in front of your feet it looks for the edge.", 0.35, 0.2, 0.9, 0.05, " blocks"));
         private int cooldown;
@@ -400,7 +371,6 @@ public final class Motion {
             double dx = v.x / speed * look;
             double dz = v.z / speed * look;
             var box = p.getBoundingBox();
-            // nothing under the next step and nothing to stand on one block down
             if (mc.level.noCollision(p, box.move(dx, -0.5, dz)) && mc.level.noCollision(p, box.move(dx, -1.0, dz))) {
                 p.setDeltaMovement(v.x, 0.42, v.z);
                 cooldown = 6;

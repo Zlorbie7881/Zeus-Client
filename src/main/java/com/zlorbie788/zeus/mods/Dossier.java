@@ -30,23 +30,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/**
- * A file on everyone you have met, per server.
- *
- * <p>Anarchy is social, and the same handful of people keep turning up: the one who owns the base you found, the one who
- * killed you twice last week, the alt that logs in ten minutes after the main account. None of that is written down
- * anywhere, so it gets forgotten. This writes it down — when you first saw somebody, where, what they were holding and
- * wearing, how many times their kit changed, and who they keep appearing next to.</p>
- *
- * <p>Everything here is what your own game was already shown. Nothing is sent, queried or inferred from the server.</p>
- */
 public final class Dossier extends Module {
     private static final Gson GSON = new GsonBuilder().create();
     private static final int MAX_PLAYERS = 400;
     private static final int MAX_KITS = 10;
     private static final int MAX_ASSOCIATES = 24;
 
-    /** One person. */
     private static final class Rec {
         String name = "";
         long first;
@@ -82,8 +71,6 @@ public final class Dossier extends Module {
         hudCard();
         alias("intel", "files", "players");
     }
-
-    // ------------------------------------------------------------------ storage
 
     private static Path file() {
         return FabricLoader.getInstance().getConfigDir().resolve("zeus-dossiers.json");
@@ -164,8 +151,6 @@ public final class Dossier extends Module {
         }
     }
 
-    // ------------------------------------------------------------------ watching
-
     @Override
     protected void onTick(Minecraft mc) {
         if (mc.player == null || mc.level == null) return;
@@ -206,7 +191,6 @@ public final class Dossier extends Module {
                     rec.kitChanges++;
                     rec.kitTimes.add(new long[]{now});
                     if (rec.kitTimes.size() > MAX_KITS) rec.kitTimes.remove(0);
-                    // a changed kit in front of you is worth a word: it usually means they went and got something
                     if (rec.kitChanges > 1) Zeus.toast(rec.name + " changed kit", true);
                 }
                 rec.sig = sig;
@@ -284,7 +268,6 @@ public final class Dossier extends Module {
         return n;
     }
 
-    /** "3d" / "6h" / "12m" — how long ago something was. */
     private static String ago(long then) {
         if (then <= 0) return "never";
         long ms = Math.max(0, System.currentTimeMillis() - then);
@@ -295,8 +278,6 @@ public final class Dossier extends Module {
         if (h < 48) return h + "h";
         return (h / 24) + "d";
     }
-
-    // ------------------------------------------------------------------ reading it
 
     private void readNearest() {
         Minecraft mc = Minecraft.getInstance();
@@ -343,7 +324,6 @@ public final class Dossier extends Module {
         else Zeus.toast("Never seen with anyone else", true);
     }
 
-    /** One person's last known place, for the map. */
     public static final class Sight {
         public final String name;
         public final double x;
@@ -360,7 +340,6 @@ public final class Dossier extends Module {
         }
     }
 
-    /** Everyone written down on this server, newest sighting first. Read-only, for the local website's map. */
     public static List<Sight> sightings() {
         Dossier d = Zeus.get(Dossier.class);
         if (d == null) return List.of();
@@ -383,8 +362,6 @@ public final class Dossier extends Module {
         save();
         Zeus.toast("Forgot " + (gone == null ? 0 : gone.size()) + " people on this server", true);
     }
-
-    // ------------------------------------------------------------------ the card
 
     @Override
     protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {

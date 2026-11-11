@@ -11,10 +11,6 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/**
- * Two small hooks on what your game does when you act. After an attack, Crystal Optimizer removes a crystal you hit from your
- * own view. Before a block is broken on screen, Anti Ghost Block can hold the removal back until the server confirms it.
- */
 @Mixin(MultiPlayerGameMode.class)
 public abstract class GameModeHooksMixin {
     @Inject(method = "attack", at = @At("HEAD"), require = 0)

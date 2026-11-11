@@ -31,11 +31,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 
-/**
- * Remembers what was in every chest, barrel and shulker box you opened, per server and dimension, so you can ask "where did I
- * put the diamonds?" Type an item into the box and the nearest chests that held it are listed with the amount. Only chests you
- * opened yourself are remembered, and only what your own game was shown: nothing is read from the server that you did not see.
- */
 public final class ChestMemory extends Module {
     private static final Gson GSON = new GsonBuilder().create();
 
@@ -83,10 +78,6 @@ public final class ChestMemory extends Module {
         return c.server + "|" + c.dim;
     }
 
-    /**
-     * Every chest remembered in the world you are in, as {x, y, z, seenAt, kindsOfItem}. Read-only, for the local
-     * website: the map draws these as small markers.
-     */
     public static java.util.List<double[]> spots() {
         ChestMemory m = com.zlorbie788.zeus.core.Zeus.get(ChestMemory.class);
         if (m == null) return java.util.List.of();
@@ -98,7 +89,6 @@ public final class ChestMemory extends Module {
         return out;
     }
 
-    /** Which world the spots belong to, so the map can say so. */
     public static String worldKey() {
         return key();
     }
@@ -177,7 +167,6 @@ public final class ChestMemory extends Module {
         if (mc.player == null || mc.level == null) return;
         boolean isOpen = mc.screen instanceof AbstractContainerScreen<?>;
         if (isOpen && !wasOpen) {
-            // the block you were looking at when the window opened is the chest
             open = null;
             HitResult h = mc.hitResult;
             if (h instanceof BlockHitResult b && container(Names.block(mc.level.getBlockState(b.getBlockPos()).getBlock()))) open = b.getBlockPos();

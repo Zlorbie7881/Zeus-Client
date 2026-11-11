@@ -8,7 +8,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** While the camera is detached the mouse turns the camera and not your player. */
 @Mixin(Entity.class)
 public abstract class EntityTurnMixin {
     @Inject(method = "turn", at = @At("HEAD"), cancellable = true, require = 0)

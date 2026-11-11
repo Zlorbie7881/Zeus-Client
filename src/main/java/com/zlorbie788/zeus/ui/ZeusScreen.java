@@ -28,12 +28,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * The Zeus interface, in two layouts. "Panel" is one window with a sidebar of pages, a list of module cards that open to
- * show their settings, a search box and a footer. "Windows" is a floating, draggable window for every category with a
- * row per module (left click switches it, right click opens its settings), the way classic clients look. The lightning
- * intro plays first every time it opens (unless it is switched off), and the animated lightning Z sits in the corner.
- */
 public final class ZeusScreen extends Screen {
     private static final int HEAD = 48;
     private static final int FOOT = 22;
@@ -42,14 +36,13 @@ public final class ZeusScreen extends Screen {
     private static final int PAGE_PANEL = PAGE_ACTIVE + 1;
     private static final int PAGE_FAV = PAGE_PANEL + 1;
 
-    // the Windows layout
     private static final int WIN_W = 98;
-    /** The most rows a category window shows before it scrolls inside, and the same for Favourites. */
+
     private static final int WIN_ROWS = 5;
     private static final int WIN_ROWS_SHORT = 4;
     private static final int WIN_HEAD = 15;
     private static final int ROW_H = 13;
-    /** The space kept between two windows, tiled or dragged. */
+
     private static final int WIN_GAP = 5;
 
     private static int lastPage = 0;
@@ -79,7 +72,7 @@ public final class ZeusScreen extends Screen {
     private final Map<String, Float> hover = new HashMap<>();
     private float pillY = -1;
     private EditBox search;
-    /** The box that opens over a text setting while you type into it. */
+
     private EditBox field;
     private Setting.Text editing;
     private boolean fieldDrawn;
@@ -102,13 +95,9 @@ public final class ZeusScreen extends Screen {
     private int my;
     private String tip;
     private boolean columns;
-    /**
-     * The main menu always opens the Panel layout, whatever is saved, while the game keeps the saved one (Windows by
-     * default). One of the layout buttons clears this, from then on the screen follows the setting again.
-     */
+
     private boolean menuPanel;
 
-    // Windows layout state
     private String dragWin;
     private boolean dragPopup;
     private float dragOffX;
@@ -126,9 +115,9 @@ public final class ZeusScreen extends Screen {
     private int popupViewTop;
     private int popupViewH;
     private final Map<String, int[]> winRect = new HashMap<>();
-    /** Where each window of the Windows layout is drawn now (it glides toward its place). */
+
     private final Map<String, float[]> winPos = new HashMap<>();
-    /** Animated expansion state for floating category windows (0 folded, 1 expanded). */
+
     private final Map<String, Float> windowOpen = new HashMap<>();
 
     private interface Click {
@@ -151,24 +140,21 @@ public final class ZeusScreen extends Screen {
         this.parent = parent;
         this.menuPanel = parent instanceof ZeusTitleScreen;
         int mode = UiSettings.INTRO.index();
-        intro = mode == 2 || mode == 3; // the lightning; the video modes play before the panel opens (see make)
+        intro = mode == 2 || mode == 3;
         speed = mode == 3 ? 2.1f : 1f;
         page = Math.max(0, Math.min(PAGE_FAV, lastPage));
     }
 
-    /** The text the next panel opens with, so the palette can land on the thing it was asked for. */
     private static String pendingSearch;
 
-    /** The panel, opened straight on a search: what the command palette jumps to. The intro film is skipped. */
     public static Screen at(String query) {
         pendingSearch = query;
         return new ZeusScreen(null);
     }
 
-    /** The screen to open for the panel: the intro video first when it is switched on, then the panel. */
     public static Screen make(Screen parent) {
         int mode = UiSettings.INTRO.index();
-        boolean video = (mode == 0 || (mode == 1 && !videoSeen)) && !UiSettings.CALM.on(); // the film has bright flashes
+        boolean video = (mode == 0 || (mode == 1 && !videoSeen)) && !UiSettings.CALM.on();
         if (video && VideoIntroScreen.available(VideoIntroScreen.PANEL)) {
             videoSeen = true;
             return new VideoIntroScreen(VideoIntroScreen.PANEL, () -> new ZeusScreen(parent), false);
@@ -185,28 +171,22 @@ public final class ZeusScreen extends Screen {
         minecraft.setScreen(parent);
     }
 
-    /** The layout on show: the saved one, unless the main menu opened this window. */
     private boolean windowsLayout() {
         return UiSettings.LAYOUT.index() == 1 && !menuPanel;
     }
 
-    /** One of the layout buttons was pressed: the choice is kept, and the main menu's Panel view steps aside. */
     private void setLayout(int i) {
         menuPanel = false;
         UiSettings.LAYOUT.set(i);
     }
 
-    // ------------------------------------------------------------ setup
-
     @Override
     protected void init() {
         if (!UiSettings.LAYOUT_WINDOWS_DEFAULT.on()) {
-            // the Windows layout became the default: switch a saved config over once, and the player can switch back
             UiSettings.LAYOUT_WINDOWS_DEFAULT.set(true);
             UiSettings.LAYOUT.set(1);
         }
         if (!windowsLayout()) {
-            // build the storm picture now, while the opening animation covers it, not in the first drawn frame
             try {
                 layoutPanel();
                 if (!artFailed) backdrop();
@@ -232,8 +212,6 @@ public final class ZeusScreen extends Screen {
             search.setCursorPosition(pendingSearch.length());
             pendingSearch = null;
         }
-        // The Windows-style Modules menu is designed for keyboard-first use:
-        // focus search immediately, while leaving the Panel layout's focus behaviour alone.
         search.setFocused(true);
         setFocused(search);
         setInitialFocus(search);
@@ -261,7 +239,6 @@ public final class ZeusScreen extends Screen {
         Zeus.save();
     }
 
-    /** Seconds of the intro that have played. */
     private float time() {
         if (!intro) return Intro.LENGTH + 1f;
         return (System.nanoTime() - startNanos) / 1e9f * speed + offset;
@@ -279,10 +256,8 @@ public final class ZeusScreen extends Screen {
         }
     }
 
-    /** A value that eases toward a target while the mouse is over something. */
     private static final java.util.Map<String, String> CARD_KEYS = new java.util.HashMap<>();
 
-    /** "card" + id, built once per module instead of every frame. */
     private static String cardKey(String id) {
         return CARD_KEYS.computeIfAbsent(id, k -> "card" + k);
     }
@@ -296,8 +271,6 @@ public final class ZeusScreen extends Screen {
     }
 
     private float dtNow;
-
-    // ------------------------------------------------------------ drawing
 
     @Override
     public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
@@ -329,7 +302,6 @@ public final class ZeusScreen extends Screen {
 
         renderBackground(g, mouseX, mouseY, partialTick);
 
-        // sounds that go with the strikes
         if (playing && UiSettings.THUNDER.on()) {
             float[] at = {Intro.STRIKE1, Intro.STRIKE2, Intro.STRIKE3, Intro.FORMED};
             while (soundIdx < 4 && t >= at[soundIdx]) {
@@ -376,7 +348,6 @@ public final class ZeusScreen extends Screen {
         }
         g.pose().popMatrix();
         bgDrawn = false;
-        // the text box belongs to a row that is on screen; when the row is gone (scrolled away, page changed) so is the box
         if (editing != null && !fieldDrawn) stopEditing();
     }
 
@@ -385,16 +356,12 @@ public final class ZeusScreen extends Screen {
             var sound = thunder ? SoundEvents.LIGHTNING_BOLT_THUNDER : SoundEvents.LIGHTNING_BOLT_IMPACT;
             minecraft.getSoundManager().play(SimpleSoundInstance.forUI(sound, thunder ? 0.85f : 1.2f, thunder ? 0.5f : 0.3f));
         } catch (Throwable ignored) {
-            // a missing sound must never break the panel
         }
     }
 
-    // ------------------------------------------------------------ the Panel layout (drawn in device pixels, after the v2 design)
-
-    /** Device pixels per interface pixel, and per design pixel (the design is 1672 x 941). */
     private int gs = 2;
     private float k = 1f;
-    /** The panel box and the scrolling area of the list, in device pixels. */
+
     private int bx;
     private int by;
     private int bw;
@@ -403,7 +370,7 @@ public final class ZeusScreen extends Screen {
     private int listBottom;
     private int listLeft;
     private int listWide;
-    /** Where the list starts, in interface pixels (the scroll wheel works on the right of it). */
+
     private int sbRight;
     private int footY;
     private boolean artFailed;
@@ -420,12 +387,10 @@ public final class ZeusScreen extends Screen {
 
     private static final int TXT = 0xFFEAF2FF;
 
-    /** A length from the design, in device pixels. */
     private int K(double d) {
         return Math.round((float) (d * k));
     }
 
-    /** A text size from the design, never below 9 device pixels. */
     private float tp(double px) {
         return Math.max(9f, (float) (px * k));
     }
@@ -450,7 +415,6 @@ public final class ZeusScreen extends Screen {
         return UiSettings.ACCENT.index() == 0 ? 0xFF2F86FF : accent;
     }
 
-    /** The lighter tone of the accent used for highlighted text. */
     private static int lite(int bl) {
         return Draw.mix(bl, 0xFFFFFFFF, 0.38f);
     }
@@ -471,7 +435,6 @@ public final class ZeusScreen extends Screen {
         return Ty.w(s, tp(px), weight);
     }
 
-    /** Small capitals with room between the letters. */
     private void spaced(GuiGraphics g, String s, int x, int cy, double px, int weight, int color, double gap) {
         float p = tp(px);
         float xx = x;
@@ -504,7 +467,6 @@ public final class ZeusScreen extends Screen {
         ph = Math.round(bh / (float) gs);
     }
 
-    /** The night picture behind everything, built once at the real pixel size (capped) and kept. */
     private Tex.Img backdrop() {
         float kk = Math.min(1f, 1920f / Math.max(1, bw));
         int rw = Math.max(64, Math.round(bw * kk));
@@ -514,7 +476,6 @@ public final class ZeusScreen extends Screen {
         return Tex.made("panelbg2", PanelArt.render(rw, rh, Math.round(K(18) * kk)), rw, rh);
     }
 
-    /** A 256 x 1 picture that fades from white to nothing: the blue wash of a switched-on card. */
     private static Tex.Img ramp() {
         Tex.Img have = Tex.cached("pz_ramp");
         if (have != null) return have;
@@ -572,7 +533,6 @@ public final class ZeusScreen extends Screen {
         int hh = K(88);
         drawHeader(g, bl, bl2, hh);
 
-        // ---- body: the rail on the left, the list on the right
         int bodyTop = by + hh + K(16);
         int bodyBottom = by + bh - K(74);
         int railX = bx + K(16);
@@ -600,7 +560,6 @@ public final class ZeusScreen extends Screen {
         my = rmy;
     }
 
-    /** One of the square buttons of the header. */
     private void headerButton(GuiGraphics g, int x, int y, int s, String glyph, int tint, int hotTint, int bl, Click run, String tipText) {
         boolean hot = hov(x, y, s, s);
         Ty.fill(g, x, y, s, s, K(13), hot ? 0xC00E1C40 : 0x85081026);
@@ -615,7 +574,6 @@ public final class ZeusScreen extends Screen {
     private void drawHeader(GuiGraphics g, int bl, int bl2, int hh) {
         int cy = by + hh / 2;
         int line = Math.max(1, Math.round(k));
-        // the Z, the lettering and the version
         int ls = K(66);
         int lx = bx + K(24);
         Tex.Img logo = Tex.fitted("pz_logo", "textures/gui/logo_z.png", ls, ls, false, 0.5f, 0.5f);
@@ -640,7 +598,6 @@ public final class ZeusScreen extends Screen {
         txC(g, ver, vpx + vpw / 2, cy, 12, Ty.SEMI, 0xFFA8D0FF);
         int verEnd = vpx + vpw;
 
-        // the buttons, from the right
         int s = K(46);
         int gap = K(10);
         int cur = bx + bw - K(22) - s;
@@ -653,7 +610,6 @@ public final class ZeusScreen extends Screen {
 
         int minSearch = K(210);
         int room = cur - (verEnd + K(30));
-        // the Profiles shortcut, when there is room for it next to the search box
         String prof = "Profiles";
         int saved = com.zlorbie788.zeus.mods.Profiles.savedCount();
         String sav = saved + " saved";
@@ -688,7 +644,7 @@ public final class ZeusScreen extends Screen {
         int cy = y + h / 2;
         Glyphs.drawPx(g, "magnifier", x + K(14) + K(9.5), cy, K(19), focused ? 0xFFCFE0FF : cSub());
         boolean has = !search.getValue().isEmpty();
-        String chip = "Ctrl F"; // the field's own key: Ctrl K opens the command palette, and the footer says so
+        String chip = "Ctrl F";
         int chW = tw(chip, 11, Ty.SEMI) + K(16);
         int chH = K(22);
         int chX = x + w - K(12) - chW;
@@ -713,7 +669,6 @@ public final class ZeusScreen extends Screen {
             setFocused(search);
             search.setCursorPosition(search.getValue().length());
         }, null);
-        // once there is something to clear, a small × takes the place of the shortcut chip
         if (has) {
             boolean hotC = hov(cbX, cy - cb / 2, cb, cb);
             if (hotC) Ty.fill(g, cbX, cy - cb / 2, cb, cb, K(6), Draw.rgba(bl, 0.20f));
@@ -726,7 +681,6 @@ public final class ZeusScreen extends Screen {
         }
     }
 
-    /** The text of a text box drawn with the panel font: scrolls to keep the caret visible, shows the selection and a blinking caret. */
     private void drawField(GuiGraphics g, EditBox box, int x, int cy, int room, double px, int color, int bl, boolean focused) {
         String v = box.getValue();
         float p = tp(px);
@@ -765,11 +719,8 @@ public final class ZeusScreen extends Screen {
         setFocused(null);
     }
 
-    // ---- the rail
-
     private record RailItem(int id, String section) {}
 
-    /** The pages in the order the rail shows them, each tagged with the group it sits in. */
     private static List<RailItem> railItems() {
         Category[] cats = Category.values();
         List<RailItem> o = new ArrayList<>();
@@ -901,7 +852,6 @@ public final class ZeusScreen extends Screen {
         return Zeus.enabledCount(cats[id]);
     }
 
-    /** The frame rate, a little graph of it and what Zeus itself costs. */
     private void drawPerf(GuiGraphics g, int x, int y, int w, int h, int bl, int bl2) {
         int line = Math.max(1, Math.round(k));
         long now = System.currentTimeMillis();
@@ -924,7 +874,6 @@ public final class ZeusScreen extends Screen {
         String num = Integer.toString(fps);
         tx(g, num, x + pad, y + K(46), 26, Ty.XBOLD, 0xFFFFFFFF);
         tx(g, "FPS", x + pad + tw(num, 26, Ty.XBOLD) + K(8), y + K(48), 12, Ty.MED, cDim());
-        // the graph: columns under a line
         int gx = x + pad;
         int gw = w - 2 * pad;
         int gy = y + K(64);
@@ -969,7 +918,6 @@ public final class ZeusScreen extends Screen {
         }
     }
 
-
     private void drawBrand(GuiGraphics g, int x, int y, int accent, int second) {
         String brand = "ZEUS";
         int bx = x;
@@ -985,7 +933,6 @@ public final class ZeusScreen extends Screen {
         Draw.text(g, "Thunder client", x, y + 12, Accent.DIM);
     }
 
-    /** Close, layout switch and the search box, anchored at their right edge. */
     private void drawHeaderButtons(GuiGraphics g, int right, int y, int accent, boolean withSearch) {
         int cx = right - 16;
         boolean hotC = hov(cx, y, 16, 16);
@@ -1022,7 +969,6 @@ public final class ZeusScreen extends Screen {
             search.setFocused(true);
             setFocused(search);
         }, null);
-        // the search box may only hold the screen's focus while no setting is being edited
         if (editing == null && search.isFocused()) setFocused(search);
         search.render(g, mx, my, 0f);
     }
@@ -1037,11 +983,6 @@ public final class ZeusScreen extends Screen {
         return search == null ? "" : search.getValue().trim().toLowerCase(Locale.ROOT);
     }
 
-    // ---- search: typo tolerant and ranked by relevance across names, ids, categories, descriptions and settings.
-    // Everything is computed once per typed query and once per module text (not every frame): the texts are normalised
-    // a single time, the scores are cached per query, and the sorted result lists are reused until the query changes.
-
-    /** The searchable text of one module, normalised once. */
     private static final class Index {
         final String name, id, category, desc;
         final String[] aliasText;
@@ -1092,7 +1033,6 @@ public final class ZeusScreen extends Screen {
         int best = Math.max(scoreText(ix.name, m.name, needle), scoreText(ix.id, m.id, needle));
         for (int i = 0; i < ix.aliasText.length; i++) best = Math.max(best, scoreText(ix.aliasText[i], m.aliases().get(i), needle) - 10);
         best = Math.max(best, scoreText(ix.category, null, needle) - 20);
-        // Descriptions and setting help remain searchable, but rank below a name match.
         best = Math.max(best, scoreText(ix.desc, null, needle) - 140);
         List<Setting> list = m.settings();
         for (int i = 0; i < ix.settingNames.length && i < list.size(); i++) {
@@ -1113,7 +1053,6 @@ public final class ZeusScreen extends Screen {
         return out.toString();
     }
 
-    /** Higher scores are better; -1 means no plausible match. {@code raw} (may be null) allows a typo in one word of a multi-word name. */
     private static int scoreText(String hay, String raw, String needle) {
         if (needle.isEmpty() || hay.isEmpty()) return -1;
         if (hay.equals(needle)) return 1200;
@@ -1124,7 +1063,6 @@ public final class ZeusScreen extends Screen {
         int distance = editDistance(needle, hay);
         int limit = needle.length() <= 4 ? 1 : needle.length() <= 8 ? 2 : 3;
         if (distance <= limit) return 650 - distance * 90 - Math.abs(hay.length() - needle.length()) * 3;
-        // Also allow a typo in one word of a multi-word module or setting name.
         if (raw != null) {
             for (String word : raw.toLowerCase(Locale.ROOT).split("[^a-z0-9]+")) {
                 if (word.isEmpty()) continue;
@@ -1161,7 +1099,6 @@ public final class ZeusScreen extends Screen {
         return prev[b.length()];
     }
 
-    /** Every module that matches the query, best first. Cached until the query changes; do not modify the result. */
     private List<Module> searchResults(String q, Category only) {
         syncSearchCache(q);
         Object key = only == null ? "*" : only;
@@ -1177,10 +1114,6 @@ public final class ZeusScreen extends Screen {
         return out;
     }
 
-    // ------------------------------------------------------------ the list
-
-    // ---- footer
-
     private void drawPanelFooter(GuiGraphics g, int bl, int bl2, int fy) {
         int line = Math.max(1, Math.round(k));
         boolean inWorld = Env.inWorld();
@@ -1188,8 +1121,10 @@ public final class ZeusScreen extends Screen {
         int fh = K(46);
         int panicW = Math.max(K(140), tw("Panic", 14, Ty.BOLD) + K(76));
         int panicX = bx + bw - K(16) - panicW;
+        int destrW = Math.max(K(168), tw("Self destruct", 13, Ty.BOLD) + K(52));
+        int destrX = panicX - K(9) - destrW;
         int capX = bx + K(16);
-        int capW = panicX - K(12) - capX;
+        int capW = destrX - K(12) - capX;
         int cy = fy + fh / 2;
         Ty.fill(g, capX, fy, capW, fh, K(13), 0xA80D162E);
         Ty.ring(g, capX, fy, capW, fh, K(13), line, cLine());
@@ -1208,16 +1143,12 @@ public final class ZeusScreen extends Screen {
             tx(g, where, cur, cy, 13, Ty.MED, cDim());
             cur += tw(where, 13, Ty.MED) + K(16);
         }
-        // what active means, on the right of the capsule
         int active = activeCount();
         String act = active + " active";
         int actW = tw(act, 13, Ty.BOLD) + K(24);
         int actX = capX + capW - K(18) - actW;
         Glyphs.drawPx(g, "bolt", actX + K(7), cy, K(15), active > 0 ? bl2 : cMut());
         tx(g, act, actX + K(22), cy, 13, Ty.BOLD, active > 0 ? bl2 : cMut());
-        // the key hints, as many as fit
-        // the hints must match what a click really does in this layout: the Windows layout switches on a left click,
-        // the card layout opens the settings on one
         String[][] hints = columns
                 ? new String[][] {{"Ctrl K", "palette"}, {"Click", "switch on or off"}, {"Right-click", "settings"}, {"Esc", "close"}}
                 : new String[][] {{"Ctrl K", "palette"}, {"Click", "settings"}, {"Right-click", "switch on or off"}, {"Esc", "close"}};
@@ -1242,9 +1173,17 @@ public final class ZeusScreen extends Screen {
         Glyphs.drawPx(g, "warn", sx0 + K(9), cy, K(18), 0xFFFF8A98);
         tx(g, "Panic", sx0 + K(27), cy, 14, Ty.BOLD, 0xFFFF8A98);
         hit(panicX, fy, panicW, fh, b -> Zeus.panic(true), "Switches every module off at once");
-    }
 
-    // ---- the list
+        boolean dh = hov(destrX, fy, destrW, fh);
+        Ty.fill(g, destrX, fy, destrW, fh, K(13), dh ? 0xA04A2E0A : 0x80301D06);
+        if (dh) Ty.glow(g, destrX, fy, destrW, fh, K(13), K(10), 0x40FFB020);
+        Ty.ring(g, destrX, fy, destrW, fh, K(13), line, dh ? 0xFFFFC060 : 0xBFFFB45C);
+        int dw2 = K(18) + K(9) + tw("Self destruct", 13, Ty.BOLD);
+        int dsx = destrX + (destrW - dw2) / 2;
+        Glyphs.drawPx(g, "warn", dsx + K(9), cy, K(18), 0xFFFFC857);
+        tx(g, "Self destruct", dsx + K(27), cy, 13, Ty.BOLD, 0xFFFFC857);
+        hit(destrX, fy, destrW, fh, b -> Zeus.destroy(), "Switches every Zeus feature off. Type /zeus in chat to bring it back");
+    }
 
     private static String blurb(int id, Category[] cats) {
         if (id == PAGE_ACTIVE) return "Every module that is switched on.";
@@ -1265,7 +1204,6 @@ public final class ZeusScreen extends Screen {
         };
     }
 
-    /** A pill of the toolbar. */
     private void pill(GuiGraphics g, int x, int y, int w, int h, boolean hot, int bl) {
         Ty.fill(g, x, y, w, h, K(11), hot ? 0xC00E1A3A : 0xB3050A18);
         Ty.ring(g, x, y, w, h, K(11), Math.max(1, Math.round(k)), hot ? Draw.rgba(bl, 0.7f) : cLine());
@@ -1308,7 +1246,6 @@ public final class ZeusScreen extends Screen {
         }
         int line = Math.max(1, Math.round(k));
 
-        // ---- title row
         int tcy = bodyTop + K(44);
         int tx0 = mainX + K(6);
         tx(g, title, tx0, tcy, 34, Ty.XBOLD, 0xFFFFFFFF);
@@ -1339,14 +1276,12 @@ public final class ZeusScreen extends Screen {
         String sub = !q.isEmpty() ? "Matches in names, descriptions and settings." : blurb(page, cats);
         tx(g, sub, tx0, bodyTop + K(62) + K(15), 14, Ty.REG, cSub());
 
-        // ---- toolbar, from the right, as much as fits
         if (!panelPage) {
             int th = K(38);
             int tcy2 = bodyTop + K(43);
             int ty = tcy2 - th / 2;
             int limit = metaEnd + K(24);
             int cur = mainR;
-            // list or tiles
             int vtW = K(78);
             if (cur - vtW > limit) {
                 int vx = cur - vtW;
@@ -1369,7 +1304,6 @@ public final class ZeusScreen extends Screen {
                 }
                 cur = vx - K(10);
             }
-            // sort
             String sortLabel = sortName();
             int spW = K(14) + K(16) + K(8) + tw(sortLabel, 13, Ty.SEMI) + K(8) + K(15) + K(12);
             if (cur - spW > limit) {
@@ -1387,7 +1321,6 @@ public final class ZeusScreen extends Screen {
                 }, "Sort the modules: category order, the ones you use most first, or A to Z. Click to change (right click goes back).");
                 cur = sx - K(10);
             }
-            // all / on / off
             if (!activePage) {
                 String[] segs = {"All", "On", "Off"};
                 int[] sw = new int[3];
@@ -1422,7 +1355,6 @@ public final class ZeusScreen extends Screen {
             }
         }
 
-        // ---- the scrolling list
         int top = listTop;
         int viewH = listBottom - listTop;
         int maxScroll = Math.max(0, contentH - viewH);
@@ -1461,7 +1393,6 @@ public final class ZeusScreen extends Screen {
         clipBottom = -1;
         contentH = y - start + K(24);
 
-        // the list fades out at the bottom edge, and a thin bar shows where you are
         int fade = K(34);
         g.fillGradient(listLeft - pad, listBottom - fade, listLeft + listWide + pad, listBottom, 0x00050914, 0xF2050914);
         if (maxScroll > 0) {
@@ -1473,7 +1404,6 @@ public final class ZeusScreen extends Screen {
         }
     }
 
-    /** The list when there is nothing in it: a tile, a line about why, and a way straight back out of the empty view. */
     private void drawEmpty(GuiGraphics g, int top, int viewH, int bl, String q, boolean activePage, boolean favPage) {
         int line = Math.max(1, Math.round(k));
         int cxm = listLeft + listWide / 2;
@@ -1513,7 +1443,6 @@ public final class ZeusScreen extends Screen {
         }, null);
     }
 
-    /** Lays the cards out two by two (or one per row); a card that is open takes the full width. Returns the y below the last card. */
     private int drawModules(GuiGraphics g, List<Module> list, int y, float dt, int bl, int bl2, float since) {
         int rowH = K(86);
         int gap = K(12);
@@ -1527,7 +1456,6 @@ public final class ZeusScreen extends Screen {
                 y += rowH + gap;
                 col = 0;
             }
-            // each card slides up into place a moment after the one above it
             float e = UiSettings.CALM.on() || Perf.fast() ? 1f : Math.max(0f, Math.min(1f, (since - Math.min(idx, 12) * 0.035f) / 0.30f));
             float slide = (1f - e) * (1f - e) * (1f - e);
             if (wide) {
@@ -1565,14 +1493,12 @@ public final class ZeusScreen extends Screen {
         hit(x, cy - h / 2, w, h, run, "Click, then press a key. Right click removes the key.");
     }
 
-    /** One module card. Returns its height (it grows while it is open). */
     private int drawCard(GuiGraphics g, Module m, int x, int y, int w, float dt, int bl, int bl2, float slide) {
         int rowH = K(86);
         int top = listTop;
         int viewH = listBottom - listTop;
         int margin = K(8);
         boolean open = OPEN.contains(m.id);
-        // a settled, closed card outside the visible area costs nothing: no animation state, no height maths, no drawing
         if (!open) {
             Float settledEx = expand.get(m.id);
             Float settledOn = toggle.get(m.id);
@@ -1628,13 +1554,11 @@ public final class ZeusScreen extends Screen {
         Ty.ring(g, x, y, w, h, rr, line, Draw.mix(Draw.mix(cLine(), 0x6B6096FF, hv), Draw.rgba(0xFF60A0FF, 0.62f), on));
         if (hv > 0.05f && !UiSettings.CALM.on() && !Perf.fast()) Thunder.outline(g, x, y, w, rowH, anim(), hv * 0.6f, Math.max(1f, k), 0.35f);
 
-        // the broad hit area first, so the small ones registered after it win
         hit(x, y, w, rowH, b -> {
             if (b == 1 && m.toggleable() && !m.locked()) m.toggle();
             else toggleOpen(m);
         }, m.locked() ? m.note() : m.desc);
 
-        // icon tile
         int tile = Math.min(K(48), rowH - K(16));
         int tx0 = x + K(14);
         int tty = y + (rowH - tile) / 2;
@@ -1644,7 +1568,6 @@ public final class ZeusScreen extends Screen {
         Ty.ring(g, tx0, tty, tile, tile, tr, line, Draw.mix(cLine(), Draw.rgba(0xFFA0CDFF, 0.6f), on));
         Glyphs.drawPx(g, Glyphs.forModule(m.id, m.category), tx0 + tile / 2f, tty + tile / 2f, Math.max(14, Math.round(tile * 0.5f)), Draw.mix(0xFF86A2D6, 0xFFFFFFFF, on));
 
-        // the right side, from the right: chevron, switch, star, key, cost
         int cy = y + rowH / 2;
         int cur = x + w - K(16);
         boolean hasSets = !sets.isEmpty();
@@ -1723,7 +1646,6 @@ public final class ZeusScreen extends Screen {
             }
         }
 
-        // name, version pill and description
         int textLeft = tx0 + tile + K(14);
         int textRight = cur - K(6);
         int nameCy = cy - K(11);
@@ -1774,8 +1696,6 @@ public final class ZeusScreen extends Screen {
         Ty.disc(g, kx + d / 2, y + h / 2, d / 2, Draw.mix(0xFF7385AD, 0xFFFFFFFF, on));
     }
 
-    // ---- settings
-
     private int lab() {
         return UiSettings.CONTRAST.on() ? 0xFFFFFFFF : 0xFFC4D4F2;
     }
@@ -1816,7 +1736,6 @@ public final class ZeusScreen extends Screen {
         return 0;
     }
 
-    /** Puts the settings into columns that read top to bottom, then the wide info boxes below. Returns the height. */
     private int arrange(List<Setting> list, int w, int[] ox, int[] oy, int[] ow, int[] oh) {
         int cols = w >= K(880) ? 3 : w >= K(540) ? 2 : 1;
         int gap = K(36);
@@ -1975,7 +1894,6 @@ public final class ZeusScreen extends Screen {
             if (mine) Ty.glow(g, bxx, cy - ch / 2, bwid, ch, K(9), K(6), Draw.rgba(bl, 0.22f));
             Ty.ring(g, bxx, cy - ch / 2, bwid, ch, K(9), line, Draw.rgba(bl, mine ? 0.95f : hb ? 0.7f : 0.35f));
             if (mine) {
-                // the widget must be visible, focused and on screen or EditBox swallows every keystroke
                 field.setX(bxx + K(12));
                 field.setY(cy - K(10));
                 field.setWidth(bwid - K(24));
@@ -2026,7 +1944,6 @@ public final class ZeusScreen extends Screen {
         }
     }
 
-    /** The Panel page: the open key and every setting of the panel itself. */
     private int drawPanelCard(GuiGraphics g, int y, int bl, int bl2) {
         int x = listLeft;
         int w = listWide;
@@ -2118,8 +2035,6 @@ public final class ZeusScreen extends Screen {
         Draw.rrect(g, kx, y + 1, h - 2, h - 2, (h - 2) / 2, locked ? 0xFF8791AE : 0xFFFFFFFF);
         if (on > 0.5f && !locked) Draw.glow(g, x, y, w, h, h / 2, col, 3, 0.18f);
     }
-
-    // ------------------------------------------------------------ setting rows
 
     private int rowH(Setting s) {
         if (s instanceof Setting.Num) return 26;
@@ -2271,8 +2186,6 @@ public final class ZeusScreen extends Screen {
         }
     }
 
-    // ------------------------------------------------------------ keys
-
     private int bindWidth(KeyMapping k, Module m) {
         return Math.max(28, Draw.width(keyText(k, m)) + 14);
     }
@@ -2283,7 +2196,6 @@ public final class ZeusScreen extends Screen {
         return k.getTranslatedKeyMessage().getString();
     }
 
-    /** The key chip. Anchored at its right edge. */
     private void drawBind(GuiGraphics g, KeyMapping k, Module m, int right, int y, boolean openKey, int top, int viewH) {
         boolean wait = openKey ? listeningOpen : listening == m;
         String text = wait ? "press a key" : (k.isUnbound() ? "none" : k.getTranslatedKeyMessage().getString());
@@ -2312,8 +2224,6 @@ public final class ZeusScreen extends Screen {
         minecraft.options.save();
     }
 
-    // ------------------------------------------------------------ footer
-
     private void drawFooter(GuiGraphics g, int left, int right, int y, int accent) {
         boolean inWorld = Env.inWorld();
         int dot = inWorld ? 0xFF5EE6A0 : 0xFFFFC857;
@@ -2331,12 +2241,17 @@ public final class ZeusScreen extends Screen {
         Draw.rrectLine(g, bx, y - 3, pw2, 16, 6, Draw.rgba(0xFFFF5C6C, hot ? 0.9f : 0.4f));
         Draw.textCenter(g, "Panic", bx + pw2 / 2, y, 0xFFFFA0A8);
         hit(bx, y - 3, pw2, 16, b -> Zeus.panic(true), "Switches every module off at once");
-        Draw.textRight(g, a, bx - 10, y, active > 0 ? Draw.mix(Accent.TEXT, accent, 0.5f) : Accent.FAINT);
+
+        String destruct = "Self destruct";
+        int dw = Draw.width(destruct) + 16;
+        int dx = bx - 8 - dw;
+        boolean dhot = hov(dx, y - 3, dw, 16);
+        Draw.rrect(g, dx, y - 3, dw, 16, 6, dhot ? Draw.rgba(0xFFFFB45C, 0.36f) : Draw.rgba(0xFFFFB45C, 0.14f));
+        Draw.rrectLine(g, dx, y - 3, dw, 16, 6, Draw.rgba(0xFFFFB45C, dhot ? 0.9f : 0.4f));
+        Draw.textCenter(g, destruct, dx + dw / 2, y, 0xFFFFD08A);
+        hit(dx, y - 3, dw, 16, b -> Zeus.destroy(), "Switches every Zeus feature off. Type /zeus in chat to bring it back");
+        Draw.textRight(g, a, dx - 10, y, active > 0 ? Draw.mix(Accent.TEXT, accent, 0.5f) : Accent.FAINT);
     }
-
-    // ------------------------------------------------------------ the Windows layout
-
-    // ------------------------------------------------------------ the Windows layout (drawn in device pixels, like the Panel)
 
     private int wW;
     private int wHead;
@@ -2392,7 +2307,6 @@ public final class ZeusScreen extends Screen {
 
         drawWinHeader(g, bl, bl2);
 
-        // ---- which windows there are: starred modules, then the categories
         int sortMode = UiSettings.SORT.index();
         long nowNs = System.nanoTime();
         String defsKey = q + "|" + sortMode;
@@ -2400,7 +2314,6 @@ public final class ZeusScreen extends Screen {
             List<WinDef> built = new ArrayList<>();
             if (q.isEmpty()) built.add(new WinDef(UiState.FAVOURITES, "Favourites", 0xFFFFC857, null, "starfill", Usage.favourites()));
             for (Category c : Category.values()) {
-                // the profiles are a button in the header, not a window of their own
                 if (c == Category.PROFILES && q.isEmpty()) continue;
                 List<Module> mods = q.isEmpty() ? Usage.sorted(Zeus.in(c), sortMode) : searchResults(q, c);
                 if (!mods.isEmpty()) built.add(new WinDef(c.name(), c.label, c.color, c, null, mods));
@@ -2412,14 +2325,12 @@ public final class ZeusScreen extends Screen {
         }
         List<WinDef> defs = defsCache;
 
-        // ---- the size and place of every window
         int w = wW;
         winW = w;
         int avail = Math.max(wHead + wRow * 3, wBottom - wTop);
         int cols = Math.max(1, (wScrW - K(16)) / (w + wGap));
         int gridW = cols * (w + wGap) - wGap;
         int left = Math.max(K(8), (wScrW - gridW) / 2);
-        // as many rows as fit when two windows are stacked in a column (at least five, at most nine)
         int rowsVis = Math.max(WIN_ROWS_VISIBLE, Math.min(9, (avail - 2 * wHead - wGap - K(16)) / (2 * wRow)));
         int capFull = wRow * rowsVis + K(8);
         int capShort = wRow * Math.max(WIN_ROWS_SHORT_VISIBLE, rowsVis - 1) + K(8);
@@ -2536,7 +2447,6 @@ public final class ZeusScreen extends Screen {
         my = rmy;
     }
 
-    /** The top bar: the medallion (no sparks), the lettering, the version, the search box, the sort button and the buttons. */
     private void drawWinHeader(GuiGraphics g, int bl, int bl2) {
         int line = Math.max(1, Math.round(k));
         g.fillGradient(0, 0, wScrW, K(96), 0xD0040813, 0x00040813);
@@ -2594,7 +2504,6 @@ public final class ZeusScreen extends Screen {
         }, "Tidy up: put every window back into the neat grid");
         cur -= gap;
 
-        // the Profiles button, to the right of the sort chip: opens the settings of the Profiles module
         Module profMod = Zeus.get("profiles");
         String sortText = "Sort: " + sortName();
         int chipW = tw(sortText, 13, Ty.SEMI) + K(46);
@@ -2667,7 +2576,6 @@ public final class ZeusScreen extends Screen {
 
         Ty.glow(g, x, y + K(4), ww, total, rr, lifted ? K(26) : K(16), lifted ? 0x99000000 : 0x66000000);
         Ty.fill(g, x, y, ww, total, rr, 0xF00A1122);
-        // the header: a band in this category's colour, square at the bottom while the window is open
         g.enableScissor(x, y, x + ww, y + wHead);
         Ty.fill(g, x, y, ww, wHead + rr * 2, rr, Draw.rgba(tint, 0.20f));
         g.fillGradient(x, y, x + ww, y + wHead, Draw.rgba(0xFFFFFFFF, 0.05f), 0x00FFFFFF);
@@ -2847,7 +2755,6 @@ public final class ZeusScreen extends Screen {
         listeningOpen = false;
     }
 
-    /** The settings of one module (or the look of Zeus), in a window drawn like the cards of the Panel. */
     private void drawPopupWin(GuiGraphics g, int bl, int bl2, float dt) {
         if (popup == null && !popupPanel) return;
         List<Setting> rows = popupPanel ? Zeus.UI.settings() : popup.settings();
@@ -2912,7 +2819,6 @@ public final class ZeusScreen extends Screen {
         Ty.ring(g, tx0, hc - tile / 2, tile, tile, K(13), line, Draw.mix(cLine(), Draw.rgba(0xFFA0CDFF, 0.6f), onP));
         Glyphs.drawPx(g, glyph, tx0 + tile / 2f, hc, K(24), Draw.mix(0xFF86A2D6, 0xFFFFFFFF, onP));
 
-        // controls from the right: close, switch, star, key
         int cs = K(34);
         int cx = x + w - sidePad + K(4) - cs;
         boolean hotC = hov(cx, hc - cs / 2, cs, cs);
@@ -2963,7 +2869,6 @@ public final class ZeusScreen extends Screen {
             tx(g, ln, tx0, y + K(78) + li * K(17) - (subLines.size() > 1 ? K(6) : 0), 12.5, Ty.REG, cDim());
         }
 
-        // the body
         int top = y + head;
         g.enableScissor(x + line, top, x + w - line, top + bodyH);
         clipTop = top;
@@ -3009,11 +2914,6 @@ public final class ZeusScreen extends Screen {
         }
     }
 
-    /**
-     * Moves a window rectangle (x, y, width, height) out of the others, keeping {@link #WIN_GAP} between them. A window that
-     * overlaps one goes to the nearest side of it (left, right, above or below) that is on the screen and free; null when there
-     * is no such place.
-     */
     private int[] pushClear(List<int[]> others, int x, int y, int w, int h, int maxY) {
         int minY = wMinY;
         int maxX = Math.max(0, wScrW - w);
@@ -3050,7 +2950,6 @@ public final class ZeusScreen extends Screen {
         return null;
     }
 
-    /** Snaps a window being dragged to the screen edges and to the edges of its neighbours, so a layout lines up by itself. */
     private int[] snapWindow(List<int[]> others, int x, int y, int w, int h) {
         final int reach = K(6);
         int[] xs = {K(8), wScrW - w - K(8)};
@@ -3077,7 +2976,6 @@ public final class ZeusScreen extends Screen {
         return d.cat == null;
     }
 
-    /** One window of the Windows layout: its name, colour, icon and the modules in it. */
     private static final class WinDef {
         final String key;
         final String label;
@@ -3103,7 +3001,6 @@ public final class ZeusScreen extends Screen {
     private long defsCacheAt;
     private int winW = WIN_W;
 
-    /** The width of every window: wide enough for nearly every module name, between 96 and 114. */
     private int windowWidth() {
         if (cachedWinW > 0) return cachedWinW;
         List<Integer> widths = new ArrayList<>();
@@ -3116,7 +3013,6 @@ public final class ZeusScreen extends Screen {
 
     private int cachedWinW;
 
-    /** Eases a window's fold amount toward open (1) or folded (0). */
     private float openOf(String key, boolean collapsed, float dt) {
         float target = collapsed ? 0f : 1f;
         float open = windowOpen.getOrDefault(key, 0f);
@@ -3171,8 +3067,6 @@ public final class ZeusScreen extends Screen {
         return out;
     }
 
-    // ------------------------------------------------------------ helpers and input
-
     private boolean hov(int x, int y, int w, int h) {
         return mx >= x && mx < x + w && my >= y && my < y + h;
     }
@@ -3195,7 +3089,6 @@ public final class ZeusScreen extends Screen {
         applyDragDev(mouseX * dragMul);
     }
 
-    /** Moves the slider being dragged to the pointer ({@code devX} is in the same units as dragX and dragW). */
     private void applyDragDev(double devX) {
         if (dragging == null) return;
         double f = (devX - dragX) / Math.max(1.0, dragW);
@@ -3211,9 +3104,8 @@ public final class ZeusScreen extends Screen {
         }
         double x = event.x() * gs;
         double y = event.y() * gs;
-        if (editing != null) stopEditing(); // the row you click next may open its own box again
+        if (editing != null) stopEditing();
         if (listening != null || listeningOpen) {
-            // a click on the chip itself is handled below; any other click cancels
             boolean onChip = false;
             for (Hit h : hits) if (x >= h.x && x < h.x + h.w && y >= h.y && y < h.y + h.h) onChip = true;
             if (!onChip) {
@@ -3230,7 +3122,6 @@ public final class ZeusScreen extends Screen {
                 }
             }
         }
-        // a click on nothing closes the settings window of the Windows layout
         if (columns && (popup != null || popupPanel)) {
             closePopup();
             return true;
@@ -3256,7 +3147,6 @@ public final class ZeusScreen extends Screen {
                     int maxY = Math.max(wMinY, wScrH - wHead - K(80));
                     int wantX = (int) Math.round(Math.max(0, Math.min(wScrW - wW, ex - dragOffX)));
                     int wantY = (int) Math.round(Math.max(wMinY, Math.min(maxY, ey - dragOffY)));
-                    // a window can never be put on top of another: it stops at the edge of it, or goes round it
                     List<int[]> others = new ArrayList<>();
                     for (Map.Entry<String, int[]> e : winRect.entrySet()) if (e.getKey() != null && !e.getKey().equals(dragWin)) others.add(e.getValue());
                     int[] snapped = snapWindow(others, wantX, wantY, wW, hh);
@@ -3331,7 +3221,6 @@ public final class ZeusScreen extends Screen {
         setFocused(null);
     }
 
-    /** Keeps the open box the screen's focused widget; a hidden box refuses input. */
     private void focusField() {
         if (field == null) return;
         if (search != null && search.isFocused()) search.setFocused(false);
@@ -3377,7 +3266,6 @@ public final class ZeusScreen extends Screen {
             focusField();
             return super.keyPressed(event);
         }
-        // Ctrl+K opens the command palette from anywhere, and it knows every module and setting.
         if (key == GLFW.GLFW_KEY_K && minecraft != null
                 && (event.modifiers() & GLFW.GLFW_MOD_CONTROL) != 0) {
             minecraft.setScreen(new PaletteScreen(this));
@@ -3395,7 +3283,6 @@ public final class ZeusScreen extends Screen {
             }
             return super.keyPressed(event);
         }
-        // the search box has a key of its own, and the list jumps to its ends
         if (search != null
                 && (key == GLFW.GLFW_KEY_SLASH || key == GLFW.GLFW_KEY_F && (event.modifiers() & GLFW.GLFW_MOD_CONTROL) != 0)
                 && (key != GLFW.GLFW_KEY_SLASH || (event.modifiers() & (GLFW.GLFW_MOD_CONTROL | GLFW.GLFW_MOD_ALT)) == 0)) {
@@ -3409,7 +3296,7 @@ public final class ZeusScreen extends Screen {
             return true;
         }
         if (key == GLFW.GLFW_KEY_END && !columns) {
-            scroll = 1e7f; // the list clamps it to its own end
+            scroll = 1e7f;
             return true;
         }
         if (key == GLFW.GLFW_KEY_ESCAPE && columns && (popup != null || popupPanel)) {
@@ -3424,7 +3311,6 @@ public final class ZeusScreen extends Screen {
             scroll -= 120 * gs;
             return true;
         }
-        // the open key closes the panel again
         if (ZeusClient.OPEN != null && !ZeusClient.OPEN.isUnbound() && InputConstants.Type.KEYSYM.getOrCreate(key).getName().equals(ZeusClient.OPEN.saveString())) {
             onClose();
             return true;

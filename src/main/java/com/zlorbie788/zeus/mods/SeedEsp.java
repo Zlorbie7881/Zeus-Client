@@ -13,6 +13,7 @@ import com.zlorbie788.zeus.core.Zeus;
 import com.zlorbie788.zeus.render.EspKit;
 import com.zlorbie788.zeus.render.Projector;
 import com.zlorbie788.zeus.ui.Draw;
+import com.zlorbie788.zeus.ui.SeedWorldsScreen;
 
 import net.fabricmc.fabric.api.resource.v1.DataResourceStore;
 import net.fabricmc.loader.api.FabricLoader;
@@ -96,30 +97,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 
-/**
- * Shows every ore around you, and shows all of them, not just whatever happens to be nearest.
- *
- * <p>Around you, the chunks the game has already loaded are read straight out of the world: those boxes sit on real ore
- * blocks, need no seed, disappear the moment the ore is mined, and never float over stone or air.</p>
- *
- * <p>For the parts of the world the client has not been sent, ore positions come from the world seed. A throwaway copy
- * of the vanilla world generator is started inside the game with that seed and the same dimension, the chunks around
- * you are generated exactly as the server generated them, and the ore blocks are read back. That runs on a low priority
- * background thread and fills in nearest chunks first, so boxes appear while it works.</p>
- *
- * <p>Everything it finds is cached per chunk in {@code config/zeus/ores}, so a world you have already scanned comes back
- * instantly on the next join, and walking around slowly fills in the whole map instead of starting over.</p>
- *
- * <p>Each ore gets its own share of the boxes ({@code Nearest per ore}). That is the important bit: with one shared
- * limit the nearest two hundred blocks are all coal and copper, and the diamonds a few blocks further down never get
- * drawn. Every family keeps its own nearest N, so a diamond vein never loses to a coal seam. Seed guesses are drawn
- * dimmed with a {@code ~} until the real chunk arrives, at which point the guess is dropped and the real blocks win.</p>
- */
 public final class SeedEsp extends Module {
 
-    // ------------------------------------------------------------------ the ores
-
-    /** One family of ore: how it is named, its colour, and every block that is that ore. */
     private record Ore(String label, int color, Block... blocks) {}
 
     private static final Ore[] ORES = {
@@ -137,44 +116,27 @@ public final class SeedEsp extends Module {
 
     private static final int ALL_ORES = (1 << ORES.length) - 1;
 
-    /** Block to ore family. Blocks are single instances, so identity is enough. */
     private static final Map<Block, Integer> KIND = new IdentityHashMap<>();
 
     static {
         for (int i = 0; i < ORES.length; i++) for (Block b : ORES[i].blocks()) KIND.put(b, i);
     }
 
-    // ------------------------------------------------------------------ what was found
-
-    /** One ore block. {@code kind} is an index into {@link #ORES}. */
-    /**
-     * One ore block. {@code open} means it has at least one air side, or a neighbour nobody could look at yet, so the
-     * filter never hides a block just because it sits on a chunk edge.
-     */
     private record Hit(int x, int y, int z, int kind, boolean open) {}
 
-    /** Answers whether a neighbour block is air, or null when that block cannot be looked at. */
     private interface Air {
         Boolean at(int x, int y, int z);
     }
 
-    /** Every ore block of one chunk, so a rescan can replace a whole chunk at once. */
     private record ChunkHits(Hit[] hits) {}
 
-    /**
-     * A hit plus how far away it is and which of its ore family it is by distance, for sorting and for deciding which
-     * few get a name tag.
-     */
     private record Marker(Hit hit, double dist2, boolean exact, int rank) {}
 
-    /** A connected run of one ore: its size, its outline, and how far its nearest block is. */
     private record Vein(int kind, int count, double dist2, boolean exact, AABB box) {}
 
     private static final String[] ARROWS = {"↑", "↗", "→", "↘", "↓", "↙", "←", "↖"};
 
     private static final String[] BOX_MODES = {"Every block", "Whole vein", "Blocks and veins"};
-
-    // ------------------------------------------------------------------ settings
 
     private final Setting.Text seed = add(new Setting.Text("Seed",
             "The world seed, as a number (or any text, the game turns it into the same number it used). "
@@ -242,6 +204,10 @@ public final class SeedEsp extends Module {
             "Keep one seed for every server and save, and put it back by itself when you return to it. "
                     + "Saved in config/zeus-seeds.json.", true));
 
+    private final Setting.Action worlds = add(new Setting.Action("Seed worlds",
+            "Every server and save with a remembered seed. Pick one to use it, or forget it from the list.",
+            this::openSeedWorlds));
+
     private final Setting.Action rescan = add(new Setting.Action("Scan from seed now",
             "Throws away what was cached for this world and scans the seed around you again from scratch.",
             this::restartScan));
@@ -254,30 +220,23 @@ public final class SeedEsp extends Module {
 
     private final Setting.Info status = add(new Setting.Info("Status", this::statusLines));
 
-    // ------------------------------------------------------------------ live chunk scan
-
-    /** Ore read from chunks the client has. One entry per loaded chunk that was scanned. */
     private final Map<Long, ChunkHits> exact = new ConcurrentHashMap<>();
 
-    /** The chunks to walk, nearest first, and where in that list the scan is. */
     private List<ChunkPos> ring = List.of();
     private int ringCursor;
     private long ringCentre = Long.MIN_VALUE;
     private int ringRadius = -1;
-
-    // ------------------------------------------------------------------ seed scan
 
     private volatile SeedJob job;
     private final Map<String, String> remembered = new LinkedHashMap<>();
     private boolean seedsLoaded;
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private String lastSeed = "";
+    private String lastWorld = "";
     private long seedSettledAt;
     private long lastStartAt;
     private String failedSeed = "";
     private boolean dropCacheOnce;
-
-    // ------------------------------------------------------------------ drawn list cache
 
     private List<Marker> shown = List.of();
     private long shownAt;
@@ -307,13 +266,12 @@ public final class SeedEsp extends Module {
         }
     }
 
-    // ------------------------------------------------------------------ lifecycle
-
     @Override
     protected void onEnable() {
         clearResults();
         seedSettledAt = 0;
         applyRememberedSeed();
+        lastWorld = worldKey(Minecraft.getInstance());
         Zeus.toast("Seed ESP: reading the chunks around you", true);
     }
 
@@ -334,6 +292,7 @@ public final class SeedEsp extends Module {
         ringCentre = Long.MIN_VALUE;
         invalidate();
         applyRememberedSeed();
+        lastWorld = worldKey(Minecraft.getInstance());
     }
 
     @Override
@@ -408,8 +367,6 @@ public final class SeedEsp extends Module {
         Zeus.toast("Seed ESP: rescanning this world from the seed", true);
     }
 
-    // ------------------------------------------------------------------ exact scan of loaded chunks
-
     private void scanLoadedChunks(Minecraft mc) {
         int radius = Math.max(1, (int) Math.round(range.get() / 16.0));
         int cx = mc.player.getBlockX() >> 4;
@@ -420,7 +377,6 @@ public final class SeedEsp extends Module {
             ringRadius = radius;
             ringCursor = 0;
             ring = buildRing(cx, cz, radius);
-            // forget chunks that are no longer in range, so nothing stale is left behind after walking away
             Set<Long> keep = new HashSet<>();
             for (ChunkPos p : ring) keep.add(p.toLong());
             if (exact.keySet().retainAll(keep)) invalidate();
@@ -450,13 +406,11 @@ public final class SeedEsp extends Module {
         long key = pos.toLong();
         LevelChunk chunk;
         try {
-            // false: never ask the game to load or generate anything, only read what is already here
             chunk = mc.level.getChunkSource().getChunk(pos.x, pos.z, ChunkStatus.FULL, false);
         } catch (RuntimeException ignored) {
             chunk = null;
         }
         if (chunk == null) {
-            // not here, so the seed guess (if any) is the only thing we can say about this chunk
             if (exact.remove(key) != null) dataVersion++;
             return;
         }
@@ -470,10 +424,6 @@ public final class SeedEsp extends Module {
         if (before == null || before.hits().length != hits.size()) dataVersion++;
     }
 
-    /**
-     * Reads every wanted ore block out of one chunk. Sections with no ore at all are skipped without touching their
-     * blocks, which is most of the world and keeps this cheap.
-     */
     private static void readChunk(LevelChunk chunk, int mask, List<Hit> out, Air air) {
         LevelChunkSection[] sections = chunk.getSections();
         int minY = chunk.getMinY();
@@ -519,12 +469,6 @@ public final class SeedEsp extends Module {
         return mask;
     }
 
-    // ------------------------------------------------------------------ one seed per world
-
-    /**
-     * The key a world is remembered under. Servers by address, saves by their own name, so a player who joins the same
-     * place again gets the seed that belongs to it without typing it in again.
-     */
     private static String worldKey(Minecraft mc) {
         ServerData server = mc.getCurrentServer();
         if (server != null && server.ip != null && !server.ip.isBlank()) {
@@ -536,7 +480,6 @@ public final class SeedEsp extends Module {
                 String name = single.getWorldData().getLevelName();
                 if (name != null && !name.isBlank()) return "save:" + name;
             } catch (Throwable ignored) {
-                // a save that cannot tell its name simply is not remembered
             }
         }
         return "";
@@ -563,13 +506,17 @@ public final class SeedEsp extends Module {
     }
 
     private void rememberSeed(String text) {
-        if (!remember.on() || text.isBlank()) return;
+        if (!remember.on()) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null) return;
         try {
             String key = worldKey(mc);
             if (key.isEmpty()) return;
             loadSeeds();
+            if (text.isBlank()) {
+                if (remembered.remove(key) != null) saveSeeds();
+                return;
+            }
             if (text.equals(remembered.get(key))) return;
             remembered.put(key, text);
             saveSeeds();
@@ -579,16 +526,78 @@ public final class SeedEsp extends Module {
     }
 
     private void forgetCurrentWorld() {
-        Minecraft mc = Minecraft.getInstance();
         try {
-            String key = worldKey(mc);
+            String key = worldKey(Minecraft.getInstance());
             if (key.isEmpty()) return;
-            loadSeeds();
-            if (remembered.remove(key) == null) return;
-            saveSeeds();
-            Zeus.toast("Seed ESP: forgot this world's seed", true);
+            forgetRemembered(key);
         } catch (Throwable t) {
             Zeus.LOG.warn("Seed ESP: could not forget this world's seed", t);
+        }
+    }
+
+    private void openSeedWorlds() {
+        Minecraft mc = Minecraft.getInstance();
+        loadSeeds();
+        mc.setScreen(new SeedWorldsScreen(mc.screen, this::seedWorldRows, this::useRemembered, this::forgetRemembered));
+    }
+
+    private List<SeedWorldsScreen.Row> seedWorldRows() {
+        String here = worldKey(Minecraft.getInstance());
+        List<SeedWorldsScreen.Row> out = new ArrayList<>();
+        for (Map.Entry<String, String> entry : remembered.entrySet()) {
+            out.add(new SeedWorldsScreen.Row(entry.getKey(), worldLabel(entry.getKey()), entry.getValue(),
+                    entry.getKey().equals(here)));
+        }
+        out.sort(Comparator.comparing((SeedWorldsScreen.Row row) -> !row.here())
+                .thenComparing(SeedWorldsScreen.Row::label, String.CASE_INSENSITIVE_ORDER));
+        return out;
+    }
+
+    private static String worldLabel(String key) {
+        int split = key.indexOf(':');
+        String name = split >= 0 ? key.substring(split + 1) : key;
+        return name.isBlank() ? key : name;
+    }
+
+    private void useRemembered(String key) {
+        String saved = remembered.get(key);
+        if (saved == null || saved.isBlank()) return;
+        seed.set(saved);
+        failedSeed = "";
+        lastSeed = "";
+        seedSettledAt = 0;
+        Zeus.toast("Seed ESP: now using the seed saved for " + worldLabel(key), true);
+    }
+
+    private void forgetRemembered(String key) {
+        if (remembered.remove(key) == null) return;
+        saveSeeds();
+        if (key.equals(worldKey(Minecraft.getInstance()))) {
+            seed.set("");
+            failedSeed = "";
+            lastSeed = "";
+            seedSettledAt = 0;
+            cancelJob();
+        }
+        Zeus.toast("Seed ESP: forgot the seed for " + worldLabel(key), true);
+    }
+
+    private void restoreSeedFor(String key) {
+        loadSeeds();
+        String saved = remembered.get(key);
+        String current = seed.get().trim();
+        if (saved != null && !saved.isBlank()) {
+            if (saved.equals(current)) return;
+            seed.set(saved);
+            failedSeed = "";
+            lastSeed = "";
+            seedSettledAt = 0;
+            Zeus.LOG.info("Seed ESP: restored the seed saved for {}", key);
+        } else if (!current.isEmpty()) {
+            seed.set("");
+            failedSeed = "";
+            lastSeed = "";
+            seedSettledAt = 0;
         }
     }
 
@@ -626,11 +635,16 @@ public final class SeedEsp extends Module {
         }
     }
 
-    // ------------------------------------------------------------------ seed scan control
-
     private void seedTick(Minecraft mc) {
-        String text = seed.get().trim();
         long now = System.currentTimeMillis();
+        if (remember.on()) {
+            String world = worldKey(mc);
+            if (!world.isEmpty() && !world.equals(lastWorld)) {
+                lastWorld = world;
+                restoreSeedFor(world);
+            }
+        }
+        String text = seed.get().trim();
         if (!text.equals(lastSeed)) {
             lastSeed = text;
             seedSettledAt = now;
@@ -642,8 +656,6 @@ public final class SeedEsp extends Module {
         boolean supported = dim.equals(Level.OVERWORLD) || dim.equals(Level.NETHER);
         SeedJob j = job;
 
-        // throw away a scan that can no longer be right: another seed, another range, another dimension, prediction
-        // switched off, or (with Follow me) a player who walked out of the area it covers
         if (j != null) {
             boolean stale = !predict.on() || !supported || !j.dimension.equals(dim) || !j.seedText.equals(text)
                     || j.radiusChunks != scanRadius(dim) || (j.follow && follow.on() && walkedAway(mc, j));
@@ -653,7 +665,6 @@ public final class SeedEsp extends Module {
             }
         }
 
-        // never retry a seed that already failed, it would just fail again and burn a world load every few seconds
         if (j != null && j.failed) {
             failedSeed = j.seedText + "|" + j.dimension.identifier();
             cancelJob();
@@ -661,13 +672,12 @@ public final class SeedEsp extends Module {
         }
 
         if (j != null && j.finished) {
-            // a finished scan is kept as long as it still covers where the player is
             if (!j.follow || !follow.on() || !walkedAway(mc, j)) return;
             cancelJob();
             j = null;
         }
 
-        if (j != null) return; // still running
+        if (j != null) return;
         if (!predict.on() || !supported) return;
         if (text.isBlank() || text.equals(failedSeed)) return;
         if (!failedSeed.isEmpty() && failedSeed.equals(text + "|" + dim.identifier())) return;
@@ -684,10 +694,6 @@ public final class SeedEsp extends Module {
         startJob(parsed.getAsLong(), text, dim, mc);
     }
 
-    /**
-     * How many chunks the seed scan covers in this dimension: the setting, but never less than what the display range
-     * needs, so raising Range can never leave the far ring empty.
-     */
     private int scanRadius(ResourceKey<Level> dim) {
         int wanted = Math.max(2, (int) Math.round(scanChunks.get()));
         wanted = Math.max(wanted, (int) Math.ceil(range.get() / 16.0));
@@ -695,7 +701,6 @@ public final class SeedEsp extends Module {
         return Math.min(32, wanted);
     }
 
-    /** True once the player has moved far enough that the generated area no longer covers the view. */
     private static boolean walkedAway(Minecraft mc, SeedJob j) {
         double dx = mc.player.getX() - j.originX;
         double dz = mc.player.getZ() - j.originZ;
@@ -723,13 +728,6 @@ public final class SeedEsp extends Module {
         invalidate();
     }
 
-    // ------------------------------------------------------------------ the ore cache
-
-    /**
-     * Every ore block the seed scan has ever found for one world, one seed and one dimension, kept per chunk. Stored in
-     * a small binary file so a world you already scanned is instant on the next join, and so walking around keeps
-     * adding to what is known instead of starting from nothing.
-     */
     private static final class OreCache {
         static final int MAGIC = 0x5A455553;
         static final int VERSION = 2;
@@ -741,7 +739,6 @@ public final class SeedEsp extends Module {
             return FabricLoader.getInstance().getConfigDir().resolve("zeus").resolve("ores");
         }
 
-        /** One file per world, seed and dimension. Things that are not safe in a file name are hashed away. */
         static Path file(String world, String seedText, ResourceKey<Level> dim) {
             String base = (world + "|" + seedText + "|" + dim.identifier()).toLowerCase(Locale.ROOT);
             String safe = world.replaceAll("[^A-Za-z0-9._-]", "_");
@@ -757,13 +754,13 @@ public final class SeedEsp extends Module {
             try (DataInputStream in = new DataInputStream(new BufferedInputStream(Files.newInputStream(file)))) {
                 if (in.readInt() != MAGIC) return cache;
                 int version = in.readInt();
-                // version 1 files predate the air flag; every block in them counts as open, which is what they showed
                 if (version != 1 && version != VERSION) return cache;
                 int count = in.readInt();
                 if (count < 0 || count > MAX_CHUNKS * 2) return cache;
                 for (int c = 0; c < count; c++) {
                     long key = in.readLong();
                     int n = in.readShort() & 0xFFFF;
+                    if (n > 4096) return new OreCache();
                     Hit[] hits = new Hit[n];
                     for (int i = 0; i < n; i++) {
                         int raw = in.readByte();
@@ -787,7 +784,6 @@ public final class SeedEsp extends Module {
             return cache;
         }
 
-        /** Writes the cache, keeping the chunks nearest to the player when it has grown very large. */
         void write(Path file, int nearX, int nearZ) {
             if (file == null) return;
             Path temp = null;
@@ -834,21 +830,12 @@ public final class SeedEsp extends Module {
                     try {
                         Files.deleteIfExists(temp);
                     } catch (IOException ignored) {
-                        // it is only a leftover temporary file
                     }
                 }
             }
         }
     }
 
-    // ------------------------------------------------------------------ the world generator copy
-
-    /**
-     * One seed scan: load what is already cached, then start a headless vanilla server with the given seed, generate
-     * only the chunks that are still missing around the player, read their ore, and save. The server never listens,
-     * never saves, and lives only for the scan. Everything that can go wrong is caught, so a failed scan can never take
-     * the game with it.
-     */
     private static final class SeedJob {
         final long seed;
         final String seedText;
@@ -861,7 +848,6 @@ public final class SeedEsp extends Module {
         final Path cacheFile;
         final long startedAt = System.currentTimeMillis();
 
-        /** Ore found so far, one entry per chunk. Read by the renderer while this fills. */
         final Map<Long, ChunkHits> hits = new ConcurrentHashMap<>();
 
         volatile boolean cancelled;
@@ -870,6 +856,7 @@ public final class SeedEsp extends Module {
         volatile boolean fromCache;
         volatile String message = "";
         volatile int done;
+        volatile int baseDone;
         volatile int total;
         volatile int generated;
 
@@ -915,7 +902,6 @@ public final class SeedEsp extends Module {
                 cache = dropCache ? new OreCache() : OreCache.read(cacheFile);
                 if (dropCache) deleteTree(cacheFile);
 
-                // everything already known about this area is usable straight away
                 List<ChunkPos> missing = new ArrayList<>();
                 for (ChunkPos pos : circle(originX >> 4, originZ >> 4, radiusChunks)) {
                     Hit[] known = cache.chunks.get(pos.toLong());
@@ -927,6 +913,7 @@ public final class SeedEsp extends Module {
                     }
                 }
                 total = done + missing.size();
+                baseDone = done;
                 fromCache = missing.isEmpty();
                 if (fromCache) {
                     Zeus.LOG.info("Seed ESP: {} chunk(s) came from the cache, nothing to generate", hits.size());
@@ -966,7 +953,7 @@ public final class SeedEsp extends Module {
                     for (Map.Entry<Long, ChunkHits> entry : hits.entrySet()) {
                         cache.chunks.put(entry.getKey(), entry.getValue().hits());
                     }
-                    if (!failed && !cancelled && generated > 0 && !cache.chunks.isEmpty()) {
+                    if (generated > 0 && !cache.chunks.isEmpty()) {
                         cache.write(cacheFile, originX, originZ);
                     }
                 }
@@ -975,7 +962,6 @@ public final class SeedEsp extends Module {
             }
         }
 
-        /** The chunks a scan covers: a filled circle, nearest first, so what is close to the player appears first. */
         static List<ChunkPos> circle(int cx, int cz, int radius) {
             List<ChunkPos> out = new ArrayList<>();
             for (int dx = -radius; dx <= radius; dx++) {
@@ -988,7 +974,6 @@ public final class SeedEsp extends Module {
             return out;
         }
 
-        /** Builds the same normal world a new vanilla save would have, with this seed and structures on. */
         private static WorldStem openStem(PackRepository packs, long seed) throws Exception {
             WorldDataConfiguration config = new WorldDataConfiguration(
                     new DataPackConfig(List.of("vanilla"), List.of()), FeatureFlags.DEFAULT_FLAGS);
@@ -1025,13 +1010,11 @@ public final class SeedEsp extends Module {
                             try {
                                 Files.deleteIfExists(p);
                             } catch (IOException ignored) {
-                                // a file the generator still has open: the next attempt gets it
                             }
                         });
                     }
                     if (!Files.exists(dir)) return;
                 } catch (IOException ignored) {
-                    // try again
                 }
                 try {
                     Thread.sleep(250L);
@@ -1043,10 +1026,6 @@ public final class SeedEsp extends Module {
         }
     }
 
-    /**
-     * A vanilla server that exists only to generate chunks: it never listens, never saves, and only lives for the scan.
-     * Chunks are read on its own thread and published as they come, so the ESP fills in while it runs.
-     */
     private static final class ScanServer extends MinecraftServer {
         private static final int CHUNKS_PER_TICK = 3;
         private static final AtomicBoolean GIZMOS = new AtomicBoolean(false);
@@ -1084,7 +1063,6 @@ public final class SeedEsp extends Module {
                 try {
                     Gizmos.withCollector(GizmoCollector.NOOP);
                 } catch (Throwable ignored) {
-                    // only a debug drawing helper; the scan does not need it
                 }
             }
             this.loadLevel();
@@ -1106,7 +1084,6 @@ public final class SeedEsp extends Module {
                 stop();
                 return;
             }
-            job.total = queuesize();
             for (int n = 0; n < CHUNKS_PER_TICK && cursor < queue.size(); n++) {
                 ChunkPos pos = queue.get(cursor++);
                 try {
@@ -1114,22 +1091,16 @@ public final class SeedEsp extends Module {
                 } catch (RuntimeException e) {
                     Zeus.LOG.warn("Seed ESP: could not read chunk {},{} of the seed", pos.x, pos.z, e);
                 }
-                job.done = cursor;
+                job.done = job.baseDone + cursor;
                 if (job.cancelled) break;
             }
             if (cursor >= queue.size()) stop();
-        }
-
-        private int queuesize() {
-            int known = job.hits.size();
-            return known + queue.size();
         }
 
         private void stop() {
             this.halt(false);
         }
 
-        /** Generates one chunk the way the server would, then reads its ore. */
         private void scan(ServerLevel level, ChunkPos pos) {
             ChunkAccess access = level.getChunkSource().getChunk(pos.x, pos.z, ChunkStatus.FULL, true);
             if (!(access instanceof LevelChunk chunk)) return;
@@ -1228,8 +1199,6 @@ public final class SeedEsp extends Module {
         }
     }
 
-    // ------------------------------------------------------------------ drawing
-
     @Override
     protected void onHudWorld(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
         if (mc.level == null || mc.player == null) return;
@@ -1243,11 +1212,9 @@ public final class SeedEsp extends Module {
         if (blocks) drawBlocks(g, mc, w, h);
     }
 
-    /** One box per ore block. */
     private void drawBlocks(GuiGraphics g, Minecraft mc, int w, int h) {
         float labelRange = showDistance.f() * showDistance.f();
         int drawn = 0;
-        // far ones first, so the near ones draw on top of them
         for (int i = shown.size() - 1; i >= 0; i--) {
             Marker marker = shown.get(i);
             Hit hit = marker.hit();
@@ -1268,7 +1235,6 @@ public final class SeedEsp extends Module {
         }
     }
 
-    /** One box around each connected vein, labelled with how many blocks it holds. */
     private void drawVeins(GuiGraphics g, Minecraft mc, int w, int h) {
         float labelRange = showDistance.f() * showDistance.f();
         int drawn = 0;
@@ -1322,7 +1288,6 @@ public final class SeedEsp extends Module {
         }
     }
 
-    /** Everything worth drawing right now, nearest first and capped per ore. Rebuilt a few times a second. */
     private List<Marker> markers(Minecraft mc) {
         SeedJob j = job;
         int mask = oreMask();
@@ -1330,8 +1295,6 @@ public final class SeedEsp extends Module {
         double px = mc.player.getX(), py = mc.player.getY(), pz = mc.player.getZ();
         double moved = (px - shownX) * (px - shownX) + (py - shownY) * (py - shownY) + (pz - shownZ) * (pz - shownZ);
         int seedChunks = j == null ? -1 : j.hits.size();
-        // only rebuild when something actually changed: standing still with nothing new costs nothing, and walking
-        // rebuilds a few times a second rather than every frame, which keeps vein grouping off the frame budget
         if (now - shownAt < 200 && j == shownJob && mask == shownMask && moved < 9.0
                 && dataVersion == shownVersion && seedChunks == shownSeedChunks) {
             return shown;
@@ -1360,7 +1323,6 @@ public final class SeedEsp extends Module {
 
         if (j != null && predict.on() && !j.cancelled && mc.level.dimension().equals(j.dimension)) {
             for (Map.Entry<Long, ChunkHits> entry : j.hits.entrySet()) {
-                // the real chunk is here, read or not: never draw a guess over blocks the client can already see
                 if (exact.containsKey(entry.getKey())) continue;
                 if (chunkOutOfRange(entry.getKey(), px, pz, r2)) continue;
                 if (mc.level.hasChunk(ChunkPos.getX(entry.getKey()), ChunkPos.getZ(entry.getKey()))) continue;
@@ -1378,8 +1340,6 @@ public final class SeedEsp extends Module {
 
         raw.sort(Comparator.comparingDouble(Marker::dist2));
 
-        // how much of each ore is in range, and where the closest one of each is; raw is nearest first, so the first
-        // hit of a kind is that kind's nearest
         int[] counted = new int[ORES.length];
         for (int i = 0; i < nearest.length; i++) nearest[i] = Long.MIN_VALUE;
         for (Marker marker : raw) {
@@ -1393,7 +1353,6 @@ public final class SeedEsp extends Module {
         System.arraycopy(counted, 0, panelCounts, 0, counted.length);
         panelState = stateText(j, mc);
 
-        // every ore family keeps its own nearest N, so coal can never crowd out the diamonds
         int cap = perOre.i();
         int[] used = new int[ORES.length];
         List<Marker> kept = new ArrayList<>();
@@ -1404,7 +1363,6 @@ public final class SeedEsp extends Module {
             used[kind]++;
         }
 
-        // connected runs of one ore, so a vein reads as one box with its size instead of a cloud of blocks
         List<Vein> veins = cluster(raw);
         veins.sort(Comparator.comparingDouble(Vein::dist2));
         int[] veinUsed = new int[ORES.length];
@@ -1429,10 +1387,6 @@ public final class SeedEsp extends Module {
         return shown;
     }
 
-    /**
-     * Groups hits into connected runs of the same ore, six-sided so a vein stays compact instead of chaining across the
-     * map. Only the nearest hits are grouped, so an enormous scan cannot cost a frame.
-     */
     private static List<Vein> cluster(List<Marker> hits) {
         int n = Math.min(hits.size(), 30000);
         if (n == 0) return List.of();
@@ -1483,7 +1437,6 @@ public final class SeedEsp extends Module {
         return out;
     }
 
-    /** Distance and a ready arrow pointing at the nearest one of an ore, for the counter panel. */
     private static String nearestText(Minecraft mc, long at) {
         if (at == Long.MIN_VALUE || mc.player == null) return "";
         double dx = BlockPos.getX(at) + 0.5 - mc.player.getX();
@@ -1507,7 +1460,6 @@ public final class SeedEsp extends Module {
         return j.fromCache ? "cached" : "ready";
     }
 
-    /** True when a whole chunk is so far away that none of its blocks can be inside the drawing range. */
     private static boolean chunkOutOfRange(long key, double px, double pz, double r2) {
         double dx = (ChunkPos.getX(key) << 4) + 8 - px;
         double dz = (ChunkPos.getZ(key) << 4) + 8 - pz;
