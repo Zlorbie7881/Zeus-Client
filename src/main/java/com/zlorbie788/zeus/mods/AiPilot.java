@@ -119,6 +119,9 @@ public final class AiPilot extends Module {
         long detourUntil;
         float detourYaw;
         boolean detourSide;
+        boolean vertical;
+        long verticalAt;
+        BlockPos ore;
 
         Job(JobKind kind, String target, int wanted, Vec3 to) {
             this.kind = kind;
@@ -709,6 +712,7 @@ public final class AiPilot extends Module {
         builder.append("Rules: module must be an id from the list. For \"set\" the setting name must match a setting the module shows. ");
         builder.append("Only send actions that are needed. Never invent ids. If the request cannot be done, return an empty actions list and explain in say.\n");
         builder.append("Prefix any job with repeat N to run the whole plan N times, for example: repeat 3 chop a tree then mine 10 stone.\n");
+        builder.append("go to mines a staircase down, cuts steps up or towers up on its own when the target sits at another height, and it never digs the block under its feet. mine until stops the moment the ore is in sight or in the inventory.\n");
         builder.append("do can also be job, where value is a phrase like: chop tree, chop 3 trees, mine until iron, mine 20 stone, quarry 10, tunnel 30, strip mine, farm, replant, till 9, collect, hunt, flee, shoot, shear 3, milk, eat, sleep, torch 8, place cobblestone here, place torch at 120 64 -300, drop 32 dirt, explore 60, return, build a house, swim to 120 62 -300, climb 8, bridge 12, go to 120 64 -300, come here, follow me, follow Steve, dig down, stop. Chain them in one value with then: chop 2 trees then mine until iron.\n");
         if (!context.isBlank()) builder.append("Context: ").append(context).append('\n');
         if (!NOTES.isEmpty()) builder.append("Notes from earlier sessions: ").append(String.join(" | ", NOTES)).append('\n');
@@ -859,7 +863,7 @@ public final class AiPilot extends Module {
     private List<String> jobLines() {
         if (!jobs.on()) return List.of("Jobs are switched off in the settings.");
         if (job == null) {
-            return List.of("Idle. Try: chop that tree, mine until iron, quarry 8, tunnel 30, farm, replant, hunt, shoot, shear, milk, eat, sleep, torch 8, explore 60.",
+            return List.of("Idle. Try: chop that tree, mine until iron (stops the moment it sees ore), quarry 8, tunnel 30, farm, replant, hunt, shoot, shear, milk, eat, sleep, torch 8, explore 60.",
                     "Also: place cobblestone here, drop 32 dirt, collect, return, follow me, stop.",
                     "Advanced: build a house, swim to 100 62 -200, climb 8, bridge 12, go to 100 64 -200.",
                     "Chain jobs with then: chop 2 trees then mine until iron");
@@ -1259,6 +1263,13 @@ public final class AiPilot extends Module {
             giveUp(mc, "stopped, health is low");
             return;
         }
+        // Auto Eat owns the use key and the hotbar while it eats; fighting it would cancel the food.
+        Gear.AutoEat eating = Zeus.get(Gear.AutoEat.class);
+        if (eating != null && eating.enabled() && job.kind != JobKind.EAT && mc.player.isUsingItem()) {
+            releaseKeys(mc);
+            job.note = "waiting for Auto Eat";
+            return;
+        }
         long budget = switch (job.kind) {
             case QUARRY, TUNNEL, MINE_UNTIL -> 600_000L;
             default -> 300_000L;
@@ -1272,7 +1283,7 @@ public final class AiPilot extends Module {
             case MINE_UNTIL -> mineUntilTick(mc);
             case MINE_COUNT -> mineCountTick(mc);
             case GOTO -> {
-                if (job.to == null || walkTo(mc, job.to, 1.6)) endJob(mc, "arrived");
+                if (job.to == null || navigate(mc, job.to)) endJob(mc, "arrived");
             }
             case FOLLOW -> followTick(mc);
             case COLLECT -> collectTick(mc);
@@ -2203,28 +2214,250 @@ public final class AiPilot extends Module {
 
     private void mineUntilTick(Minecraft mc) {
         long now = System.currentTimeMillis();
-        int wantY = bestY(job.target);
-        double above = mc.player.getY() - wantY;
-        if (Math.abs(above) > 6) {
-            job.note = "digging to y " + wantY + " (" + (above > 0 ? "down" : "up") + ")";
-            digVertical(mc, above > 0 ? Direction.DOWN : Direction.UP);
-            return;
+        // Look for the ore before anything else: the old order dug all the way to the ore's
+        // usual depth first, so a vein right next to the player was walked straight past.
+        XRay ray = Zeus.get(XRay.class);
+        int radius = ray != null && ray.enabled() ? Math.min(48, jobRange.i() * 2) : jobRange.i();
+        if (now >= job.nextScan) {
+            job.nextScan = now + 300L;
+            BlockPos spotted = nearestOre(mc, job.target, radius, 24);
+            if (spotted != null) job.ore = spotted;
         }
-        job.note = "tunnelling at y " + Math.round(mc.player.getY());
-        BlockPos found = now >= job.nextScan ? nearestOre(mc, job.target, jobRange.i(), 20) : null;
-        job.nextScan = now + 400L;
-        if (found != null) {
-            String name = job.target.substring(0, 1).toUpperCase(Locale.ROOT) + job.target.substring(1);
-            if (jobWaypoint.on()) {
-                Extras.Waypoints points = Zeus.get(Extras.Waypoints.class);
-                if (points != null) points.addAt(name, found.getX() + 0.5, found.getY(), found.getZ() + 0.5);
+        if (job.ore != null) {
+            BlockState ore = mc.level.getBlockState(job.ore);
+            if (ore.isAir()) {
+                reportFind(mc, job.ore, "mined");
+                return;
             }
-            endJob(mc, "found " + job.target + " at " + found.getX() + " " + found.getY() + " " + found.getZ());
-            return;
+            if (!matches(ore, job.target)) {
+                job.ore = null;
+            } else {
+                job.note = "found " + job.target + ", stopping";
+                reportFind(mc, job.ore, "found");
+                return;
+            }
         }
+        int wantY = bestY(oreKey(job.target));
+        double above = mc.player.getY() - wantY;
+        job.note = Math.abs(above) > 1.5
+                ? "staircasing " + (above > 0 ? "down" : "up") + " to y " + wantY + " for " + job.target
+                : "tunnelling at y " + Math.round(mc.player.getY()) + " for " + job.target;
         if (now < job.nextSearch) return;
         job.nextSearch = now + 100L;
+        if (Math.abs(above) > 1.5) {
+            Vec3 column = new Vec3(mc.player.getX(), wantY, mc.player.getZ());
+            if (above > 0) stairDown(mc, column);
+            else stairUp(mc, column);
+            return;
+        }
         tunnel(mc);
+    }
+
+    private void reportFind(Minecraft mc, BlockPos pos, String how) {
+        String name = job.target.substring(0, 1).toUpperCase(Locale.ROOT) + job.target.substring(1);
+        if (jobWaypoint.on()) {
+            Extras.Waypoints points = Zeus.get(Extras.Waypoints.class);
+            if (points != null) points.addAt(name, pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5);
+        }
+        endJob(mc, how + " " + name + " at " + pos.getX() + " " + pos.getY() + " " + pos.getZ());
+    }
+
+    private boolean navigate(Minecraft mc, Vec3 to) {
+        Player p = mc.player;
+        double dy = to.y - p.getY();
+        double flat = Math.hypot(to.x - p.getX(), to.z - p.getZ());
+        if (flat <= 1.6 && Math.abs(dy) <= 1.6) {
+            releaseKeys(mc);
+            return true;
+        }
+        if (p.isInWater() || p.isInLava()) return walkTo(mc, to, 1.6);
+        long now = System.currentTimeMillis();
+        if (job.verticalAt == 0) job.verticalAt = now + 3500L;
+        if (!job.vertical) {
+            boolean there = walkTo(mc, to, 1.6);
+            if (job == null) return false;
+            if (there) {
+                // Standing over or under the target: the rest of the way is up or down.
+                job.vertical = true;
+                job.note = "the rest is up or down, mining to it";
+                return false;
+            }
+            if (now > job.verticalAt || job.blocked >= 6) {
+                job.vertical = true;
+                job.note = "no way on foot, mining straight to the height";
+            }
+            return false;
+        }
+        if (Math.abs(dy) <= 1.2) {
+            job.vertical = false;
+            job.verticalAt = now + 3500L;
+            job.blocked = 0;
+            job.note = "back on the level, walking";
+            return false;
+        }
+        if (dy < 0) stairDown(mc, to);
+        else stairUp(mc, to);
+        return false;
+    }
+
+    private void stairDown(Minecraft mc, Vec3 to) {
+        if (job == null) return;
+        Player p = mc.player;
+        long now = System.currentTimeMillis();
+        if (now < job.detourUntil) {
+            job.note = "turning away from the lava";
+            return;
+        }
+        double dx = to.x - p.getX(), dz = to.z - p.getZ();
+        float yaw = Math.hypot(dx, dz) < 1.5 ? p.getYRot() : (float) Math.toDegrees(Math.atan2(-dx, dz));
+        Direction dir = facing(yaw);
+        BlockPos feet = p.blockPosition();
+        BlockPos step = feet.relative(dir);
+        BlockPos floor = step.below();
+        BlockPos under = floor.below();
+        if (unsafe(mc, step) || unsafe(mc, step.above()) || unsafe(mc, floor) || unsafe(mc, under)) {
+            rotateSideways(mc);
+            return;
+        }
+        if (!open(mc, step.above())) {
+            job.note = "digging a staircase down";
+            mineBlock(mc, step.above());
+            return;
+        }
+        if (!open(mc, step)) {
+            job.note = "digging a staircase down";
+            mineBlock(mc, step);
+            return;
+        }
+        if (!open(mc, floor)) {
+            BlockState below = mc.level.getBlockState(under);
+            if (below.getDestroySpeed(mc.level, under) < 0f || !below.getFluidState().isEmpty()) {
+                rotateSideways(mc);
+                return;
+            }
+            job.note = "cutting the next step down";
+            mineBlock(mc, floor);
+            return;
+        }
+        job.note = "walking down the staircase";
+        walkTo(mc, centre(step), 0.6);
+        support(mc);
+    }
+
+    private void stairUp(Minecraft mc, Vec3 to) {
+        if (job == null) return;
+        Player p = mc.player;
+        long now = System.currentTimeMillis();
+        if (now < job.detourUntil) {
+            job.note = "turning away from the lava";
+            return;
+        }
+        double dx = to.x - p.getX(), dz = to.z - p.getZ();
+        float yaw = Math.hypot(dx, dz) < 1.5 ? p.getYRot() : (float) Math.toDegrees(Math.atan2(-dx, dz));
+        Direction dir = facing(yaw);
+        BlockPos feet = p.blockPosition();
+        BlockPos step = feet.relative(dir).above();
+        if (unsafe(mc, step) || unsafe(mc, step.above())) {
+            rotateSideways(mc);
+            return;
+        }
+        if (!open(mc, step)) {
+            job.note = "cutting steps up";
+            mineBlock(mc, step);
+            return;
+        }
+        if (!open(mc, step.above())) {
+            job.note = "cutting headroom";
+            mineBlock(mc, step.above());
+            return;
+        }
+        if (!Build.solid(step.below())) {
+            pillar(mc);
+            return;
+        }
+        p.setYRot(yaw);
+        p.setYHeadRot(yaw);
+        mc.options.keyUp.setDown(true);
+        mc.options.keyJump.setDown(true);
+        job.note = "jumping up the steps";
+    }
+
+    private void pillar(Minecraft mc) {
+        if (job == null) return;
+        Player p = mc.player;
+        if (p.onGround()) {
+            mc.options.keyJump.setDown(true);
+            mc.options.keyUp.setDown(false);
+            job.note = "jumping to tower up";
+            return;
+        }
+        BlockPos below = p.blockPosition().below();
+        if (!Build.replaceable(below)) {
+            job.note = "no room to place a block under me";
+            return;
+        }
+        java.util.function.Predicate<net.minecraft.world.item.ItemStack> block =
+                s -> !s.isEmpty() && s.getItem() instanceof net.minecraft.world.item.BlockItem;
+        if (ensureHotbar(mc, block) < 0) {
+            giveUp(mc, "no blocks to tower up with");
+            return;
+        }
+        lookAt(p, centre(below));
+        mc.options.keyUp.setDown(false);
+        mc.options.keyShift.setDown(false);
+        if (Build.place(below, block, true, Build.REACH) && job != null) {
+            job.mined++;
+            job.note = "placing blocks under myself to climb";
+        }
+    }
+
+    private void support(Minecraft mc) {
+        if (job == null) return;
+        Player p = mc.player;
+        if (p.onGround() || p.getDeltaMovement().y > -0.35 || p.isInWater() || p.isInLava()) return;
+        BlockPos below = p.blockPosition().below();
+        int drop = 0;
+        BlockPos probe = below;
+        while (drop < 4 && !Build.solid(probe) && mc.level.getBlockState(probe).getFluidState().isEmpty()) {
+            probe = probe.below();
+            drop++;
+        }
+        if (drop < 2 || drop >= 4 || !Build.replaceable(below)) return;
+        java.util.function.Predicate<net.minecraft.world.item.ItemStack> block =
+                s -> !s.isEmpty() && s.getItem() instanceof net.minecraft.world.item.BlockItem;
+        if (ensureHotbar(mc, block) < 0) return;
+        lookAt(p, centre(below));
+        if (Build.place(below, block, true, Build.REACH) && job != null) job.note = "catching myself on a block";
+    }
+
+    private void rotateSideways(Minecraft mc) {
+        if (job == null) return;
+        Player p = mc.player;
+        float turn = job.detourSide ? 90f : -90f;
+        job.detourSide = !job.detourSide;
+        job.detourUntil = System.currentTimeMillis() + 700L;
+        p.setYRot(p.getYRot() + turn);
+        p.setYHeadRot(p.getYRot());
+        job.note = "looking for a safer way through";
+    }
+
+    private static boolean unsafe(Minecraft mc, BlockPos pos) {
+        return mc.level != null && !mc.level.getBlockState(pos).getFluidState().isEmpty();
+    }
+
+    private static void equipTool(Minecraft mc, BlockState state) {
+        Gear.AutoTool auto = Zeus.get(Gear.AutoTool.class);
+        if (auto != null && auto.enabled()) return; // Auto Tool swaps for exactly the block we look at
+        int best = Inv.selected();
+        float speed = Inv.get(best).getDestroySpeed(state);
+        for (int i = 0; i < 9; i++) {
+            float found = Inv.get(i).getDestroySpeed(state);
+            if (found > speed + 0.01f) {
+                speed = found;
+                best = i;
+            }
+        }
+        if (best != Inv.selected() && speed > 1.0f) Inv.select(best);
     }
 
     private void mineCountTick(Minecraft mc) {
@@ -2280,9 +2513,13 @@ public final class AiPilot extends Module {
         if (job.target.equals("down")) dir = Direction.DOWN;
         else if (job.target.equals("up")) dir = Direction.UP;
         else dir = facing(p.getYRot());
-        if (dir == Direction.DOWN || dir == Direction.UP) {
-            BlockPos next = p.blockPosition().relative(dir);
-            if (mineBlock(mc, next) && job != null) job.mined++;
+        // Never dig the block under our own feet: a staircase keeps a floor and misses lava.
+        if (dir == Direction.DOWN) {
+            stairDown(mc, new Vec3(p.getX(), p.getY() - 6.0, p.getZ()));
+            return;
+        }
+        if (dir == Direction.UP) {
+            stairUp(mc, new Vec3(p.getX(), p.getY() + 6.0, p.getZ()));
             return;
         }
         BlockPos feet = p.blockPosition();
@@ -2306,6 +2543,7 @@ public final class AiPilot extends Module {
             giveUp(mc, "stopped at water or lava");
             return false;
         }
+        equipTool(mc, state);
         Player p = mc.player;
         Vec3 c = centre(pos);
         if (p.getEyePosition().distanceTo(c) > jobReach.get()) {
@@ -2333,6 +2571,8 @@ public final class AiPilot extends Module {
         if (!mc.level.getBlockState(pos).isAir()) return false;
         releaseAttack(mc);
         job.note = "mined " + pos.getX() + " " + pos.getY() + " " + pos.getZ();
+        // Breaking the vein on the way down counts as finding it.
+        if (job.kind == JobKind.MINE_UNTIL && matches(state, job.target)) job.ore = pos;
         return true;
     }
 
@@ -2526,10 +2766,29 @@ public final class AiPilot extends Module {
     }
 
     private static boolean matches(BlockState state, String wanted) {
-        if (wanted == null || wanted.isBlank()) return false;
+        if (wanted == null || wanted.isBlank() || state.isAir()) return false;
         String id = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath();
-        String key = wanted.replace(' ', '_');
-        return id.equals(key) || id.equals(key + "_ore") || id.contains(key) && id.endsWith("_ore");
+        for (String key : keys(wanted)) {
+            if (id.equals(key) || id.equals("deepslate_" + key) || id.endsWith("_ore") && id.contains(key)) return true;
+        }
+        return false;
+    }
+
+    // "diamonds", "diamond ore", "Diamond" and "deepslate diamond" all have to find diamond ore.
+    private static java.util.List<String> keys(String wanted) {
+        java.util.LinkedHashSet<String> keys = new java.util.LinkedHashSet<>();
+        String key = wanted.toLowerCase(Locale.ROOT).trim().replace(' ', '_');
+        keys.add(key);
+        if (key.endsWith("_ores")) keys.add(key.substring(0, key.length() - 5));
+        if (key.endsWith("_ore")) keys.add(key.substring(0, key.length() - 4));
+        if (key.endsWith("s") && key.length() > 3) keys.add(key.substring(0, key.length() - 1));
+        if (key.equals("debris") || key.equals("netherite") || key.equals("netherite_scrap")) keys.add("ancient_debris");
+        return new java.util.ArrayList<>(keys);
+    }
+
+    private static String oreKey(String wanted) {
+        java.util.List<String> keys = keys(wanted == null ? "" : wanted);
+        return keys.isEmpty() ? "" : keys.get(keys.size() - 1);
     }
 
     private BlockPos search(Minecraft mc, BlockPos centre, int radius, int height, java.util.function.Predicate<BlockState> match) {
