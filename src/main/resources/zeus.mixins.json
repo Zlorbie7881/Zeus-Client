@@ -19,6 +19,7 @@
     "XRayColorMixin",
     "XRayShapeMixin",
     "XRayOcclusionMixin",
+    "MouseTweaksMixin",
     "MinecraftScreenMixin",
     "LevelLoadingScreenMixin",
     "LoadingOverlayMixin",

@@ -94,6 +94,20 @@ public final class Mods {
         m.add(new XRay());
         m.add(new HoverTotem());
         m.add(new Ghost());
+        m.add(new Clutch.AutoMlg());
+        m.add(new Clutch.PearlCatch());
+        m.add(new Clutch.AutoWindCharge());
+        m.add(new Clutch.RightClickShield());
+        m.add(new Clutch.AutoStun());
+        m.add(new Clutch.AutoDrain());
+        m.add(new Phantom());
+        m.add(new CartTech.XbowCart());
+        m.add(new CartTech.InstaCart());
+        m.add(new CartTech.AutoCartRefill());
+        m.add(new CartTech.PotRefill());
+        m.add(new CartTech.SilentSafeAnchor());
+        m.add(new CartTech.AutoPot());
+        m.add(new MouseTweaks());
         m.add(new TridentUtil());
         m.add(new SpawnerProtect());
         m.add(new WorldMods.FastBreak());
@@ -116,6 +130,7 @@ public final class Mods {
         m.add(new Overlays.LightOverlay());
         m.add(new Overlays.Trajectories());
         m.add(new Overlays.Breadcrumbs());
+        m.add(new Overlays.JumpCircles());
         m.add(new Fullbright());
         m.add(new Extras.TimeChanger());
         m.add(new Extras.WeatherChanger());
@@ -176,8 +191,6 @@ public final class Mods {
         m.add(new StaffLive());
         m.add(new Profiles());
         m.add(ServerSwitch.instance());
-        m.add(new Interface.HudEditorLauncher());
-        m.add(new Interface.ThemeStudio());
         m.add(new Performance.Page());
         m.add(new WebDashboard());
         m.add(new Interface.Watermark());

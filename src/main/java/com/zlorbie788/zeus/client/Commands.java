@@ -137,13 +137,13 @@ public final class Commands {
                 }))
                 .then(literal("reset").executes(c -> {
                     com.zlorbie788.zeus.mods.AiPilot.reset();
-                    say("AI Pilot cleared its queue and memory.");
+                    say("Zeus AI Functions cleared its queue and memory.");
                     return 1;
                 }))
                 .then(literal("status").executes(c -> {
                     com.zlorbie788.zeus.mods.AiPilot pilot = com.zlorbie788.zeus.mods.AiPilot.find();
-                    if (pilot == null) say("AI Pilot is missing.");
-                    else say("AI Pilot: " + pilot.info() + (com.zlorbie788.zeus.mods.AiPilot.hasKey() ? "" : " - no token yet"));
+                    if (pilot == null) say("Zeus AI Functions is missing.");
+                    else say("Zeus AI Functions: " + pilot.info() + (com.zlorbie788.zeus.mods.AiPilot.hasKey() ? "" : " - no token yet"));
                     return 1;
                 }))
                 .then(argument("instruction", StringArgumentType.greedyString()).executes(c -> {

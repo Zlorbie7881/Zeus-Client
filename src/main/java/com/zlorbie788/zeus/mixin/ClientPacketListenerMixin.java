@@ -24,7 +24,12 @@ public abstract class ClientPacketListenerMixin {
     @Inject(method = "handleSetEntityMotion", at = @At("HEAD"), cancellable = true, require = 0)
     private void zeus$motion(ClientboundSetEntityMotionPacket packet, CallbackInfo ci) {
         Minecraft mc = Minecraft.getInstance();
-        if (Combat.AntiKnockback.blocks() && mc.player != null && packet.getId() == mc.player.getId()) ci.cancel();
+        if (mc.player == null || packet.getId() != mc.player.getId()) return;
+        double[] f = Combat.AntiKnockback.factor(packet.getMovement());
+        if (f == null) return;
+        net.minecraft.world.phys.Vec3 v = packet.getMovement();
+        mc.player.setDeltaMovement(v.x * f[0], v.y * f[1], v.z * f[0]);
+        ci.cancel();
     }
 
     @Inject(method = "handleBlockUpdate", at = @At("HEAD"), require = 0)

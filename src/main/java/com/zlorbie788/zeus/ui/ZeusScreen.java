@@ -3147,18 +3147,8 @@ public final class ZeusScreen extends Screen {
                     int maxY = Math.max(wMinY, wScrH - wHead - K(80));
                     int wantX = (int) Math.round(Math.max(0, Math.min(wScrW - wW, ex - dragOffX)));
                     int wantY = (int) Math.round(Math.max(wMinY, Math.min(maxY, ey - dragOffY)));
-                    List<int[]> others = new ArrayList<>();
-                    for (Map.Entry<String, int[]> e : winRect.entrySet()) if (e.getKey() != null && !e.getKey().equals(dragWin)) others.add(e.getValue());
-                    int[] snapped = snapWindow(others, wantX, wantY, wW, hh);
-                    int[] spot = pushClear(others, snapped[0], snapped[1], wW, hh, maxY);
-                    if (spot == null) spot = pushClear(others, wantX, wantY, wW, hh, maxY);
-                    if (spot != null) {
-                        w.x = spot[0] / (float) gs;
-                        w.y = spot[1] / (float) gs;
-                    } else if (!w.placed && mine != null) {
-                        w.x = mine[0] / (float) gs;
-                        w.y = mine[1] / (float) gs;
-                    }
+                    w.x = wantX / (float) gs;
+                    w.y = wantY / (float) gs;
                     w.placed = true;
                     Zeus.markDirty();
                 } else {

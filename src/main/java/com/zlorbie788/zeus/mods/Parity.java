@@ -90,6 +90,7 @@ public final class Parity {
             }
             shown = e.getName().getString();
             if (now - since < delay.get() || me.getAttackStrengthScale(0f) < charge.get()) return;
+            if (Phantom.miss()) return;
             mc.gameMode.attack(me, e);
             me.swing(InteractionHand.MAIN_HAND);
             since = now + 60;
