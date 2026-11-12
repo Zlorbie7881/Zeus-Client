@@ -25,7 +25,7 @@ public final class KeybindScreen extends Screen {
     private static final int EDGE = 0xFF2B4A78;
     private static final int TEXT = 0xFFE6EDFA;
     private static final int DIM = 0xFF8FA0BE;
-    private static final int WARN = 0xFFFFC857;
+    private static final int WARN = Accent.WARN;
 
     private final Screen parent;
     private final List<Module> all = new ArrayList<>();
@@ -146,7 +146,7 @@ public final class KeybindScreen extends Screen {
             Module m = shown.get(i);
             boolean rowHot = mx >= px + 8 && mx < px + pw - 8 && my >= y && my < y + ROW && my >= listY && my < listY + listH;
             if (rowHot) g.fill(px + 8, y, px + pw - 8, y + ROW - 1, 0x14FFFFFF);
-            g.fill(px + 8, y + 2, px + 10, y + ROW - 3, Draw.rgba(m.category.color, 0.9f));
+            g.fill(px + 8, y + 2, px + 10, y + ROW - 3, Draw.rgba(m.category.color(), 0.9f));
             Draw.text(g, Draw.fit(m.name, pw - 40 - CHIP_W - 70), px + 16, y + 4, m.enabled() ? 0xFFFFFFFF : TEXT);
             String cat = m.category.label;
             Draw.text(g, cat, px + pw - 16 - CHIP_W - 6 - Draw.width(cat), y + 4, 0xFF5E7094);

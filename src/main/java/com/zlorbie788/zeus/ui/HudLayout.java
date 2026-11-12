@@ -110,7 +110,7 @@ public final class HudLayout {
 
     public static void cycleAccent(String id) {
         Entry e = get(id);
-        int[] palette = {0, 0xFF4DA3FF, 0xFFB77BFF, 0xFFFFC857, 0xFF5EE6A0, 0xFFFF5C6C, 0xFFFFFFFF};
+        int[] palette = {0, 0xFF4DA3FF, 0xFFB77BFF, Accent.WARN, Accent.OK, Accent.BAD, 0xFFFFFFFF};
         int next = 0;
         for (int i = 0; i < palette.length; i++) if (palette[i] == e.accent) { next = (i + 1) % palette.length; break; }
         e.accent = palette[next];

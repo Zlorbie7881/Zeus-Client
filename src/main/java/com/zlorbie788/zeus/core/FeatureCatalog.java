@@ -22,7 +22,7 @@ public final class FeatureCatalog {
             JsonObject o = new JsonObject();
             o.addProperty("id", c.name());
             o.addProperty("label", c.label);
-            o.addProperty("color", String.format(Locale.ROOT, "#%06X", c.color & 0xFFFFFF));
+            o.addProperty("color", String.format(Locale.ROOT, "#%06X", c.color() & 0xFFFFFF));
             cats.add(o);
         }
         JsonArray mods = new JsonArray();

@@ -1,5 +1,6 @@
 package com.zlorbie788.zeus.mods;
 
+import com.zlorbie788.zeus.ui.Accent;
 import com.zlorbie788.zeus.core.Category;
 import com.zlorbie788.zeus.core.Module;
 import com.zlorbie788.zeus.core.Names;
@@ -30,7 +31,7 @@ public final class Sense {
     private static long cacheAt;
     private static int cacheRange;
 
-    private static final int[] LEVEL_COLORS = {0xFF5EE6A0, 0xFFFFC857, 0xFFFFA24D, 0xFFFF4D5E};
+    private static final int[] LEVEL_COLORS = {Accent.OK, Accent.WARN, 0xFFFFA24D, 0xFFFF4D5E};
 
     public static List<Rated> scan(Minecraft mc, int range) {
         long now = System.nanoTime();

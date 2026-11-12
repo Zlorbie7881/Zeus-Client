@@ -27,7 +27,7 @@ import java.util.Locale;
 public final class Hud {
 
     static int panelBg() {
-        return Draw.rgba(0xFF0D1018, (float) com.zlorbie788.zeus.ui.UiSettings.HUD_OPACITY.get() / 100f * widgetOpacity());
+        return Draw.rgba(Accent.surface(0xFF0D1018), (float) com.zlorbie788.zeus.ui.UiSettings.HUD_OPACITY.get() / 100f * widgetOpacity());
     }
 
     static int round(int def) {
@@ -60,17 +60,37 @@ public final class Hud {
         body(g, x, y, w, h, 1f);
     }
 
-    private static void body(GuiGraphics g, int x, int y, int w, int h, float f) {
+    private static final java.util.Map<String, long[]> APPEAR = new java.util.HashMap<>();
+
+    private static float appear() {
+        String id = CURRENT_WIDGET.get();
+        if (id == null || Draw.cheap || com.zlorbie788.zeus.ui.UiSettings.REDUCE_MOTION.on()) return 1f;
+        long now = System.currentTimeMillis();
+        long[] stamp = APPEAR.get(id);
+        if (stamp == null || now - stamp[1] > 1500L) {
+            stamp = new long[]{now, now};
+            APPEAR.put(id, stamp);
+        }
+        stamp[1] = now;
+        float t = Math.min(1f, (now - stamp[0]) / 220f);
+        return 0.35f + 0.65f * (t * t * (3f - 2f * t));
+    }
+
+    private static void body(GuiGraphics g, int x, int y, int w, int h, float fade) {
+        float f = Math.max(0f, Math.min(1f, fade)) * appear();
         int r = round(4);
         int bg = panelBg();
         Draw.shadow(g, x, y, w, h, 7, 6, 0.30f * f);
         Draw.rrect(g, x, y, w, h, r, fade(Draw.lighten(bg, 0.055f), f), fade(Draw.darken(bg, 0.18f), f));
         Draw.rrect(g, x + 1, y + 1, w - 2, 1, 1, Draw.rgba(0xFFFFFFFF, 0.055f * f));
         if (com.zlorbie788.zeus.ui.UiSettings.HUD_STRIPE.on()) {
-            if (!Draw.cheap) Draw.glow(g, x + 1, y + 3, 2, h - 5, 4, accent(), 5, 0.55f * f);
+            if (!Draw.cheap && com.zlorbie788.zeus.ui.UiSettings.HUD_GLOW.on()) Draw.glow(g, x + 1, y + 3, 2, h - 5, 4, accent(), 5, 0.55f * f);
             g.fill(x, y + 3, x + 2, y + h - 3, Draw.rgba(accent(), 0.95f * f));
         }
+        if (com.zlorbie788.zeus.ui.UiSettings.HUD_GLOW.on() && !Draw.cheap) Draw.glow(g, x, y, w, h, r, accent(), 7, 0.10f * f);
+        Draw.rrectLine(g, x + 1, y + 1, w - 2, h - 2, Math.max(1, r - 1), Draw.rgba(0xFFFFFFFF, 0.035f * f));
         Draw.rrectLine(g, x, y, w, h, r, Draw.rgba(accent(), 0.55f * f));
+        if (com.zlorbie788.zeus.ui.UiSettings.HUD_BRACKETS.on()) Draw.brackets(g, x + 2, y + 2, w - 4, h - 4, 6, Draw.rgba(accent(), 0.45f * f));
     }
 
     static int fade(int argb, float f) {
@@ -145,12 +165,12 @@ public final class Hud {
         };
         int x = right ? w - 6 - bw : 6;
         int y = bottom ? h - base - USED[corner] - bh : base + USED[corner];
-        USED[corner] += bh + 4;
+        USED[corner] += bh + 5;
         record(x, y, bw, bh);
         return new int[]{x, y};
     }
 
-    static final int PAD = 9;
+    static final int PAD = 10;
     static final int ROW = 20;
 
     static final int TOP = 23;
@@ -167,12 +187,39 @@ public final class Hud {
         caption(g, x + PAD, y + 7, title, Draw.rgba(colour, 0.85f));
         if (count != null) chip(g, x + w - PAD, y + 5, count, colour);
         rule(g, x + PAD, y + 18, w - PAD * 2);
+        if (com.zlorbie788.zeus.ui.UiSettings.HUD_SHEEN.on() && !Draw.cheap && !com.zlorbie788.zeus.ui.UiSettings.REDUCE_MOTION.on()) {
+            Draw.sheen(g, x + PAD, y + 4, w - PAD * 2, 13, accent(), Draw.sweep(4200L));
+        }
         return TOP;
     }
 
     static void rule(GuiGraphics g, int x, int y, int w) {
         if (w <= 0) return;
+        int accent = accent();
+        int step = Math.max(1, Math.round(w / 8f));
+        for (int i = 0; i < 8; i++) {
+            int from = x + step * i;
+            int to = i == 7 ? x + w : Math.min(x + w, from + step);
+            float k = 1f - i / 8f;
+            g.fill(from, y, to, y + 1, Draw.rgba(accent, 0.50f * k * k));
+        }
         g.fill(x, y, x + w, y + 1, Draw.rgba(0xFFFFFFFF, 0.07f));
+        g.fill(x, y, x + Math.max(4, w / 6), y + 1, Draw.rgba(accent, 0.65f));
+    }
+
+    static void row(GuiGraphics g, int x, int y, int w, String label, String value, int colour) {
+        row(g, x, y, w, label, value, Accent.DIM, colour);
+    }
+
+    static void row(GuiGraphics g, int x, int y, int w, String label, String value, int labelColour, int valueColour) {
+        int valueWidth = value == null ? 0 : Draw.width(value);
+        Draw.text(g, Draw.fit(label, Math.max(0, w - valueWidth - 6)), x, y, labelColour);
+        if (value != null) Draw.textRight(g, value, x + w, y, valueColour);
+    }
+
+    static void rowBar(GuiGraphics g, int x, int y, int w, String label, String value, float fraction, int colour) {
+        row(g, x, y, w, label, value, Accent.DIM, Draw.mix(colour, 0xFFFFFFFF, 0.35f));
+        bar(g, x, y + 11, w, 3, fraction, colour);
     }
 
     static void bar(GuiGraphics g, int x, int y, int w, int h, float frac, int colour) {
@@ -180,8 +227,9 @@ public final class Hud {
         int f = Math.max(0, Math.min(w, Math.round(w * Math.max(0f, Math.min(1f, frac)))));
         Draw.rrect(g, x, y, w, h, Math.max(1, h / 2), Draw.rgba(0xFFFFFFFF, 0.09f));
         if (f > 1) {
-            if (!Draw.cheap) Draw.glow(g, x, y, f, h, Math.max(1, h / 2), colour, 3, 0.40f);
+            if (!Draw.cheap && com.zlorbie788.zeus.ui.UiSettings.HUD_GLOW.on()) Draw.glow(g, x, y, f, h, Math.max(1, h / 2), colour, 3, 0.40f);
             Draw.rrect(g, x, y, f, h, Math.max(1, h / 2), Draw.lighten(colour, 0.14f), colour);
+            if (h > 3 && f > 4) g.fill(x + 1, y, x + f - 1, y + 1, Draw.rgba(0xFFFFFFFF, 0.16f));
         }
     }
 
@@ -195,6 +243,7 @@ public final class Hud {
         int x = xRight - cw;
         Draw.rrect(g, x, y, cw, 12, 6, Draw.rgba(colour, 0.15f));
         Draw.rrectLine(g, x, y, cw, 12, 6, Draw.rgba(colour, 0.40f));
+        g.fill(x + 3, y + 1, x + cw - 3, y + 2, Draw.rgba(0xFFFFFFFF, 0.10f));
         Draw.boldCenter(g, text, x + cw / 2, y + 2, Draw.mix(colour, 0xFFFFFFFF, 0.5f));
     }
 
@@ -203,7 +252,7 @@ public final class Hud {
     }
 
     static int health(float f) {
-        return f > 0.5f ? 0xFF5EE6A0 : f > 0.22f ? 0xFFFFC857 : 0xFFFF5C6C;
+        return Accent.level(f);
     }
 
     public static final class ArmorHud extends Module {
@@ -295,10 +344,10 @@ public final class Hud {
                 int y = at[1] + TOP + i * 14;
                 boolean ok = good.get(i);
                 float secs = left.get(i);
-                int tick = ok ? 0xFF5EE6A0 : 0xFFFF5C6C;
+                int tick = ok ? Accent.OK : Accent.BAD;
                 Draw.rrect(g, at[0] + PAD, y + 2, 2, 10, 1, Draw.rgba(tick, 0.85f));
                 Draw.text(g, names.get(i), at[0] + PAD + 7, y + 3, ok ? 0xFFC6F7DD : 0xFFFFB6BD);
-                int tc = secs < 0f ? Accent.DIM : secs <= 3f ? 0xFFFF5C6C : secs <= 10f ? 0xFFFFC857 : Accent.DIM;
+                int tc = secs < 0f ? Accent.DIM : secs <= 3f ? Accent.BAD : secs <= 10f ? Accent.WARN : Accent.DIM;
                 Draw.textRight(g, times.get(i), at[0] + bw - 7, y + 3, tc);
             }
         }
@@ -504,13 +553,13 @@ public final class Hud {
                     col = 0xFFFFFFFF;
                 } else if (e instanceof Enemy) {
                     if (!monsters.on()) continue;
-                    col = 0xFFFF5C6C;
+                    col = Accent.BAD;
                 } else if (e instanceof ItemEntity) {
                     if (!items.on()) continue;
-                    col = 0xFFFFC857;
+                    col = Accent.WARN;
                 } else if (e instanceof LivingEntity) {
                     if (!animals.on()) continue;
-                    col = 0xFF5EE6A0;
+                    col = Accent.OK;
                 } else {
                     continue;
                 }

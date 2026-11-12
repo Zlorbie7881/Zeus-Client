@@ -24,13 +24,13 @@ public final class HudEditorScreen extends Screen {
     private static final int SNAP_DISTANCE = 5;
     private static final int GRID = 8;
     private static final int LIST_ROWS = 8;
-    private static final int[] SWATCH = {0, 0xFF4DA3FF, 0xFFB77BFF, 0xFFFFC857, 0xFF5EE6A0, 0xFFFF5C6C, 0xFFFFFFFF};
+    private static final int[] SWATCH = {0, 0xFF4DA3FF, 0xFFB77BFF, Accent.WARN, Accent.OK, Accent.BAD, 0xFFFFFFFF};
 
     private static final int PANEL_BG = 0xF2101826;
     private static final int PANEL_EDGE = 0xFF2B4A78;
     private static final int TEXT = 0xFFE6EDFA;
     private static final int DIM = 0xFF8FA0BE;
-    private static final int GOOD = 0xFF5EE6A0;
+    private static final int GOOD = Accent.OK;
 
     private static final class Hit {
         int x, y, w, h;

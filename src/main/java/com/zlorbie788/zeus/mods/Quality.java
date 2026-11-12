@@ -1,5 +1,6 @@
 package com.zlorbie788.zeus.mods;
 
+import com.zlorbie788.zeus.ui.Accent;
 import com.google.gson.JsonObject;
 import net.fabricmc.loader.api.FabricLoader;
 import com.google.gson.JsonParser;
@@ -247,7 +248,7 @@ public final class Quality {
             Draw.line(g, bx, by + 9, bx + 6, by + 9, 1.8f, bc);
             Draw.line(g, bx + 6, by + 9, bx + 1, by + 19, 1.8f, bc);
             Draw.text(g, title, x + 28, y + 7, Draw.rgba(0xFFFFFFFF, a));
-            Draw.text(g, versions, x + 28, y + 19, Draw.rgba(0xFF5EE6A0, a));
+            Draw.text(g, versions, x + 28, y + 19, Draw.rgba(Accent.OK, a));
             if (!notes.isBlank()) Draw.text(g, Draw.fit(notes, cw - 36), x + 28, y + 31, Draw.rgba(0xFF9FB2D6, a));
             int barW = Math.round((cw - 16) * (1f - age / (float) POP_MS));
             g.fill(x + 8, y + ch - 4, x + 8 + barW, y + ch - 3, Draw.rgba(accent, 0.85f * a));
@@ -350,7 +351,7 @@ public final class Quality {
                 double dy = d.y() + 1 - Projector.eyeY();
                 double dz = d.z() - Projector.eyeZ();
                 double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-                int red = 0xFFFF5C6C;
+                int red = Accent.BAD;
                 if (beam.on()) {
                     Wire.line(g, d.x(), d.y(), d.z(), d.x(), d.y() + 48, d.z(), 1.6f, red, false);
                     Wire.box(g, d.x() - 0.3, d.y(), d.z() - 0.3, d.x() + 0.3, d.y() + 1.8, d.z() + 0.3, 1.2f, red, false);

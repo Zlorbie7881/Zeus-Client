@@ -30,6 +30,7 @@ public final class EspKit {
     public final Setting.Num width;
 
     public final Setting.Bool glow;
+    public final Setting.Bool contrast;
 
     public final Setting.Bool fade;
 
@@ -90,6 +91,7 @@ public final class EspKit {
         width = m.addSetting(new Setting.Num("Line width", "Thickness of the outline.", 1.6, 0.8, 4.0, 0.2, ""));
 
         glow = quiet(new Setting.Bool("Glow", "A soft halo around the lines.", true));
+        contrast = quiet(new Setting.Bool("Dark edges", "A thin dark line under every edge, so boxes stay readable against sky, snow, water and lava.", true));
 
         fade = quiet(new Setting.Bool("Fade with distance", "Far things get softer so the near ones stand out.", true));
 
@@ -310,6 +312,15 @@ public final class EspKit {
         for (int[] e : EDGES) {
 
             double ax = cx[e[0]], ay = cy[e[0]], az = cz[e[0]], dx = cx[e[1]], dy = cy[e[1]], dz = cz[e[1]];
+            if (contrast.on()) line(g, ax, ay, az, dx, dy, dz, thick + 1.3f, Draw.rgba(0x000000, 0.42f * alpha), 0);
+            float near = thick;
+            if (Projector.width() > 0) {
+                double mx = (ax + dx) * 0.5 - Projector.eyeX();
+                double my = (ay + dy) * 0.5 - Projector.eyeY();
+                double mz = (az + dz) * 0.5 - Projector.eyeZ();
+                double dist = Math.sqrt(mx * mx + my * my + mz * mz);
+                near = thick * (float) Math.max(0.72, Math.min(1.45, 1.55 - dist / 110.0));
+            }
 
             if (st == 3) {
 
@@ -321,13 +332,13 @@ public final class EspKit {
 
                 }
 
-                line(g, ax, ay, az, ax + lx, ay + ly, az + lz, thick * 1.15f, core, halo);
+                line(g, ax, ay, az, ax + lx, ay + ly, az + lz, near * 1.15f, core, halo);
 
-                line(g, dx - lx, dy - ly, dz - lz, dx, dy, dz, thick * 1.15f, core, halo);
+                line(g, dx - lx, dy - ly, dz - lz, dx, dy, dz, near * 1.15f, core, halo);
 
             } else {
 
-                line(g, ax, ay, az, dx, dy, dz, thick, core, halo);
+                line(g, ax, ay, az, dx, dy, dz, near, core, halo);
 
             }
 
@@ -489,6 +500,55 @@ public final class EspKit {
 
                 tracerStyle.index(), tracerFlow.on(), labels, labels ? Math.round(dist) + "m" : null);
 
+    }
+
+    private static final java.util.List<int[]> PLACED = new java.util.ArrayList<>();
+
+    public static void resetLabels() {
+        PLACED.clear();
+    }
+
+    public static void plate(GuiGraphics g, String name, String distance, float health, boolean target, int cx, int top, int colour, float alpha, int w, int h, float scale) {
+        String head = name == null ? "" : name;
+        String tail = distance == null ? "" : distance;
+        float sc = Math.max(0.7f, Math.min(1.6f, scale));
+        int textW = Draw.widthS(head, sc) + (tail.isEmpty() ? 0 : Draw.widthS(tail, sc) + 7);
+        int pad = 4;
+        int barH = health >= 0 ? 3 : 0;
+        int boxH = Math.round(11 * sc) + barH + 2;
+        int bw = Math.max(26, textW + pad * 2);
+        int x = cx - bw / 2;
+        int y = top - boxH;
+        for (int attempt = 0; attempt < 6; attempt++) {
+            boolean clash = false;
+            for (int[] other : PLACED) {
+                if (x < other[2] && other[0] < x + bw && y < other[3] && other[1] < y + boxH) {
+                    clash = true;
+                    break;
+                }
+            }
+            if (!clash) break;
+            y -= boxH + 1;
+        }
+        if (y < 2) y = 2;
+        if (x < 2) x = 2;
+        if (x + bw > w - 2) x = Math.max(2, w - 2 - bw);
+        PLACED.add(new int[]{x, y, x + bw, y + boxH});
+        if (PLACED.size() > 40) PLACED.remove(0);
+        int accent = target ? Draw.mix(colour, 0xFFFFFFFF, 0.5f) : colour;
+        Draw.rrect(g, x, y, bw, boxH, 3, Draw.rgba(0x07090F, 0.62f * alpha));
+        Draw.rrectLine(g, x, y, bw, boxH, 3, Draw.rgba(accent, (target ? 0.80f : 0.32f) * alpha));
+        if (target) g.fill(x + 1, y + 2, x + 3, y + boxH - 2, Draw.rgba(accent, 0.90f * alpha));
+        Draw.textS(g, head, x + pad, y + 2, Draw.rgba(0xFFFFFFFF, alpha), sc);
+        if (!tail.isEmpty()) Draw.textRightS(g, tail, x + bw - pad, y + 2, Draw.rgba(Draw.mix(accent, 0xFFFFFFFF, 0.55f), alpha), sc);
+        if (barH > 0) {
+            int barY = y + boxH - barH - 1;
+            int full = bw - pad * 2;
+            int filled = Math.round(full * Math.max(0f, Math.min(1f, health)));
+            g.fill(x + pad, barY, x + pad + full, barY + barH, Draw.rgba(0x000000, 0.60f * alpha));
+            int hc = Draw.mix(0xFFFF4D4D, 0xFF5EE67A, Math.max(0f, Math.min(1f, health)));
+            g.fill(x + pad, barY, x + pad + filled, barY + barH, Draw.rgba(hc, 0.95f * alpha));
+        }
     }
 
     public void tag(GuiGraphics g, String text, String right, int cx, int top, int color, float alpha, int w, int h) {

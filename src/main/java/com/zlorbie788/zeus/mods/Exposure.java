@@ -1,5 +1,6 @@
 package com.zlorbie788.zeus.mods;
 
+import com.zlorbie788.zeus.ui.Accent;
 import com.zlorbie788.zeus.core.Category;
 import com.zlorbie788.zeus.core.Module;
 import com.zlorbie788.zeus.core.Setting;
@@ -171,7 +172,7 @@ public final class Exposure extends Module {
     }
 
     private int colour() {
-        return score < 15 ? 0xFF5EE6A0 : score < 35 ? 0xFFFFC857 : score < 60 ? 0xFFFF8F4D : 0xFFFF5C6C;
+        return score < 15 ? Accent.OK : score < 35 ? Accent.WARN : score < 60 ? Accent.HIGH : Accent.BAD;
     }
 
     @Override

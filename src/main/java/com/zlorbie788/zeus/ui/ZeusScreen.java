@@ -866,7 +866,7 @@ public final class ZeusScreen extends Screen {
         Ty.ring(g, x, y, w, h, K(13), line, cLine());
         int pad = K(14);
         spaced(g, "PERFORMANCE", x + pad, y + K(18), 10.5, Ty.BOLD, cMut(), 2.0);
-        int good = fps >= 60 ? 0xFF3DE07A : fps >= 30 ? 0xFFFFC857 : 0xFFFF5C6C;
+        int good = fps >= 60 ? 0xFF3DE07A : fps >= 30 ? Accent.WARN : Accent.BAD;
         String st = fps >= 60 ? "Smooth" : fps >= 30 ? "Fine" : "Low";
         int sw = tw(st, 11, Ty.BOLD);
         txR(g, st, x + w - pad, y + K(18), 11, Ty.BOLD, good);
@@ -936,7 +936,7 @@ public final class ZeusScreen extends Screen {
     private void drawHeaderButtons(GuiGraphics g, int right, int y, int accent, boolean withSearch) {
         int cx = right - 16;
         boolean hotC = hov(cx, y, 16, 16);
-        Draw.rrect(g, cx, y, 16, 16, 5, hotC ? Draw.rgba(0xFFFF5C6C, 0.25f) : Accent.CARD);
+        Draw.rrect(g, cx, y, 16, 16, 5, hotC ? Draw.rgba(Accent.BAD, 0.25f) : Accent.CARD);
         Draw.line(g, cx + 5, y + 5, cx + 11, y + 11, 1.2f, hotC ? 0xFFFF8C98 : Accent.DIM);
         Draw.line(g, cx + 11, y + 5, cx + 5, y + 11, 1.2f, hotC ? 0xFFFF8C98 : Accent.DIM);
         hit(cx, y, 16, 16, b -> onClose(), "Close (Esc)");
@@ -1117,7 +1117,7 @@ public final class ZeusScreen extends Screen {
     private void drawPanelFooter(GuiGraphics g, int bl, int bl2, int fy) {
         int line = Math.max(1, Math.round(k));
         boolean inWorld = Env.inWorld();
-        int dot = inWorld ? 0xFF3DE07A : 0xFFFFC857;
+        int dot = inWorld ? 0xFF3DE07A : Accent.WARN;
         int fh = K(46);
         int panicW = Math.max(K(140), tw("Panic", 14, Ty.BOLD) + K(76));
         int panicX = bx + bw - K(16) - panicW;
@@ -1180,8 +1180,8 @@ public final class ZeusScreen extends Screen {
         Ty.ring(g, destrX, fy, destrW, fh, K(13), line, dh ? 0xFFFFC060 : 0xBFFFB45C);
         int dw2 = K(18) + K(9) + tw("Self destruct", 13, Ty.BOLD);
         int dsx = destrX + (destrW - dw2) / 2;
-        Glyphs.drawPx(g, "warn", dsx + K(9), cy, K(18), 0xFFFFC857);
-        tx(g, "Self destruct", dsx + K(27), cy, 13, Ty.BOLD, 0xFFFFC857);
+        Glyphs.drawPx(g, "warn", dsx + K(9), cy, K(18), Accent.WARN);
+        tx(g, "Self destruct", dsx + K(27), cy, 13, Ty.BOLD, Accent.WARN);
         hit(destrX, fy, destrW, fh, b -> Zeus.destroy(), "Switches every Zeus feature off. Type /zeus in chat to bring it back");
     }
 
@@ -1583,9 +1583,9 @@ public final class ZeusScreen extends Screen {
             String soon = m.note() == null ? "In development" : m.note();
             int ww = tw(soon, 11, Ty.BOLD) + K(16);
             int wh2 = K(22);
-            Ty.fill(g, cur - ww, cy - wh2 / 2, ww, wh2, K(7), Draw.rgba(0xFFFFC857, 0.12f));
-            Ty.ring(g, cur - ww, cy - wh2 / 2, ww, wh2, K(7), line, Draw.rgba(0xFFFFC857, 0.34f));
-            txC(g, soon, cur - ww / 2, cy, 11, Ty.BOLD, 0xFFFFC857);
+            Ty.fill(g, cur - ww, cy - wh2 / 2, ww, wh2, K(7), Draw.rgba(Accent.WARN, 0.12f));
+            Ty.ring(g, cur - ww, cy - wh2 / 2, ww, wh2, K(7), line, Draw.rgba(Accent.WARN, 0.34f));
+            txC(g, soon, cur - ww / 2, cy, 11, Ty.BOLD, Accent.WARN);
             cur -= ww + K(14);
         }
         if (m.toggleable() && !m.locked()) {
@@ -1607,7 +1607,7 @@ public final class ZeusScreen extends Screen {
             boolean fav = Usage.favourite(m);
             int ss = K(26);
             boolean starHot = hov(cur - ss, y + K(2), ss, rowH - K(4)) && inViewD();
-            int starCol = fav ? 0xFFFFC857 : starHot ? 0xFFFFE08A : hot ? 0xFF7F93BD : 0xFF4A5D88;
+            int starCol = fav ? Accent.WARN : starHot ? 0xFFFFE08A : hot ? 0xFF7F93BD : 0xFF4A5D88;
             if (fav) Ty.glow(g, cur - ss / 2 - K(7), cy - K(7), K(14), K(14), K(7), K(9), 0x40FFC857);
             Glyphs.drawPx(g, fav ? "starfill" : "star", cur - ss / 2f, cy, K(19), starCol);
             hit(cur - ss - K(2), y + K(2), ss + K(4), rowH - K(4), b -> Usage.toggleFavourite(m),
@@ -1634,7 +1634,7 @@ public final class ZeusScreen extends Screen {
             if (cost >= 0.05f) {
                 int fpsNow = Math.max(1, com.zlorbie788.zeus.mods.Brain.ctx().fps);
                 String ct = String.format(Locale.ROOT, "%.2f ms", cost / 100.0 * 1000.0 / fpsNow);
-                int cc = cost < 1f ? 0xFF7FD7A4 : cost < 3f ? 0xFFFFC857 : 0xFFFF7C8A;
+                int cc = cost < 1f ? 0xFF7FD7A4 : cost < 3f ? Accent.WARN : 0xFFFF7C8A;
                 int cw2 = tw(ct, 11.5, Ty.SEMI) + K(18);
                 int ch = K(24);
                 if (cur - cw2 > x + K(260)) {
@@ -2226,7 +2226,7 @@ public final class ZeusScreen extends Screen {
 
     private void drawFooter(GuiGraphics g, int left, int right, int y, int accent) {
         boolean inWorld = Env.inWorld();
-        int dot = inWorld ? 0xFF5EE6A0 : 0xFFFFC857;
+        int dot = inWorld ? Accent.OK : Accent.WARN;
         float pulse = 0.5f + 0.5f * (float) Math.sin(anim() * 3.0);
         if (inWorld) Draw.glow(g, left, y + 1, 6, 6, 3, dot, 2, 0.10f + 0.12f * pulse);
         Draw.rrect(g, left, y + 1, 6, 6, 3, dot);
@@ -2237,8 +2237,8 @@ public final class ZeusScreen extends Screen {
         int pw2 = Draw.width("Panic") + 16;
         int bx = right - pw2;
         boolean hot = hov(bx, y - 3, pw2, 16);
-        Draw.rrect(g, bx, y - 3, pw2, 16, 6, hot ? Draw.rgba(0xFFFF5C6C, 0.38f) : Draw.rgba(0xFFFF5C6C, 0.16f));
-        Draw.rrectLine(g, bx, y - 3, pw2, 16, 6, Draw.rgba(0xFFFF5C6C, hot ? 0.9f : 0.4f));
+        Draw.rrect(g, bx, y - 3, pw2, 16, 6, hot ? Draw.rgba(Accent.BAD, 0.38f) : Draw.rgba(Accent.BAD, 0.16f));
+        Draw.rrectLine(g, bx, y - 3, pw2, 16, 6, Draw.rgba(Accent.BAD, hot ? 0.9f : 0.4f));
         Draw.textCenter(g, "Panic", bx + pw2 / 2, y, 0xFFFFA0A8);
         hit(bx, y - 3, pw2, 16, b -> Zeus.panic(true), "Switches every module off at once");
 
@@ -2312,11 +2312,11 @@ public final class ZeusScreen extends Screen {
         String defsKey = q + "|" + sortMode;
         if (defsCache == null || !defsKey.equals(defsCacheKey) || nowNs - defsCacheAt > 120_000_000L) {
             List<WinDef> built = new ArrayList<>();
-            if (q.isEmpty()) built.add(new WinDef(UiState.FAVOURITES, "Favourites", 0xFFFFC857, null, "starfill", Usage.favourites()));
+            if (q.isEmpty()) built.add(new WinDef(UiState.FAVOURITES, "Favourites", Accent.WARN, null, "starfill", Usage.favourites()));
             for (Category c : Category.values()) {
                 if (c == Category.PROFILES && q.isEmpty()) continue;
                 List<Module> mods = q.isEmpty() ? Usage.sorted(Zeus.in(c), sortMode) : searchResults(q, c);
-                if (!mods.isEmpty()) built.add(new WinDef(c.name(), c.label, c.color, c, null, mods));
+                if (!mods.isEmpty()) built.add(new WinDef(c.name(), c.label, c.color(), c, null, mods));
             }
             if (defsCache != null) for (WinDef nd : built) for (WinDef od : defsCache) if (od.key.equals(nd.key)) nd.open = od.open;
             defsCache = built;
@@ -2685,7 +2685,7 @@ public final class ZeusScreen extends Screen {
         int nameX = ix + K(14);
         if (fav || winHot) {
             boolean starHot = hov(ix, y, K(24), rh);
-            int starCol = fav ? 0xFFFFC857 : starHot ? 0xFFFFE08A : Draw.rgba(0xFFFFFFFF, 0.22f);
+            int starCol = fav ? Accent.WARN : starHot ? 0xFFFFE08A : Draw.rgba(0xFFFFFFFF, 0.22f);
             Glyphs.drawPx(g, fav ? "starfill" : "star", ix + K(16), cy, K(15), starCol);
             nameX = ix + K(32);
         }
@@ -2714,7 +2714,7 @@ public final class ZeusScreen extends Screen {
         if (cost >= 0.05f && right - nameX > K(110)) {
             int fpsNow = Math.max(1, com.zlorbie788.zeus.mods.Brain.ctx().fps);
             String ct = String.format(Locale.ROOT, "%.2f ms", cost / 100.0 * 1000.0 / fpsNow);
-            int cc = cost < 1f ? 0xFF7FD7A4 : cost < 3f ? 0xFFFFC857 : 0xFFFF7C8A;
+            int cc = cost < 1f ? 0xFF7FD7A4 : cost < 3f ? Accent.WARN : 0xFFFF7C8A;
             txR(g, ct, right, cy, 11, Ty.SEMI, Draw.rgba(cc, 0.9f));
             right -= tw(ct, 11, Ty.SEMI) + K(8);
         }
@@ -2780,7 +2780,7 @@ public final class ZeusScreen extends Screen {
         if (popupReveal > 0.995f) popupReveal = 1f;
         int x = Math.round(popupX);
         int y = Math.round(popupY + (1f - popupReveal) * K(16));
-        int col = popupPanel ? bl : Draw.mix(popup.category.color, bl, 0.3f);
+        int col = popupPanel ? bl : Draw.mix(popup.category.color(), bl, 0.3f);
         popupContent = inner;
         popupViewTop = y + head;
         popupViewH = bodyH;
@@ -2822,7 +2822,7 @@ public final class ZeusScreen extends Screen {
         int cs = K(34);
         int cx = x + w - sidePad + K(4) - cs;
         boolean hotC = hov(cx, hc - cs / 2, cs, cs);
-        Ty.fill(g, cx, hc - cs / 2, cs, cs, K(10), hotC ? Draw.rgba(0xFFFF5C6C, 0.28f) : 0x85081026);
+        Ty.fill(g, cx, hc - cs / 2, cs, cs, K(10), hotC ? Draw.rgba(Accent.BAD, 0.28f) : 0x85081026);
         Ty.ring(g, cx, hc - cs / 2, cs, cs, K(10), line, hotC ? 0xFFFF7080 : 0x4D6096FF);
         Glyphs.drawPx(g, "x", cx + cs / 2f, hc, K(17), hotC ? 0xFFFFD0D5 : 0xFFB9CCF0);
         hit(cx, hc - cs / 2, cs, cs, b -> closePopup(), "Close (Esc)");
@@ -2836,7 +2836,7 @@ public final class ZeusScreen extends Screen {
             cur -= sw + K(12);
             boolean fav = Usage.favourite(pm);
             int ss = K(26);
-            Glyphs.drawPx(g, fav ? "starfill" : "star", cur - ss / 2f, hc, K(19), fav ? 0xFFFFC857 : hov(cur - ss, hc - K(18), ss, K(36)) ? 0xFFFFE08A : 0xFF7F93BD);
+            Glyphs.drawPx(g, fav ? "starfill" : "star", cur - ss / 2f, hc, K(19), fav ? Accent.WARN : hov(cur - ss, hc - K(18), ss, K(36)) ? 0xFFFFE08A : 0xFF7F93BD);
             hit(cur - ss - K(2), hc - K(18), ss + K(4), K(36), b -> Usage.toggleFavourite(pm), fav ? "Remove from your favourites" : "Add to your favourites");
             cur -= ss + K(10);
             if (pm.key != null) {

@@ -119,7 +119,7 @@ public final class Extras {
                     boolean own = dx >= 0 && dx <= 1 && dz >= 0 && dz <= 1;
                     double x = (pcx + dx) * 16.0;
                     double z = (pcz + dz) * 16.0;
-                    Wire.line(g, x, y0, z, x, y1, z, own ? 1.4f : 1f, Draw.rgba(own ? 0xFFFFC857 : accent, own ? 0.9f : 0.5f), false);
+                    Wire.line(g, x, y0, z, x, y1, z, own ? 1.4f : 1f, Draw.rgba(own ? Accent.WARN : accent, own ? 0.9f : 0.5f), false);
                 }
             }
             if (levels.on()) {
@@ -127,7 +127,7 @@ public final class Extras {
                 double z1 = pcz * 16.0;
                 int first = (int) (Math.floor(y0 / 16.0) * 16);
                 for (int y = first; y <= y1; y += 16) {
-                    Wire.floor(g, x1, y, z1, 16, 1f, Draw.rgba(0xFFFFC857, 0.55f));
+                    Wire.floor(g, x1, y, z1, 16, 1f, Draw.rgba(Accent.WARN, 0.55f));
                 }
             }
         }
@@ -269,7 +269,7 @@ public final class Extras {
         private record Wp(String name, String dim, double x, double y, double z, int color) {}
 
         private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-        private static final int[] COLORS = {0xFF3DB8FF, 0xFF5EE6A0, 0xFFFFC857, 0xFFFF7A86, 0xFFB77BFF, 0xFFFF8F4D};
+        private static final int[] COLORS = {0xFF3DB8FF, Accent.OK, Accent.WARN, 0xFFFF7A86, 0xFFB77BFF, Accent.HIGH};
         private final List<Wp> points = new ArrayList<>();
         private final Setting.Bool deaths = add(new Setting.Bool("Mark where you die", "Adds a waypoint at the place you died.", true));
         private final Setting.Text customName = add(new Setting.Text("Waypoint name", "Name for the coordinate waypoint.", "Custom waypoint", 32).temporary());
@@ -435,7 +435,7 @@ public final class Extras {
         protected void onTick(Minecraft mc) {
             if (mc.player == null) return;
             boolean dead = mc.player.isDeadOrDying();
-            if (dead && !wasDead && deaths.on()) addPoint("Death", 0xFFFF5C6C);
+            if (dead && !wasDead && deaths.on()) addPoint("Death", Accent.BAD);
             wasDead = dead;
         }
 

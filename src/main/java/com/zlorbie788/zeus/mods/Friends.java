@@ -29,7 +29,6 @@ import com.zlorbie788.zeus.render.Projector;
 import com.zlorbie788.zeus.render.Wire;
 
 import com.zlorbie788.zeus.ui.Accent;
-
 import com.zlorbie788.zeus.ui.Draw;
 
 import net.fabricmc.loader.api.FabricLoader;

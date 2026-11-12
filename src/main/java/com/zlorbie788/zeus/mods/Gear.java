@@ -591,4 +591,61 @@ public final class Gear {
             return h.size.f();
         }
     }
+
+    public static final class ReBuffNotifier extends Module {
+        private final Setting.Bool speed = add(new Setting.Bool("Speed", "Also watch Speed.", true));
+        private final Setting.Bool strength = add(new Setting.Bool("Strength", "Also watch Strength.", true));
+        private final Setting.Num warn = add(new Setting.Num("Warn before", "Seconds left before the warning plays. 0 warns only once the effect is gone.", 5, 0, 30, 1, "s"));
+        private final Setting.Bool sound = add(new Setting.Bool("Sound", "Play a short pling with the warning.", true));
+
+        private final boolean[] had = new boolean[2];
+        private final boolean[] warned = new boolean[2];
+
+        public ReBuffNotifier() {
+            super("rebuff", "Re-Buff Notifier", "Warns you the moment Speed or Strength is about to run out, so a buff never lapses mid-fight.", Category.PLAYER);
+        }
+
+        @Override
+        protected void onTick(Minecraft mc) {
+            if (mc.player == null || mc.level == null) {
+                java.util.Arrays.fill(had, false);
+                java.util.Arrays.fill(warned, false);
+                return;
+            }
+            if (speed.on()) watch(mc, net.minecraft.world.effect.MobEffects.SPEED, "Speed", 0);
+            else clear(0);
+            if (strength.on()) watch(mc, net.minecraft.world.effect.MobEffects.STRENGTH, "Strength", 1);
+            else clear(1);
+        }
+
+        private void clear(int slot) {
+            had[slot] = false;
+            warned[slot] = false;
+        }
+
+        private void watch(Minecraft mc, net.minecraft.core.Holder<net.minecraft.world.effect.MobEffect> effect, String label, int slot) {
+            net.minecraft.world.effect.MobEffectInstance active = mc.player.getEffect(effect);
+            if (active == null) {
+                if (had[slot]) {
+                    Zeus.note(label + " ran out", com.zlorbie788.zeus.core.Notify.Kind.WARN);
+                    if (sound.on()) pling(mc, 0.9f);
+                }
+                clear(slot);
+                return;
+            }
+            had[slot] = true;
+            int limit = (int) Math.round(warn.get() * 20.0);
+            if (limit <= 0 || warned[slot]) return;
+            int left = active.getDuration();
+            if (left > limit) return;
+            warned[slot] = true;
+            Zeus.note(label + " ends in " + Math.max(0, left / 20) + "s", com.zlorbie788.zeus.core.Notify.Kind.WARN);
+            if (sound.on()) pling(mc, 1.25f);
+        }
+
+        private void pling(Minecraft mc, float pitch) {
+            if (mc.getSoundManager() == null) return;
+            mc.getSoundManager().play(net.minecraft.client.resources.sounds.SimpleSoundInstance.forUI(net.minecraft.sounds.SoundEvents.NOTE_BLOCK_PLING.value(), pitch));
+        }
+    }
 }

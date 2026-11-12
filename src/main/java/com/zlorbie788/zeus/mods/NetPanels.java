@@ -16,7 +16,7 @@ public final class NetPanels {
     private NetPanels() {}
 
     private static int pingColour(int ms) {
-        return ms < 60 ? 0xFF5EE6A0 : ms < 120 ? 0xFFFFC857 : ms < 200 ? 0xFFFF8F4D : 0xFFFF5C6C;
+        return Accent.ping(ms);
     }
 
     public static final class NetInfo extends Module {
@@ -95,17 +95,14 @@ public final class NetPanels {
             if (warn.on() && (now > 250 || jit > 80)) g.fill(at[0] + 2, at[1], at[0] + bw, at[1] + bh, Draw.rgba(0xFFFF3B4D, 0.14f));
             Hud.header(g, at[0], at[1], bw, "Ping", null, pingColour(now));
             int y = at[1] + Hud.TOP;
-            Draw.text(g, "Now", at[0] + Hud.PAD, y, Accent.DIM);
-            Draw.textRight(g, now + " ms", at[0] + bw - Hud.PAD, y, pingColour(now));
+            Hud.row(g, at[0] + Hud.PAD, y, bw - Hud.PAD * 2, "Now", now + " ms", pingColour(now));
             y += 12;
             if (spread.on()) {
-                Draw.text(g, "Low / avg / high", at[0] + Hud.PAD, y, Accent.DIM);
-                Draw.textRight(g, lo + "/" + avg + "/" + hi, at[0] + bw - Hud.PAD, y, Accent.TEXT);
+                Hud.row(g, at[0] + Hud.PAD, y, bw - Hud.PAD * 2, "Low / avg / high", lo + "/" + avg + "/" + hi, Accent.TEXT);
                 y += 12;
             }
             if (jitter.on()) {
-                Draw.text(g, "Jitter", at[0] + Hud.PAD, y, Accent.DIM);
-                Draw.textRight(g, "±" + jit + " ms", at[0] + bw - Hud.PAD, y, jit > 60 ? 0xFFFF8F4D : Accent.TEXT);
+                Hud.row(g, at[0] + Hud.PAD, y, bw - Hud.PAD * 2, "Jitter", "±" + jit + " ms", jit > 60 ? Accent.HIGH : Accent.TEXT);
                 y += 12;
             }
             if (graph.on()) {
@@ -222,8 +219,7 @@ public final class NetPanels {
             Hud.header(g, at[0], at[1], bw, "Session", null, Hud.accent());
             for (int i = 0; i < rows.size(); i++) {
                 int y = at[1] + Hud.TOP + i * 12;
-                Draw.text(g, rows.get(i)[0], at[0] + Hud.PAD, y, Accent.DIM);
-                Draw.textRight(g, rows.get(i)[1], at[0] + bw - Hud.PAD, y, Accent.TEXT);
+                Hud.row(g, at[0] + Hud.PAD, y, bw - Hud.PAD * 2, rows.get(i)[0], rows.get(i)[1], Accent.TEXT);
             }
         }
     }
@@ -315,7 +311,7 @@ public final class NetPanels {
                 boolean me = e.getKey().equals(mc.player.getName().getString());
                 Draw.text(g, e.getKey(), at[0] + 7, y, me ? com.zlorbie788.zeus.mods.Hud.accent() : Accent.TEXT);
                 int c = e.getValue();
-                Draw.textRight(g, Integer.toString(c), at[0] + bw - 5, y, c >= 4 ? 0xFFFF5C6C : c >= 2 ? 0xFFFFC857 : Accent.TEXT);
+                Draw.textRight(g, Integer.toString(c), at[0] + bw - 5, y, c >= 4 ? Accent.BAD : c >= 2 ? Accent.WARN : Accent.TEXT);
             }
         }
     }

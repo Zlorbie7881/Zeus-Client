@@ -1,5 +1,6 @@
 package com.zlorbie788.zeus.mods;
 
+import com.zlorbie788.zeus.ui.Accent;
 import com.zlorbie788.zeus.core.Build;
 import com.zlorbie788.zeus.core.Category;
 import com.zlorbie788.zeus.core.Env;
@@ -90,7 +91,7 @@ public final class WorldMods {
         private static final int CLEAR = 5;
         private static final int IDLE = 6;
 
-        private static final int AMBER = 0xFFFFC857;
+        private static final int AMBER = Accent.WARN;
         private static final int GREEN = 0xFF52F28A;
         private static final int CYAN = 0xFF5FD4FF;
         private static final long CONFIRM_MS = 3000L;

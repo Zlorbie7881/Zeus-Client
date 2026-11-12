@@ -377,7 +377,7 @@ public final class StaffLive extends Module {
         int bh = (rows.size() + 1) * 11 + 6;
         int[] at = Hud.place(corner.index(), bw, bh, w, h);
         Hud.panel(g, at[0], at[1], bw, bh);
-        Draw.text(g, "Staff live", at[0] + 7, at[1] + 4, 0xFFFF5C6C);
+        Draw.text(g, "Staff live", at[0] + 7, at[1] + 4, Accent.BAD);
         for (int i = 0; i < rows.size(); i++) Draw.text(g, rows.get(i), at[0] + 7, at[1] + 4 + (i + 1) * 11, rows.get(i).startsWith("  ") ? Accent.DIM : Accent.TEXT);
     }
 }

@@ -1,5 +1,6 @@
 package com.zlorbie788.zeus.mods;
 
+import com.zlorbie788.zeus.ui.Accent;
 import com.zlorbie788.zeus.core.Category;
 import com.zlorbie788.zeus.core.Env;
 import com.zlorbie788.zeus.core.Inv;
@@ -506,7 +507,7 @@ public final class Parity {
         private final Setting.Num cell = add(new Setting.Num("Cell size", "Pixels per grid square.", 4, 2, 8, 1, " px"));
         private final Setting.Bool label = add(new Setting.Bool("Goliath name", "Write the name of your Goliath under the map.", true));
         private final Setting.Num opacity = add(new Setting.Num("Background", "How solid the card is.", 85, 30, 100, 5, " %"));
-        private static final int[] REGION_COLORS = {0xFF4DA3FF, 0xFF35E0D0, 0xFF8C7BFF, 0xFFFF9F43, 0xFFFFD84D, 0xFFFF5C6C, 0xFF5EE67A};
+        private static final int[] REGION_COLORS = {0xFF4DA3FF, 0xFF35E0D0, 0xFF8C7BFF, 0xFFFF9F43, 0xFFFFD84D, Accent.BAD, 0xFF5EE67A};
 
         public RegionMap() {
             super("regionmap", "Region Map", "DonutSMP Goliath map with a dot for where you are.", Category.PANELS);

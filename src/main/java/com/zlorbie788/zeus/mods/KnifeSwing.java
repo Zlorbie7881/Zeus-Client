@@ -96,6 +96,10 @@ public final class KnifeSwing extends Module {
         {SK_DRAW}, {SK_SPIN}, {SK_FLIP}, {SK_PIN}, {SK_TOSS}, {SK_INSPECT}
     };
     private static KnifeSwing self;
+    private long drewAt;
+    private long frames;
+    private long enabledAt;
+    private boolean warned;
     private static final String[] TYPES = types();
     private static String[] types() {
         String[] st = KnifeArt.straightNames();
@@ -129,6 +133,7 @@ public final class KnifeSwing extends Module {
     private final Setting.Num spins = add(new Setting.Num("Rollovers", "How many times the knife turns in a rollover.", 2, 1, 4, 1, ""));
     private final Setting.Bool sway = add(new Setting.Bool("Sway with the camera", "The hand lags behind when you turn, like the game's own.", true));
     private final Setting.Bool handLight = add(new Setting.Bool("Light on the hand", "The knife throws a little of its colour on the hand when it flashes and spins.", true));
+    private final Setting.Bool safeDraw = add(new Setting.Bool("Safe draw", "Always uses the flat pixel knives. Turn it on if 3D models ever fail to appear.", false));
     private final Setting.Bool model3d = add(new Setting.Bool("3D knife models", "Draws the knives as real 3D models (a few hundred triangles each, flat shaded, cheap). Off: the classic pixel knives. Falls back to the pixel knives by itself if a model cannot be loaded.", true));
     private final Setting.Bool trail = add(new Setting.Bool("Light trail", "A fading trail behind the blade.", true));
     private final Setting.Bool blur = add(new Setting.Bool("Motion blur", "Ghost images of the knife while it moves fast.", true));
@@ -257,7 +262,8 @@ public final class KnifeSwing extends Module {
     }
 
     public static boolean hidesHand() {
-        return self != null && self.enabled() && self.hideHand.on() && self.vis > 0.02f;
+        if (self == null || !self.enabled() || !self.hideHand.on() || self.vis <= 0.02f) return false;
+        return self.frames > 0 && System.nanoTime() - self.drewAt < 250_000_000L;
     }
     private void perform(int id) {
         int n = karambit() ? KTRICKS.length : TRICKS.length;
@@ -352,6 +358,10 @@ public final class KnifeSwing extends Module {
         line.clear();
         isOpen = false;
         vis = 0f;
+        frames = 0;
+        drewAt = 0L;
+        enabledAt = System.nanoTime();
+        warned = false;
         lastFrame = 0;
         lastYaw = Float.NaN;
         lastType = type.index();
@@ -1129,6 +1139,7 @@ public final class KnifeSwing extends Module {
         }
         float sc = Math.max(0.5f, (float) size.f());
         float unit = Math.max(0.6f, h / 540f * 4.6f * sc) * (0.62f + 0.38f * vis);
+        if (!Float.isFinite(sc) || !Float.isFinite(unit) || unit <= 0f || w <= 0 || h <= 0) return;
         float yaw = mc.player.getYRot(), pitch = mc.player.getXRot();
         if (!Float.isNaN(lastYaw)) {
             float dy = wrap(yaw - lastYaw);
@@ -1166,7 +1177,7 @@ public final class KnifeSwing extends Module {
 
         float[] tip = tipOf(f, p);
         float[] tp = onScreen(tip, u);
-        if (trail.on() && trailStrength.f() > 1 && p.rush > 0.05f) {
+        if (trail.on() && !still() && trailStrength.f() > 1 && p.rush > 0.05f) {
             tipTrail.addLast(new float[] {tp[0], tp[1], now / 1e9f});
         } else {
             tipTrail.clear();
@@ -1187,7 +1198,7 @@ public final class KnifeSwing extends Module {
             }
         }
 
-        if (blur.on() && ghostStrength.f() > 1 && p.rush > 0.05f) {
+        if (blur.on() && !still() && ghostStrength.f() > 1 && p.rush > 0.05f) {
             ghostAt.add(new Rig.T(f.knife));
             ghostAngle.add(new float[] {p.a, p.b, p.c, p.clip == null ? -1f : 0f, p.clipT});
             ghostWhen.add(now);
@@ -1235,9 +1246,19 @@ public final class KnifeSwing extends Module {
             knifeDrawn = pixelKnife(g, f.knife, p.a, p.b, p.c, look, u, fade);
         }
         if (!knifeDrawn) knifeDrawn = pixelKnife(g, f.knife, p.a, p.b, p.c, look, u, fade);
-        if (!knifeDrawn) lastResort(g, f.knife, p.c, look, u, fade);
+        if (!knifeDrawn) {
+            lastResort(g, f.knife, p.c, look, u, fade);
+            knifeDrawn = true;
+        }
+        if (knifeDrawn) {
+            drewAt = System.nanoTime();
+            frames++;
+        } else if (!warned && System.nanoTime() - enabledAt > 3_000_000_000L) {
+            warned = true;
+            com.zlorbie788.zeus.core.Zeus.toast("The knife is not drawing. Try Safe draw in Knife Swing.", false);
+        }
 
-        if (sparks.on() && p.flash > 0.01f) {
+        if (sparks.on() && !still() && p.flash > 0.01f) {
             float s = Math.max(0.01f, Math.min(1f, p.flash) * Math.min(1f, flashStrength.f() / 100f));
             int r = Math.round(26f * sc * (0.4f + s));
             Draw.glow(g, Math.round(tp[0]) - r, Math.round(tp[1]) - r, r * 2, r * 2, r, Draw.rgba(look.glow, 0.55f * s * fade), r, 0.9f);
@@ -1264,7 +1285,7 @@ public final class KnifeSwing extends Module {
     }
 
     private boolean meshReady() {
-        if (meshBroken) return false;
+        if (safeDraw.on() || meshBroken) return false;
         String name = meshName();
         return name != null && KnifeMesh.has(name);
     }
@@ -1349,7 +1370,15 @@ public final class KnifeSwing extends Module {
         Rig.T thumb = f.fist.move(-2.3f, -5.6f - 2f * rel, z - 0.2f).rotZ(0.25f + 0.7f * rel);
         rig.box(thumb, 0f, 0f, 0f, 2.6f, 4.6f, 2.6f, paint, false);
     }
+    private static boolean still() {
+        return com.zlorbie788.zeus.ui.UiSettings.REDUCE_MOTION.on();
+    }
+
     public String info() {
-        return karambit() ? KTRICKS[ktrick.index()] : TRICKS[trick.index()];
+        String name = karambit() ? KTRICKS[ktrick.index()] : TRICKS[trick.index()];
+        if (!enabled()) return name;
+        if (frames == 0) return name + " · not drawn yet";
+        if (model3d.on() && !meshReady()) return name + " · 3D model fell back to pixels";
+        return name;
     }
 }
