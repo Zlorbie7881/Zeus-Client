@@ -69,6 +69,7 @@ public final class Combat {
         private final Setting.Bool players = add(new Setting.Bool("Players", "Also attack other players. Friends are always spared.", false));
         private final Setting.Choice priority = add(new Setting.Choice("Pick the target by", "Closest: the nearest one. Lowest health: the one that is closest to dying, which finishes fights fastest.", 0, "Closest", "Lowest health"));
         private final Setting.Choice mode = add(new Setting.Choice("Attack mode", "Spam: hits again and again as fast as you set, ignoring the attack bar. Crit: only hits while falling, so every hit is a critical hit. Cooldown: one full-power hit each time the bar is full.", 2, "Spam", "Crit", "Cooldown"));
+        private final Setting.Choice style = add(new Setting.Choice("Aura style", "Rage: attacks as fast as the settings allow. Legit: turns the view like a player, keeps reach and view inside vanilla limits, waits for a full swing and pauses briefly before the first hit.", 0, "Rage", "Legit"));
         private final Setting.Num rate = add(new Setting.Num("Hits per second", "How fast Spam mode hits.", 10, 1, 20, 1, "")).showIf(() -> this.mode.index() == 0);
         private final Setting.Bool jump = add(new Setting.Bool("Jump for crits", "Crit mode jumps by itself when it has a target and the bar is full, then hits on the way down. Off: you jump yourself.", true)).showIf(() -> this.mode.index() == 1);
         private final Setting.Bool full = add(new Setting.Bool("Wait for full swing", "Only hit when the attack bar is full, so every hit does full damage.", true)).showIf(() -> this.mode.index() != 0);
@@ -84,6 +85,8 @@ public final class Combat {
         private final Setting.Bool pauseUse = add(new Setting.Bool("Pause while using an item", "Do not attack while you eat or draw a bow.", true));
         private float aimYaw = Float.NaN;
         private float aimPitch;
+        private long reactAt;
+        private int lastTargetId = -1;
         private String target;
 
         public KillAura() {
@@ -94,20 +97,24 @@ public final class Combat {
         protected void onTick(Minecraft mc) {
             target = null;
             if (mc.player == null || mc.level == null || mc.gameMode == null || mc.screen != null) return;
-            int m = mode.index();
+            boolean legit = style.index() == 1;
+            int m = legit ? 2 : mode.index();
             var me = mc.player;
-            if (pauseUse.on() && me.isUsingItem()) {
+            if ((legit || pauseUse.on()) && me.isUsingItem()) {
                 aimYaw = Float.NaN;
                 return;
             }
             if (m == 0 && System.currentTimeMillis() < nextHit) return;
+            if (legit && me.getAttackStrengthScale(0f) < 0.99f) return;
             if (m != 0 && full.on() && me.getAttackStrengthScale(0f) < 0.95f) return;
-            double r2 = range.get() * range.get();
+            double reach = legit ? Math.min(range.get(), 3.1) : range.get();
+            double fovDeg = legit ? Math.min(fov.get(), 100.0) : fov.get();
+            double r2 = reach * reach;
             Vec3 look = me.getLookAngle();
-            double cone = Math.cos(Math.toRadians(fov.get() / 2.0));
+            double cone = Math.cos(Math.toRadians(fovDeg / 2.0));
             Entity best = null;
             double bestD = Double.MAX_VALUE;
-            for (Entity e : Env.entities(mc, range.get() + 1.0)) {
+            for (Entity e : Env.entities(mc, reach + 1.0)) {
                 if (!(e instanceof LivingEntity le) || e == mc.player || e.getType() == EntityType.ARMOR_STAND || !le.isAlive()) continue;
                 if (e instanceof Player) {
                     if (!players.on() || Friends.protects(e) || e.isSpectator()) continue;
@@ -118,7 +125,7 @@ public final class Combat {
                 }
                 double dist = mc.player.distanceToSqr(e);
                 if (dist > r2) continue;
-                if (fov.get() < 359.0) {
+                if (fovDeg < 359.0) {
                     Vec3 to = e.getBoundingBox().getCenter().subtract(me.getEyePosition());
                     if (to.lengthSqr() > 1e-6 && to.normalize().dot(look) < cone) continue;
                 }
@@ -130,6 +137,7 @@ public final class Combat {
             }
             if (best == null) {
                 aimYaw = Float.NaN;
+                lastTargetId = -1;
                 return;
             }
             target = best.getName().getString();
@@ -149,10 +157,17 @@ public final class Combat {
                 return;
             }
             Vec3 aimAt = best.position().add(best.getDeltaMovement().scale(0.35)).add(0, best.getBbHeight() * 0.55, 0);
-            if (humanAim.on()) {
+            if (legit || humanAim.on()) {
                 if (!humanAim(me, aimAt)) return;
             } else if (silent.on()) {
                 Aim.look(aimAt);
+            }
+            if (legit) {
+                if (best.getId() != lastTargetId) {
+                    lastTargetId = best.getId();
+                    reactAt = System.currentTimeMillis() + 130 + ThreadLocalRandom.current().nextLong(130);
+                }
+                if (System.currentTimeMillis() < reactAt) return;
             }
             if (m == 0) {
                 double interval = 1000.0 / rate.get();
@@ -161,7 +176,7 @@ public final class Combat {
             }
             if (confirm.on()) Hits.attempt(best);
             mc.gameMode.attack(mc.player, best);
-            if (swing.on()) mc.player.swing(InteractionHand.MAIN_HAND);
+            if (swing.on() || legit) mc.player.swing(InteractionHand.MAIN_HAND);
         }
 
         private boolean humanAim(Player me, Vec3 point) {
@@ -176,23 +191,26 @@ public final class Combat {
             float dp = wantPitch - aimPitch;
             float off = Math.max(Math.abs(dy), Math.abs(dp));
             if (off > 0.05f) {
-                float step = (float) Math.min(off, turn.get() / 20.0 * ThreadLocalRandom.current().nextDouble(0.88, 1.12));
+                double turnRate = style.index() == 1 ? Math.min(turn.get(), 260.0) : turn.get();
+                float step = (float) Math.min(off, turnRate / 20.0 * ThreadLocalRandom.current().nextDouble(0.88, 1.12));
                 aimYaw = AimAssist.wrap(aimYaw + dy / off * step);
                 aimPitch = Math.max(-90f, Math.min(90f, aimPitch + dp / off * step));
                 Aim.sendRotation(aimYaw, aimPitch);
             }
-            return off <= 4.0f;
+            return off <= (style.index() == 1 ? 2.5f : 4.0f);
         }
 
         @Override
         protected void onDisable() {
             aimYaw = Float.NaN;
+            lastTargetId = -1;
             target = null;
         }
 
         @Override
         protected void cleanSlate() {
             aimYaw = Float.NaN;
+            lastTargetId = -1;
         }
 
         @Override
