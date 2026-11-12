@@ -134,6 +134,7 @@ public final class KnifeSwing extends Module {
     private final Setting.Bool sway = add(new Setting.Bool("Sway with the camera", "The hand lags behind when you turn, like the game's own.", true));
     private final Setting.Bool handLight = add(new Setting.Bool("Light on the hand", "The knife throws a little of its colour on the hand when it flashes and spins.", true));
     private final Setting.Bool safeDraw = add(new Setting.Bool("Safe draw", "Always uses the flat pixel knives, which draw on every setup. Turn it off to try the 3D models.", true));
+    private final Setting.Info status = add(new Setting.Info("Knife", this::lines));
     private final Setting.Bool model3d = add(new Setting.Bool("3D knife models", "Draws the knives as real 3D models (a few hundred triangles each, flat shaded, cheap). Off: the classic pixel knives. Falls back to the pixel knives by itself if a model cannot be loaded.", false));
     private final Setting.Bool trail = add(new Setting.Bool("Light trail", "A fading trail behind the blade.", true));
     private final Setting.Bool blur = add(new Setting.Bool("Motion blur", "Ghost images of the knife while it moves fast.", true));
@@ -245,6 +246,17 @@ public final class KnifeSwing extends Module {
 
     private boolean karambit() {
         return type.index() >= 1;
+    }
+
+    private java.util.List<String> lines() {
+        int idx = Math.max(0, Math.min(TYPES.length - 1, type.index()));
+        String name = TYPES[idx];
+        String mesh = karambit() ? KnifeArt.nameOf(key()) : "Butterfly knife";
+        boolean loaded = KnifeMesh.has(mesh);
+        String render = !model3d.on() ? "pixel knife (3D off)"
+                : loaded ? (safeDraw.on() ? "3D model ready (safe draw on)" : "3D model in use") : "3D mesh missing, using pixels";
+        String state = playing() ? "playing a trick" : (isOpen ? "open in hand" : "closed in hand");
+        return java.util.List.of(name, render, state, "Tricks: " + (karambit() ? KTRICKS.length : TRICKS.length) + " loaded");
     }
 
     private boolean ring() {

@@ -139,10 +139,13 @@ public final class Overlays {
         private final Setting.Num flight = add(new Setting.Num("Maximum flight", "Ticks to simulate before giving up.", 220, 40, 400, 10, " ticks"));
         private final Setting.Bool water = add(new Setting.Bool("Water slows the shot",
                 "Arrows, pearls and potions lose speed and height once they enter water.", true));
+        private final Setting.Bool splash = add(new Setting.Bool("Splash radius",
+                "Draws the 4 block effect circle where a splash or lingering potion lands.", true));
         private final Setting.Info now = add(new Setting.Info("Path", this::lines));
 
         private final List<double[]> pts = new ArrayList<>();
         private final List<net.minecraft.world.entity.LivingEntity> candidates = new ArrayList<>();
+        private boolean splashAmmo;
         private volatile String note = "Hold a bow, crossbow or a throwable";
 
         public Trajectories() {
@@ -236,12 +239,17 @@ public final class Overlays {
         protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
             if (mc.player == null || mc.level == null || mc.screen != null) return;
             if (!Projector.prepare(mc, partial, w, h)) return;
-            Ammo ammo = ammo(mc, mc.player.getMainHandItem(), partial);
-            if (ammo == null) ammo = ammo(mc, mc.player.getOffhandItem(), partial);
+            ItemStack armed = mc.player.getMainHandItem();
+            Ammo ammo = ammo(mc, armed, partial);
+            if (ammo == null) {
+                armed = mc.player.getOffhandItem();
+                ammo = ammo(mc, armed, partial);
+            }
             if (ammo == null) {
                 note = "Hold a bow, crossbow or a throwable";
                 return;
             }
+            splashAmmo = armed.is(Items.SPLASH_POTION) || armed.is(Items.LINGERING_POTION);
             Vec3 look = mc.player.getViewVector(partial);
             Vec3 start = mc.player.getEyePosition(partial).add(look.scale(0.18)).add(0, -0.12, 0);
 
@@ -364,6 +372,17 @@ public final class Overlays {
                 }
                 if (marker.index() != 0) {
                     Wire.floor(g, hitPoint.x - 0.26, hitPoint.y + 0.015, hitPoint.z - 0.26, 0.52, thick, Draw.rgba(c, 0.9f));
+                }
+            }
+            if (splash.on() && splashAmmo) {
+                int seg = 40;
+                for (int i = 0; i < seg; i++) {
+                    double a1 = Math.PI * 2 * i / seg;
+                    double a2 = Math.PI * 2 * (i + 1) / seg;
+                    Wire.line(g,
+                            hitPoint.x + Math.cos(a1) * 4.0, hitPoint.y + 0.03, hitPoint.z + Math.sin(a1) * 4.0,
+                            hitPoint.x + Math.cos(a2) * 4.0, hitPoint.y + 0.03, hitPoint.z + Math.sin(a2) * 4.0,
+                            thick * 0.8f, Draw.rgba(c, 0.30f), false);
                 }
             }
             if (hitEntity != null && targets.on()) {

@@ -489,25 +489,30 @@ public final class CartTech {
     // ------------------------------------------------------------------ Silent Safe Anchor
 
     public static final class SilentSafeAnchor extends Module {
-        private final Setting.Num range = add(new Setting.Num("Range", "How far the anchor is placed.", 4.5, 2.5, 6, 0.5, " blocks"));
-        private final Setting.Num turn = add(new Setting.Num("Rotation speed",
-                "Degrees per tick used when the rotation is visible at all. 0 sends it silently, without moving your view.", 0, 0, 40, 1, "°"));
-        private final Setting.Bool shield = add(new Setting.Bool("Shield the blast",
-                "Raises your shield for a moment before the anchor is set off, so the blast comes from behind it.", true));
-        private final Setting.Num delay = add(new Setting.Num("Shield delay", "Ticks the shield is up before the blast.", 3, 1, 10, 1, " ticks"));
-        private final Setting.Num cooldown = add(new Setting.Num("Cooldown", "Ticks between two anchors.", 30, 10, 80, 5, " ticks"));
+        private final Setting.Num range = add(new Setting.Num("Range", "How close a target has to be for an anchor to go down.", 4.5, 2.5, 6, 0.5, " blocks"));
+        private final Setting.Num turn = add(new Setting.Num("Rotation speed", "Degrees per tick for the look. 0 keeps it silent: the packet turns, your view does not.", 0, 0, 40, 1, "°"));
+        private final Setting.Bool shield = add(new Setting.Bool("Glowstone shield", "Raises the shield after charging so the blast lands on the shield instead of your body.", true));
+        private final Setting.Num delay = add(new Setting.Num("Shield delay", "How long the shield is up before the anchor is set off.", 100, 0, 500, 10, " ms")).showIf(() -> shield.on());
+        private final Setting.Num timeout = add(new Setting.Num("Shield timeout", "Stop waiting for the shield after this long and set the anchor off anyway.", 300, 50, 1000, 10, " ms")).showIf(() -> shield.on());
+        private final Setting.Num cooldown = add(new Setting.Num("Cooldown", "Time between two anchors.", 500, 0, 2000, 50, " ms"));
+        private final Setting.Bool silent = add(new Setting.Bool("Silent swap", "Puts your hotbar slot back where it was after the anchor is set off.", true));
         private final Setting.Info state = add(new Setting.Info("Anchor", this::lines));
 
-        private int wait;
-        private int shieldTicks;
-        private boolean raised;
-        private volatile String note = "idle";
+        private static final int IDLE = 0, CHARGE = 1, RAISE = 2, BOOM = 3;
+        private int phase = IDLE;
+        private long at;
+        private long readyAt;
+        private long shieldAt;
+        private BlockPos anchor;
+        private int restore = -1;
+        private boolean up;
+        private String note = "idle";
 
         public SilentSafeAnchor() {
             super("silentsafeanchor", "Silent Safe Anchor",
-                    "Places and charges a respawn anchor at the target's feet with silent rotations, then sets it off while your shield covers the blast.",
+                    "Places a respawn anchor under the target, charges it with glowstone, raises the shield and sets it off, all on silent rotations.",
                     Category.COMBAT);
-            alias("safeanchor", "silenanchor");
+            alias("safeanchor", "silentanchor");
         }
 
         private List<String> lines() {
@@ -516,34 +521,34 @@ public final class CartTech {
 
         @Override
         protected void onDisable() {
-            note = "off";
-            lower();
+            Minecraft mc = Minecraft.getInstance();
+            drop(mc);
+            phase = IDLE;
+            anchor = null;
         }
 
-        private void lower() {
-            Minecraft mc = Minecraft.getInstance();
-            if (raised) {
+        private void drop(Minecraft mc) {
+            if (up) {
                 mc.options.keyUse.setDown(false);
-                raised = false;
+                up = false;
             }
-            shieldTicks = 0;
+            if (silent.on() && restore >= 0) Inv.select(restore);
+            restore = -1;
         }
 
         @Override
         protected void onTick(Minecraft mc) {
             if (!ready(mc)) return;
-            if (shieldTicks > 0) {
-                mc.options.keyUse.setDown(true);
-                raised = true;
-                shieldTicks--;
-                if (shieldTicks == 0) {
-                    lower();
-                    boom(mc);
-                }
-                return;
-            }
-            if (wait > 0) {
-                wait--;
+            long now = System.currentTimeMillis();
+            if (phase == IDLE) idle(mc, now);
+            else if (phase == CHARGE) charge(mc, now);
+            else if (phase == RAISE) raise(mc, now);
+            else if (phase == BOOM) boom(mc, now);
+        }
+
+        private void idle(Minecraft mc, long now) {
+            if (now < readyAt) {
+                note = "cooling down";
                 return;
             }
             Player t = target(mc, range.get());
@@ -551,52 +556,148 @@ public final class CartTech {
                 note = "no target in reach";
                 return;
             }
-            if (!ensureHotbar(mc, Items.RESPAWN_ANCHOR) || !ensureHotbar(mc, Items.GLOWSTONE)) {
-                note = "no anchor or glowstone";
+            if (!ensureHotbar(mc, Items.RESPAWN_ANCHOR)) {
+                note = "no respawn anchor in the inventory";
                 return;
             }
-            BlockPos spot = t.blockPosition();
-            if (!Build.canPlace(spot, range.get())) {
-                note = "nowhere to put it";
+            if (!ensureHotbar(mc, Items.GLOWSTONE)) {
+                note = "no glowstone in the inventory";
                 return;
             }
-            aimAt(mc, Vec3.atCenterOf(spot));
+            BlockPos spot = spot(mc, t);
+            if (spot == null) {
+                note = "nowhere to put the anchor";
+                readyAt = now + 400;
+                return;
+            }
+            aim(mc, Vec3.atCenterOf(spot));
             if (!Build.place(spot, Inv.is(Items.RESPAWN_ANCHOR), true, range.get())) {
-                note = "anchor would not place";
-                wait = 10;
+                note = "the anchor would not place";
+                readyAt = now + 400;
                 return;
             }
-            aimAt(mc, Vec3.atCenterOf(spot));
-            Build.useOn(new net.minecraft.world.phys.BlockHitResult(Vec3.atCenterOf(spot), net.minecraft.core.Direction.UP, spot, false),
-                    Inv.is(Items.GLOWSTONE), true);
-            note = "anchor charged";
-            wait = cooldown.i();
-            if (shield.on() && Inv.offhand(Inv.is(Items.SHIELD))) {
-                shieldTicks = delay.i();
-            } else {
-                boom(mc);
-            }
+            if (restore < 0) restore = Inv.selected();
+            anchor = spot;
+            phase = CHARGE;
+            at = now;
+            note = "anchor down at " + spot.getX() + " " + spot.getY() + " " + spot.getZ();
         }
 
-        private void boom(Minecraft mc) {
-            BlockPos anchor = findAnchor(mc);
-            if (anchor == null) return;
-            if (!mc.level.getBlockState(anchor).is(net.minecraft.world.level.block.Blocks.RESPAWN_ANCHOR)) return;
-            aimAt(mc, Vec3.atCenterOf(anchor));
-            mc.gameMode.startDestroyBlock(anchor, net.minecraft.core.Direction.UP);
-            mc.player.swing(InteractionHand.MAIN_HAND);
-            note = "anchor set off";
-            wait = cooldown.i();
-        }
-
-        private BlockPos findAnchor(Minecraft mc) {
-            for (BlockPos pos : BlockPos.betweenClosed(mc.player.blockPosition().offset(-4, -3, -4), mc.player.blockPosition().offset(4, 3, 4))) {
-                if (mc.level.getBlockState(pos).is(net.minecraft.world.level.block.Blocks.RESPAWN_ANCHOR)) return pos.immutable();
+        private BlockPos spot(Minecraft mc, Player t) {
+            BlockPos feet = t.blockPosition();
+            BlockPos[] tries = {feet, feet.below(), feet.above()};
+            for (BlockPos pos : tries) {
+                if (Build.distTo(pos) > range.get()) continue;
+                if (!Build.canPlace(pos, range.get())) continue;
+                return pos;
             }
             return null;
         }
 
-        private void aimAt(Minecraft mc, Vec3 point) {
+        private void charge(Minecraft mc, long now) {
+            int charges = charges(mc);
+            if (charges < 0) {
+                fail(mc, now, "the anchor is gone");
+                return;
+            }
+            if (charges >= 4) {
+                if (shield.on() && Inv.offhand(Inv.is(Items.SHIELD))) {
+                    phase = RAISE;
+                    at = now;
+                    shieldAt = now;
+                    note = "anchor charged, raising the shield";
+                } else {
+                    phase = BOOM;
+                    at = now;
+                    note = "anchor charged";
+                }
+                return;
+            }
+            if (now - shieldAt >= 120L) {
+                shieldAt = now;
+                aim(mc, Vec3.atCenterOf(anchor));
+                Build.useOn(new net.minecraft.world.phys.BlockHitResult(Vec3.atCenterOf(anchor),
+                        net.minecraft.core.Direction.UP, anchor, false), Inv.is(Items.GLOWSTONE), true);
+            }
+            note = "charging (" + charges + "/4)";
+            if (now - at > 2000L) fail(mc, now, "the anchor would not take glowstone");
+        }
+
+        private int charges(Minecraft mc) {
+            if (anchor == null) return -1;
+            net.minecraft.world.level.block.state.BlockState s = mc.level.getBlockState(anchor);
+            if (!s.is(net.minecraft.world.level.block.Blocks.RESPAWN_ANCHOR)) return -1;
+            return s.getValue(net.minecraft.world.level.block.RespawnAnchorBlock.CHARGE);
+        }
+
+        private void raise(Minecraft mc, long now) {
+            if (charges(mc) < 0) {
+                fail(mc, now, "the anchor is gone");
+                return;
+            }
+            aim(mc, Vec3.atCenterOf(anchor).add(0, 2.5, 0));
+            if (!up) {
+                mc.options.keyUse.setDown(true);
+                up = true;
+            }
+            long waited = now - shieldAt;
+            if (waited >= delay.get() || waited > timeout.get() + delay.get()) {
+                phase = BOOM;
+                at = now;
+                note = "shield up, setting the anchor off";
+            } else {
+                note = "shield up (" + waited + " ms)";
+            }
+        }
+
+        private void boom(Minecraft mc, long now) {
+            int charges = charges(mc);
+            if (charges <= 0) {
+                fail(mc, now, "nothing left to set off");
+                return;
+            }
+            if (now - at > 350L) {
+                fail(mc, now, "the anchor did not go off");
+                return;
+            }
+            aim(mc, Vec3.atCenterOf(anchor));
+            int hand = detonatingSlot(mc);
+            if (hand < 0) {
+                fail(mc, now, "no free hand to set it off with");
+                return;
+            }
+            net.minecraft.world.phys.BlockHitResult hit = new net.minecraft.world.phys.BlockHitResult(
+                    Vec3.atCenterOf(anchor), net.minecraft.core.Direction.UP, anchor, false);
+            Inv.with(hand, () -> mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, hit));
+            drop(mc);
+            note = "anchor set off";
+            anchor = null;
+            phase = IDLE;
+            readyAt = now + (long) cooldown.get();
+        }
+
+        private int detonatingSlot(Minecraft mc) {
+            for (int i = 0; i < 9; i++) {
+                if (Inv.get(i).isEmpty()) return i;
+            }
+            for (int i = 0; i < 9; i++) {
+                ItemStack stack = Inv.get(i);
+                if (stack.is(Items.GLOWSTONE) || stack.is(Items.RESPAWN_ANCHOR)) continue;
+                if (stack.getItem() instanceof net.minecraft.world.item.BlockItem) continue;
+                return i;
+            }
+            return -1;
+        }
+
+        private void fail(Minecraft mc, long now, String why) {
+            drop(mc);
+            note = why;
+            phase = IDLE;
+            anchor = null;
+            readyAt = now + (long) cooldown.get();
+        }
+
+        private void aim(Minecraft mc, Vec3 point) {
             float yaw = Aim.yawTo(mc.player.getEyePosition(), point);
             float pitch = Aim.pitchTo(mc.player.getEyePosition(), point);
             if (turn.f() <= 0.01f) {
