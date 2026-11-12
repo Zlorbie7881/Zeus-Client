@@ -77,6 +77,7 @@ public class ZeusClient implements ClientModInitializer {
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
             com.zlorbie788.zeus.client.web.LocalControlServer.stop();
             Zeus.save();
+            com.zlorbie788.zeus.mods.AuctionMind.flush();
         });
         Zeus.LOG.info("Zeus {} loaded. Press Z in a world (or type /zeus) to open the panel.", Zeus.VERSION);
     }

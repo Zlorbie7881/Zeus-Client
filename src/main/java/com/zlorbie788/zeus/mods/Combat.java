@@ -644,4 +644,133 @@ public final class Combat {
             active = false;
         }
     }
+
+    public static final class AntiMiss extends Module {
+        private final Setting.Bool players = add(new Setting.Bool("Players", "Also cancel swings aimed at players.", true));
+        private final Setting.Bool mobs = add(new Setting.Bool("Mobs", "Also cancel swings aimed at mobs.", true));
+
+        public AntiMiss() {
+            super("antimiss", "Anti Miss", "Cancels a swing that would hit nothing, so a wasted click never eats your hit.", Category.COMBAT);
+        }
+
+        public static boolean blocks(Entity target) {
+            AntiMiss self = com.zlorbie788.zeus.core.Zeus.get(AntiMiss.class);
+            if (self == null || !self.enabled()) return false;
+            if (target == null) return true;
+            if (!(target instanceof LivingEntity)) return true;
+            if (target instanceof Player) return !self.players.on();
+            return !self.mobs.on();
+        }
+    }
+
+    public static final class BreachSwap extends Module {
+        private final Setting.Num back = add(new Setting.Num("Swap back after", "Ticks before the slot you came from returns. 0 keeps the mace in hand.", 4, 0, 20, 1, " ticks"));
+        private int previous = -1;
+        private int wait;
+
+        public BreachSwap() {
+            super("breachswap", "Breach Swap", "Swaps to a Breach mace for the swing itself, so your shield stays up until the hit actually matters.", Category.COMBAT);
+        }
+
+        public static void beforeAttack() {
+            BreachSwap self = com.zlorbie788.zeus.core.Zeus.get(BreachSwap.class);
+            if (self != null) self.arm();
+        }
+
+        private void arm() {
+            Minecraft mc = Minecraft.getInstance();
+            if (!enabled() || mc.player == null || mc.level == null) return;
+            var inventory = mc.player.getInventory();
+            int slot = find(inventory);
+            if (slot < 0 || slot == inventory.getSelectedSlot()) return;
+            if (wait <= 0) previous = inventory.getSelectedSlot();
+            inventory.setSelectedSlot(slot);
+            wait = back.i();
+        }
+
+        private int find(net.minecraft.world.entity.player.Inventory inventory) {
+            for (int i = 0; i < 9; i++) {
+                net.minecraft.world.item.ItemStack stack = inventory.getItem(i);
+                if (!stack.is(net.minecraft.world.item.Items.MACE)) continue;
+                for (net.minecraft.core.Holder<net.minecraft.world.item.enchantment.Enchantment> held : stack.getEnchantments().keySet()) {
+                    if (held.is(net.minecraft.world.item.enchantment.Enchantments.BREACH)) return i;
+                }
+            }
+            return -1;
+        }
+
+        @Override
+        protected void onTick(Minecraft mc) {
+            if (mc.player == null || mc.level == null) {
+                previous = -1;
+                wait = 0;
+                return;
+            }
+            if (wait <= 0) return;
+            wait--;
+            if (wait > 0) return;
+            if (previous >= 0 && previous < 9) mc.player.getInventory().setSelectedSlot(previous);
+            previous = -1;
+        }
+    }
+
+    public static final class TotemHit extends Module {
+        private final Setting.Bool axe = add(new Setting.Bool("Axes too", "Also accept an axe when no sword is in the hotbar.", false));
+
+        public TotemHit() {
+            super("totemhit", "Totem Hit", "Holding a totem no longer costs you the swing: the hit is made with a sword from your hotbar instead.", Category.COMBAT);
+        }
+
+        public static void beforeAttack() {
+            TotemHit self = com.zlorbie788.zeus.core.Zeus.get(TotemHit.class);
+            if (self == null || !self.enabled()) return;
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.player == null || mc.level == null) return;
+            var inventory = mc.player.getInventory();
+            if (!inventory.getItem(inventory.getSelectedSlot()).is(net.minecraft.world.item.Items.TOTEM_OF_UNDYING)) return;
+            int slot = self.find(inventory);
+            if (slot >= 0) inventory.setSelectedSlot(slot);
+        }
+
+        private int find(net.minecraft.world.entity.player.Inventory inventory) {
+            for (int i = 0; i < 9; i++) {
+                net.minecraft.world.item.ItemStack stack = inventory.getItem(i);
+                if (stack.isEmpty()) continue;
+                String name = com.zlorbie788.zeus.core.Names.item(stack);
+                if (name.endsWith("_sword")) return i;
+                if (axe.on() && name.endsWith("_axe")) return i;
+            }
+            return -1;
+        }
+    }
+
+    public static final class HitFx extends Module {
+        private final Setting.Num sparks = add(new Setting.Num("Sparks", "How many particles each hit throws off.", 10, 1, 40, 1, ""));
+        private final Setting.Num spread = add(new Setting.Num("Spread", "How wide the burst is around the target.", 0.5, 0.1, 2.0, 0.1, " blocks"));
+        private final Setting.Bool crit = add(new Setting.Bool("Critical sparks", "Use the brighter critical-hit spark instead of the plain one.", true));
+
+        public HitFx() {
+            super("hitfx", "Hit FX", "Throws a burst of sparks off whatever you hit, so a landed swing reads instantly.", Category.RENDER);
+        }
+
+        public static void burst(Entity target) {
+            HitFx self = com.zlorbie788.zeus.core.Zeus.get(HitFx.class);
+            if (self == null || !self.enabled() || target == null) return;
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.level == null) return;
+            java.util.Random random = new java.util.Random();
+            var particle = self.crit.on() ? net.minecraft.core.particles.ParticleTypes.CRIT : net.minecraft.core.particles.ParticleTypes.SMOKE;
+            double spread = self.spread.get();
+            int count = self.sparks.i();
+            double cx = target.getX();
+            double cy = target.getY() + target.getBbHeight() * 0.5;
+            double cz = target.getZ();
+            for (int i = 0; i < count; i++) {
+                double x = cx + (random.nextDouble() - 0.5) * spread;
+                double y = cy + (random.nextDouble() - 0.5) * spread;
+                double z = cz + (random.nextDouble() - 0.5) * spread;
+                mc.level.addParticle(particle, x, y, z, (random.nextDouble() - 0.5) * 0.4, random.nextDouble() * 0.4, (random.nextDouble() - 0.5) * 0.4);
+            }
+        }
+    }
 }

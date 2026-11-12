@@ -3,14 +3,6 @@ package com.zlorbie788.zeus.ui;
 public final class Accent {
     private Accent() {}
 
-    private static final int[][] SETS = {
-        {0xFF3DB8FF, 0xFF7B6BFF},
-        {0xFF9A6BFF, 0xFFFF6BD6},
-        {0xFFFFC23D, 0xFFFF7A3D},
-        {0xFF3DE0A0, 0xFF3DB8FF},
-        {0xFFFF4D6D, 0xFFFF9A3D},
-    };
-
     private static int wheel(float offset) {
         float speed = (float) UiSettings.RAINBOW_SPEED.get() / 100f;
         float hue = ((System.nanoTime() / 1_000_000_000.0f) * 0.08f * speed + offset) % 1f;
@@ -18,7 +10,7 @@ public final class Accent {
     }
 
     public static boolean rainbow() {
-        return UiSettings.ACCENT.index() >= SETS.length;
+        return Themes.rainbow(UiSettings.ACCENT.index());
     }
 
     public static int rainbowAt(float offset) {
@@ -27,12 +19,37 @@ public final class Accent {
 
     public static int main() {
         if (rainbow()) return wheel(0f);
-        return SETS[Math.max(0, Math.min(SETS.length - 1, UiSettings.ACCENT.index()))][0];
+        return Themes.get(Themes.paletteFor(UiSettings.ACCENT.index())).main();
     }
 
     public static int second() {
         if (rainbow()) return wheel(0.33f);
-        return SETS[Math.max(0, Math.min(SETS.length - 1, UiSettings.ACCENT.index()))][1];
+        return Themes.get(Themes.paletteFor(UiSettings.ACCENT.index())).second();
+    }
+
+    public static int surface(int base) {
+        if (rainbow()) return base;
+        float reach = (float) UiSettings.THEME_TINT.get() / 100f;
+        if (reach <= 0f) return base;
+        return Draw.mix(base, 0xFF000000 | Themes.get(Themes.paletteFor(UiSettings.ACCENT.index())).tint(), reach * 0.55f);
+    }
+
+    public static int glow() {
+        return rainbow() ? wheel(0.15f) : Draw.mix(main(), 0xFFFFFFFF, 0.25f);
+    }
+
+    public static final int OK = 0xFF5EE6A0;
+    public static final int WARN = 0xFFFFC857;
+    public static final int BAD = 0xFFFF5C6C;
+    public static final int INFO = 0xFF6FA8FF;
+    public static final int HIGH = 0xFFFF8F4D;
+
+    public static int level(float fraction) {
+        return fraction > 0.5f ? OK : fraction > 0.22f ? WARN : BAD;
+    }
+
+    public static int ping(int ms) {
+        return ms < 60 ? OK : ms < 120 ? WARN : ms < 200 ? 0xFFFF8F4D : BAD;
     }
 
     public static final int BG = 0xFF0A0D15;

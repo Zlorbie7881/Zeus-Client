@@ -377,4 +377,44 @@ public final class Motion {
             }
         }
     }
+
+    public static final class SnapTap extends Module {
+        private boolean forward;
+        private boolean back;
+        private boolean left;
+        private boolean right;
+
+        public SnapTap() {
+            super("snaptap", "Snap Tap", "Drops the opposite movement key the instant you press a new one, so strafes answer immediately.", Category.MOVEMENT);
+            airborne();
+        }
+
+        public static SnapTap instance() {
+            return com.zlorbie788.zeus.core.Zeus.get(SnapTap.class);
+        }
+
+        public static net.minecraft.world.entity.player.Input filter(net.minecraft.world.entity.player.Input in) {
+            if (in == null) return null;
+            SnapTap self = instance();
+            if (self == null || !self.enabled()) return in;
+            boolean f = in.forward();
+            boolean b = in.backward();
+            boolean l = in.left();
+            boolean r = in.right();
+            if (f && b) {
+                if (self.forward && !self.back) b = false;
+                else if (self.back && !self.forward) f = false;
+            }
+            if (l && r) {
+                if (self.left && !self.right) r = false;
+                else if (self.right && !self.left) l = false;
+            }
+            self.forward = in.forward();
+            self.back = in.backward();
+            self.left = in.left();
+            self.right = in.right();
+            if (f == in.forward() && b == in.backward() && l == in.left() && r == in.right()) return in;
+            return new net.minecraft.world.entity.player.Input(f, b, l, r, in.jump(), in.shift(), in.sprint());
+        }
+    }
 }

@@ -302,10 +302,6 @@ public final class Zeus {
         if (tell) toast("Everything is off", true);
     }
 
-    private record Toast(String text, boolean good, long until) {}
-
-    private static final List<Toast> TOASTS = new ArrayList<>();
-
     public record Event(long id, long at, String text, boolean good) {}
 
     private static final List<Event> EVENT_LOG = new ArrayList<>();
@@ -328,30 +324,33 @@ public final class Zeus {
     }
 
     public static void toast(String text, boolean good) {
-        event(text, good);
+        note(text, good ? Notify.Kind.GOOD : Notify.Kind.BAD);
+    }
+
+    public static void note(String text, Notify.Kind kind) {
+        if (kind == null) return;
+        event(text, kind.good);
         if (!com.zlorbie788.zeus.ui.UiSettings.TOASTS.on()) return;
-        synchronized (TOASTS) {
-            TOASTS.removeIf(t -> t.text.equals(text));
-            TOASTS.add(new Toast(text, good, System.currentTimeMillis() + 2600));
-            while (TOASTS.size() > 4) TOASTS.remove(0);
-        }
+        Notify.push(text, kind);
     }
 
     private static void drawToasts(GuiGraphics g, Minecraft mc, int w, int h) {
         long now = System.currentTimeMillis();
-        synchronized (TOASTS) {
-            TOASTS.removeIf(t -> t.until < now);
-            int y = 6;
-            for (Toast t : TOASTS) {
-                float a = Math.min(1f, (t.until - now) / 400f);
-                com.zlorbie788.zeus.ui.Draw.toast(g, mc, w / 2, y, t.text, t.good, a);
-                y += 17;
-            }
+        int y = 6;
+        for (Notify.Note n : Notify.live(now)) {
+            long left = n.expires() - now;
+            float progress = Math.max(0f, Math.min(1f, left / (float) n.kind().life));
+            com.zlorbie788.zeus.ui.Draw.toast(g, mc, w / 2, y + Math.round(n.slide(now)), n.label(), n.kind().color, n.fade(now), progress);
+            y += 17;
         }
     }
 
     public static Path file() {
         return FabricLoader.getInstance().getConfigDir().resolve("zeus.json");
+    }
+
+    public static Path backup() {
+        return FabricLoader.getInstance().getConfigDir().resolve("zeus.json.bak");
     }
 
     public static void markDirty() {
@@ -368,6 +367,12 @@ public final class Zeus {
         Path temporary = target.resolveSibling(target.getFileName() + ".tmp");
         try {
             Files.createDirectories(target.getParent());
+            if (Files.isRegularFile(target)) {
+                try {
+                    Files.copy(target, backup(), StandardCopyOption.REPLACE_EXISTING);
+                } catch (IOException ignored) {
+                }
+            }
             Files.writeString(temporary, GSON.toJson(snapshot(false)), StandardCharsets.UTF_8);
             try {
                 Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
@@ -434,6 +439,13 @@ public final class Zeus {
         markDirty();
     }
 
+    private static JsonObject readSettings(Path path) throws IOException {
+        if (!Files.isRegularFile(path)) return new JsonObject();
+        JsonElement parsed = JsonParser.parseString(Files.readString(path, StandardCharsets.UTF_8));
+        if (parsed == null || !parsed.isJsonObject()) throw new IOException("settings root is not an object");
+        return parsed.getAsJsonObject();
+    }
+
     private static JsonObject objectOrEmpty(JsonObject parent, String key) {
         if (parent == null || !parent.has(key) || !parent.get(key).isJsonObject()) return new JsonObject();
         return parent.getAsJsonObject(key);
@@ -460,15 +472,18 @@ public final class Zeus {
         for (Module m : ALL_MODULES) for (Setting st : m.settings()) restoreSafely(st, new JsonObject(), m.id);
         for (Setting st : UI.settings()) restoreSafely(st, new JsonObject(), "ui");
 
-        JsonObject root = new JsonObject();
+        JsonObject root;
         try {
-            if (Files.isRegularFile(file())) {
-                JsonElement parsed = JsonParser.parseString(Files.readString(file(), StandardCharsets.UTF_8));
-                if (parsed.isJsonObject()) root = parsed.getAsJsonObject();
-                else LOG.warn("Zeus settings file is not a JSON object; defaults will be used");
-            }
+            root = readSettings(file());
         } catch (IOException | RuntimeException e) {
-            LOG.warn("Could not read the Zeus settings; defaults will be used", e);
+            LOG.warn("Could not read the Zeus settings; trying the last good backup", e);
+            try {
+                root = readSettings(backup());
+                LOG.warn("Zeus settings were restored from the backup file");
+            } catch (IOException | RuntimeException again) {
+                LOG.warn("The Zeus settings backup is unreadable; defaults will be used", again);
+                root = new JsonObject();
+            }
         }
 
         int defaultsRev = root.has("defaults") && root.get("defaults").isJsonPrimitive() ? root.get("defaults").getAsInt() : 0;

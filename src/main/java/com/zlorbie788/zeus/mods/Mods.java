@@ -23,6 +23,10 @@ public final class Mods {
         m.add(new Combat.AutoClicker());
         m.add(new Combat.Reach());
         m.add(new Combat.AntiKnockback());
+        m.add(new Combat.AntiMiss());
+        m.add(new Combat.BreachSwap());
+        m.add(new Combat.TotemHit());
+        m.add(new Combat.HitFx());
         m.add(new Bots.SwordBot());
         m.add(new Bots.CrystalBot());
         m.add(new QuickMods.CrystalOptimizer());
@@ -51,6 +55,7 @@ public final class Mods {
         m.add(new Movement.AntiHunger());
         m.add(new Movement.AutoSprint());
         m.add(new Motion.AirJump());
+        m.add(new Motion.SnapTap());
         m.add(new Motion.AntiVoid());
         m.add(new Motion.AutoJump());
         m.add(new Motion.AutoWalk());
@@ -80,6 +85,7 @@ public final class Mods {
         m.add(new OpFeatures.InventoryCleaner());
         m.add(new Gear.AntiAfk());
         m.add(new Gear.NoStatusEffects());
+        m.add(new Gear.ReBuffNotifier());
         m.add(new QuickMods.FastUse());
         m.add(new QuickMods.AntiTrap());
         m.add(new XRay());
@@ -88,6 +94,7 @@ public final class Mods {
         m.add(new TridentUtil());
         m.add(new SpawnerProtect());
         m.add(new WorldMods.FastBreak());
+        m.add(new Mining.NoBreakDelay());
         m.add(new WorldMods.FastPlace());
         m.add(new QuickMods.AntiGhostBlock());
         m.add(new WorldMods.Nuker());
@@ -112,6 +119,7 @@ public final class Mods {
         m.add(new Atmosphere());
         m.add(new CameraMods.Freecam());
         m.add(new CameraMods.FreeLook());
+        m.add(new CameraMods.NoHurtCam());
         m.add(new KnifeSwing());
         m.add(new StreamerPrivacy());
         m.add(new Extras.ChunkBorders());
@@ -150,6 +158,7 @@ public final class Mods {
         m.add(new FakeLag());
         m.add(new Spoof());
         m.add(new DiscordWebhook());
+        m.add(new AiPilot());
         m.add(new ChestMemory());
         m.add(new OpFeatures.ChestStealer());
         m.add(new ScreenshotTweaks());
@@ -165,6 +174,7 @@ public final class Mods {
         m.add(new Profiles());
         m.add(ServerSwitch.instance());
         m.add(new Interface.HudEditorLauncher());
+        m.add(new Interface.ThemeStudio());
         m.add(new Performance.Page());
         m.add(new WebDashboard());
         m.add(new Interface.Watermark());
@@ -187,8 +197,11 @@ public final class Mods {
         m.add(new HudExtra.Vitals());
         m.add(new HudExtra.Nearby());
         m.add(new HudExtra.Ticks());
+        m.add(new HudExtra.DynamicIsland());
         m.add(new Exposure());
         m.add(new HandModel());
+        m.add(new Reticle());
+        m.add(new PriceTags());
         m.add(new Dossier());
         m.add(new NetPanels.PopCounter());
         m.add(new Performance.Monitor());

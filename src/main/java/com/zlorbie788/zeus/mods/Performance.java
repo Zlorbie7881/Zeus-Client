@@ -104,16 +104,14 @@ public final class Performance {
             int[] at = Hud.place(corner.index(), bw, bh, w, h);
             Hud.panel(g, at[0], at[1], bw, bh);
             double total = Prof.total();
-            int tc = total < 3 ? 0xFF5EE6A0 : total < 8 ? 0xFFFFC857 : 0xFFFF5C6C;
+            int tc = total < 3 ? Accent.OK : total < 8 ? Accent.WARN : Accent.BAD;
             Hud.header(g, at[0], at[1], bw, "Performance", null, tc);
-            Draw.text(g, "Zeus total", at[0] + Hud.PAD, at[1] + Hud.TOP, Accent.DIM);
-            Draw.textRight(g, String.format(Locale.ROOT, "%.1f%%", total), at[0] + bw - Hud.PAD, at[1] + Hud.TOP, tc);
+            Hud.row(g, at[0] + Hud.PAD, at[1] + Hud.TOP, bw - Hud.PAD * 2, "Zeus total", String.format(Locale.ROOT, "%.1f%%", total), Accent.DIM, tc);
             for (int i = 0; i < pick.size(); i++) {
                 Prof.Row r = pick.get(i);
                 int y = at[1] + Hud.TOP + (i + 1) * 12;
-                int c = r.percent() < 1 ? Accent.TEXT : r.percent() < 4 ? 0xFFFFC857 : 0xFFFF5C6C;
-                Draw.text(g, r.module().name, at[0] + Hud.PAD, y, Accent.TEXT);
-                Draw.textRight(g, String.format(Locale.ROOT, "%.1f%%", r.percent()), at[0] + bw - Hud.PAD, y, c);
+                int c = r.percent() < 1 ? Accent.TEXT : r.percent() < 4 ? Accent.WARN : Accent.BAD;
+                Hud.row(g, at[0] + Hud.PAD, y, bw - Hud.PAD * 2, r.module().name, String.format(Locale.ROOT, "%.1f%%", r.percent()), Accent.TEXT, c);
             }
         }
     }

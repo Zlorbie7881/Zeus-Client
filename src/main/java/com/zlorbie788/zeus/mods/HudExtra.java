@@ -1,5 +1,6 @@
 package com.zlorbie788.zeus.mods;
 
+import com.zlorbie788.zeus.ui.Accent;
 import com.zlorbie788.zeus.core.Category;
 import com.zlorbie788.zeus.core.Module;
 import com.zlorbie788.zeus.core.Setting;
@@ -17,9 +18,7 @@ public final class HudExtra {
     private HudExtra() {}
 
     private static void row(GuiGraphics g, int x, int y, int w, String label, String value, float frac, int colour) {
-        Draw.text(g, label, x, y, 0xFF8290A6);
-        if (value != null) Draw.textRight(g, value, x + w, y, Draw.mix(colour, 0xFFFFFFFF, 0.35f));
-        Hud.bar(g, x, y + 11, w, 3, frac, colour);
+        Hud.rowBar(g, x, y, w, label, value, frac, colour);
     }
 
     public static final class Vitals extends Module {
@@ -65,7 +64,7 @@ public final class HudExtra {
                 y += Hud.ROW;
             }
             row(g, x, y, rw, "Hunger", numbers.on() ? Integer.toString(food) : null, food / 20f,
-                    food <= 6 ? 0xFFFF8F4D : 0xFFFFB24D);
+                    food <= 6 ? Accent.HIGH : 0xFFFFB24D);
             y += Hud.ROW;
             if (showAir) {
                 row(g, x, y, rw, "Air", numbers.on() ? Integer.toString(air / 20) + "s" : null, air / (float) airMax, 0xFF4DD2FF);
@@ -193,7 +192,7 @@ public final class HudExtra {
 
         @Override
         protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
-            int col = tps >= 19.5f ? 0xFF6FDC7A : tps >= 18f ? 0xFFFFC857 : 0xFFFF5C6C;
+            int col = tps >= 19.5f ? 0xFF6FDC7A : tps >= 18f ? Accent.WARN : Accent.BAD;
             int bw = Math.max(112, Hud.captionWidth("Ticks") + 26);
             int bh = Hud.TOP + Hud.ROW * 2 - 4 + (graph.on() ? 20 : 0);
             int[] at = Hud.place(corner.index(), bw, bh, w, h);
@@ -204,12 +203,9 @@ public final class HudExtra {
             int x = at[0] + Hud.PAD;
             int rw = bw - Hud.PAD * 2;
             int y = at[1] + Hud.TOP;
-            Draw.text(g, "Server", x, y, 0xFF8290A6);
-            Draw.textRight(g, String.format(Locale.ROOT, "%.1f / 20", tps), x + rw, y, Draw.mix(col, 0xFFFFFFFF, 0.35f));
-            Hud.bar(g, x, y + 11, rw, 3, tps / 20f, col);
+            Hud.rowBar(g, x, y, rw, "Server", String.format(Locale.ROOT, "%.1f / 20", tps), tps / 20f, col);
             y += Hud.ROW;
-            Draw.text(g, "Tick interval", x, y, 0xFF8290A6);
-            Draw.textRight(g, String.format(Locale.ROOT, "%.0f ms", 1000f / Math.max(1f, tps)), x + rw, y, 0xFFC6D2E8);
+            Hud.row(g, x, y, rw, "Tick interval", String.format(Locale.ROOT, "%.0f ms", 1000f / Math.max(1f, tps)), 0xFF8290A6, 0xFFC6D2E8);
             if (graph.on()) {
                 int gy = y + 13;
                 int step = Math.max(2, rw / SAMPLES);
@@ -218,8 +214,68 @@ public final class HudExtra {
                     int bar = Math.max(1, Math.round(6f * Math.min(1f, v / 20f)));
                     int bx = x + i * step;
                     if (bx + step - 1 > x + rw) break;
-                    g.fill(bx, gy + 6 - bar, bx + step - 1, gy + 6, Draw.rgba(v >= 19.5f ? 0xFF6FDC7A : v >= 18f ? 0xFFFFC857 : 0xFFFF5C6C, 0.85f));
+                    g.fill(bx, gy + 6 - bar, bx + step - 1, gy + 6, Draw.rgba(v >= 19.5f ? 0xFF6FDC7A : v >= 18f ? Accent.WARN : Accent.BAD, 0.85f));
                 }
+            }
+        }
+    }
+
+    public static final class DynamicIsland extends Module {
+        private final Setting.Choice corner = Hud.corner(this, 1);
+        private final Setting.Bool clock = add(new Setting.Bool("Clock", "The real-world time.", true));
+        private final Setting.Bool frames = add(new Setting.Bool("Frame rate", "Your current frames per second.", true));
+        private final Setting.Bool latency = add(new Setting.Bool("Ping", "Round trip to the server.", true));
+        private final Setting.Bool uptime = add(new Setting.Bool("Session", "How long this game session has been running.", true));
+        private final long started = System.currentTimeMillis();
+
+        public DynamicIsland() {
+            super("dynamicisland", "Dynamic Island", "One strip with the clock, frame rate, ping and session time, all on a single line.", Category.PANELS);
+            anywhere();
+            alias("island", "status strip", "top bar");
+        }
+
+        @Override
+        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            StringBuilder line = new StringBuilder();
+            if (clock.on()) join(line, java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")));
+            if (frames.on()) join(line, Brain.ctx().fps + " fps");
+            if (latency.on()) {
+                int ms = ping(mc);
+                if (ms >= 0) join(line, ms + " ms");
+            }
+            if (uptime.on()) join(line, span(System.currentTimeMillis() - started));
+            String text = line.length() == 0 ? "Zeus" : line.toString();
+            int bw = Math.max(96, Draw.width(text) + Hud.PAD * 2 + 12);
+            int bh = 18;
+            int[] at = Hud.place(corner.index(), bw, bh, w, h);
+            Hud.panel(g, at[0], at[1], bw, bh);
+            g.fill(at[0] + 7, at[1] + 8, at[0] + 10, at[1] + 11, Draw.rgba(Hud.accent(), 1f));
+            Draw.text(g, text, at[0] + 15, at[1] + 6, 0xFFE8ECF8);
+        }
+
+        private static void join(StringBuilder line, String part) {
+            if (part == null || part.isEmpty()) return;
+            if (line.length() > 0) line.append("  |  ");
+            line.append(part);
+        }
+
+        private static String span(long millis) {
+            long total = Math.max(0, millis / 1000L);
+            long hours = total / 3600L;
+            long minutes = total % 3600L / 60L;
+            long seconds = total % 60L;
+            return hours > 0
+                    ? String.format(Locale.ROOT, "%d:%02d:%02d", hours, minutes, seconds)
+                    : String.format(Locale.ROOT, "%d:%02d", minutes, seconds);
+        }
+
+        private static int ping(Minecraft mc) {
+            try {
+                if (mc.getConnection() == null || mc.player == null) return -1;
+                net.minecraft.client.multiplayer.PlayerInfo info = mc.getConnection().getPlayerInfo(mc.player.getUUID());
+                return info == null ? -1 : Math.max(0, info.getLatency());
+            } catch (RuntimeException e) {
+                return -1;
             }
         }
     }

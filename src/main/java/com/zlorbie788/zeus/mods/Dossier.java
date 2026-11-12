@@ -1,5 +1,6 @@
 package com.zlorbie788.zeus.mods;
 
+import com.zlorbie788.zeus.ui.Accent;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -397,10 +398,10 @@ public final class Dossier extends Module {
         int x = at[0] + Hud.PAD;
         int rw = bw - Hud.PAD * 2;
         int y = at[1] + Hud.TOP;
-        int nameCol = r == null ? 0xFFFFC857 : 0xFFE6EEF9;
+        int nameCol = r == null ? Accent.WARN : 0xFFE6EEF9;
         Draw.bold(g, Draw.fit(who, rw - 46), x, y, nameCol);
         if (r != null) Draw.textRight(g, r.seen + "\u00D7", x + rw, y, 0xFF7F8CA4);
-        else if (nearest != null) Draw.textRight(g, kit, x + rw, y, 0xFFFFC857);
+        else if (nearest != null) Draw.textRight(g, kit, x + rw, y, Accent.WARN);
         Draw.text(g, Draw.fit(line2, rw), x, y + 12, 0xFF8794AC);
     }
 

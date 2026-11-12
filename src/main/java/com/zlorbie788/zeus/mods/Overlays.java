@@ -1,5 +1,6 @@
 package com.zlorbie788.zeus.mods;
 
+import com.zlorbie788.zeus.ui.Accent;
 import com.zlorbie788.zeus.core.Build;
 import com.zlorbie788.zeus.core.Category;
 import com.zlorbie788.zeus.core.Module;
@@ -68,7 +69,7 @@ public final class Overlays {
         protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
             if (mc.player == null || holes.isEmpty() || !Projector.prepare(mc, partial, w, h)) return;
             for (int[] p : holes) {
-                int col = p[3] == 2 ? com.zlorbie788.zeus.render.EspKit.pick(bedrockColor, 0xFF52F28A) : com.zlorbie788.zeus.render.EspKit.pick(obsidianColor, 0xFFFFC857);
+                int col = p[3] == 2 ? com.zlorbie788.zeus.render.EspKit.pick(bedrockColor, 0xFF52F28A) : com.zlorbie788.zeus.render.EspKit.pick(obsidianColor, Accent.WARN);
                 col = Draw.rgba(col, opacity.f() / 100f);
                 Wire.floor(g, p[0] + 0.06, p[1] + 0.02, p[2] + 0.06, 0.88, width.f(), col);
                 if (fill.on()) {

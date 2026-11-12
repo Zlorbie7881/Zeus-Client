@@ -32,6 +32,8 @@ public final class AhSniper extends Module {
     private final Setting.Choice per = add(new Setting.Choice("Sniper: the price is", "Whole listing: the price on the listing. Per item: the price divided by the number of items in the stack.", 0, "For the whole listing", "Per item"));
     private final Setting.Bool learned = add(new Setting.Bool("Sniper: use learned prices", "Also compares the price with what the client has seen that item sell for, so a rule without a price still has a ceiling and a \"bargain\" is measured against the market, not only your limit.", true));
     private final Setting.Num below = add(new Setting.Num("Sniper: buy below market", "With learned prices on, a listing is worth buying only when it is at least this far under the learned price for that item.", 25, 5, 90, 5, " %")).showIf(() -> this.learned.on());
+    private final Setting.Bool smart = add(new Setting.Bool("Sniper: smart mode", "Buys anything the price book says is underpriced, even when no rule matches it. Rules still apply on top and are never loosened.", true));
+    private final Setting.Text minProfit = add(new Setting.Text("Sniper: smallest profit", "Smart mode skips a listing unless reselling it at the learned price would earn at least this much. k, m and b work. 0 accepts anything.", "0", 12));
     private final Setting.Text spendLimit = add(new Setting.Text("Sniper: spending limit", "It stops buying once it has spent this much since you switched it on. 0 means no limit (not recommended).", "1m", 16));
     private final Setting.Num maxBuys = add(new Setting.Num("Sniper: most purchases", "It stops after this many purchases.", 3, 1, 50, 1, ""));
     private final Setting.Num pause = add(new Setting.Num("Sniper: pause after a purchase", "Seconds it waits after a confirmed purchase before it looks again.", 1.5, 0.5, 30, 0.5, " s"));
@@ -51,7 +53,10 @@ public final class AhSniper extends Module {
     private enum Phase { LOOK, CONFIRM, VERIFY }
 
     private final Map<String, Long> tried = new HashMap<>();
+    private final Map<String, Long> blocked = new HashMap<>();
+    private static final java.util.Random RNG = new java.util.Random();
     private Phase phase = Phase.LOOK;
+    private String bestVerdict = "";
     private long restUntil;
     private long lastSearch;
     private long lastPage;
@@ -70,12 +75,45 @@ public final class AhSniper extends Module {
     private int baselineCount = -1;
     private int listingsSeen;
     private double bestSeen;
+    private double profit;
+    private int misses;
+    private double pendingFair;
+    private int pendingCount = 1;
     private String lastBuy = "";
+    private String watching = "";
     private String note = "Off.";
 
     public AhSniper() {
         super("ah_sniper", "AH Sniper", "Buys auction listings at or under a price you set, with a spending limit, a purchase limit and a check that the item really arrived.", Category.UTILITY);
         alias("auction sniper", "ah buy", "snipe", "auction bot", "ah bot");
+    }
+
+    public static String arm(boolean on) {
+        AhSniper self = Zeus.get(AhSniper.class);
+        if (self == null) return "AH Sniper is missing.";
+        if (on) {
+            self.setEnabled(true);
+            self.armed.set(true);
+            self.reset();
+            return "AH Sniper armed. Open the auction house or let it open on its own.";
+        }
+        self.armed.set(false);
+        self.phase = Phase.LOOK;
+        self.note = "Off. Type /zeus ah on to arm it again.";
+        return "AH Sniper disarmed.";
+    }
+
+    public static String rules(String text) {
+        AhSniper self = Zeus.get(AhSniper.class);
+        if (self == null) return "AH Sniper is missing.";
+        self.rules.set(text == null ? "" : text);
+        return "Rules saved: " + self.rules.get();
+    }
+
+    public static String status() {
+        AhSniper self = Zeus.get(AhSniper.class);
+        if (self == null) return "AH Sniper is missing.";
+        return self.note + " | " + self.lines().get(1);
     }
 
     @Override
@@ -95,7 +133,12 @@ public final class AhSniper extends Module {
         baselineCount = -1;
         pageSig = "";
         bestSeen = 0;
+        profit = 0;
+        misses = 0;
+        pendingFair = 0;
+        pendingCount = 1;
         lastBuy = "";
+        blocked.clear();
         tried.clear();
         note = armed.on() ? "Armed. Open the auction house." : "Off. Switch \"Sniper: auto-buy\" on to start.";
     }
@@ -117,7 +160,16 @@ public final class AhSniper extends Module {
         List<Rule> rs = parseRules();
         out.add(rs.isEmpty() ? "No rules yet. Example: elytra=2m, mace=500k" : rs.size() + " rule" + (rs.size() == 1 ? "" : "s") + ", " + listingsSeen + " listings read");
         if (bestSeen > 0) out.add("Best deal seen: " + Math.round(bestSeen) + " % under its ceiling");
+        if (profit > 0) out.add("Estimated resale profit: " + MarketHunter.money(profit));
+        if (misses > 0) out.add("Failed buys: " + misses + (blocked.size() > 0 ? ", " + blocked.size() + " item(s) skipped for a while" : ""));
+        if (smart.on()) out.add("Smart mode: " + (rs.isEmpty() ? "watching every known item" : "rules plus the price book"));
         if (!lastBuy.isEmpty()) out.add("Last: " + lastBuy);
+        if (!bestVerdict.isEmpty()) out.add(bestVerdict);
+        out.add("Price book: " + AuctionMind.books() + " items");
+        if (!watching.isBlank()) {
+            double trend = AuctionMind.momentum(watching);
+            if (Math.abs(trend) > 0.05) out.add("Trend on " + watching + ": " + (trend > 0 ? "rising " : "falling ") + Math.round(Math.abs(trend) * 100) + " %");
+        }
         out.add("Phase: " + phase.name().toLowerCase(Locale.ROOT) + (pageCount > 0 ? ", page " + (pageCount + 1) : ""));
         return out;
     }
@@ -211,8 +263,8 @@ public final class AhSniper extends Module {
             return;
         }
         List<Rule> rs = parseRules();
-        if (rs.isEmpty()) {
-            note = "Add a rule first, for example: elytra=2m";
+        if (rs.isEmpty() && !smart.on()) {
+            note = "Add a rule first, for example: elytra=2m, or switch smart mode on";
             return;
         }
         if (now < restUntil) return;
@@ -307,7 +359,10 @@ public final class AhSniper extends Module {
         double left = limit() > 0 ? limit() - spent : Double.MAX_VALUE;
         int bestSlot = -1;
         double bestDiscount = 0;
+        double bestScore = 0;
         double bestPrice = 0;
+        double bestFair = 0;
+        String verdictLine = "";
         String bestName = "";
         Item bestItem = null;
         int bestCount = 0;
@@ -318,46 +373,61 @@ public final class AhSniper extends Module {
             String name = st.getHoverName().getString();
             String lower = (name + " " + Names.item(st).replace('_', ' ') + " " + MarketHunter.loreText(st)).toLowerCase(Locale.ROOT);
             if (lower.contains("sold") || lower.contains("unavailable")) continue;
+            Long ban = blocked.get(name);
+            if (ban != null) {
+                if (now - ban < 600_000L) continue;
+                blocked.remove(name);
+            }
             double ceiling = -1;
             double ruleMax = -1;
+            boolean matched = false;
             for (Rule r : rs) {
                 if (!lower.contains(r.words())) continue;
+                matched = true;
                 if (r.max() > 0) ruleMax = Math.max(ruleMax, r.max());
                 else if (ceiling < 0) ceiling = Double.MAX_VALUE;
             }
             if (ruleMax > 0) ceiling = ceiling < 0 ? ruleMax : Math.min(ceiling, ruleMax);
             double market = learned.on() ? MarketHunter.learnedFor(name) : -1;
-            if (market > 0) {
-                double marketCeiling = market * (1.0 - below.f() / 100.0);
-                ceiling = ceiling < 0 ? marketCeiling : Math.min(ceiling, marketCeiling);
-            }
-            if (ceiling <= 0) continue;
+            if (!matched && !(smart.on() && market > 0)) continue;
+            if (ceiling <= 0 && market <= 0 && ruleMax <= 0) continue;
             double price = priceOf(st);
             if (price <= 0) continue;
             double compare = per.index() == 1 ? price / Math.max(1, st.getCount()) : price;
-            if (compare > ceiling || price > left) continue;
+            if (price > left) continue;
+            double wanted = MarketHunter.parsePrice(minProfit.get());
+            if (wanted > 0 && market > 0 && (market - compare) * Math.max(1, st.getCount()) < wanted) continue;
+            AuctionMind.Verdict verdict = AuctionMind.judge(name, compare, st.getCount(), ruleMax, market, below.f());
+            AuctionMind.observe(name, compare);
+            if (!verdict.buy()) continue;
             String key = menu.containerId + "|" + i + "|" + name + "|" + st.getCount() + "|" + Math.round(price);
             Long seen = tried.get(key);
             if (seen != null && now - seen < 180_000L) continue;
-            double discount = ceiling <= 0 || ceiling == Double.MAX_VALUE ? 0 : (1.0 - compare / ceiling) * 100.0;
-            if (discount > bestSeen) bestSeen = discount;
-            if (discount > bestDiscount || bestSlot < 0) {
+            if (verdict.discount() > bestSeen) bestSeen = verdict.discount();
+            if (verdict.score() > bestScore || bestSlot < 0) {
                 bestSlot = i;
-                bestDiscount = discount;
+                bestScore = verdict.score();
+                bestDiscount = verdict.discount();
+                verdictLine = "Brain: " + (verdict.fair() > 0 ? "fair " + MarketHunter.money(verdict.fair()) : "no fair price") + ", " + Math.round(verdict.confidence() * 100) + " % sure, " + verdict.samples() + " seen";
                 bestPrice = price;
+                bestFair = verdict.fair();
                 bestName = name;
                 bestItem = st.getItem();
                 bestCount = st.getCount();
             }
         }
 
-        if (bestSlot >= 0 && now - lastClick >= Math.max(0, Math.round(reaction.f()))) {
+        bestVerdict = verdictLine;
+        if (!bestName.isBlank()) watching = bestName;
+        if (bestSlot >= 0 && now - lastClick >= Math.max(0, Math.round(reaction.f())) + RNG.nextInt(80)) {
             String key = menu.containerId + "|" + bestSlot + "|" + bestName + "|" + bestCount + "|" + Math.round(bestPrice);
             tried.put(key, now);
             if (tried.size() > 600) {
                 tried.entrySet().removeIf(e -> now - e.getValue() > 180_000L);
             }
             pendingPrice = bestPrice;
+            pendingFair = bestFair;
+            pendingCount = Math.max(1, bestCount);
             pendingName = bestName;
             pendingItem = bestItem;
             baselineCount = bestItem == null ? -1 : countOf(mc, bestItem);
@@ -422,11 +492,15 @@ public final class AhSniper extends Module {
             bought++;
             spent += pendingPrice;
             lastBuy = pendingName + " for " + MarketHunter.money(pendingPrice);
-            note = "Bought " + lastBuy + ".";
+            double gain = Math.max(0, pendingFair - pendingPrice) * pendingCount;
+            profit += gain;
+            note = "Bought " + lastBuy + (gain > 0 ? " (about " + MarketHunter.money(gain) + " under market)" : "") + ".";
             Zeus.toast("AH Sniper bought " + lastBuy, true);
             restUntil = now + Math.max(1, Math.round(pause.f() * 1000));
         } else {
-            note = "Clicked " + pendingName + " but the item never arrived. Not counting it.";
+            misses++;
+            blocked.put(pendingName, now);
+            note = "Clicked " + pendingName + " but the item never arrived. Skipping it for ten minutes.";
             restUntil = now + 1200;
         }
         phase = Phase.LOOK;

@@ -59,6 +59,10 @@
     "TabListPrivacyMixin",
     "CrosshairMixin",
     "GameModeHooksMixin",
+    "SnapTapMixin",
+    "ContainerPriceMixin",
+    "NoHurtCamMixin",
+    "NoBreakDelayMixin",
     "LivingEntityAccessor",
     "SkinMixin"
   ],

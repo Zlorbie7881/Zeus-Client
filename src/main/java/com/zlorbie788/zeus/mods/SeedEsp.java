@@ -1,5 +1,6 @@
 package com.zlorbie788.zeus.mods;
 
+import com.zlorbie788.zeus.ui.Accent;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
@@ -106,7 +107,7 @@ public final class SeedEsp extends Module {
             new Ore("Iron", 0xFFD8C0A8, Blocks.IRON_ORE, Blocks.DEEPSLATE_IRON_ORE),
             new Ore("Gold", 0xFFFFD84D, Blocks.GOLD_ORE, Blocks.DEEPSLATE_GOLD_ORE, Blocks.NETHER_GOLD_ORE),
             new Ore("Coal", 0xFF9AA0A6, Blocks.COAL_ORE, Blocks.DEEPSLATE_COAL_ORE),
-            new Ore("Copper", 0xFFFF8F4D, Blocks.COPPER_ORE, Blocks.DEEPSLATE_COPPER_ORE),
+            new Ore("Copper", Accent.HIGH, Blocks.COPPER_ORE, Blocks.DEEPSLATE_COPPER_ORE),
             new Ore("Redstone", 0xFFFF4D5E, Blocks.REDSTONE_ORE, Blocks.DEEPSLATE_REDSTONE_ORE),
             new Ore("Lapis", 0xFF4D7CFF, Blocks.LAPIS_ORE, Blocks.DEEPSLATE_LAPIS_ORE),
             new Ore("Emerald", 0xFF35E066, Blocks.EMERALD_ORE, Blocks.DEEPSLATE_EMERALD_ORE),
@@ -145,6 +146,8 @@ public final class SeedEsp extends Module {
     private final Setting.Text seed = add(new Setting.Text("Seed",
             "The world seed, as a number (or any text, the game turns it into the same number it used). "
                     + "Leave it empty to only show the chunks you have loaded.", "", 64));
+
+    private final Setting.Bool useWorldSeed = add(new Setting.Bool("Use the world seed in singleplayer", "Fills the seed box from the save you are playing, so a singleplayer world works without typing anything.", true));
 
     private final Setting.Num range = add(new Setting.Num("Range",
             "How far around you the boxes are drawn, in blocks.", 256, 48, 512, 16, " blocks"));
@@ -311,6 +314,7 @@ public final class SeedEsp extends Module {
     protected void onTick(Minecraft mc) {
         if (mc.level == null || mc.player == null) return;
 
+        autoSeed(mc);
         scanLoadedChunks(mc);
         seedTick(mc);
     }
@@ -344,6 +348,7 @@ public final class SeedEsp extends Module {
             if (j.fromCache) out.add("Loaded from the cache, no generation needed");
         }
         if (!lastSeed.isBlank()) out.add("Seed: " + lastSeed);
+        else out.add("Seed: empty, loaded chunks only. Use /zeus seed <seed> to see further.");
         int shownTotal = 0;
         for (int c : panelCounts) shownTotal += c;
         out.add("On screen: " + shownTotal + " box(es)");
@@ -394,7 +399,7 @@ public final class SeedEsp extends Module {
             if (exact.keySet().retainAll(keep)) invalidate();
         }
 
-        int budget = 8;
+        int budget = 32;
         for (int n = 0; n < budget && !ring.isEmpty(); n++) {
             ChunkPos pos = ring.get(ringCursor);
             ringCursor = (ringCursor + 1) % ring.size();
@@ -699,6 +704,29 @@ public final class SeedEsp extends Module {
         }
     }
 
+    private void autoSeed(Minecraft mc) {
+        if (!useWorldSeed.on() || !seed.get().isBlank()) return;
+        IntegratedServer single = mc.getSingleplayerServer();
+        if (single == null) return;
+        try {
+            if (single.getWorldData() instanceof PrimaryLevelData data) {
+                String value = Long.toString(data.worldGenOptions().seed());
+                seed.set(value);
+                Zeus.toast("Seed ESP: using this world's seed", true);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    public static String useSeed(String text) {
+        SeedEsp self = Zeus.get(SeedEsp.class);
+        if (self == null) return "Seed ESP is missing.";
+        self.seed.set(text == null ? "" : text.trim());
+        self.setEnabled(true);
+        self.restartScan();
+        return self.seed.get().isBlank() ? "Seed ESP is on and reading loaded chunks." : "Seed ESP: scanning with seed " + self.seed.get();
+    }
+
     private void seedTick(Minecraft mc) {
         long now = System.currentTimeMillis();
         if (remember.on()) {
@@ -731,6 +759,7 @@ public final class SeedEsp extends Module {
 
         if (j != null && j.failed) {
             failedSeed = j.seedText + "|" + j.dimension.identifier();
+            Zeus.toast("Seed ESP: " + (j.message.isBlank() ? "the seed scan failed" : j.message), false);
             cancelJob();
             j = null;
         }
@@ -1341,7 +1370,12 @@ public final class SeedEsp extends Module {
         int x = (ci == 1 || ci == 3) ? w - boxW - 6 : 6;
         int y = (ci >= 2) ? h - boxH - 6 : 6;
 
-        Draw.rrect(g, x, y, boxW, boxH, 4, 0xB80B0B10);
+        Draw.shadow(g, x, y, boxW, boxH, 5, 5, 0.34f);
+        Draw.rrect(g, x, y, boxW, boxH, 4, 0xE60C1018, 0xF0080B12);
+        Draw.rrectLine(g, x, y, boxW, boxH, 4, Draw.rgba(Accent.main(), 0.50f));
+        if (com.zlorbie788.zeus.ui.UiSettings.HUD_BRACKETS.on()) Draw.brackets(g, x + 2, y + 2, boxW - 4, boxH - 4, 6, Draw.rgba(Accent.main(), 0.40f));
+        g.fill(x + 5, y + 15, x + boxW - 5, y + 16, Draw.rgba(0xFFFFFF, 0.07f));
+        g.fill(x + 5, y + 15, x + 5 + Math.max(6, boxW / 6), y + 16, Draw.rgba(Accent.main(), 0.65f));
         Draw.bold(g, "Ores", x + 7, y + 6, 0xFFFFFFFF);
         if (!panelState.isEmpty()) Draw.textRight(g, panelState, x + boxW - 7, y + 6, 0xFF9AA0A6);
 
