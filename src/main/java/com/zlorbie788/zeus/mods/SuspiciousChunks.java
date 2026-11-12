@@ -40,7 +40,6 @@ public class SuspiciousChunks extends Module {
     private final Setting.Choice sensitivity;
     private final Setting.Choice scanPace;
     private final Setting.Num range;
-    private final Setting.Bool scanMultiplayer = add(new Setting.Bool("Scan loaded multiplayer chunks", "Allow scanning only chunk data your client has already received and loaded. No hidden or unloaded chunks are queried; this can use extra CPU on busy servers.", false));
     private final Setting.Choice where;
     private final Setting.Choice natural;
     private final Setting.Bool entities;
@@ -622,7 +621,6 @@ public class SuspiciousChunks extends Module {
 
     @Override
     protected void onTick(Minecraft mc) {
-        if (!Env.local() && !scanMultiplayer.on()) return;
         if (mc.level == null || mc.player == null) return;
         int pcx = mc.player.getBlockX() >> 4;
         int pcz = mc.player.getBlockZ() >> 4;

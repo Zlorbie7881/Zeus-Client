@@ -1093,9 +1093,9 @@ public final class KnifeSwing extends Module {
         float[] pv = ring() ? new float[] {0f, 0f, 0f} : g;
         Rig.T rt = Rig.T.rz(p.rz).then(Rig.T.rx(p.rx)).then(Rig.T.ry(p.ry));
         Rig.T k = base.worldRot(rt, pv[0], pv[1], pv[2]);
-        k.x += p.kx + p.gx;
-        k.y += p.ky + p.gy;
-        k.z += p.kz + p.gz;
+        k.x += g[0] + p.kx + p.gx;
+        k.y += g[1] + p.ky + p.gy;
+        k.z += g[2] + p.kz + p.gz;
         Rig.T arm = Rig.T.rz(ARM_Z).rotX(ARM_X).rotY(p.armRoll);
         arm.x = g[0] + p.gx;
         arm.y = g[1] + p.gy;
@@ -1219,25 +1219,23 @@ public final class KnifeSwing extends Module {
             if (karambit()) kFingers(f, p, skin);
             else fingers(f, p, skin);
         }
-        if (!mesh) {
-            if (karambit()) KnifeArt.buildKarambit(rig, f.knife, look);
-            else KnifeArt.build(rig, f.knife, p.a, p.b, p.c, look);
-        }
         rig.flush(g, u);
 
+        boolean knifeDrawn;
         if (mesh && p.clip != null && KnifeMesh.hasClip(meshName(), p.clip)) {
-            boolean ok;
             try {
-                KnifeMesh.drawClip(g, meshName(), p.clip, p.clipT, f.knife, look, u, fade, Perf.gameFast());
-                ok = true;
+                knifeDrawn = KnifeMesh.drawClip(g, meshName(), p.clip, p.clipT, f.knife, look, u, fade, Perf.gameFast());
             } catch (Throwable t) {
                 meshBroken = true;
-                ok = false;
+                knifeDrawn = false;
             }
-            if (!ok) pixelKnife(g, f.knife, p.a, p.b, p.c, look, u, fade);
         } else if (mesh) {
-            if (!drawMesh(g, f.knife, p.a, p.b, p.c, look, u, fade)) pixelKnife(g, f.knife, p.a, p.b, p.c, look, u, fade);
+            knifeDrawn = drawMesh(g, f.knife, p.a, p.b, p.c, look, u, fade);
+        } else {
+            knifeDrawn = pixelKnife(g, f.knife, p.a, p.b, p.c, look, u, fade);
         }
+        if (!knifeDrawn) knifeDrawn = pixelKnife(g, f.knife, p.a, p.b, p.c, look, u, fade);
+        if (!knifeDrawn) lastResort(g, f.knife, p.c, look, u, fade);
 
         if (sparks.on() && p.flash > 0.01f) {
             float s = Math.max(0.01f, Math.min(1f, p.flash) * Math.min(1f, flashStrength.f() / 100f));
@@ -1275,8 +1273,7 @@ public final class KnifeSwing extends Module {
         try {
             String name = meshName();
             if (name == null) return false;
-            KnifeMesh.draw(g, name, at, a, b, c, look, unit, alpha, Perf.gameFast());
-            return true;
+            return KnifeMesh.draw(g, name, at, a, b, c, look, unit, alpha, Perf.gameFast());
         } catch (Throwable t) {
             meshBroken = true;
             Zeus.LOG.warn("The 3D knife could not be drawn; using the pixel knife instead", t);
@@ -1284,12 +1281,21 @@ public final class KnifeSwing extends Module {
         }
     }
 
-    private void pixelKnife(GuiGraphics g, Rig.T at, float a, float b, float c, KnifeArt.Look look, float unit, float alpha) {
+    private boolean pixelKnife(GuiGraphics g, Rig.T at, float a, float b, float c, KnifeArt.Look look, float unit, float alpha) {
         ghost.clear();
         ghost.alpha(alpha);
         if (karambit()) KnifeArt.buildKarambit(ghost, at, look);
         else KnifeArt.build(ghost, at, a, b, c, look);
+        boolean any = ghost.size() > 0;
         ghost.flush(g, unit);
+        return any;
+    }
+
+    private void lastResort(GuiGraphics g, Rig.T at, float c, KnifeArt.Look look, float unit, float alpha) {
+        float[] a = onScreen(at.point(0f, 0f, 0f), unit);
+        float[] b = onScreen(at.rotZ(c).point(0f, KnifeArt.BL, 0f), unit);
+        Draw.line(g, a[0], a[1], b[0], b[1], Math.max(2f, unit * 1.1f), Draw.rgba(look.blade[0], alpha));
+        Draw.line(g, a[0], a[1], a[0] + (b[0] - a[0]) * 0.45f, a[1] + (b[1] - a[1]) * 0.45f, Math.max(2f, unit * 1.1f), Draw.rgba(look.handle[0], alpha));
     }
 
     private static int glowOf(KnifeArt.Look look, Pose p) {

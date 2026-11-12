@@ -124,6 +124,8 @@ public final class AdvancedFeatures {
         private final Setting.Num range = add(new Setting.Num("Range", "Maximum target distance.", 3.8, 2.5, 5.5, 0.1, " blocks"));
         private final Setting.Num targets = add(new Setting.Num("Targets per cycle", "Maximum number of nearby targets attacked per cycle.", 3, 1, 5, 1, ""));
         private final Setting.Num delay = add(new Setting.Num("Cycle delay", "Ticks between target cycles.", 8, 2, 30, 1, " ticks"));
+        private final Setting.Num fov = add(new Setting.Num("Field of view", "Only hit targets inside this cone around your crosshair. 360 ignores it.", 160, 30, 360, 10, "\u00b0"));
+        private final Setting.Bool pauseUse = add(new Setting.Bool("Pause while using an item", "Do not hit while you eat or draw a bow.", true));
         private final Setting.Bool hostiles = add(new Setting.Bool("Hostile mobs", "Include hostile mobs.", true));
         private final Setting.Bool players = add(new Setting.Bool("Players", "Include other players. Friends are always spared.", false));
         private int cooldown;
@@ -136,10 +138,13 @@ public final class AdvancedFeatures {
         @Override protected void onTick(Minecraft mc) {
             lastCount = 0;
             if (mc.player == null || mc.level == null || mc.gameMode == null || mc.screen != null) return;
+            if (pauseUse.on() && mc.player.isUsingItem()) return;
             if (cooldown-- > 0) return;
             cooldown = delay.i();
             var self = mc.player;
             double r = range.get();
+            net.minecraft.world.phys.Vec3 look = self.getLookAngle();
+            double cone = Math.cos(Math.toRadians(Math.min(360.0, fov.get()) / 2.0));
             List<LivingEntity> candidates = new ArrayList<>();
             for (Entity entity : mc.level.getEntities((Entity) null, new AABB(self.getX()-r,self.getY()-r,self.getZ()-r,self.getX()+r,self.getY()+r,self.getZ()+r))) {
                 if (!(entity instanceof LivingEntity living) || living == self || !living.isAlive() || living.isSpectator()) continue;
@@ -147,6 +152,10 @@ public final class AdvancedFeatures {
                 boolean allowed = (hostiles.on() && living instanceof Enemy) || (players.on() && living instanceof Player && !(living instanceof net.minecraft.client.player.LocalPlayer) && !Friends.protects(living));
                 if (!allowed || self.distanceToSqr(living) > r*r) continue;
                 if (!self.hasLineOfSight(living)) continue;
+                if (fov.get() < 359.0) {
+                    var to = living.getBoundingBox().getCenter().subtract(self.getEyePosition());
+                    if (to.lengthSqr() > 1e-6 && to.normalize().dot(look) < cone) continue;
+                }
                 candidates.add(living);
             }
             candidates.sort(Comparator.comparingDouble(self::distanceToSqr));
