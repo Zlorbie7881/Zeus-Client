@@ -68,7 +68,12 @@ public final class KnifeMesh {
         if (tried) return;
         tried = true;
         models = new HashMap<>();
-        try (Reader r = new InputStreamReader(KnifeMesh.class.getResourceAsStream("/assets/zeus/knives/knives_lo.json"), StandardCharsets.UTF_8)) {
+        java.io.InputStream in = KnifeMesh.class.getResourceAsStream("/assets/zeus/knives/knives_lo.json");
+        if (in == null) {
+            com.zlorbie788.zeus.core.Zeus.LOG.warn("The 3D knife models are missing from the jar; the pixel knives are used");
+            return;
+        }
+        try (Reader r = new InputStreamReader(in, StandardCharsets.UTF_8)) {
             JsonObject root = JsonParser.parseReader(r).getAsJsonObject();
             for (JsonElement ke : root.getAsJsonArray("knives")) {
                 JsonObject k = ke.getAsJsonObject();
@@ -207,27 +212,28 @@ public final class KnifeMesh {
     private static final int[] COL = new int[MAX_TRIS];
     private static float[] wv = new float[3 * 4096];
 
-    public static void draw(GuiGraphics g, String name, Rig.T k, float a, float b, float c, KnifeArt.Look look, float unit, float alpha, boolean cheap) {
-        draw(g, name, k, a, b, c, look, unit, alpha, cheap, null, 0f);
+    public static boolean draw(GuiGraphics g, String name, Rig.T k, float a, float b, float c, KnifeArt.Look look, float unit, float alpha, boolean cheap) {
+        return draw(g, name, k, a, b, c, look, unit, alpha, cheap, null, 0f);
     }
 
-    public static void drawClip(GuiGraphics g, String name, String clip, float t, Rig.T k, KnifeArt.Look look, float unit, float alpha, boolean cheap) {
-        draw(g, name, k, 0f, 0f, 0f, look, unit, alpha, cheap, clip, t);
+    public static boolean drawClip(GuiGraphics g, String name, String clip, float t, Rig.T k, KnifeArt.Look look, float unit, float alpha, boolean cheap) {
+        return draw(g, name, k, 0f, 0f, 0f, look, unit, alpha, cheap, clip, t);
     }
 
-    private static void draw(GuiGraphics g, String name, Rig.T k, float a, float b, float c, KnifeArt.Look look, float unit, float alpha, boolean cheap, String clip, float clipT) {
+    private static boolean draw(GuiGraphics g, String name, Rig.T k, float a, float b, float c, KnifeArt.Look look, float unit, float alpha, boolean cheap, String clip, float clipT) {
         try {
-            drawMesh(g, name, k, a, b, c, look, unit, alpha, cheap, clip, clipT);
+            return drawMesh(g, name, k, a, b, c, look, unit, alpha, cheap, clip, clipT);
         } catch (RuntimeException | Error e) {
             broken = true;
             com.zlorbie788.zeus.core.Zeus.LOG.warn("3D knife failed, using the pixel knives", e);
+            return false;
         }
     }
 
-    private static void drawMesh(GuiGraphics g, String name, Rig.T k, float a, float b, float c, KnifeArt.Look look, float unit, float alpha, boolean cheap, String clipName, float clipT) {
+    private static boolean drawMesh(GuiGraphics g, String name, Rig.T k, float a, float b, float c, KnifeArt.Look look, float unit, float alpha, boolean cheap, String clipName, float clipT) {
         load();
         Model m = models.get(name);
-        if (m == null) return;
+        if (m == null) return false;
         Clip clip = clipName == null ? null : m.clips.get(clipName);
         float sc = m.butterfly ? 1.10f : KnifeArt.Q;
         if (clip != null) {
@@ -281,10 +287,13 @@ public final class KnifeMesh {
                     float vx = cx - ax, vy = cy - ay, vz = cz - az;
                     float nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
                     float len = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
-                    if (len < 1e-6f) continue;
+                    if (!(len > 1e-6f) || !Float.isFinite(len)) continue;
                     nx /= len;
                     ny /= len;
                     nz /= len;
+                    if (!Float.isFinite(ax) || !Float.isFinite(ay) || !Float.isFinite(az)) continue;
+                    if (!Float.isFinite(bx) || !Float.isFinite(by) || !Float.isFinite(bz)) continue;
+                    if (!Float.isFinite(cx) || !Float.isFinite(cy) || !Float.isFinite(cz)) continue;
                     float mx = (ax + bx + cx) / 3f, my = (ay + by + cy) / 3f, mz = (az + bz + cz) / 3f;
                     if (nx * mx + ny * my + nz * (mz + D) >= 0f) continue;
                     float lam = Math.max(0f, nx * LX + ny * LY + nz * LZ);
@@ -305,23 +314,26 @@ public final class KnifeMesh {
         for (int i = 0; i < n; i++) idx[i] = i;
         java.util.Arrays.sort(idx, (p, q) -> Float.compare(DEPTH[q], DEPTH[p]));
         float grow = cheap ? 0.3f : 0.45f;
+        int painted = 0;
         for (int o = 0; o < n; o++) {
             int i = idx[o];
             float x0 = SX[i * 3], y0 = SY[i * 3], x1 = SX[i * 3 + 1], y1 = SY[i * 3 + 1], x2 = SX[i * 3 + 2], y2 = SY[i * 3 + 2];
             float gx = (x0 + x1 + x2) / 3f, gy = (y0 + y1 + y2) / 3f;
-            tri(g, grow(x0, gx, grow), grow(y0, gy, grow), grow(x1, gx, grow), grow(y1, gy, grow), grow(x2, gx, grow), grow(y2, gy, grow), COL[i]);
+            if (tri(g, grow(x0, gx, grow), grow(y0, gy, grow), grow(x1, gx, grow), grow(y1, gy, grow), grow(x2, gx, grow), grow(y2, gy, grow), COL[i])) painted++;
         }
+        return painted > 0;
     }
 
-    private static void tri(GuiGraphics g, float ax, float ay, float bx, float by, float cx, float cy, int color) {
+    private static boolean tri(GuiGraphics g, float ax, float ay, float bx, float by, float cx, float cy, int color) {
         Tex.Img t = Tex.sprite(TRI);
-        if (t == null) return;
+        if (t == null) return false;
         float ux = (bx - ax) / 126f, uy = (by - ay) / 126f, vx = (cx - ax) / 126f, vy = (cy - ay) / 126f;
         var pose = g.pose();
         pose.pushMatrix();
         pose.mul(new org.joml.Matrix3x2f(ux, uy, vx, vy, ax - ux - vx, ay - uy - vy));
         t.drawPart(g, 0, 0, 128, 128, 0, 0, 128, 128, color);
         pose.popMatrix();
+        return true;
     }
 
     private static float grow(float v, float centre, float by) {
