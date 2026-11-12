@@ -111,7 +111,11 @@ public final class SeedEsp extends Module {
             new Ore("Lapis", 0xFF4D7CFF, Blocks.LAPIS_ORE, Blocks.DEEPSLATE_LAPIS_ORE),
             new Ore("Emerald", 0xFF35E066, Blocks.EMERALD_ORE, Blocks.DEEPSLATE_EMERALD_ORE),
             new Ore("Quartz", 0xFFE8E2D0, Blocks.NETHER_QUARTZ_ORE),
-            new Ore("Debris", 0xFFB06BFF, Blocks.ANCIENT_DEBRIS)
+            new Ore("Debris", 0xFFB06BFF, Blocks.ANCIENT_DEBRIS),
+            new Ore("Amethyst", 0xFFE07CFF, Blocks.AMETHYST_CLUSTER, Blocks.BUDDING_AMETHYST, Blocks.LARGE_AMETHYST_BUD, Blocks.MEDIUM_AMETHYST_BUD, Blocks.SMALL_AMETHYST_BUD),
+            new Ore("Spawner", 0xFF8A7CFF, Blocks.SPAWNER),
+            new Ore("Chest", 0xFFFFB04D, Blocks.CHEST, Blocks.TRAPPED_CHEST, Blocks.ENDER_CHEST),
+            new Ore("Barrel", 0xFFD8A05A, Blocks.BARREL)
     };
 
     private static final int ALL_ORES = (1 << ORES.length) - 1;
@@ -143,12 +147,12 @@ public final class SeedEsp extends Module {
                     + "Leave it empty to only show the chunks you have loaded.", "", 64));
 
     private final Setting.Num range = add(new Setting.Num("Range",
-            "How far around you the boxes are drawn, in blocks.", 128, 48, 512, 16, " blocks"));
+            "How far around you the boxes are drawn, in blocks.", 256, 48, 512, 16, " blocks"));
 
     private final Setting.Num scanChunks = add(new Setting.Num("Scan range",
             "At least this many chunks around you are generated from the seed. The display Range is always covered "
                     + "as well. Bigger sees further but takes longer the first time; what it finds is cached, so it is "
-                    + "only slow once per area.", 10, 2, 32, 2, " chunks"));
+                    + "only slow once per area.", 20, 2, 32, 2, " chunks"));
 
     private final Setting.Bool predict = add(new Setting.Bool("Seed prediction",
             "Work out the ore in chunks you have not loaded from the seed, with a throwaway copy of the world generator. "
@@ -166,12 +170,12 @@ public final class SeedEsp extends Module {
 
     private final Setting.Num perOre = add(new Setting.Num("Nearest per ore",
             "How many of each ore to draw, nearest first. Every ore family gets this many, so coal can never hide "
-                    + "the diamonds.", 40, 5, 400, 5, ""));
+                    + "the diamonds.", 150, 5, 400, 5, ""));
 
     private final Setting.Choice boxMode = add(new Setting.Choice("Boxes",
             "Every block: one box per ore block. Whole vein: one box around a connected run of one ore, labelled with "
                     + "how many blocks it has, which is what tells you a vein is worth digging. Blocks and veins: both.",
-            1, BOX_MODES));
+            2, BOX_MODES));
 
     private final Setting.Num minVein = add(new Setting.Num("Smallest vein",
             "Hide veins with fewer blocks than this, so only runs worth digging to get a box. 1 keeps every vein.",
@@ -186,7 +190,7 @@ public final class SeedEsp extends Module {
             "Name and distance on the nearest finds of each ore.", true));
 
     private final Setting.Num showDistance = add(new Setting.Num("Label distance",
-            "Only finds this close get a name tag, which keeps the screen readable.", 48, 8, 192, 8, " blocks"));
+            "Only finds this close get a name tag, which keeps the screen readable.", 96, 8, 192, 8, " blocks"));
 
     private final Setting.Bool[] ores = new Setting.Bool[ORES.length];
 
@@ -211,6 +215,14 @@ public final class SeedEsp extends Module {
     private final Setting.Action rescan = add(new Setting.Action("Scan from seed now",
             "Throws away what was cached for this world and scans the seed around you again from scratch.",
             this::restartScan));
+
+    private final Setting.Action waypoints = add(new Setting.Action("Save finds as waypoints",
+            "Adds a waypoint for the nearest veins of every ore you can see, named after the ore and its size. Waypoints show through walls with the Waypoints module.",
+            this::waypointFinds));
+
+    private final Setting.Action copyFinds = add(new Setting.Action("Copy nearest finds",
+            "Copies the nearest veins of each ore (coordinates, height and distance) to the clipboard.",
+            this::copyFinds));
 
     private final Setting.Action forget = add(new Setting.Action("Forget this world's seed",
             "Removes the seed remembered for the world you are in now.", this::forgetCurrentWorld));
@@ -382,7 +394,7 @@ public final class SeedEsp extends Module {
             if (exact.keySet().retainAll(keep)) invalidate();
         }
 
-        int budget = 3;
+        int budget = 8;
         for (int n = 0; n < budget && !ring.isEmpty(); n++) {
             ChunkPos pos = ring.get(ringCursor);
             ringCursor = (ringCursor + 1) % ring.size();
@@ -533,6 +545,58 @@ public final class SeedEsp extends Module {
         } catch (Throwable t) {
             Zeus.LOG.warn("Seed ESP: could not forget this world's seed", t);
         }
+    }
+
+    private void waypointFinds() {
+        Minecraft mc = Minecraft.getInstance();
+        Extras.Waypoints wp = Zeus.get(Extras.Waypoints.class);
+        if (mc.player == null || mc.level == null) {
+            Zeus.toast("Join a world first", false);
+            return;
+        }
+        if (wp == null) {
+            Zeus.toast("Waypoints is not available", false);
+            return;
+        }
+        markers(mc);
+        int added = 0;
+        for (Vein vein : shownVeins) {
+            if (vein.count() < 2) continue;
+            AABB box = vein.box();
+            String name = ORES[vein.kind()].label() + " x" + vein.count();
+            if (wp.addAt(name, (box.minX + box.maxX) / 2.0, (box.minY + box.maxY) / 2.0, (box.minZ + box.maxZ) / 2.0)) added++;
+            if (added >= 12) break;
+        }
+        Zeus.toast(added == 0 ? "No veins to save yet" : "Saved " + added + " waypoint" + (added == 1 ? "" : "s"), true);
+    }
+
+    private void copyFinds() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || mc.level == null) {
+            Zeus.toast("Join a world first", false);
+            return;
+        }
+        markers(mc);
+        if (shownVeins.isEmpty()) {
+            Zeus.toast("Nothing to copy yet", false);
+            return;
+        }
+        StringBuilder b = new StringBuilder();
+        int[] taken = new int[ORES.length];
+        int lines = 0;
+        for (Vein vein : shownVeins) {
+            if (taken[vein.kind()] >= 3) continue;
+            taken[vein.kind()]++;
+            lines++;
+            AABB box = vein.box();
+            b.append(ORES[vein.kind()].label()).append(" x").append(vein.count()).append("  ")
+                    .append(Math.round((box.minX + box.maxX) / 2.0)).append(' ')
+                    .append(Math.round((box.minY + box.maxY) / 2.0)).append(' ')
+                    .append(Math.round((box.minZ + box.maxZ) / 2.0)).append("  ")
+                    .append(Math.round(Math.sqrt(vein.dist2()))).append("m\n");
+        }
+        mc.keyboardHandler.setClipboard(b.toString().trim());
+        Zeus.toast("Copied " + lines + " find" + (lines == 1 ? "" : "s"), true);
     }
 
     private void openSeedWorlds() {
@@ -697,7 +761,11 @@ public final class SeedEsp extends Module {
     private int scanRadius(ResourceKey<Level> dim) {
         int wanted = Math.max(2, (int) Math.round(scanChunks.get()));
         wanted = Math.max(wanted, (int) Math.ceil(range.get() / 16.0));
-        if (dim.equals(Level.NETHER)) wanted = Math.min(wanted, 12);
+        try {
+            wanted = Math.max(wanted, Minecraft.getInstance().options.renderDistance().get());
+        } catch (RuntimeException ignored) {
+        }
+        if (dim.equals(Level.NETHER)) wanted = Math.min(wanted, 24);
         return Math.min(32, wanted);
     }
 
@@ -731,7 +799,7 @@ public final class SeedEsp extends Module {
     private static final class OreCache {
         static final int MAGIC = 0x5A455553;
         static final int VERSION = 2;
-        static final int MAX_CHUNKS = 24000;
+        static final int MAX_CHUNKS = 48000;
 
         final Map<Long, Hit[]> chunks = new ConcurrentHashMap<>();
 
@@ -882,7 +950,7 @@ public final class SeedEsp extends Module {
         void start() {
             Thread thread = new Thread(this::run, "Zeus seed scanner");
             thread.setDaemon(true);
-            thread.setPriority(Thread.MIN_PRIORITY);
+            thread.setPriority(Math.max(Thread.MIN_PRIORITY, Thread.NORM_PRIORITY - 1));
             thread.start();
         }
 
@@ -930,7 +998,7 @@ public final class SeedEsp extends Module {
                     try {
                         ScanServer server = MinecraftServer.spin(thread ->
                                 new ScanServer(thread, access, packs, stem, this, missing, workDir));
-                        server.getRunningThread().join(300_000L);
+                        server.getRunningThread().join(600_000L);
                         if (server.getRunningThread().isAlive()) {
                             failed = true;
                             message = "The seed scan took too long and was stopped";
@@ -1027,7 +1095,7 @@ public final class SeedEsp extends Module {
     }
 
     private static final class ScanServer extends MinecraftServer {
-        private static final int CHUNKS_PER_TICK = 3;
+        private static final int CHUNKS_PER_TICK = 12;
         private static final AtomicBoolean GIZMOS = new AtomicBoolean(false);
 
         private final LocalSampleLogger tickLogger = new LocalSampleLogger(4);
@@ -1222,11 +1290,11 @@ public final class SeedEsp extends Module {
             float alpha = marker.exact() ? 1f : 0.5f;
             AABB box = EspKit.shape(mc, hit.x(), hit.y(), hit.z());
             kit.box(g, box, color, alpha, drawn < 60);
-            if (labels.on() && marker.rank() < 4 && marker.dist2() < labelRange) {
+            if (labels.on() && marker.rank() < 8 && marker.dist2() < labelRange) {
                 float[] onScreen = new float[2];
                 if (Projector.project(hit.x() + 0.5, box.maxY, hit.z() + 0.5, onScreen)) {
                     String name = (marker.exact() ? "" : "~") + ORES[hit.kind()].label();
-                    kit.tag(g, name, Math.round(Math.sqrt(marker.dist2())) + "m",
+                    kit.tag(g, name, Math.round(Math.sqrt(marker.dist2())) + "m  y" + hit.y(),
                             Math.round(onScreen[0]), Math.round(onScreen[1]), color, alpha, w, h);
                 }
             }
@@ -1250,7 +1318,7 @@ public final class SeedEsp extends Module {
                 float[] onScreen = new float[2];
                 if (Projector.project(cx, box.maxY, cz, onScreen)) {
                     String name = (vein.exact() ? "" : "~") + ORES[vein.kind()].label() + " ×" + vein.count();
-                    kit.tag(g, name, Math.round(Math.sqrt(vein.dist2())) + "m",
+                    kit.tag(g, name, Math.round(Math.sqrt(vein.dist2())) + "m  y" + Math.round(box.maxY - 1),
                             Math.round(onScreen[0]), Math.round(onScreen[1]), color, alpha, w, h);
                 }
             }
