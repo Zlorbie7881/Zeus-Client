@@ -136,6 +136,37 @@ public final class Draw {
         }
     }
 
+    public static void sheen(GuiGraphics g, int x, int y, int w, int h, int color, float phase) {
+        if (cheap || w <= 0 || h <= 0) return;
+        int band = Math.max(12, w / 3);
+        int travel = w + band * 2;
+        float wrapped = ((phase % 1f) + 1f) % 1f;
+        int start = x - band + Math.round(wrapped * travel);
+        for (int i = 0; i < band; i++) {
+            int px = start + i;
+            if (px < x || px >= x + w) continue;
+            float k = 1f - Math.abs(i / (float) band - 0.5f) * 2f;
+            g.fill(px, y, px + 1, y + h, rgba(color, 0.18f * k * k));
+        }
+    }
+
+    public static void brackets(GuiGraphics g, int x, int y, int w, int h, int len, int color) {
+        if (w <= 3 || h <= 3 || len <= 0) return;
+        int l = Math.min(len, Math.min(w, h) / 2);
+        g.fill(x, y, x + l, y + 1, color);
+        g.fill(x, y, x + 1, y + l, color);
+        g.fill(x + w - l, y, x + w, y + 1, color);
+        g.fill(x + w - 1, y, x + w, y + l, color);
+        g.fill(x, y + h - 1, x + l, y + h, color);
+        g.fill(x, y + h - l, x + 1, y + h, color);
+        g.fill(x + w - l, y + h - 1, x + w, y + h, color);
+        g.fill(x + w - 1, y + h - l, x + w, y + h, color);
+    }
+
+    public static float sweep(long periodMs) {
+        return (System.currentTimeMillis() % Math.max(1L, periodMs)) / (float) Math.max(1L, periodMs);
+    }
+
     public static void shadow(GuiGraphics g, int x, int y, int w, int h, int r, int spread, float strength) {
         if (cheap) return;
         int steps = Math.max(2, Math.min(4, spread / 2));
@@ -331,13 +362,27 @@ public final class Draw {
     }
 
     public static void toast(GuiGraphics g, Minecraft mc, int cx, int y, String text, boolean good, float alpha) {
-        int w = width(text) + 22;
+        toast(g, mc, cx, y, text, good ? Accent.OK : 0xFFFF6B6B, alpha);
+    }
+
+    public static void toast(GuiGraphics g, Minecraft mc, int cx, int y, String text, int accent, float alpha) {
+        toast(g, mc, cx, y, text, accent, alpha, 1f);
+    }
+
+    public static void toast(GuiGraphics g, Minecraft mc, int cx, int y, String text, int accent, float alpha, float progress) {
+        if (alpha <= 0.01f) return;
+        int maxWidth = Math.max(90, mc.getWindow().getGuiScaledWidth() - 24);
+        String shown = fit(text, maxWidth - 34);
+        int w = Math.min(maxWidth, width(shown) + 34);
         int x = cx - w / 2;
-        int accent = good ? 0xFF5EE6A0 : 0xFFFF6B6B;
-        shadow(g, x, y, w, 15, 4, 4, alpha);
-        rrect(g, x, y, w, 15, 4, rgba(0xFF0D1018, 0.94f * alpha));
-        rrectLine(g, x, y, w, 15, 4, rgba(accent, 0.55f * alpha));
-        g.fill(x + 6, y + 6, x + 9, y + 9, rgba(accent, alpha));
-        text(g, text, x + 14, y + 3, rgba(0xFFE8ECF8, alpha));
+        shadow(g, x, y, w, 18, 5, 5, alpha * 0.9f);
+        rrect(g, x, y, w, 18, 5, rgba(Accent.surface(0xFF0C1019), 0.95f * alpha), rgba(Accent.surface(0xFF080B12), 0.95f * alpha));
+        g.fill(x + 2, y + 1, x + w - 2, y + 2, rgba(0xFFFFFFFF, 0.07f * alpha));
+        rrect(g, x + 1, y + 3, 3, 12, 2, rgba(accent, alpha));
+        if (!cheap) glow(g, x + 1, y + 3, 3, 12, 2, accent, 4, 0.45f * alpha);
+        rrectLine(g, x, y, w, 18, 5, rgba(accent, 0.42f * alpha));
+        text(g, shown, x + 16, y + 5, rgba(0xFFE9EEFB, alpha));
+        int bar = Math.round((w - 6) * Math.max(0f, Math.min(1f, progress)));
+        if (bar > 0) g.fill(x + 3, y + 16, x + 3 + bar, y + 17, rgba(accent, 0.50f * alpha));
     }
 }

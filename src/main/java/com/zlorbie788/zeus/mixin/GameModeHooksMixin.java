@@ -16,11 +16,19 @@ public abstract class GameModeHooksMixin {
     @Inject(method = "attack", at = @At("HEAD"), require = 0)
     private void zeus$beforeAttack(Player player, Entity target, CallbackInfo ci) {
         com.zlorbie788.zeus.mods.MaceMods.MaceDamage.beforeAttack(player, target);
+        com.zlorbie788.zeus.mods.Combat.BreachSwap.beforeAttack();
+        com.zlorbie788.zeus.mods.Combat.TotemHit.beforeAttack();
+    }
+
+    @Inject(method = "attack", at = @At("HEAD"), cancellable = true, require = 0)
+    private void zeus$antiMiss(Player player, Entity target, CallbackInfo ci) {
+        if (com.zlorbie788.zeus.mods.Combat.AntiMiss.blocks(target)) ci.cancel();
     }
 
     @Inject(method = "attack", at = @At("TAIL"), require = 0)
     private void zeus$attacked(Player player, Entity target, CallbackInfo ci) {
         QuickMods.CrystalOptimizer.hit(player, target);
+        com.zlorbie788.zeus.mods.Combat.HitFx.burst(target);
     }
 
     @Inject(method = "destroyBlock", at = @At("HEAD"), cancellable = true, require = 0)

@@ -108,6 +108,10 @@ public final class Esp extends Module {
 
     private final Setting.Bool distance = add(new Setting.Bool("Distance", "Show the distance in the label.", false));
 
+    private final Setting.Bool plates = add(new Setting.Bool("Target plates", "Draws a dark plate under each label with a health bar, so names, health and distance stay readable against sky, snow and blocks.", true));
+
+    private final Setting.Bool targetGlow = add(new Setting.Bool("Highlight the target", "Brightens the box and plate of the entity you are aiming at.", true));
+
     private final Setting.Bool fade = quiet(new Setting.Bool("Fade with distance", "Far things get softer so the near ones stand out.", true));
 
     private final Setting.Bool tracers = add(new Setting.Bool("Tracers", "A line that points straight at every marked entity, even when it is behind you.", true));
@@ -349,6 +353,7 @@ public final class Esp extends Module {
     @Override
 
     protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+        EspKit.resetLabels();
 
         marked = targets.size();
 
@@ -434,6 +439,13 @@ public final class Esp extends Module {
             int bx2 = Math.max(Math.round(r[2]), bx1 + 3);
 
             int by2 = Math.max(Math.round(r[3]), by1 + 3);
+
+            boolean target = targetGlow.on() && mc.crosshairPickEntity != null && mc.crosshairPickEntity.getId() == e.getId();
+
+            if (target) {
+                color = Draw.mix(color, 0xFFFFFFFF, 0.30f);
+                alpha = Math.min(1f, alpha + 0.18f);
+            }
 
             int edge = Draw.rgba(color, 0.95f * alpha);
 
@@ -523,7 +535,16 @@ public final class Esp extends Module {
 
                 }
 
-                EspKit.label(g, label, dText, (bx1 + bx2) / 2, by1 - Math.round(15 * labelSize.f() / 100f), color, alpha, w, h, labelSize.f() / 100f);
+                int labelTop = by1 - Math.round(12 * labelSize.f() / 100f);
+
+                if (plates.on()) {
+                    float frac = e instanceof LivingEntity living
+                            ? Math.max(0f, Math.min(1f, (living.getHealth() + living.getAbsorptionAmount()) / Math.max(1f, living.getMaxHealth())))
+                            : -1f;
+                    EspKit.plate(g, label, dText, frac, target, (bx1 + bx2) / 2, labelTop + 12, color, alpha, w, h, labelSize.f() / 100f);
+                } else {
+                    EspKit.label(g, label, dText, (bx1 + bx2) / 2, labelTop, color, alpha, w, h, labelSize.f() / 100f);
+                }
 
             }
 

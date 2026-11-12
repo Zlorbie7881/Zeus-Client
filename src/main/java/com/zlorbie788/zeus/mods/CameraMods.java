@@ -186,4 +186,15 @@ public final class CameraMods {
             }
         }
     }
+
+    public static final class NoHurtCam extends Module {
+        public NoHurtCam() {
+            super("nohurtcam", "No Hurt Cam", "Keeps the camera steady when you take a hit instead of tilting it.", Category.RENDER);
+        }
+
+        public static boolean active() {
+            NoHurtCam self = com.zlorbie788.zeus.core.Zeus.get(NoHurtCam.class);
+            return self != null && self.enabled();
+        }
+    }
 }

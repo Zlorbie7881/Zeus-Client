@@ -178,7 +178,7 @@ public final class PaletteScreen extends Screen {
             }
             int lx = px + PAD + 4;
             boolean on = e.isModule() && e.module.enabled();
-            int tag = e.isModule() ? (on ? 0xFF5EE6A0 : 0xFF7E8CA6) : 0xFF6FA8FF;
+            int tag = e.isModule() ? (on ? Accent.OK : 0xFF7E8CA6) : 0xFF6FA8FF;
             String kind = e.isModule() ? (on ? "ON" : "OFF") : "SET";
             Draw.text(g, kind, lx, ry + 3, tag);
             int nameX = lx + 26;

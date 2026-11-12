@@ -10,11 +10,21 @@ public final class UiSettings {
 
     public static final Setting.Choice ACCENT = Zeus.UI.add(new Setting.Choice("Accent colour", "The colour of the panel, the bolt and the module list.", 0,
 
-            "Storm blue", "Violet", "Gold", "Emerald", "Crimson", "Rainbow"));
+            "Storm blue", "Violet", "Gold", "Emerald", "Crimson", "Rainbow", "Glacier", "Magma", "Orchid", "Slate"));
 
     public static final Setting.Num RAINBOW_SPEED = Zeus.UI.add(new Setting.Num("Rainbow speed", "How fast the colours of the panel cycle when the accent is Rainbow.", 40, 5, 200, 5, "%"))
 
-            .showIf(() -> ACCENT.index() == 5);
+            .showIf(() -> ACCENT.index() == Themes.RAINBOW);
+
+    public static final Setting.Num THEME_TINT = Zeus.UI.add(new Setting.Num("Theme surface tint", "How far the chosen theme reaches into the HUD and panel backgrounds. 0 keeps the stock slate.", 55, 0, 100, 5, "%"));
+
+    public static final Setting.Bool HUD_GLOW = Zeus.UI.add(new Setting.Bool("HUD glow", "Soft glow behind accent bars and stripes.", true));
+
+    public static final Setting.Bool REDUCE_MOTION = Zeus.UI.add(new Setting.Bool("Reduce motion", "Stops pop-ups sliding and fading. Useful when movement on screen is distracting.", false));
+
+    public static final Setting.Bool HUD_BRACKETS = Zeus.UI.add(new Setting.Bool("HUD brackets", "Small accent brackets on the corners of every HUD box.", true));
+
+    public static final Setting.Bool HUD_SHEEN = Zeus.UI.add(new Setting.Bool("HUD sheen", "A slow light sweep across the title bar of every HUD box.", true));
 
     public static final Setting.Choice LAYOUT = Zeus.UI.add(new Setting.Choice("Layout", "Panel: one window with a sidebar. Windows: a floating, draggable window for every category.", 1,
 
