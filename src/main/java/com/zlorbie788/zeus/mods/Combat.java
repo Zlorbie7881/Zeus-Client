@@ -181,6 +181,7 @@ public final class Combat {
                 nextHit = System.currentTimeMillis() + (long) interval;
             }
             if (!HitSelect.allow(best)) return;
+            if (Phantom.miss()) return;
             if (confirm.on()) Hits.attempt(best);
             mc.gameMode.attack(mc.player, best);
             if (swing.on() || legit) mc.player.swing(InteractionHand.MAIN_HAND);
@@ -421,8 +422,8 @@ public final class Combat {
                 lastPitch = pitch;
                 return;
             }
-            float ny = yaw + sy;
-            float np = Math.max(-90f, Math.min(90f, pitch + sp));
+            float ny = yaw + sy + Phantom.wobble() * 0.6f + Phantom.drift();
+            float np = Math.max(-90f, Math.min(90f, pitch + sp + Phantom.wobble() * 0.35f));
             if (mode.index() == 1) {
                 Aim.sendRotation(ny, np);
                 lastYaw = yaw;
@@ -505,6 +506,7 @@ public final class Combat {
             final Entity hit = t;
             if (aim.on() && !(mc.hitResult instanceof EntityHitResult e2 && e2.getEntity() == hit)) Aim.look(hit.position().add(0, hit.getBbHeight() * 0.6, 0));
             Runnable strike = () -> {
+                if (Phantom.miss()) return;
                 Hits.attempt(hit);
                 mc.gameMode.attack(mc.player, hit);
                 if (swing.on()) mc.player.swing(InteractionHand.MAIN_HAND);
@@ -708,6 +710,7 @@ public final class Combat {
             if (!HitSelect.allow(e)) return;
             long a = (long) min.get(), b = (long) Math.max(min.get(), max.get());
             next = now + a + (b > a ? ThreadLocalRandom.current().nextLong(b - a) : 0);
+            if (Phantom.miss()) return;
             Hits.attempt(e);
             mc.gameMode.attack(mc.player, e);
             mc.player.swing(InteractionHand.MAIN_HAND);
@@ -717,12 +720,35 @@ public final class Combat {
     public static final class AntiKnockback extends Module {
         private static volatile boolean active;
 
+        private final Setting.Num horizontal = add(new Setting.Num("Horizontal",
+                "How much of the sideways push is removed. 100 is none of it, 70 keeps a little so it never looks frozen.", 100, 0, 100, 5, "%"));
+        private final Setting.Num vertical = add(new Setting.Num("Vertical",
+                "How much of the upward launch is removed.", 100, 0, 100, 5, "%"));
+        private final Setting.Num nudge = add(new Setting.Num("Leave tiny nudges",
+                "Motions slower than this (blocks per tick) are passed through untouched.", 0.04, 0, 0.3, 0.01, ""));
+        private final Setting.Num chance = add(new Setting.Num("Chance",
+                "How often the filter applies at all. Below 100 it only wins some of the pushes.", 100, 10, 100, 5, "%"));
+        private final Setting.Bool ground = add(new Setting.Bool("Only on the ground",
+                "Leaves knockback that hits you mid-air alone, which is the easiest kind to notice.", false));
+
         public AntiKnockback() {
-            super("antiknockback", "Anti Knockback", "Ignore the push when you are hit.", Category.COMBAT);
+            super("antiknockback", "Anti Knockback",
+                    "Scales the push the server sends you instead of deleting it, so you keep position without looking like you ignored the hit.",
+                    Category.COMBAT);
         }
 
-        public static boolean blocks() {
-            return active;
+        public static double[] factor(net.minecraft.world.phys.Vec3 motion) {
+            AntiKnockback self = com.zlorbie788.zeus.core.Zeus.get(AntiKnockback.class);
+            if (self == null || !self.enabled()) return null;
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.player == null) return null;
+            if (self.ground.on() && !mc.player.onGround()) return null;
+            double len = Math.sqrt(motion.x * motion.x + motion.y * motion.y + motion.z * motion.z);
+            if (len <= 0.0001 || len < self.nudge.get()) return null;
+            if (self.chance.get() < 100 && java.util.concurrent.ThreadLocalRandom.current().nextDouble(100.0) >= self.chance.get()) return null;
+            double h = 1.0 - self.horizontal.get() / 100.0;
+            double v = 1.0 - self.vertical.get() / 100.0;
+            return new double[] {h, v};
         }
 
         @Override

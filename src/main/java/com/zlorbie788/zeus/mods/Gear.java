@@ -516,59 +516,226 @@ public final class Gear {
 
     public static final class BowAimbot extends Module {
         private final Targets.Pick who = Targets.pick(this::add, true, true, false);
-        private final Setting.Num range = add(new Setting.Num("Range", "How far away a target is picked.", 40, 10, 100, 5, " blocks"));
-        private final Setting.Bool lead = add(new Setting.Bool("Lead moving targets", "Aim ahead of a target that moves.", true));
+        private final Setting.Num range = add(new Setting.Num("Range", "How far away a target is picked.", 48, 10, 120, 5, " blocks"));
+        private final Setting.Choice pick = add(new Setting.Choice("Pick",
+                "Nearest target, the one closest to your crosshair, or the one with the least health.", 0,
+                "Nearest", "Closest to crosshair", "Lowest health"));
+        private final Setting.Bool lead = add(new Setting.Bool("Lead moving targets",
+                "Solves for where the target will be when the arrow arrives, not where it is now.", true));
+        private final Setting.Bool walls = add(new Setting.Bool("Ignore walls",
+                "Keep aiming at a target you cannot see. Off is honest and keeps you from shooting stone.", false));
+        private final Setting.Choice aimAt = add(new Setting.Choice("Aim at", "Where on the body to hit.", 1,
+                "Body centre", "Upper body", "Head"));
+        private final Setting.Num smooth = add(new Setting.Num("Turn speed",
+                "Degrees per tick the view may turn towards the solution. 0 snaps straight onto it.", 26, 0, 90, 1, "°"));
+        private final Setting.Bool fire = add(new Setting.Bool("Fire when ready",
+                "Releases the arrow itself once the solution is on target and the bow is fully drawn.", false));
+        private final Setting.Bool human = add(new Setting.Bool("Human aim",
+                "Adds the Phantom wobble to the final aim, so the solution is not pixel-perfect.", true));
+        private final Setting.Info solved = add(new Setting.Info("Solution", this::lines));
+
+        private volatile String note = "not drawing";
 
         public BowAimbot() {
-            super("bowaimbot", "Bow Aimbot", "Aims your bow at the nearest target while you draw it.", Category.COMBAT);
+            super("bowaimbot", "Bow Aimbot",
+                    "Solves the real arrow arc for a moving target - charge, drag, gravity and travel time - and points the bow where the arrow will actually land.",
+                    Category.COMBAT);
+            alias("bowaim", "bow");
+        }
+
+        private java.util.List<String> lines() {
+            return java.util.List.of(note);
+        }
+
+        private static final class Solve {
+            float yaw;
+            float pitch;
+            double miss;
+            int ticks;
         }
 
         @Override
         protected void onTick(Minecraft mc) {
-            if (mc.player == null || mc.screen != null || !mc.player.isUsingItem()) return;
-            if (!mc.player.getUseItem().is(Items.BOW)) return;
-            LivingEntity t = Targets.nearest(mc, who, range.get());
-            if (t == null || !mc.player.hasLineOfSight(t)) return;
-            float f = mc.player.getTicksUsingItem() / 20f;
-            f = (f * f + f * 2f) / 3f;
-            if (f < 0.1f) return;
-            double speed = Math.min(1f, f) * 3.0;
+            if (mc.player == null || mc.level == null || mc.screen != null) {
+                note = "not drawing";
+                return;
+            }
+            if (!mc.player.isUsingItem() || !mc.player.getUseItem().is(Items.BOW)) {
+                note = "not drawing";
+                return;
+            }
+            float charge = Math.min(1f, mc.player.getTicksUsingItem() / 20f);
+            double speed = Math.min(1f, (charge * charge + charge * 2f) / 3f) * 3.0;
+            if (speed < 0.3) {
+                note = "drawing";
+                return;
+            }
+            LivingEntity target = pick(mc);
+            if (target == null) {
+                note = "no target";
+                return;
+            }
             Vec3 eye = mc.player.getEyePosition();
-            Vec3 aim = t.getBoundingBox().getCenter();
-            if (lead.on()) {
-                double flight = eye.distanceTo(aim) / speed;
-                Vec3 v = t.getDeltaMovement();
-                aim = aim.add(v.x * flight, 0, v.z * flight);
+            Vec3 aim = aimPoint(target);
+            double dist = eye.distanceTo(aim);
+            if (dist > range.get()) {
+                note = "target out of range";
+                return;
             }
-            double dx = aim.x - eye.x;
-            double dz = aim.z - eye.z;
-            double dy = aim.y - eye.y;
+            Vec3 predicted = aim;
+            Solve best = null;
+            for (int round = 0; round < 3; round++) {
+                Solve s = solve(eye, predicted, speed);
+                if (s == null) break;
+                best = s;
+                if (!lead.on()) break;
+                Vec3 motion = target.getDeltaMovement();
+                double flight = s.ticks / 20.0;
+                Vec3 next = aim.add(motion.x * s.ticks, motion.y * s.ticks - 0.5 * 0.08 * s.ticks * s.ticks, motion.z * s.ticks);
+                predicted = next;
+                if (next.distanceToSqr(aim) > range.get() * range.get() * 4.0) break;
+                if (round > 0 && s.miss < 0.25) break;
+            }
+            if (best == null) {
+                note = "no arc reaches it";
+                return;
+            }
+            float wantYaw = best.yaw;
+            float wantPitch = best.pitch;
+            if (human.on() && Phantom.active()) {
+                wantYaw += Phantom.wobble();
+                wantPitch += Phantom.wobble() * 0.5f;
+            }
+            float dy = wrap(wantYaw - mc.player.getYRot());
+            float dp = wantPitch - mc.player.getXRot();
+            float step = smooth.f();
+            if (step <= 0.01f) {
+                mc.player.setYRot(wantYaw);
+                mc.player.setYHeadRot(wantYaw);
+                mc.player.setXRot(wantPitch);
+            } else {
+                float maxY = Math.min(Math.abs(dy), step);
+                float maxP = Math.min(Math.abs(dp), step * 0.8f);
+                mc.player.setYRot(mc.player.getYRot() + Math.signum(dy) * maxY);
+                mc.player.setYHeadRot(mc.player.getYRot());
+                mc.player.setXRot(Math.max(-90f, Math.min(90f, mc.player.getXRot() + Math.signum(dp) * maxP)));
+                dy -= Math.signum(dy) * maxY;
+                dp -= Math.signum(dp) * maxP;
+            }
+            boolean onTarget = Math.abs(dy) < 2.5f && Math.abs(dp) < 2.5f && best.miss < 0.45;
+            note = String.format(java.util.Locale.ROOT, "%s · %.1f m · %s · %.0f%%", target.getName().getString(), dist,
+                    onTarget ? "on target" : "turning", charge * 100f);
+            if (fire.on() && onTarget && charge >= 0.98f) {
+                mc.options.keyUse.setDown(false);
+                note = "shot released at " + target.getName().getString();
+            }
+        }
+
+        private LivingEntity pick(Minecraft mc) {
+            Vec3 look = mc.player.getViewVector(1f);
+            LivingEntity best = null;
+            double bestScore = Double.MAX_VALUE;
+            for (var e : mc.level.getEntities(mc.player, mc.player.getBoundingBox().inflate(range.get()))) {
+                if (!(e instanceof LivingEntity le) || !Targets.accepts(mc, who, le)) continue;
+                if (!walls.on() && !mc.player.hasLineOfSight(le)) continue;
+                double d = mc.player.distanceTo(le);
+                if (d > range.get()) continue;
+                double score = switch (pick.index()) {
+                    case 1 -> {
+                        Vec3 to = le.getBoundingBox().getCenter().subtract(mc.player.getEyePosition()).normalize();
+                        yield 1.0 - to.dot(look);
+                    }
+                    case 2 -> le.getHealth() + le.getAbsorptionAmount() + d * 0.02;
+                    default -> d;
+                };
+                if (score < bestScore) {
+                    bestScore = score;
+                    best = le;
+                }
+            }
+            return best;
+        }
+
+        private Vec3 aimPoint(LivingEntity t) {
+            var b = t.getBoundingBox();
+            double h = b.maxY - b.minY;
+            return switch (aimAt.index()) {
+                case 1 -> new Vec3((b.minX + b.maxX) / 2, b.minY + h * 0.78, (b.minZ + b.maxZ) / 2);
+                case 2 -> new Vec3((b.minX + b.maxX) / 2, b.maxY - 0.12, (b.minZ + b.maxZ) / 2);
+                default -> b.getCenter();
+            };
+        }
+
+        /** Finds the yaw and pitch whose arc passes closest to the target point, using the real arrow physics. */
+        private Solve solve(Vec3 eye, Vec3 target, double speed) {
+            double dx = target.x - eye.x;
+            double dz = target.z - eye.z;
             float yaw = (float) (Math.toDegrees(Math.atan2(dz, dx)) - 90.0);
-            double bestErr = Double.MAX_VALUE;
-            float bestPitch = mc.player.getXRot();
-            double horiz = Math.sqrt(dx * dx + dz * dz);
-            for (float pitch = -80f; pitch <= 60f; pitch += 0.5f) {
-                double vy = -Math.sin(Math.toRadians(pitch)) * speed;
-                double vh = Math.cos(Math.toRadians(pitch)) * speed;
-                double x = 0;
-                double y = 0;
-                double err = Double.MAX_VALUE;
-                for (int i = 0; i < 120; i++) {
-                    x += vh;
-                    y += vy;
-                    vh *= 0.99;
-                    vy = vy * 0.99 - 0.05;
-                    double e = Math.abs(x - horiz) + Math.abs(y - dy);
-                    if (e < err) err = e;
-                    if (x > horiz + 2) break;
-                }
-                if (err < bestErr) {
-                    bestErr = err;
-                    bestPitch = pitch;
+            double ground = Math.sqrt(dx * dx + dz * dz);
+
+            float bestPitch = Float.NaN;
+            double bestMiss = Double.MAX_VALUE;
+            int bestTicks = 0;
+            for (float p = 45f; p >= -89f; p -= 3f) {
+                double[] r = sim(eye, yaw, p, speed, target);
+                if (r[0] < bestMiss) {
+                    bestMiss = r[0];
+                    bestPitch = p;
+                    bestTicks = (int) r[1];
                 }
             }
-            mc.player.setYRot(yaw);
-            mc.player.setXRot(bestPitch);
+            if (Float.isNaN(bestPitch)) return null;
+            for (float p = bestPitch - 3f; p <= bestPitch + 3f; p += 0.25f) {
+                double[] r = sim(eye, yaw, p, speed, target);
+                if (r[0] < bestMiss) {
+                    bestMiss = r[0];
+                    bestPitch = p;
+                    bestTicks = (int) r[1];
+                }
+            }
+            if (bestMiss > Math.max(3.0, ground * 0.06)) return null;
+            Solve s = new Solve();
+            s.yaw = yaw;
+            s.pitch = bestPitch;
+            s.miss = Math.sqrt(bestMiss);
+            s.ticks = bestTicks;
+            return s;
+        }
+
+        /** One arrow flight: returns {closest squared distance to the point, ticks at that point}. */
+        private static double[] sim(Vec3 eye, float yawDeg, float pitchDeg, double speed, Vec3 point) {
+            double yaw = Math.toRadians(yawDeg);
+            double pitch = Math.toRadians(pitchDeg);
+            double cp = Math.cos(pitch);
+            double vx = -Math.sin(yaw) * cp * speed;
+            double vy = -Math.sin(pitch) * speed;
+            double vz = Math.cos(yaw) * cp * speed;
+            double x = eye.x;
+            double y = eye.y;
+            double z = eye.z;
+            double best = Double.MAX_VALUE;
+            int bestTick = 0;
+            for (int t = 0; t < 160; t++) {
+                x += vx;
+                y += vy;
+                z += vz;
+                double d = (x - point.x) * (x - point.x) + (y - point.y) * (y - point.y) + (z - point.z) * (z - point.z);
+                if (d < best) {
+                    best = d;
+                    bestTick = t;
+                }
+                vx *= 0.99;
+                vy = vy * 0.99 - 0.05;
+                vz *= 0.99;
+                if (y < point.y - 60 && vy < 0) break;
+            }
+            return new double[] {best, bestTick};
+        }
+
+        private static float wrap(float deg) {
+            while (deg > 180f) deg -= 360f;
+            while (deg < -180f) deg += 360f;
+            return deg;
         }
     }
 

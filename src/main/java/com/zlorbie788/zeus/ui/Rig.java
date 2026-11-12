@@ -266,11 +266,12 @@ public final class Rig {
     public void flush(GuiGraphics g, float unit) {
         faces.sort(Comparator.comparingDouble((Face f) -> -(f.cz + f.bias)));
         for (Face f : faces) {
-            float s = unit * D / (D + f.cz);
+            float z = Math.max(-D * 0.7f, Math.min(D * 6f, f.cz));
+            float s = unit * D / (D + z);
             float per = s / K;
             float ux = f.ux * per, uy = f.uy * per, vx = f.vx * per, vy = f.vy * per;
-            float cx = f.cx * unit * D / (D + f.cz);
-            float cy = f.cy * unit * D / (D + f.cz);
+            float cx = f.cx * s;
+            float cy = f.cy * s;
             float ox = cx - ux * f.w / 2f - vx * f.h / 2f;
             float oy = cy - uy * f.w / 2f - vy * f.h / 2f;
             float lam = Math.max(0f, f.nx * LX + f.ny * LY + f.nz * LZ);
