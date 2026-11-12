@@ -8,6 +8,7 @@ import com.zlorbie788.zeus.core.Names;
 import com.zlorbie788.zeus.core.Setting;
 import com.zlorbie788.zeus.core.Zeus;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
@@ -38,6 +39,12 @@ public final class Bots {
         protected final Setting.Num mendBelow = add(new Setting.Num("Mend below", "Armour durability, in percent, that makes it mend.", 60, 10, 95, 5, " %")).showIf(() -> mend.on());
         protected final Setting.Bool refill = add(new Setting.Bool("Refill the hotbar", "Moves golden apples, pearls, experience bottles and (for the Crystal Bot) crystals and obsidian from your inventory into free hotbar slots when they run out.", true));
         protected final Setting.Bool stopOnScreen = add(new Setting.Bool("Stop when I open a menu", "Lets go of every key while a menu or chat is open.", true));
+        protected final Setting.Num reaction = add(new Setting.Num("Reaction time", "How long a fresh target is left alone before the bot swings, so it never answers instantly.", 0.14, 0, 0.7, 0.02, " s"));
+        protected final Setting.Num aimDrift = add(new Setting.Num("Aim drift", "Hand tremor added to the aim, in degrees. 0 is a machine and looks like one.", 0.9, 0, 3, 0.1, " deg"));
+        protected final Setting.Num hesitation = add(new Setting.Num("Swing hesitation", "Chance that a swing waits one more tick, the way a hand sometimes does.", 7, 0, 40, 1, " %"));
+        protected final Setting.Bool pathing = add(new Setting.Bool("Route planning", "Reads the ground a step ahead: steps up one-block ledges, hops small gaps and avoids lava instead of walking into them.", true));
+        protected final Setting.Num retreat = add(new Setting.Num("Retreat below health", "Backs away from the fight when your health drops under this, so it can eat and come back. 0 never retreats.", 8, 0, 20, 1, " hp"));
+        protected final Setting.Num rejoin = add(new Setting.Num("Rejoin at health", "Health that has to come back before it pushes in again.", 14, 2, 20, 1, " hp"));
 
         protected Player target;
         protected int strafeDir = 1;
@@ -49,6 +56,16 @@ public final class Bots {
         protected long warned;
         private final List<Module> started = new ArrayList<>();
         private boolean mending;
+        protected long reactAt;
+        protected int reactTarget = -1;
+        private boolean backingOff;
+        private int jumpCd;
+        private int wallTicks;
+        protected float driftYaw;
+        protected float driftPitch;
+        protected float aimYawSpeed;
+        protected float aimPitchSpeed;
+        private int driftTicks;
 
         Bot(String id, String name, String desc) {
             super(id, name, desc, Category.COMBAT);
@@ -87,6 +104,27 @@ public final class Bots {
             return target == null ? null : target.getName().getString();
         }
 
+        protected void humanize(Minecraft mc) {
+            if (target == null) {
+                reactTarget = -1;
+                return;
+            }
+            if (target.getId() != reactTarget) {
+                reactTarget = target.getId();
+                reactAt = System.currentTimeMillis() + Math.round(reaction.get() * 1000.0);
+            }
+            if (jumpCd > 0) jumpCd--;
+            if (--driftTicks > 0) return;
+            driftTicks = 5 + RNG.nextInt(12);
+            driftYaw = (RNG.nextFloat() - 0.5f) * 2f * aimDrift.f();
+            driftPitch = (RNG.nextFloat() - 0.5f) * 2f * aimDrift.f();
+        }
+
+        protected boolean canSwing() {
+            if (target == null || System.currentTimeMillis() < reactAt) return false;
+            return hesitation.f() <= 0 || RNG.nextFloat() * 100f >= hesitation.f();
+        }
+
         protected void releaseKeys() {
             Minecraft mc = Minecraft.getInstance();
             if (mc.options == null) return;
@@ -96,6 +134,90 @@ public final class Bots {
             mc.options.keyRight.setDown(false);
             mc.options.keyJump.setDown(false);
             mc.options.keySprint.setDown(false);
+        }
+
+        protected void steer(Minecraft mc, Vec3 point, boolean sprint) {
+            float want = com.zlorbie788.zeus.core.Aim.yawTo(mc.player.getEyePosition(), point);
+            float diff = wrap(want - mc.player.getYRot());
+            float abs = Math.abs(diff);
+            boolean fwd = abs < 62f;
+            boolean back = abs > 118f;
+            boolean left = diff > 18f && diff < 162f;
+            boolean right = diff < -18f && diff > -162f;
+            keys(mc, fwd, back, left, right, jumpWanted(mc, point), sprint);
+        }
+
+        protected boolean jumpWanted(Minecraft mc, Vec3 toward) {
+            if (!pathing.on() || jumpCd > 0 || !mc.player.onGround() || mc.level == null) return false;
+            Vec3 flat = toward.subtract(mc.player.position());
+            flat = new Vec3(flat.x, 0, flat.z);
+            if (flat.lengthSqr() < 0.04) return false;
+            flat = flat.normalize().scale(0.85);
+            double px = mc.player.getX() + flat.x;
+            double pz = mc.player.getZ() + flat.z;
+            BlockPos legs = BlockPos.containing(px, mc.player.getY(), pz);
+            BlockPos head = BlockPos.containing(px, mc.player.getY() + 1, pz);
+            BlockPos floor = BlockPos.containing(px, mc.player.getY() - 1, pz);
+            boolean legsBlocked = blocked(mc, legs);
+            boolean headBlocked = blocked(mc, head);
+            boolean floorClear = !blocked(mc, floor);
+            if (lava(mc, floor) || lava(mc, legs)) return false;
+            if (legsBlocked && !headBlocked && (floorClear || mc.player.horizontalCollision)) {
+                jumpCd = 5;
+                return true;
+            }
+            if (floorClear && headBlocked && !legsBlocked) {
+                jumpCd = 4;
+                return true;
+            }
+            return false;
+        }
+
+        protected static boolean blocked(Minecraft mc, BlockPos pos) {
+            if (mc.level == null) return false;
+            return !mc.level.getBlockState(pos).getCollisionShape(mc.level, pos).isEmpty();
+        }
+
+        private static boolean lava(Minecraft mc, BlockPos pos) {
+            if (mc.level == null) return false;
+            return mc.level.getBlockState(pos).getFluidState().getType() == net.minecraft.world.level.material.Fluids.LAVA;
+        }
+
+        protected boolean backingOff(Minecraft mc) {
+            if (retreat.f() <= 0) {
+                backingOff = false;
+                return false;
+            }
+            float health = mc.player.getHealth() + mc.player.getAbsorptionAmount();
+            if (!backingOff && health <= retreat.f()) backingOff = true;
+            else if (backingOff && health >= Math.max(retreat.f() + 1, rejoin.f())) backingOff = false;
+            return backingOff;
+        }
+
+        protected void unstuck(Minecraft mc) {
+            if (!pathing.on()) return;
+            if (mc.player.horizontalCollision) {
+                if (++wallTicks > 6) {
+                    wallTicks = 0;
+                    strafeDir = -strafeDir;
+                    strafeLeft = 8 + RNG.nextInt(10);
+                }
+            } else {
+                wallTicks = 0;
+            }
+        }
+
+        protected void disengage(Minecraft mc, Entity from, float turnSpeed) {
+            Vec3 away = mc.player.position().subtract(from.position());
+            if (away.lengthSqr() < 0.01) away = new Vec3(1, 0, 0);
+            Vec3 point = mc.player.position().add(away.normalize().scale(7));
+            face(mc, from.getBoundingBox().getCenter(), turnSpeed);
+            steer(mc, point, true);
+            if (mc.player.horizontalCollision) wallTicks++;
+            if (wallTicks > 3) {
+                wallTicks = 0;
+                strafeDir = -strafeDir;
+            }
         }
 
         protected void keys(Minecraft mc, boolean fwd, boolean back, boolean left, boolean right, boolean jump, boolean sprint) {
@@ -109,12 +231,18 @@ public final class Bots {
 
         protected float face(Minecraft mc, Vec3 point, float step) {
             Vec3 eye = mc.player.getEyePosition();
-            float wantYaw = com.zlorbie788.zeus.core.Aim.yawTo(eye, point);
-            float wantPitch = Math.max(-89f, Math.min(89f, com.zlorbie788.zeus.core.Aim.pitchTo(eye, point)));
+            float wantYaw = com.zlorbie788.zeus.core.Aim.yawTo(eye, point) + driftYaw;
+            float wantPitch = Math.max(-89f, Math.min(89f, com.zlorbie788.zeus.core.Aim.pitchTo(eye, point) + driftPitch));
             float dy = wrap(wantYaw - mc.player.getYRot());
             float dp = wantPitch - mc.player.getXRot();
-            float cy = Math.max(-step, Math.min(step, dy));
-            float cp = Math.max(-step * 0.7f, Math.min(step * 0.7f, dp));
+            if (Math.abs(dy) < 0.35f) dy = 0f;
+            if (Math.abs(dp) < 0.25f) dp = 0f;
+            float pullY = Math.max(-1f, Math.min(1f, dy / 22f)) * step * 0.62f;
+            float pullP = Math.max(-1f, Math.min(1f, dp / 18f)) * step * 0.45f;
+            aimYawSpeed = aimYawSpeed * 0.58f + pullY;
+            aimPitchSpeed = aimPitchSpeed * 0.50f + pullP;
+            float cy = Math.max(-step, Math.min(step, aimYawSpeed));
+            float cp = Math.max(-step * 0.7f, Math.min(step * 0.7f, aimPitchSpeed));
             mc.player.setYRot(mc.player.getYRot() + cy);
             mc.player.setXRot(mc.player.getXRot() + cp);
             return Math.abs(dy - cy) + Math.abs(dp - cp);
@@ -130,13 +258,17 @@ public final class Bots {
         protected Player pick(Minecraft mc) {
             if (target != null && target.isAlive() && !target.isSpectator() && mc.player.distanceTo(target) <= range.get() * 1.25 && !Friends.protects(target)) return target;
             Player best = null;
-            double bestD = range.get() * range.get();
+            double bestScore = range.get() * range.get();
             for (Entity e : Env.entities(mc, range.get())) {
                 if (!(e instanceof Player p) || p == mc.player || !p.isAlive() || p.isSpectator() || Friends.protects(p)) continue;
-                double d = mc.player.distanceToSqr(p);
-                if (d < bestD) {
+                double score = mc.player.distanceToSqr(p);
+                if (p.getHealth() < 8f) score *= 0.82;
+                if (weapon(p.getMainHandItem())) score *= 0.88;
+                if (p.isBlocking()) score *= 1.12;
+                if (p.isInvisible()) score *= 1.25;
+                if (score < bestScore) {
                     best = p;
-                    bestD = d;
+                    bestScore = score;
                 }
             }
             return best;
@@ -154,7 +286,8 @@ public final class Bots {
         protected void strafeTick() {
             if (--strafeLeft <= 0) {
                 strafeDir = RNG.nextBoolean() ? 1 : -1;
-                strafeLeft = 10 + RNG.nextInt(24);
+                strafeLeft = 12 + RNG.nextInt(30);
+                if (RNG.nextInt(100) < 14) strafeLeft = 4 + RNG.nextInt(6);
             }
         }
 
@@ -308,6 +441,7 @@ public final class Bots {
             }
             if (hitCd > 0) hitCd--;
             target = pick(mc);
+            humanize(mc);
             refillHotbar(mc, List.of(Bot::gapple, Inv.is(Items.ENDER_PEARL), Inv.is(Items.EXPERIENCE_BOTTLE)));
             if (target == null) {
                 releaseKeys();
@@ -317,6 +451,10 @@ public final class Bots {
             double dist = reachTo(mc, target);
             if (mending(mc, mc.player.distanceTo(target))) return;
             if (pearl(mc, mc.player.distanceTo(target))) return;
+            if (backingOff(mc)) {
+                disengage(mc, target, turn.f());
+                return;
+            }
 
             if (mc.player.isUsingItem()) {
                 face(mc, target.getBoundingBox().getCenter(), turn.f());
@@ -352,12 +490,16 @@ public final class Bots {
             boolean airborne = !mc.player.onGround();
             if (!ready) {
                 if (dist < reach.get() + 0.7) keys(mc, false, true, sl, sr, false, false);
-                else if (dist > reach.get() + 2.2) keys(mc, true, false, sl, sr, false, true);
+                else if (dist > reach.get() + 2.2) {
+                    unstuck(mc);
+                    keys(mc, true, false, sl, sr, jumpWanted(mc, chest), true);
+                }
                 else keys(mc, false, false, sl, sr, false, false);
                 return;
             }
             if (!inReach) {
-                keys(mc, true, false, sl, sr, mc.player.onGround() && mc.player.horizontalCollision, dist > 4.5);
+                unstuck(mc);
+                keys(mc, true, false, strafe.on() && strafeDir < 0, strafe.on() && strafeDir > 0, jumpWanted(mc, chest), dist > 4.5);
                 return;
             }
             if (!facing) {
@@ -386,10 +528,14 @@ public final class Bots {
 
         private void swing(Minecraft mc) {
             if (hitCd > 0 || target == null) return;
+            if (!canSwing()) {
+                hitCd = 1;
+                return;
+            }
             mc.gameMode.attack(mc.player, target);
             mc.player.swing(InteractionHand.MAIN_HAND);
-            hitCd = 4;
-            if (wtap.on()) tapTicks = 2;
+            hitCd = 3 + RNG.nextInt(3);
+            if (wtap.on()) tapTicks = 1 + RNG.nextInt(2);
         }
     }
 
@@ -426,6 +572,7 @@ public final class Bots {
             }
             if (hitCd > 0) hitCd--;
             target = pick(mc);
+            humanize(mc);
             refillHotbar(mc, List.of(Bot::gapple, Inv.is(Items.ENDER_PEARL), Inv.is(Items.EXPERIENCE_BOTTLE), Inv.is(Items.END_CRYSTAL), Inv.is(Items.OBSIDIAN)));
             if (target == null) {
                 releaseKeys();
@@ -435,6 +582,10 @@ public final class Bots {
             double dist = reachTo(mc, target);
             if (mending(mc, mc.player.distanceTo(target))) return;
             if (pearl(mc, mc.player.distanceTo(target))) return;
+            if (backingOff(mc)) {
+                disengage(mc, target, turn.f());
+                return;
+            }
             if (mc.player.isUsingItem()) {
                 releaseKeys();
                 return;
@@ -453,7 +604,10 @@ public final class Bots {
                     hitCd = 12;
                 }
             }
-            if (dist > far.get()) keys(mc, true, false, sl, sr, mc.player.onGround() && mc.player.horizontalCollision, dist > far.get() + 3);
+            if (dist > far.get()) {
+                unstuck(mc);
+                keys(mc, true, false, sl, sr, jumpWanted(mc, chest), dist > far.get() + 3);
+            }
             else if (dist < near.get()) keys(mc, false, true, sl, sr, false, false);
             else keys(mc, false, false, sl, sr, false, false);
         }

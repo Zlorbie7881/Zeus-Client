@@ -67,7 +67,7 @@ public final class StaffHud extends Module {
 
     private static final Set<String> NOT_STAFF = Set.of("vip", "mvp", "donor", "member", "default", "player", "elite", "legend", "premium", "plus", "pro", "supporter", "booster");
 
-    private static final int[] RANK_COLORS = {0xFFFF5C6C, 0xFFFFA24D, 0xFF5EE6A0, 0xFF6AA6FF};
+    private static final int[] RANK_COLORS = {Accent.BAD, 0xFFFFA24D, Accent.OK, 0xFF6AA6FF};
     private static final String[] RANK_NAMES = {"Admin", "Mod", "Helper", "Staff"};
     private static final int[] RANK_CONF = {94, 90, 82, 70};
 

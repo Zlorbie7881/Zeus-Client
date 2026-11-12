@@ -308,4 +308,53 @@ public final class Interface {
             return rows;
         }
     }
+
+    public static final class ThemeStudio extends Module {
+        private final Setting.Pick theme = add(new Setting.Pick("Theme", "A named palette applied to the panel, the HUD and the module list.", com.zlorbie788.zeus.ui.Themes.IDS[0], com.zlorbie788.zeus.ui.Themes.ids(), com.zlorbie788.zeus.ui.Themes.labels()));
+        private final Setting.Num tint = add(new Setting.Num("Surface tint", "How far the theme colour reaches into the HUD and panel backgrounds.", 55, 0, 100, 5, "%"));
+        private final Setting.Bool glow = add(new Setting.Bool("Accent glow", "Soft glow behind accent bars, stripes and panels.", true));
+        private final Setting.Action reset = add(new Setting.Action("Reset to default", "Storm blue, balanced tint and glow on.", this::reset));
+
+        private boolean syncing;
+
+        public ThemeStudio() {
+            super("themestudio", "Theme Studio", "Switch between named palettes and set how far the theme reaches into the HUD.", Category.INTERFACE);
+            anywhere();
+            theme.onChange(this::apply);
+            tint.onChange(this::apply);
+            glow.onChange(this::apply);
+        }
+
+        private void apply() {
+            if (syncing) return;
+            syncing = true;
+            try {
+                com.zlorbie788.zeus.ui.UiSettings.ACCENT.set(theme.index());
+                com.zlorbie788.zeus.ui.UiSettings.THEME_TINT.set(tint.get());
+                com.zlorbie788.zeus.ui.UiSettings.HUD_GLOW.set(glow.on());
+            } finally {
+                syncing = false;
+            }
+            Zeus.markDirty();
+        }
+
+        private void reset() {
+            syncing = true;
+            try {
+                theme.set(0);
+                tint.set(55);
+                glow.set(true);
+            } finally {
+                syncing = false;
+            }
+            apply();
+        }
+
+        @Override
+        protected void onTick(Minecraft mc) {
+            if (theme.index() != com.zlorbie788.zeus.ui.UiSettings.ACCENT.index()) theme.set(com.zlorbie788.zeus.ui.UiSettings.ACCENT.index());
+            if (Math.abs(tint.get() - com.zlorbie788.zeus.ui.UiSettings.THEME_TINT.get()) > 0.001) tint.set(com.zlorbie788.zeus.ui.UiSettings.THEME_TINT.get());
+            if (glow.on() != com.zlorbie788.zeus.ui.UiSettings.HUD_GLOW.on()) glow.set(com.zlorbie788.zeus.ui.UiSettings.HUD_GLOW.on());
+        }
+    }
 }

@@ -356,20 +356,23 @@ public final class MarketHunter extends Module {
         return null;
     }
 
+    private static final java.util.regex.Pattern CLEAN = java.util.regex.Pattern.compile("[^a-z0-9]+");
+
     private static String normalize(String value) {
-        return value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", " ").trim();
+        return CLEAN.matcher(value.toLowerCase(Locale.ROOT)).replaceAll(" ").trim();
     }
 
     private static final Map<String, Deque<Double>> LEARNED = new java.util.concurrent.ConcurrentHashMap<>();
     private static final int LEARNED_MAX = 4000;
 
     private static String norm(String name) {
-        return name == null ? "" : name.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", " ").trim();
+        return name == null ? "" : CLEAN.matcher(name.toLowerCase(Locale.ROOT)).replaceAll(" ").trim();
     }
 
     static void learn(String name, double price, int keep) {
         String key = norm(name);
         if (key.isEmpty() || price <= 0) return;
+        AuctionMind.observe(name, price);
         Deque<Double> list = LEARNED.computeIfAbsent(key, k -> new ArrayDeque<>());
         synchronized (list) {
             list.addLast(price);

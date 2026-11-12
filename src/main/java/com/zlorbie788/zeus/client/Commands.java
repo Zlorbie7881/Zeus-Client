@@ -76,6 +76,82 @@ public final class Commands {
         return added ? 1 : 0;
     }
 
+    private static void doctor() {
+        int broken = 0;
+        for (Module m : Zeus.all()) {
+            if (m.error == null || m.error.isBlank()) continue;
+            broken++;
+            if (broken <= 6) say(m.name + ": " + m.error);
+        }
+        say(broken == 0 ? "Every module is running clean." : broken + " module(s) reported an error. The rest are fine.");
+        java.util.List<com.zlorbie788.zeus.core.Prof.Row> rows = com.zlorbie788.zeus.core.Prof.report();
+        if (rows.isEmpty()) {
+            say("No cost numbers yet: profiling turns on by itself when the frame rate drops.");
+        } else {
+            StringBuilder b = new StringBuilder("Heaviest per frame: ");
+            for (int i = 0; i < Math.min(3, rows.size()); i++) {
+                if (i > 0) b.append(", ");
+                b.append(rows.get(i).module().name).append(' ').append(String.format(java.util.Locale.ROOT, "%.1f%%", rows.get(i).percent()));
+            }
+            say(b.toString());
+        }
+        int on = 0;
+        for (Module m : Zeus.all()) if (m.enabled()) on++;
+        say(Zeus.all().size() + " modules loaded, " + on + " switched on.");
+    }
+
+    private static LiteralArgumentBuilder<FabricClientCommandSource> ahTree() {
+        return literal("ah")
+                .then(literal("on").executes(c -> {
+                    say(com.zlorbie788.zeus.mods.AhSniper.arm(true));
+                    return 1;
+                }))
+                .then(literal("off").executes(c -> {
+                    say(com.zlorbie788.zeus.mods.AhSniper.arm(false));
+                    return 1;
+                }))
+                .then(literal("rules").then(argument("text", StringArgumentType.greedyString()).executes(c -> {
+                    say(com.zlorbie788.zeus.mods.AhSniper.rules(StringArgumentType.getString(c, "text")));
+                    return 1;
+                })))
+                .then(literal("status").executes(c -> {
+                    say(com.zlorbie788.zeus.mods.AhSniper.status());
+                    return 1;
+                }));
+    }
+
+    private static LiteralArgumentBuilder<FabricClientCommandSource> aiTree(String name) {
+        return literal(name)
+                .then(literal("key").then(argument("token", StringArgumentType.word()).executes(c -> {
+                    com.zlorbie788.zeus.mods.AiPilot.key(StringArgumentType.getString(c, "token"));
+                    say("The AI token is saved on this install.");
+                    return 1;
+                })))
+                .then(literal("undo").executes(c -> {
+                    com.zlorbie788.zeus.mods.AiPilot.undo();
+                    return 1;
+                }))
+                .then(literal("plan").executes(c -> {
+                    for (String line : com.zlorbie788.zeus.mods.AiPilot.planLines()) say(line);
+                    return 1;
+                }))
+                .then(literal("reset").executes(c -> {
+                    com.zlorbie788.zeus.mods.AiPilot.reset();
+                    say("AI Pilot cleared its queue and memory.");
+                    return 1;
+                }))
+                .then(literal("status").executes(c -> {
+                    com.zlorbie788.zeus.mods.AiPilot pilot = com.zlorbie788.zeus.mods.AiPilot.find();
+                    if (pilot == null) say("AI Pilot is missing.");
+                    else say("AI Pilot: " + pilot.info() + (com.zlorbie788.zeus.mods.AiPilot.hasKey() ? "" : " - no token yet"));
+                    return 1;
+                }))
+                .then(argument("instruction", StringArgumentType.greedyString()).executes(c -> {
+                    say(com.zlorbie788.zeus.mods.AiPilot.ask(StringArgumentType.getString(c, "instruction")));
+                    return 1;
+                }));
+    }
+
     private static void register(CommandDispatcher<FabricClientCommandSource> d, CommandBuildContext ctx) {
         var waypointZ = argument("z", DoubleArgumentType.doubleArg(-30_000_000, 30_000_000))
                 .executes(c -> addWaypoint(c.getArgument("x", Double.class), c.getArgument("y", Double.class), c.getArgument("z", Double.class), "Custom waypoint"))
@@ -109,6 +185,14 @@ public final class Commands {
                     ZeusClient.openHudEditorLater();
                     return 1;
                 }))
+                .then(literal("seed").then(argument("seed", StringArgumentType.greedyString()).executes(c -> {
+                    say(com.zlorbie788.zeus.mods.SeedEsp.useSeed(StringArgumentType.getString(c, "seed")));
+                    return 1;
+                })))
+                .then(literal("doctor").executes(c -> {
+                    doctor();
+                    return 1;
+                }))
                 .then(literal("website").executes(c -> {
                     Module site = Zeus.get("webdashboard");
                     if (site == null) {
@@ -131,6 +215,9 @@ public final class Commands {
                     say(url != null ? "The website is running at " + url : "The website is stopped.");
                     return 1;
                 })))
+                .then(aiTree("ai"))
+                .then(aiTree("Ai"))
+                .then(ahTree())
                 .then(literal("panic").executes(c -> {
                     Zeus.panic(true);
                     say("Everything is off.");

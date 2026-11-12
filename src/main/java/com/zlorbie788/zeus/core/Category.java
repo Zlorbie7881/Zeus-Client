@@ -1,13 +1,17 @@
 package com.zlorbie788.zeus.core;
 
+import com.zlorbie788.zeus.ui.Accent;
+import com.zlorbie788.zeus.ui.Draw;
+import com.zlorbie788.zeus.ui.UiSettings;
+
 public enum Category {
-    COMBAT("Combat", 0xFFFF5C6C),
+    COMBAT("Combat", Accent.BAD),
     MOVEMENT("Movement", 0xFF4DA3FF),
-    PLAYER("Player", 0xFF5EE6A0),
-    WORLD("World", 0xFFFFC857),
+    PLAYER("Player", Accent.OK),
+    WORLD("World", Accent.WARN),
     RENDER("Visuals", 0xFFB77BFF),
     SCANNER("Base Finding", 0xFF35E0D0),
-    UTILITY("Tools", 0xFFFF8F4D),
+    UTILITY("Tools", Accent.HIGH),
     FRIENDS("Friends", 0xFF7BE0A0),
     PROFILES("Profiles", 0xFFE070C8),
     PANELS("HUD & Info", 0xFF6FA8FF),
@@ -19,5 +23,12 @@ public enum Category {
     Category(String label, int color) {
         this.label = label;
         this.color = color;
+    }
+
+    public int color() {
+        if (Accent.rainbow()) return color;
+        float reach = (float) UiSettings.THEME_TINT.get() / 100f;
+        if (reach <= 0f) return color;
+        return Draw.mix(color, Accent.main(), reach * 0.35f);
     }
 }

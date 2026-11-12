@@ -1,5 +1,6 @@
 package com.zlorbie788.zeus.mods;
 
+import com.zlorbie788.zeus.ui.Accent;
 import com.zlorbie788.zeus.core.Category;
 import com.zlorbie788.zeus.core.Env;
 import com.zlorbie788.zeus.core.Module;
@@ -474,11 +475,11 @@ public final class Finders {
             java.util.List<java.util.Map.Entry<net.minecraft.world.item.Item, Integer>> top = new java.util.ArrayList<>(loot.entrySet());
             top.sort((a, b) -> Integer.compare(b.getValue(), a.getValue()));
             for (java.util.Map.Entry<net.minecraft.world.item.Item, Integer> en : loot.entrySet()) lootTotal += en.getValue();
-            for (int i = 0; i < Math.min(4, top.size()) && c.slots.size() < 12; i++) c.slots.add(new Discoveries.Slot(top.get(i).getKey(), top.get(i).getValue(), 0xFF5EE6A0));
+            for (int i = 0; i < Math.min(4, top.size()) && c.slots.size() < 12; i++) c.slots.add(new Discoveries.Slot(top.get(i).getKey(), top.get(i).getValue(), Accent.OK));
             if (storage > 0) c.cats.add(new Discoveries.Cat(storage == 1 ? "Container" : "Containers", storage, 0xFFFFB347));
             if (machines > 0) c.cats.add(new Discoveries.Cat(machines == 1 ? "Machine" : "Machines", machines, 0xFFFF8A3D));
             if (displays > 0) c.cats.add(new Discoveries.Cat("Armor / displays", displays, 0xFF6AA6FF));
-            if (lootTotal > 0) c.cats.add(new Discoveries.Cat("Items seen (opened)", lootTotal, 0xFF5EE6A0));
+            if (lootTotal > 0) c.cats.add(new Discoveries.Cat("Items seen (opened)", lootTotal, Accent.OK));
             lastDisplays = displays;
             int total = cluster.size();
             c.kind = total >= 12 ? "Storage room" : total >= 4 ? "Storage area" : total >= 2 ? "Storage" : "Single container";
@@ -536,7 +537,7 @@ public final class Finders {
         public AncientCityFinder() {
             super("ancientcityfinder", "Ancient City ESP", "Finds the deep dark: ancient cities, sculk shriekers and their reinforced deepslate.",
                     new String[] {"Reinforced deepslate", "Sculk shriekers", "Sculk catalysts"},
-                    new int[] {0xFF2DD4BF, 0xFFFF5C6C, 0xFF6FA8FF},
+                    new int[] {0xFF2DD4BF, Accent.BAD, 0xFF6FA8FF},
                     new boolean[] {true, true, false},
                     new String[] {"Only ancient cities have it (the portal frame and its walls).", "Shriekers: stepping near them calls a warden.", "Catalysts spread sculk when a mob dies."});
         }
@@ -556,7 +557,7 @@ public final class Finders {
         public TrialFinder() {
             super("trialfinder", "Trial Chamber ESP", "Finds trial chambers by their vaults and spawners.",
                     new String[] {"Vaults", "Trial spawners", "Heavy cores"},
-                    new int[] {0xFFFFC857, 0xFF35E0D0, 0xFFFF5C6C},
+                    new int[] {Accent.WARN, 0xFF35E0D0, Accent.BAD},
                     new boolean[] {true, true, true},
                     new String[] {"Vaults hold the key rewards.", "Trial spawners spawn the waves.", "A heavy core is the rare prize."});
         }

@@ -1,5 +1,6 @@
 package com.zlorbie788.zeus.mods;
 
+import com.zlorbie788.zeus.ui.Accent;
 import com.zlorbie788.zeus.core.Category;
 import com.zlorbie788.zeus.core.Env;
 import com.zlorbie788.zeus.core.Module;
@@ -145,7 +146,7 @@ public final class Clues {
                 double dist = Math.sqrt(mc.player.distanceToSqr(e));
                 float a = kit.alphaFor(dist, r);
                 AABB bb = e.getBoundingBox();
-                int color = e instanceof net.minecraft.world.entity.decoration.ArmorStand ? 0xFFFFC857 : 0xFF6AA6FF;
+                int color = e instanceof net.minecraft.world.entity.decoration.ArmorStand ? Accent.WARN : 0xFF6AA6FF;
                 if (Projector.depth((bb.minX + bb.maxX) / 2, (bb.minY + bb.maxY) / 2, (bb.minZ + bb.maxZ) / 2) < -1.5) continue;
                 kit.tracer(g, w, h, (bb.minX + bb.maxX) / 2, (bb.minY + bb.maxY) / 2, (bb.minZ + bb.maxZ) / 2, color, a);
                 kit.box(g, bb, color, a, filled++ < 12);

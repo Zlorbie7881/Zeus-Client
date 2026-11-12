@@ -1300,7 +1300,7 @@ public class SuspiciousChunks extends Module {
         return true;
     }
 
-    private static final int[] GROUP_COLORS = {0xFFFFC857, 0xFFB77BFF, 0xFFFF4D5E, 0xFFFF9F43, 0xFF4DD2FF, 0xFF5EE6A0, 0xFFFF7AB6};
+    private static final int[] GROUP_COLORS = {Accent.WARN, 0xFFB77BFF, 0xFFFF4D5E, 0xFFFF9F43, 0xFF4DD2FF, Accent.OK, 0xFFFF7AB6};
     private static final String[] GROUP_LABELS = {"Storage", "Workstations", "Redstone", "Lighting", "Metal blocks", "Building", "Frames and stands"};
     private static final int NATURAL_COLOR = 0xFF4C86E8;
 
@@ -1414,7 +1414,7 @@ public class SuspiciousChunks extends Module {
                 }
                 if (activity.on() && activityRing.on() && Activity.heat(pcx + dx, pcz + dz) >= activityMin.i()) {
                     float pulse = 0.55f + 0.45f * (float) Math.sin(System.nanoTime() / 1.8e8);
-                    Draw.rrectLine(g, tx - 2, ty - 2, ts + 4, ts + 4, 4, Draw.rgba(0xFFFF8F4D, pulse));
+                    Draw.rrectLine(g, tx - 2, ty - 2, ts + 4, ts + 4, 4, Draw.rgba(Accent.HIGH, pulse));
                 }
             }
         }
