@@ -23,6 +23,8 @@ public final class Mods {
         m.add(new Combat.AutoClicker());
         m.add(new Combat.Reach());
         m.add(new Combat.AntiKnockback());
+        m.add(new Combat.HitSelect());
+        m.add(new Combat.TriggerBot());
         m.add(new Bots.SwordBot());
         m.add(new Bots.CrystalBot());
         m.add(new QuickMods.CrystalOptimizer());
@@ -51,6 +53,7 @@ public final class Mods {
         m.add(new Movement.AntiHunger());
         m.add(new Movement.AutoSprint());
         m.add(new Motion.AirJump());
+        m.add(new Motion.JumpReset());
         m.add(new Motion.AntiVoid());
         m.add(new Motion.AutoJump());
         m.add(new Motion.AutoWalk());

@@ -67,7 +67,7 @@ public final class Combat {
         private final Setting.Bool hostiles = add(new Setting.Bool("Monsters", "Attack hostile mobs.", true));
         private final Setting.Bool animals = add(new Setting.Bool("Animals and villagers", "Also attack passive mobs. Tamed pets are always spared.", false));
         private final Setting.Bool players = add(new Setting.Bool("Players", "Also attack other players. Friends are always spared.", false));
-        private final Setting.Choice priority = add(new Setting.Choice("Pick the target by", "Closest: the nearest one. Lowest health: the one that is closest to dying, which finishes fights fastest.", 0, "Closest", "Lowest health"));
+        private final Setting.Choice priority = add(new Setting.Choice("Pick the target by", "Closest: the nearest one. Lowest health: the one that is closest to dying, which finishes fights fastest. Biggest threat: weighs distance, health and line of sight, so the one actually hurting you comes first.", 0, "Closest", "Lowest health", "Biggest threat"));
         private final Setting.Choice mode = add(new Setting.Choice("Attack mode", "Spam: hits again and again as fast as you set, ignoring the attack bar. Crit: only hits while falling, so every hit is a critical hit. Cooldown: one full-power hit each time the bar is full.", 2, "Spam", "Crit", "Cooldown"));
         private final Setting.Choice style = add(new Setting.Choice("Aura style", "Rage: attacks as fast as the settings allow. Legit: turns the view like a player, keeps reach and view inside vanilla limits, waits for a full swing and pauses briefly before the first hit.", 0, "Rage", "Legit"));
         private final Setting.Num rate = add(new Setting.Num("Hits per second", "How fast Spam mode hits.", 10, 1, 20, 1, "")).showIf(() -> this.mode.index() == 0);
@@ -129,7 +129,11 @@ public final class Combat {
                     Vec3 to = e.getBoundingBox().getCenter().subtract(me.getEyePosition());
                     if (to.lengthSqr() > 1e-6 && to.normalize().dot(look) < cone) continue;
                 }
-                double d = priority.index() == 1 ? le.getHealth() + le.getAbsorptionAmount() + dist * 0.001 : dist;
+                double d = switch (priority.index()) {
+                    case 1 -> le.getHealth() + le.getAbsorptionAmount() + dist * 0.001;
+                    case 2 -> threat(le, dist, me);
+                    default -> dist;
+                };
                 if (d >= bestD) continue;
                 if (los.on() && !mc.player.hasLineOfSight(e)) continue;
                 best = e;
@@ -156,7 +160,9 @@ public final class Combat {
                 target = null;
                 return;
             }
-            Vec3 aimAt = best.position().add(best.getDeltaMovement().scale(0.35)).add(0, best.getBbHeight() * 0.55, 0);
+            Vec3 lead = best.getDeltaMovement();
+            double leadScale = 0.35 + Math.min(0.20, lead.length() * 0.05);
+            Vec3 aimAt = best.position().add(lead.scale(leadScale)).add(0, best.getBbHeight() * 0.55, 0);
             if (legit || humanAim.on()) {
                 if (!humanAim(me, aimAt)) return;
             } else if (silent.on()) {
@@ -174,9 +180,18 @@ public final class Combat {
                 if (timing.on()) interval *= ThreadLocalRandom.current().nextDouble(0.88, 1.12);
                 nextHit = System.currentTimeMillis() + (long) interval;
             }
+            if (!HitSelect.allow(best)) return;
             if (confirm.on()) Hits.attempt(best);
             mc.gameMode.attack(mc.player, best);
             if (swing.on() || legit) mc.player.swing(InteractionHand.MAIN_HAND);
+        }
+
+        private static double threat(LivingEntity le, double dist, Player me) {
+            double score = dist * 0.8 + (le.getHealth() + le.getAbsorptionAmount()) * 0.35;
+            if (!le.hasLineOfSight(me)) score += 6.0;
+            if (le instanceof Player p && p.getLastHurtByMob() == me) score -= 2.0;
+            if (le.isBlocking()) score -= 0.5;
+            return score;
         }
 
         private boolean humanAim(Player me, Vec3 point) {
@@ -620,6 +635,82 @@ public final class Combat {
         @Override
         public String info() {
             return block.text();
+        }
+    }
+
+    public static final class HitSelect extends Module {
+        private final Setting.Choice mode = add(new Setting.Choice("Only hit when", "Always: no filtering. Kill: a hit could finish the target. Low health: the target is under the health below. Crit: only while falling, so the hit is a critical.", 0, "Always", "Kill", "Low health", "Crit"));
+        private final Setting.Num low = add(new Setting.Num("Low health under", "The health a target has to be under for Low health mode.", 8, 1, 20, 1, " hp")).showIf(() -> mode.index() == 2);
+        private final Setting.Num chance = add(new Setting.Num("Chance", "How often a qualifying hit is let through.", 100, 10, 100, 5, "%"));
+        private final Setting.Num gap = add(new Setting.Num("Minimum gap", "Never hit more often than this.", 0, 0, 400, 10, " ms"));
+        private long lastHit;
+
+        public HitSelect() {
+            super("hitselect", "Hit Select", "Picks the moment a hit is worth throwing: only for a kill, only on a low target, or only while falling for a critical. Kill Aura and Trigger Bot both obey it.", Category.COMBAT);
+        }
+
+        public static boolean allow(Entity target) {
+            Module m = com.zlorbie788.zeus.core.Zeus.get("hitselect");
+            if (!(m instanceof HitSelect h) || !h.enabled()) return true;
+            return h.permits(target);
+        }
+
+        private boolean permits(Entity target) {
+            long now = System.currentTimeMillis();
+            if (now - lastHit < gap.get()) return false;
+            if (ThreadLocalRandom.current().nextDouble(100.0) >= chance.get()) return false;
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.player == null) return true;
+            boolean ok = switch (mode.index()) {
+                case 1 -> target instanceof LivingEntity le && le.getHealth() + le.getAbsorptionAmount() <= swingDamage(mc);
+                case 2 -> target instanceof LivingEntity le && le.getHealth() + le.getAbsorptionAmount() <= low.get();
+                case 3 -> !mc.player.onGround() && mc.player.getDeltaMovement().y < 0;
+                default -> true;
+            };
+            if (ok) lastHit = now;
+            return ok;
+        }
+
+        private static double swingDamage(Minecraft mc) {
+            String item = Names.item(mc.player.getMainHandItem());
+            if (item.endsWith("_sword")) return 7.0;
+            if (item.endsWith("_axe")) return 8.0;
+            if (item.equals("mace")) return 7.0;
+            return 6.0;
+        }
+    }
+
+    public static final class TriggerBot extends Module {
+        private final Setting.Num min = add(new Setting.Num("Shortest delay", "Least time between attacks.", 40, 0, 400, 5, " ms"));
+        private final Setting.Num max = add(new Setting.Num("Longest delay", "Most time between attacks.", 110, 0, 500, 5, " ms"));
+        private final Setting.Bool players = add(new Setting.Bool("Players", "Attack players.", true));
+        private final Setting.Bool mobs = add(new Setting.Bool("Monsters", "Attack hostile mobs.", true));
+        private final Setting.Bool hold = add(new Setting.Bool("Only while holding attack", "Off: it swings whenever something is under the crosshair.", false));
+        private long next;
+
+        public TriggerBot() {
+            super("triggerbot", "Trigger Bot", "Attacks whatever your crosshair is on, the moment you look at it.", Category.COMBAT);
+        }
+
+        @Override
+        protected void onTick(Minecraft mc) {
+            if (mc.player == null || mc.level == null || mc.gameMode == null || mc.screen != null) return;
+            if (hold.on() && !mc.options.keyAttack.isDown()) return;
+            long now = System.currentTimeMillis();
+            if (now < next) return;
+            if (!(mc.hitResult instanceof EntityHitResult ehr)) return;
+            Entity e = ehr.getEntity();
+            if (!(e instanceof LivingEntity le) || !le.isAlive() || e == mc.player) return;
+            if (e instanceof Player) {
+                if (!players.on() || Friends.protects(e) || e.isSpectator()) return;
+            } else if (!(e instanceof Enemy) || !mobs.on()) return;
+            if (mc.player.getAttackStrengthScale(0f) < 0.95f) return;
+            if (!HitSelect.allow(e)) return;
+            long a = (long) min.get(), b = (long) Math.max(min.get(), max.get());
+            next = now + a + (b > a ? ThreadLocalRandom.current().nextLong(b - a) : 0);
+            Hits.attempt(e);
+            mc.gameMode.attack(mc.player, e);
+            mc.player.swing(InteractionHand.MAIN_HAND);
         }
     }
 
