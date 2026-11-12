@@ -17,6 +17,40 @@ public final class Motion {
         return mc.options.keyUp.isDown() || mc.options.keyDown.isDown() || mc.options.keyLeft.isDown() || mc.options.keyRight.isDown();
     }
 
+    public static final class JumpReset extends Module {
+        private final Setting.Num chance = add(new Setting.Num("Chance", "How often to try a jump reset.", 85, 10, 100, 5, "%"));
+        private final Setting.Num delay = add(new Setting.Num("Delay", "How long after a hit to jump.", 55, 0, 200, 5, " ms"));
+        private final Setting.Bool knockback = add(new Setting.Bool("Only when knocked back", "Only jump if the hit actually moved you.", true));
+        private float lastHealth = -1f;
+        private long jumpAt;
+
+        public JumpReset() {
+            super("jumpreset", "Jump Reset", "Jumps the moment a hit lands, which cuts the knockback and keeps you in range.", Category.MOVEMENT);
+        }
+
+        @Override
+        protected void onTick(Minecraft mc) {
+            if (mc.player == null || mc.level == null) return;
+            float hp = mc.player.getHealth();
+            if (lastHealth < 0f) lastHealth = hp;
+            long now = System.currentTimeMillis();
+            if (hp < lastHealth) {
+                boolean moved = mc.player.getDeltaMovement().horizontalDistanceSqr() > 0.01;
+                if ((!knockback.on() || moved) && java.util.concurrent.ThreadLocalRandom.current().nextDouble(100.0) < chance.get()) {
+                    jumpAt = now + (long) delay.get();
+                }
+            }
+            lastHealth = hp;
+            if (jumpAt > 0 && now >= jumpAt) {
+                jumpAt = 0;
+                if (mc.player.onGround() && !mc.player.isInWater() && !mc.player.onClimbable() && !mc.player.isPassenger()) {
+                    net.minecraft.world.phys.Vec3 v = mc.player.getDeltaMovement();
+                    mc.player.setDeltaMovement(v.x, 0.42, v.z);
+                }
+            }
+        }
+    }
+
     private static boolean ready(Minecraft mc) {
         return mc.player != null && mc.level != null && mc.screen == null;
     }
