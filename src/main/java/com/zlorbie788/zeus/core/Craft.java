@@ -27,13 +27,13 @@ import java.util.function.Predicate;
 public final class Craft {
     private Craft() {}
 
-    private static final Predicate<ItemStack> LOGS = s -> s.is(ItemTags.LOGS);
-    private static final Predicate<ItemStack> PLANKS = s -> s.is(ItemTags.PLANKS);
-    private static final Predicate<ItemStack> COBBLE = s -> s.is(Items.COBBLESTONE) || s.is(Items.COBBLED_DEEPSLATE);
-    private static final Predicate<ItemStack> STICKS = s -> s.is(Items.STICK);
-    private static final Predicate<ItemStack> COAL = s -> s.is(Items.COAL) || s.is(Items.CHARCOAL);
-    private static final Predicate<ItemStack> IRON = s -> s.is(Items.IRON_INGOT);
-    private static final Predicate<ItemStack> WOOL = s -> s.is(ItemTags.WOOL);
+    public static final Predicate<ItemStack> LOGS = s -> s.is(ItemTags.LOGS);
+    public static final Predicate<ItemStack> PLANKS = s -> s.is(ItemTags.PLANKS);
+    public static final Predicate<ItemStack> COBBLE = s -> s.is(Items.COBBLESTONE) || s.is(Items.COBBLED_DEEPSLATE);
+    public static final Predicate<ItemStack> STICKS = s -> s.is(Items.STICK);
+    public static final Predicate<ItemStack> COAL = s -> s.is(Items.COAL) || s.is(Items.CHARCOAL);
+    public static final Predicate<ItemStack> IRON = s -> s.is(Items.IRON_INGOT);
+    public static final Predicate<ItemStack> WOOL = s -> s.is(ItemTags.WOOL);
 
     public record Recipe(String name, List<Predicate<ItemStack>> cells, Item result, int yield, String... aliases) {
         public boolean small() {
@@ -230,6 +230,8 @@ public final class Craft {
     public static Book book(Minecraft mc, String wanted) {
         if (mc.player == null || mc.level == null) return null;
         ContextMap context = SlotDisplayContext.fromLevel(mc.level);
+        Item want = exact(wanted);
+        Book loose = null;
         for (RecipeCollection collection : mc.player.getRecipeBook().getCollections()) {
             for (RecipeDisplayEntry entry : collection.getRecipes()) {
                 ItemStack result;
@@ -238,22 +240,107 @@ public final class Craft {
                 } catch (RuntimeException e) {
                     continue;
                 }
-                if (result.isEmpty() || !itemMatches(result, wanted)) continue;
-                boolean table = false;
-                try {
-                    ItemStack station = entry.display().craftingStation().resolveForFirstStack(context);
-                    table = !station.isEmpty() && station.is(Items.CRAFTING_TABLE);
-                } catch (RuntimeException ignored) {
-                }
-                return new Book(entry, table);
+                if (result.isEmpty()) continue;
+                if (want != null && result.is(want)) return bookOf(entry, context);
+                if (loose == null && itemMatches(result, wanted)) loose = bookOf(entry, context);
             }
         }
-        return null;
+        return loose;
+    }
+
+    private static Book bookOf(RecipeDisplayEntry entry, ContextMap context) {
+        boolean table = false;
+        try {
+            ItemStack station = entry.display().craftingStation().resolveForFirstStack(context);
+            table = !station.isEmpty() && station.is(Items.CRAFTING_TABLE);
+        } catch (RuntimeException ignored) {
+        }
+        return new Book(entry, table);
     }
 
     public static void bookPlace(Minecraft mc, AbstractContainerMenu menu, RecipeDisplayEntry entry) {
         if (mc.getConnection() == null || mc.player == null) return;
         mc.getConnection().send(new ServerboundPlaceRecipePacket(menu.containerId, entry.id(), false));
+    }
+
+    private static final java.util.Map<String, String> ALIASES = java.util.Map.of(
+            "iron", "iron_ingot",
+            "gold", "gold_ingot",
+            "cobble", "cobblestone",
+            "wood", "oak_planks",
+            "plank", "oak_planks",
+            "netherite", "netherite_ingot"
+    );
+
+    /** Resolves a spoken name to exactly one item: "iron" is an ingot, never iron ore or a sword. */
+    public static Item exact(String wanted) {
+        if (wanted == null) return null;
+        String key = wanted.toLowerCase(Locale.ROOT).trim().replace(' ', '_').replace("minecraft:", "");
+        Item found = byId(key);
+        if (found != null) return found;
+        String alias = ALIASES.get(key);
+        if (alias != null) {
+            found = byId(alias);
+            if (found != null) return found;
+        }
+        if (key.endsWith("s") && key.length() > 3) {
+            found = byId(key.substring(0, key.length() - 1));
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private static Item byId(String id) {
+        net.minecraft.resources.Identifier key = net.minecraft.resources.Identifier.tryParse(id);
+        if (key == null || !BuiltInRegistries.ITEM.containsKey(key)) return null;
+        return BuiltInRegistries.ITEM.getValue(key);
+    }
+
+    public static Predicate<ItemStack> only(String wanted) {
+        Item item = exact(wanted);
+        return item == null ? null : s -> s.is(item);
+    }
+
+    public static Predicate<ItemStack> smeltInput(String wanted) {
+        String key = wanted == null ? "" : wanted.toLowerCase(Locale.ROOT).trim().replace(' ', '_');
+        return switch (key) {
+            case "iron", "iron_ingot" -> s -> s.is(Items.RAW_IRON) || s.is(Items.IRON_ORE)
+                    || s.is(Items.DEEPSLATE_IRON_ORE);
+            case "gold", "gold_ingot" -> s -> s.is(Items.RAW_GOLD) || s.is(Items.GOLD_ORE)
+                    || s.is(Items.DEEPSLATE_GOLD_ORE) || s.is(Items.NETHER_GOLD_ORE);
+            case "copper", "copper_ingot" -> s -> s.is(Items.RAW_COPPER) || s.is(Items.COPPER_ORE)
+                    || s.is(Items.DEEPSLATE_COPPER_ORE);
+            default -> only(wanted);
+        };
+    }
+
+    /** The first ingredient that is not fully available, so the AI knows what to go and get. */
+    public static Predicate<ItemStack> missing(AbstractContainerMenu menu, Recipe recipe) {
+        List<ItemStack> inv = new ArrayList<>();
+        for (int i = playerStart(menu); i < menu.slots.size(); i++) inv.add(menu.getSlot(i).getItem());
+        int[] left = new int[inv.size()];
+        for (int i = 0; i < inv.size(); i++) left[i] = inv.get(i).getCount();
+        for (Predicate<ItemStack> cell : recipe.cells()) {
+            if (cell == null) continue;
+            boolean got = false;
+            for (int i = 0; i < inv.size(); i++) {
+                if (left[i] <= 0 || inv.get(i).isEmpty() || !cell.test(inv.get(i))) continue;
+                left[i]--;
+                got = true;
+                break;
+            }
+            if (!got) return cell;
+        }
+        return null;
+    }
+
+    public static int count(AbstractContainerMenu menu, Predicate<ItemStack> p) {
+        int n = 0;
+        for (int i = playerStart(menu); i < menu.slots.size(); i++) {
+            ItemStack stack = menu.getSlot(i).getItem();
+            if (!stack.isEmpty() && p.test(stack)) n += stack.getCount();
+        }
+        return n;
     }
 
     public static boolean fuel(ItemStack stack) {
