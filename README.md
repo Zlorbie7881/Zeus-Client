@@ -63,6 +63,15 @@ All commands are handled by your game and are never sent to the server.
 | `/zeus waypoint add <x> <y> <z> [name]` | Save a waypoint |
 | `/zeus website [stop\|status]` | Start or stop the local control page |
 | `/zeus tutorial`, `/zeus whatsnew` | Replay the tour or the update summary |
+| `/zeus ai <request>` | Ask Zeus AI in plain words, e.g. `/zeus ai mine 10 iron then come back` |
+| `/zeus ai tutorial` | Step-by-step AI setup: provider, key, connection test, first commands |
+| `/zeus ai test`, `/zeus ai status` | Check the AI connection, see key, model and limits |
+| `/zeus ai provider\|model\|endpoint <value>` | Switch AI provider (groq, gemini, openrouter, openai, deepseek, mistral, ollama, lmstudio) or model |
+| `/zeus ai stop\|undo\|plan` | End a job, undo the last AI change, show the last plan |
+
+### Zeus AI
+
+Zeus AI runs on an AI provider with your own API key, or fully offline through Ollama or LM Studio. Groq and Google Gemini give free keys. Run `/zeus ai tutorial` in a world and it walks you through every step with clickable buttons. The key is stored only in your local config and is shown masked in chat. Without a key, a built-in parser still handles simple commands like `on sprint` or `set killaura range to 4`.
 
 ### Control page
 
