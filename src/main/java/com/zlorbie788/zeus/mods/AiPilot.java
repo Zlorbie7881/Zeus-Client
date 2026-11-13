@@ -97,7 +97,7 @@ public final class AiPilot extends Module {
     private final Setting.Info jobStatus = add(new Setting.Info("Job", this::jobLines));
 
     private enum JobKind { CHOP, MINE_UNTIL, MINE_COUNT, GOTO, FOLLOW, COLLECT, TUNNEL, FARM, SLEEP,
-                           REPLANT, EAT, FOOD, HUNT, FLEE, SHOOT, SHEAR, MILK, QUARRY, PLACE, TORCH, DROP, RETURN, EXPLORE,
+                           REPLANT, EAT, FOOD, FISH, HUNT, FLEE, SHOOT, SHEAR, MILK, QUARRY, PLACE, TORCH, DROP, RETURN, EXPLORE,
                            HOUSE, SWIM, CLIMB, BRIDGE, TILL, CRAFT, SMELT, STORE, TAKE }
 
     private static final class Job {
@@ -168,6 +168,7 @@ public final class AiPilot extends Module {
                 case REPLANT -> "planting seeds" + (mined > 0 ? " (" + mined + " planted)" : "");
                 case EAT -> "eating";
                 case FOOD -> "hunting animals for food" + (mined > 0 ? " (" + mined + " killed)" : "");
+                case FISH -> "fishing (" + Math.min(mined, Math.max(1, wanted)) + "/" + Math.max(1, wanted) + ")";
                 case HUNT -> "fighting" + (mined > 0 ? " (" + mined + " hits)" : "");
                 case FLEE -> "running away";
                 case SHOOT -> "shooting" + (mined > 0 ? " (" + mined + " shots)" : "");
@@ -745,6 +746,7 @@ public final class AiPilot extends Module {
         builder.append("Movement is planned on the block grid: when the direct line is blocked it searches for a walkable path around walls, up ledges and down drops, never through lava, fire or cactus.\n");
         builder.append("Ore jobs staircase to the depth the ore lives at first (iron y16, diamond y-59) and then tunnel, so ask for mine 16 iron without naming a height.\n");
         builder.append("do can also be job, where value is a phrase like: chop tree, chop 3 trees, mine until iron, mine 20 stone, quarry 10, tunnel 30, strip mine, farm, replant, till 9, collect, hunt, flee, shoot, shear 3, milk, eat, sleep, torch 8, place cobblestone here, place torch at 120 64 -300, drop 32 dirt, explore 60, return, build a house, swim to 120 62 -300, climb 8, bridge 12, go to 120 64 -300, come here, follow me, follow Steve, dig down, stop. Chain them in one value with then: chop 2 trees then mine until iron.\n");
+        builder.append("Survival and food: prepare (or gear up) makes a wooden pickaxe, a stone pickaxe, a stone sword and hunts for food in one go. fish 5 casts a rod it must already have, reels on the bobber dip and counts the catch. food 3 kills animals for meat.\n");
         builder.append("Chests: store 20 cobblestone, put away 32 dirt, deposit 5 diamond, take 32 iron, loot 16 bread, grab 4 torch. The job finds a chest, barrel or trapped chest within five blocks, opens it and shift-clicks one stack at a time, counts real items against the number asked for, and only matches the exact item: iron means ingots, never ore or a sword, so say iron_ore for ore.\n");
         builder.append("Crafting and furnaces: craft 4 planks, craft a crafting table, craft sticks, craft a furnace, craft a stone pickaxe, craft iron sword, craft torch, craft chest, craft bucket, craft bed, smelt 8 iron, cook 4 porkchop. The job places and opens its own crafting table or furnace, crafts planks or sticks from logs first when it has to, and furnishes fuel itself. Known recipes: planks, stick, crafting_table, furnace, chest, torch, stone_pickaxe, stone_axe, stone_shovel, stone_sword, stone_hoe, iron_pickaxe, iron_sword, bucket, bed.\n");
         if (!context.isBlank()) builder.append("Context: ").append(context).append('\n');
@@ -994,6 +996,15 @@ public final class AiPilot extends Module {
             java.util.regex.Matcher count = java.util.regex.Pattern.compile("(\\d+)").matcher(text);
             return new Step("job", "", "", "shear " + (count.find() ? count.group(1) : "1"));
         }
+        if (text.equals("prepare") || text.equals("gear up") || text.equals("get geared")
+                || text.equals("get tools") || text.equals("prepare to mine") || text.equals("bootstrap")
+                || text.contains("gear up")) {
+            return new Step("job", "", "", "prepare");
+        }
+        if (text.contains("fish") && !text.contains("fishing rod")) {
+            java.util.regex.Matcher count = java.util.regex.Pattern.compile("(\\d+)").matcher(text);
+            return new Step("job", "", "", "fish " + (count.find() ? count.group(1) : "3"));
+        }
         if (text.contains("food") || text.contains("meat") || text.contains("something to eat")
                 || text.contains("kill an animal") || text.contains("kill animals")
                 || text.contains("hunt animals") || text.contains("hunt for food")) {
@@ -1068,6 +1079,13 @@ public final class AiPilot extends Module {
         if (text.isEmpty()) {
             Notify.info("Say what to do: chop a tree, mine until iron, go to 100 64 -200, follow me, stop.");
             return;
+        }
+        // One word for the whole opening of a world: tools first, then food, so nothing later in
+        // the chain has to fail because the player had bare hands.
+        if (text.equals("prepare") || text.equals("gear up") || text.equals("get geared")
+                || text.equals("get tools") || text.equals("prepare to mine") || text.equals("bootstrap")) {
+            text = "craft 1 wooden pickaxe then craft 1 stone pickaxe then craft 1 stone sword then food 2";
+            Notify.info("Zeus AI: tools and food first");
         }
         cancelJob(mc);
         chain.clear();
@@ -1144,6 +1162,10 @@ public final class AiPilot extends Module {
             java.util.regex.Matcher count = java.util.regex.Pattern.compile("(\\d+)").matcher(text);
             started = new Job(JobKind.SHEAR, "",
                     count.find() ? Math.max(1, Math.min(64, Integer.parseInt(count.group(1)))) : 1, null);
+        } else if (text.startsWith("fish") || text.contains("go fishing") || text.contains("catch fish")) {
+            java.util.regex.Matcher count = java.util.regex.Pattern.compile("(\\d+)").matcher(text);
+            started = new Job(JobKind.FISH, "fish",
+                    count.find() ? Math.max(1, Math.min(64, Integer.parseInt(count.group(1)))) : 3, null);
         } else if (text.startsWith("food") || text.startsWith("meat") || text.contains("kill for food")
                 || text.contains("hunt for food") || text.contains("hunt animals")) {
             java.util.regex.Matcher count = java.util.regex.Pattern.compile("(\\d+)").matcher(text);
@@ -1418,6 +1440,7 @@ public final class AiPilot extends Module {
             case REPLANT -> replantTick(mc);
             case EAT -> eatTick(mc);
             case FOOD -> foodTick(mc);
+            case FISH -> fishTick(mc);
             case HUNT -> huntTick(mc);
             case FLEE -> fleeTick(mc);
             case SHOOT -> shootTick(mc);
@@ -1928,6 +1951,71 @@ public final class AiPilot extends Module {
         if (p.getAttackStrengthScale(0.5f) < 0.9f) return;
         mc.gameMode.attack(p, prey);
         p.swing(InteractionHand.MAIN_HAND);
+    }
+
+    /**
+     * Fishing: cast, watch the bobber, reel when it dips, and count what comes out. The bobber dip
+     * is read from its own motion, which is what the game does for the sound, so no internals are
+     * needed and it works on any server that sends entity movement.
+     */
+    private void fishTick(Minecraft mc) {
+        Player p = mc.player;
+        int want = Math.max(1, job.wanted);
+        if (job.mined >= want) {
+            endJob(mc, "caught " + job.mined + " fish");
+            return;
+        }
+        int rod = Inv.hotbar(s -> s.is(Items.FISHING_ROD));
+        if (rod < 0) {
+            giveUp(mc, "no fishing rod in the hotbar");
+            return;
+        }
+        if (rod != Inv.selected()) Inv.select(rod);
+        releaseKeys(mc);
+        long now = System.currentTimeMillis();
+        net.minecraft.world.entity.projectile.FishingHook hook = p.fishing;
+        if (hook == null) {
+            if (now < job.nextSearch) return;
+            job.nextSearch = now + 900L;
+            p.setXRot(20f);
+            mc.gameMode.useItem(p, InteractionHand.MAIN_HAND);
+            job.note = "casting the line (" + job.mined + "/" + want + " fish)";
+            job.step = 0;
+            return;
+        }
+        if (job.step == 0) {
+            job.step = 1;
+            job.actionAt = now;
+        }
+        double dip = hook.getY() - (job.to == null ? hook.getY() : job.to.y);
+        if (job.to == null || hook.getY() < job.to.y - 0.08) job.to = new Vec3(hook.getX(), hook.getY(), hook.getZ());
+        boolean bite = hook.isInWater() && (hook.getDeltaMovement().y < -0.02 || dip < -0.12);
+        if (bite) {
+            mc.gameMode.useItem(p, InteractionHand.MAIN_HAND);
+            job.mined++;
+            job.step = 0;
+            job.to = null;
+            job.nextSearch = now + 700L;
+            job.note = "reeling in (" + job.mined + "/" + want + " fish)";
+            itemPickup(mc);
+            return;
+        }
+        if (now - job.actionAt > 35_000L) {
+            // nothing bit: reel in and cast again rather than waiting forever
+            mc.gameMode.useItem(p, InteractionHand.MAIN_HAND);
+            job.step = 0;
+            job.to = null;
+            job.nextSearch = now + 1200L;
+            job.note = "nothing bit, recasting";
+            return;
+        }
+        job.note = "waiting for a bite (" + job.mined + "/" + want + " fish)";
+    }
+
+    /** Walk over nearby drops so anything the AI just produced is actually in the pack. */
+    private void itemPickup(Minecraft mc) {
+        ItemEntity drop = nearestDrop(mc, 8);
+        if (drop != null) walkTo(mc, drop.position(), 1.0);
     }
 
     /** Animals worth killing for food, ignoring babies and anything already in water. */
@@ -3005,7 +3093,7 @@ public final class AiPilot extends Module {
         if (!state.requiresCorrectToolForDrops()) return true;
         for (int i = 0; i < 36; i++) {
             ItemStack stack = Inv.get(i);
-            if (!stack.isEmpty() && stack.isCorrectToolForDrops(state)) return true;
+            if (!stack.isEmpty() && usable(stack) && stack.isCorrectToolForDrops(state)) return true;
         }
         return false;
     }
@@ -3177,6 +3265,7 @@ public final class AiPilot extends Module {
             }
             return false;
         }
+        if (job != null) job.toolTried = 0;
         equipTool(mc, state);
         Player p = mc.player;
         Vec3 c = centre(pos);
@@ -3446,10 +3535,21 @@ public final class AiPilot extends Module {
     /** A block a player can stand inside: two blocks of room and a solid, dry floor. */
     private static boolean standable(Minecraft mc, BlockPos pos) {
         if (mc.level == null) return false;
-        if (!passes(mc, pos) || !passes(mc, pos.above())) return false;
+        return passes(mc, pos) && passes(mc, pos.above()) && floorSolid(mc, pos);
+    }
+
+    private static boolean floorSolid(Minecraft mc, BlockPos pos) {
         BlockPos under = pos.below();
         BlockState floor = mc.level.getBlockState(under);
         return !floor.getCollisionShape(mc.level, under).isEmpty() && floor.getFluidState().isEmpty();
+    }
+
+    /** A block a pickaxe, axe or shovel gets through quickly, and that is not water. */
+    private static boolean diggable(Minecraft mc, BlockPos pos) {
+        BlockState state = mc.level.getBlockState(pos);
+        if (!state.getFluidState().isEmpty()) return false;
+        float hardness = state.getDestroySpeed(mc.level, pos);
+        return hardness >= 0f && hardness <= 3.0f;
     }
 
     /** A block that can be walked through without being burned, drowned or slowed. */
@@ -3474,6 +3574,7 @@ public final class AiPilot extends Module {
      */
     private java.util.List<Vec3> planPath(Minecraft mc, Vec3 target, double stop) {
         Player p = mc.player;
+        boolean digging = job != null && jobDig.on();
         BlockPos start = BlockPos.containing(p.getX(), Math.floor(p.getY() + 0.01), p.getZ());
         BlockPos goal = BlockPos.containing(target);
         if (!standable(mc, start) && standable(mc, start.above())) start = start.above();
@@ -3503,9 +3604,17 @@ public final class AiPilot extends Module {
                 for (int dy = 1; dy >= -3; dy--) {
                     BlockPos next = side.offset(0, dy, 0);
                     if (next.distSqr(start) > 1024) continue;
-                    if (!standable(mc, next)) continue;
+                    boolean walkable = standable(mc, next);
+                    if (!walkable) {
+                        // A sharp tunnel is still a path, but only when digging is allowed and the
+                        // block is soft: never carve through obsidian and never into a wall of it.
+                        if (!digging || !floorSolid(mc, next)) continue;
+                        boolean feet = diggable(mc, next);
+                        boolean head = passes(mc, next.above()) || diggable(mc, next.above());
+                        if (!feet || !head) continue;
+                    }
                     if (dy > 0 && !passes(mc, node.pos.above(2))) continue;
-                    double step = 1.0 + (dy > 0 ? 2.5 : -dy * 0.6);
+                    double step = 1.0 + (dy > 0 ? 2.5 : -dy * 0.6) + (walkable ? 0.0 : 7.0);
                     double nextCost = g + step;
                     if (nextCost >= cost.getOrDefault(next, Double.MAX_VALUE)) continue;
                     cost.put(next, nextCost);
@@ -3537,6 +3646,13 @@ public final class AiPilot extends Module {
             return there;
         }
         Vec3 wp = job.path.get(job.pathIndex);
+        BlockPos at = BlockPos.containing(wp.x, wp.y, wp.z);
+        if (!passes(mc, at) || !passes(mc, at.above())) {
+            BlockPos dig = passes(mc, at) ? at.above() : at;
+            job.note = "clearing the way through " + dig.getX() + " " + dig.getY() + " " + dig.getZ();
+            mineBlock(mc, dig);
+            return false;
+        }
         double dx = wp.x - p.getX(), dz = wp.z - p.getZ();
         double flat = Math.hypot(dx, dz);
         float yaw = flat < 0.08 ? p.getYRot() : (float) Math.toDegrees(Math.atan2(-dx, dz));
