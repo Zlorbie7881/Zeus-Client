@@ -30,6 +30,7 @@
     "WindowTitleMixin",
     "ListPlateMixin",
     "MultiPlayerGameModeAccessor",
+    "GameModeAttackMixin",
     "RenderSectionRegionMixin",
     "SodiumSliceMixin",
     "CameraMixin",

@@ -157,7 +157,6 @@ public final class Combat {
                     return;
                 }
             }
-            if (Ghost.skipSwing()) return;
             if (confirm.on() && Hits.cold(best.getId())) {
                 target = null;
                 return;
@@ -170,13 +169,15 @@ public final class Combat {
             } else if (silent.on()) {
                 Aim.look(aimAt);
             }
-            if (legit) {
-                if (best.getId() != lastTargetId) {
-                    lastTargetId = best.getId();
-                    reactAt = System.currentTimeMillis() + 130 + ThreadLocalRandom.current().nextLong(130);
-                }
-                if (System.currentTimeMillis() < reactAt) return;
+            // Nothing human hits the very tick a target walks into range, so both styles take a
+            // short, uneven moment to react before the first swing on a new target.
+            if (best.getId() != lastTargetId) {
+                lastTargetId = best.getId();
+                reactAt = System.currentTimeMillis() + (legit
+                        ? 130 + ThreadLocalRandom.current().nextLong(130)
+                        : 45 + ThreadLocalRandom.current().nextLong(85));
             }
+            if (System.currentTimeMillis() < reactAt) return;
             if (m == 0) {
                 double interval = 1000.0 / rate.get();
                 if (timing.on()) interval *= ThreadLocalRandom.current().nextDouble(0.88, 1.12);
