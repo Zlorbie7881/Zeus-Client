@@ -1152,6 +1152,7 @@ public final class AiPilot extends Module {
         builder.append("hi / thanks / a question with nothing to change -> {\"say\":\"<a short helpful answer>\",\"actions\":[]}\n");
         builder.append("For a Minecraft or client question (a recipe, where to find something, what a module does), answer it in say in up to three sentences, with real facts for Minecraft 1.21. Do not make up mechanics. If something is ambiguous and a wrong guess would be costly, ask one short question in say and send no actions.\n");
         builder.append("Refer back to the conversation: 'turn it off' or 'more' means the module or setting talked about last.\n");
+        builder.append("The context lists nearby blocks and saved waypoints with coordinates. To reach one, send a job like go to X Y Z with those numbers (go to my base, go to the chest, go to the nearest iron ore). Never invent coordinates that are not in the context.\n");
         builder.append("Use the ids from the module list below, not guesses (the example ids above may not exist). Setting values: numbers as plain numbers, on/off for switches, one of the listed options for choices. To nudge a number you may write +1 or -0.5.\n");
         builder.append("Jobs understand tools: before mining a block it cannot harvest it crafts the pickaxe that can, and it will not count a block that dropped nothing. Say 'food' or 'kill for food' to hunt animals and eat.\n");
         builder.append("panic switches every module off. undo reverses the last change the AI made. report reads out what is on. remember stores value as a note for later sessions. theme takes value as one of: ");
@@ -4794,6 +4795,15 @@ public final class AiPilot extends Module {
         } else {
             builder.append(" Inventory empty.");
         }
+        builder.append(nearbyBlocks(client));
+        Extras.Waypoints points = Zeus.get(Extras.Waypoints.class);
+        if (points != null) {
+            try {
+                List<String> saved = points.forAi(8);
+                if (!saved.isEmpty()) builder.append(" Saved waypoints (use their coordinates with go to): ").append(String.join("; ", saved)).append('.');
+            } catch (RuntimeException ignored) {
+            }
+        }
         if (job != null) builder.append(" Job running: ").append(job.label()).append(job.note == null || job.note.isBlank() ? "" : " (" + job.note + ")").append('.');
         builder.append(" FPS ").append(client.getFps()).append('.');
         builder.append(" Modules on:");
@@ -4805,6 +4815,61 @@ public final class AiPilot extends Module {
         }
         if (shown == 0) builder.append(" none");
         return builder.toString();
+    }
+
+    /** Useful blocks around the player (containers, stations, beds, ores in view of the air), nearest of each kind. */
+    private static String nearbyBlocks(Minecraft client) {
+        if (client.player == null || client.level == null) return "";
+        BlockPos at = client.player.blockPosition();
+        java.util.Map<String, int[]> nearest = new java.util.LinkedHashMap<>();
+        java.util.Map<String, Integer> counts = new java.util.HashMap<>();
+        int r = 12;
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        for (int dy = -6; dy <= 6; dy++) {
+            for (int dx = -r; dx <= r; dx++) {
+                for (int dz = -r; dz <= r; dz++) {
+                    pos.set(at.getX() + dx, at.getY() + dy, at.getZ() + dz);
+                    BlockState state = client.level.getBlockState(pos);
+                    if (state.isAir()) continue;
+                    String kind = interesting(state);
+                    if (kind == null) continue;
+                    int d2 = dx * dx + dy * dy + dz * dz;
+                    counts.merge(kind, 1, Integer::sum);
+                    int[] best = nearest.get(kind);
+                    if (best == null || d2 < best[3]) nearest.put(kind, new int[] {pos.getX(), pos.getY(), pos.getZ(), d2});
+                }
+            }
+        }
+        if (nearest.isEmpty()) return "";
+        StringBuilder out = new StringBuilder(" Nearby blocks (nearest of each):");
+        int shown = 0;
+        for (var e : nearest.entrySet()) {
+            int[] p = e.getValue();
+            out.append(shown == 0 ? " " : "; ").append(e.getKey());
+            int n = counts.getOrDefault(e.getKey(), 1);
+            if (n > 1) out.append(" x").append(n);
+            out.append(" at ").append(p[0]).append(' ').append(p[1]).append(' ').append(p[2]);
+            if (++shown >= 12) break;
+        }
+        return out.append('.').toString();
+    }
+
+    private static String interesting(BlockState state) {
+        net.minecraft.world.level.block.Block b = state.getBlock();
+        if (b == Blocks.CHEST || b == Blocks.TRAPPED_CHEST || b == Blocks.BARREL) return "chest";
+        if (b == Blocks.ENDER_CHEST) return "ender chest";
+        if (b == Blocks.CRAFTING_TABLE) return "crafting table";
+        if (b == Blocks.FURNACE || b == Blocks.BLAST_FURNACE || b == Blocks.SMOKER) return "furnace";
+        if (state.is(BlockTags.BEDS)) return "bed";
+        if (b == Blocks.ANVIL || b == Blocks.CHIPPED_ANVIL || b == Blocks.DAMAGED_ANVIL) return "anvil";
+        if (b == Blocks.ENCHANTING_TABLE) return "enchanting table";
+        if (b == Blocks.SPAWNER) return "spawner";
+        if (state.is(BlockTags.LOGS)) return "log";
+        if (b == Blocks.WATER) return null;
+        if (b == Blocks.LAVA) return "lava";
+        String id = BuiltInRegistries.BLOCK.getKey(b).getPath();
+        if (id.endsWith("_ore") || id.equals("ancient_debris")) return id.replace("deepslate_", "").replace("_ore", " ore");
+        return null;
     }
 
     private void recordPlan(String prompt, List<Step> steps) {
