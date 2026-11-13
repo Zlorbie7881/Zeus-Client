@@ -531,6 +531,7 @@ public final class Combat {
         private final Setting.Bool jitter = add(new Setting.Bool("Randomise timing", "Vary the time between clicks a little, like a hand.", true));
         private final Setting.Bool human = add(new Setting.Bool("Human pauses", "Take a short pause every few seconds, so the clicking is not perfectly continuous.", true));
         private final Setting.Bool hold = add(new Setting.Bool("Only while the button is held", "Off: it clicks all the time.", true));
+        private final Setting.Bool charged = add(new Setting.Bool("Only when the swing is charged", "Waits for the attack cooldown before hitting, so the clicking rate never outruns what a hand can do.", true));
         private final Random rng = new Random();
         private long nextLeft;
         private long nextRight;
@@ -565,9 +566,15 @@ public final class Combat {
                 nextLeft = now + delay();
                 HitResult hit = mc.hitResult;
                 if (hit instanceof EntityHitResult ehr) {
-                    Hits.attempt(ehr.getEntity());
-                    mc.gameMode.attack(mc.player, ehr.getEntity());
-                    mc.player.swing(InteractionHand.MAIN_HAND);
+                    // Ten clicks a second at a mob is the loudest attack-rate tell there is; a
+                    // swinging arm has to wait for the cooldown just like a real one.
+                    if (charged.on() && mc.player.getAttackStrengthScale(0f) < 0.95f) {
+                        nextLeft = now + 40;
+                    } else {
+                        Hits.attempt(ehr.getEntity());
+                        mc.gameMode.attack(mc.player, ehr.getEntity());
+                        mc.player.swing(InteractionHand.MAIN_HAND);
+                    }
                 } else if (hit instanceof BlockHitResult bhr && bhr.getType() != HitResult.Type.MISS) {
                     BlockPos pos = bhr.getBlockPos();
                     if (pos.equals(breakingBlock)) mc.gameMode.continueDestroyBlock(pos, bhr.getDirection());

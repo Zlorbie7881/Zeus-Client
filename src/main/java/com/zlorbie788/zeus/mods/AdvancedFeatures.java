@@ -130,6 +130,7 @@ public final class AdvancedFeatures {
         private final Setting.Bool players = add(new Setting.Bool("Players", "Include other players. Friends are always spared.", false));
         private int cooldown;
         private int lastCount;
+        private final List<LivingEntity> queue = new ArrayList<>();
 
         public MultiAura() {
             super("multiaura", "MultiAura", "Hits several nearby targets in one go, nearest first, using the ordinary attack call.", Category.COMBAT);
@@ -139,8 +140,11 @@ public final class AdvancedFeatures {
             lastCount = 0;
             if (mc.player == null || mc.level == null || mc.gameMode == null || mc.screen != null) return;
             if (pauseUse.on() && mc.player.isUsingItem()) return;
+            if (!queue.isEmpty()) {
+                strike(mc, queue.remove(0));
+                return;
+            }
             if (cooldown-- > 0) return;
-            cooldown = delay.i();
             var self = mc.player;
             double r = range.get();
             net.minecraft.world.phys.Vec3 look = self.getLookAngle();
@@ -159,15 +163,28 @@ public final class AdvancedFeatures {
                 candidates.add(living);
             }
             candidates.sort(Comparator.comparingDouble(self::distanceToSqr));
+            // One arm swings once per tick, so the cycle is spread over the next few ticks instead
+            // of sending several attack packets inside a single tick.
             for (int i = 0; i < Math.min(targets.i(), candidates.size()); i++) {
-                LivingEntity target = candidates.get(i);
-                if (Hits.cold(target.getId())) continue;
-                Hits.attempt(target);
-                Aim.look(target.position().add(0, target.getBbHeight() * 0.55, 0));
-                mc.gameMode.attack(self, target);
-                self.swing(InteractionHand.MAIN_HAND);
-                lastCount++;
+                LivingEntity pick = candidates.get(i);
+                if (Hits.cold(pick.getId())) continue;
+                queue.add(pick);
             }
+            if (queue.isEmpty()) return;
+            cooldown = delay.i();
+            strike(mc, queue.remove(0));
+        }
+
+        private void strike(Minecraft mc, LivingEntity target) {
+            if (mc.player == null || target == null || !target.isAlive()) return;
+            double r = range.get();
+            if (mc.player.distanceToSqr(target) > r * r) return;
+            if (Hits.cold(target.getId())) return;
+            Hits.attempt(target);
+            Aim.look(target.position().add(0, target.getBbHeight() * 0.55, 0));
+            mc.gameMode.attack(mc.player, target);
+            mc.player.swing(InteractionHand.MAIN_HAND);
+            lastCount = 1;
         }
 
         @Override protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
