@@ -141,6 +141,10 @@ public final class AiPilot extends Module {
         int toolTried;
         int progressMark;
         long progressAt;
+        java.util.List<Vec3> path;
+        Vec3 pathFor;
+        long pathAt;
+        int pathIndex;
 
         Job(JobKind kind, String target, int wanted, Vec3 to) {
             this.kind = kind;
@@ -738,6 +742,8 @@ public final class AiPilot extends Module {
         builder.append("Only send actions that are needed. Never invent ids. If the request cannot be done, return an empty actions list and explain in say.\n");
         builder.append("Prefix any job with repeat N to run the whole plan N times, for example: repeat 3 chop a tree then mine 10 stone.\n");
         builder.append("go to mines a staircase down, cuts steps up or towers up on its own when the target sits at another height, and it never digs the block under its feet. mine until only closes on ore it can already see, mines it, and reports the block that actually broke.\n");
+        builder.append("Movement is planned on the block grid: when the direct line is blocked it searches for a walkable path around walls, up ledges and down drops, never through lava, fire or cactus.\n");
+        builder.append("Ore jobs staircase to the depth the ore lives at first (iron y16, diamond y-59) and then tunnel, so ask for mine 16 iron without naming a height.\n");
         builder.append("do can also be job, where value is a phrase like: chop tree, chop 3 trees, mine until iron, mine 20 stone, quarry 10, tunnel 30, strip mine, farm, replant, till 9, collect, hunt, flee, shoot, shear 3, milk, eat, sleep, torch 8, place cobblestone here, place torch at 120 64 -300, drop 32 dirt, explore 60, return, build a house, swim to 120 62 -300, climb 8, bridge 12, go to 120 64 -300, come here, follow me, follow Steve, dig down, stop. Chain them in one value with then: chop 2 trees then mine until iron.\n");
         builder.append("Chests: store 20 cobblestone, put away 32 dirt, deposit 5 diamond, take 32 iron, loot 16 bread, grab 4 torch. The job finds a chest, barrel or trapped chest within five blocks, opens it and shift-clicks one stack at a time, counts real items against the number asked for, and only matches the exact item: iron means ingots, never ore or a sword, so say iron_ore for ore.\n");
         builder.append("Crafting and furnaces: craft 4 planks, craft a crafting table, craft sticks, craft a furnace, craft a stone pickaxe, craft iron sword, craft torch, craft chest, craft bucket, craft bed, smelt 8 iron, cook 4 porkchop. The job places and opens its own crafting table or furnace, crafts planks or sticks from logs first when it has to, and furnishes fuel itself. Known recipes: planks, stick, crafting_table, furnace, chest, torch, stone_pickaxe, stone_axe, stone_shovel, stone_sword, stone_hoe, iron_pickaxe, iron_sword, bucket, bed.\n");
@@ -2688,6 +2694,15 @@ public final class AiPilot extends Module {
         endJob(mc, "off to sleep");
     }
 
+    /** True for the targets that live at a particular depth; stone, dirt and logs do not. */
+    private static boolean isOre(String target) {
+        return switch (oreKey(target)) {
+            case "iron", "gold", "diamond", "redstone", "lapis", "emerald", "coal", "copper",
+                 "ancient_debris", "debris", "nether_quartz", "quartz", "amethyst" -> true;
+            default -> false;
+        };
+    }
+
     private static int bestY(String ore) {
         return switch (ore) {
             case "diamond", "redstone" -> -59;
@@ -2735,7 +2750,7 @@ public final class AiPilot extends Module {
                 return;
             }
         }
-        int wantY = bestY(oreKey(job.target));
+        int wantY = isOre(job.target) ? bestY(oreKey(job.target)) : (int) Math.round(mc.player.getY());
         double above = mc.player.getY() - wantY;
         job.note = Math.abs(above) > 1.5
                 ? "staircasing " + (above > 0 ? "down" : "up") + " to y " + wantY + " for " + job.target
@@ -3045,9 +3060,14 @@ public final class AiPilot extends Module {
             return;
         }
         long now = System.currentTimeMillis();
+        XRay ray = Zeus.get(XRay.class);
+        boolean seeThrough = ray != null && ray.enabled();
         if (now >= job.nextSearch) {
             job.nextSearch = now + 250L;
-            job.block = nearestOre(mc, job.target, Math.max(12, jobRange.i()), 12);
+            BlockPos found = nearestOre(mc, job.target, Math.max(12, jobRange.i()), 12);
+            // Only ore the player could actually walk up to: ore buried in stone is reached by
+            // tunnelling, not by walking at the wall it is behind.
+            job.block = found != null && (seeThrough || exposed(mc, found)) ? found : null;
         }
         if (job.block != null) {
             BlockState state = mc.level.getBlockState(job.block);
@@ -3067,6 +3087,16 @@ public final class AiPilot extends Module {
                 return;
             }
         }
+        int wantY = isOre(job.target) ? bestY(oreKey(job.target)) : (int) Math.round(mc.player.getY());
+        double drift = mc.player.getY() - wantY;
+        if (Math.abs(drift) > 2.0) {
+            job.note = "heading to y " + wantY + " for " + job.target + " (" + Math.min(job.mined, job.wanted) + "/" + job.wanted + ")";
+            Vec3 column = new Vec3(mc.player.getX(), wantY, mc.player.getZ());
+            if (drift > 0) stairDown(mc, column);
+            else stairUp(mc, column);
+            return;
+        }
+        job.note = "tunnelling for " + job.target + " (" + Math.min(job.mined, job.wanted) + "/" + job.wanted + ")";
         tunnel(mc);
     }
 
@@ -3257,6 +3287,7 @@ public final class AiPilot extends Module {
                 job.blocked = 0;
                 job.bestDist = 0;
                 job.detourUntil = 0;
+                job.path = null;
             }
             return true;
         }
@@ -3271,7 +3302,9 @@ public final class AiPilot extends Module {
             job.bestDist = 0;
             job.detourUntil = 0;
             job.pathRetries = 0;
+            job.path = null;
         }
+        if (job.path != null) return followPath(mc, p, stop);
         float base = (float) Math.toDegrees(Math.atan2(-dx, dz));
         if (job.bestDist == 0 || flat < job.bestDist - 0.5) {
             job.bestDist = flat;
@@ -3279,6 +3312,14 @@ public final class AiPilot extends Module {
         } else if (now - job.stallSince > 6000L) {
             job.stallSince = now;
             if (++job.pathRetries <= 3) {
+                job.path = planPath(mc, target, stop);
+                if (job.path != null) {
+                    job.pathFor = target;
+                    job.pathIndex = 0;
+                    job.blocked = 0;
+                    job.note = "found a way around, following it";
+                    return false;
+                }
                 job.detourYaw = base + (job.detourSide ? 95f : -95f);
                 job.detourSide = !job.detourSide;
                 job.detourUntil = now + 1400L;
@@ -3298,6 +3339,14 @@ public final class AiPilot extends Module {
             else job.blocked = Math.max(0, job.blocked - 1);
             if (job.blocked >= 6) {
                 if (job.blocked == 6) {
+                    job.path = planPath(mc, target, stop);
+                    if (job.path != null) {
+                        job.pathFor = target;
+                        job.pathIndex = 0;
+                        job.blocked = 0;
+                        job.note = "found a way around, following it";
+                        return false;
+                    }
                     job.detourYaw = base + (job.detourSide ? 90f : -90f);
                     job.detourSide = !job.detourSide;
                     job.detourUntil = now + 1200L;
@@ -3317,6 +3366,18 @@ public final class AiPilot extends Module {
         boolean detour = now < job.detourUntil;
         boolean blockedAhead = !detour && !passable(mc, base);
         boolean bump = p.horizontalCollision;
+        // A wall straight ahead is worth a plan right away, not three seconds of walking into it.
+        if (blockedAhead && now >= job.pathAt) {
+            job.pathAt = now + 2500L;
+            job.path = planPath(mc, target, stop);
+            if (job.path != null) {
+                job.pathFor = target;
+                job.pathIndex = 0;
+                job.blocked = 0;
+                job.note = "routing around the wall";
+                return false;
+            }
+        }
         if ((blockedAhead || bump) && jobDig.on() && now >= job.actionAt) {
             job.actionAt = now + 300L;
             if (digThrough(mc, base)) {
@@ -3365,6 +3426,127 @@ public final class AiPilot extends Module {
         if (job != null) {
             job.note = air < 140 ? "swimming up for air" : dive ? "diving to the target" : "swimming";
         }
+        return false;
+    }
+
+    private static final class PathNode implements Comparable<PathNode> {
+        final BlockPos pos;
+        final double f;
+
+        PathNode(BlockPos pos, double f) {
+            this.pos = pos;
+            this.f = f;
+        }
+
+        public int compareTo(PathNode other) {
+            return Double.compare(f, other.f);
+        }
+    }
+
+    /** A block a player can stand inside: two blocks of room and a solid, dry floor. */
+    private static boolean standable(Minecraft mc, BlockPos pos) {
+        if (mc.level == null) return false;
+        if (!passes(mc, pos) || !passes(mc, pos.above())) return false;
+        BlockPos under = pos.below();
+        BlockState floor = mc.level.getBlockState(under);
+        return !floor.getCollisionShape(mc.level, under).isEmpty() && floor.getFluidState().isEmpty();
+    }
+
+    /** A block that can be walked through without being burned, drowned or slowed. */
+    private static boolean passes(Minecraft mc, BlockPos pos) {
+        BlockState state = mc.level.getBlockState(pos);
+        if (!state.getFluidState().isEmpty()) return false;
+        if (!state.getCollisionShape(mc.level, pos).isEmpty()) return false;
+        return !state.is(net.minecraft.world.level.block.Blocks.FIRE)
+                && !state.is(net.minecraft.world.level.block.Blocks.MAGMA_BLOCK)
+                && !state.is(net.minecraft.world.level.block.Blocks.POWDER_SNOW)
+                && !state.is(net.minecraft.world.level.block.Blocks.CACTUS);
+    }
+
+    /**
+     * Bounded A* over the block grid, used when walking straight at the target bumps into something.
+     *
+     * <p>Nodes are places a player can stand; edges are one step in a cardinal direction at the
+     * same height, one step up, or a drop of up to three blocks. Lava, fire, powder snow and
+     * cactus are never entered, so a path that exists is a path that can be walked. The search is
+     * capped in both nodes and distance, so a hopeless target costs a few milliseconds at most and
+     * returns null instead of freezing the game.
+     */
+    private java.util.List<Vec3> planPath(Minecraft mc, Vec3 target, double stop) {
+        Player p = mc.player;
+        BlockPos start = BlockPos.containing(p.getX(), Math.floor(p.getY() + 0.01), p.getZ());
+        BlockPos goal = BlockPos.containing(target);
+        if (!standable(mc, start) && standable(mc, start.above())) start = start.above();
+        java.util.PriorityQueue<PathNode> open = new java.util.PriorityQueue<>();
+        java.util.HashMap<BlockPos, Double> cost = new java.util.HashMap<>();
+        java.util.HashMap<BlockPos, BlockPos> from = new java.util.HashMap<>();
+        open.add(new PathNode(start, 0));
+        cost.put(start, 0.0);
+        BlockPos best = start;
+        double bestH = Math.sqrt(start.distSqr(goal));
+        Direction[] ways = {Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST};
+        int budget = 900;
+        while (!open.isEmpty() && budget-- > 0) {
+            PathNode node = open.poll();
+            double g = cost.getOrDefault(node.pos, Double.MAX_VALUE);
+            double h = Math.sqrt(node.pos.distSqr(goal));
+            if (h < bestH) {
+                bestH = h;
+                best = node.pos;
+            }
+            if (h <= Math.max(1.0, stop * 0.5)) {
+                best = node.pos;
+                break;
+            }
+            for (Direction way : ways) {
+                BlockPos side = node.pos.relative(way);
+                for (int dy = 1; dy >= -3; dy--) {
+                    BlockPos next = side.offset(0, dy, 0);
+                    if (next.distSqr(start) > 1024) continue;
+                    if (!standable(mc, next)) continue;
+                    if (dy > 0 && !passes(mc, node.pos.above(2))) continue;
+                    double step = 1.0 + (dy > 0 ? 2.5 : -dy * 0.6);
+                    double nextCost = g + step;
+                    if (nextCost >= cost.getOrDefault(next, Double.MAX_VALUE)) continue;
+                    cost.put(next, nextCost);
+                    from.put(next, node.pos);
+                    open.add(new PathNode(next, nextCost + Math.sqrt(next.distSqr(goal)) * 1.05));
+                }
+            }
+        }
+        java.util.ArrayList<Vec3> path = new java.util.ArrayList<>();
+        for (BlockPos at = best; at != null && !at.equals(start); at = from.get(at)) {
+            path.add(0, new Vec3(at.getX() + 0.5, at.getY(), at.getZ() + 0.5));
+            if (path.size() > 64) break;
+        }
+        return path.isEmpty() ? null : path;
+    }
+
+    /** Follow a planned path one waypoint at a time. Returns true once the last one is reached. */
+    private boolean followPath(Minecraft mc, Player p, double stop) {
+        while (job.pathIndex < job.path.size()) {
+            Vec3 wp = job.path.get(job.pathIndex);
+            if (Math.hypot(wp.x - p.getX(), wp.z - p.getZ()) > 0.55 || Math.abs(wp.y - p.getY()) > 1.3) break;
+            job.pathIndex++;
+        }
+        if (job.pathIndex >= job.path.size()) {
+            job.path = null;
+            boolean there = job.pathFor != null
+                    && p.position().distanceTo(job.pathFor) <= Math.max(2.0, stop);
+            if (there) releaseKeys(mc);
+            return there;
+        }
+        Vec3 wp = job.path.get(job.pathIndex);
+        double dx = wp.x - p.getX(), dz = wp.z - p.getZ();
+        double flat = Math.hypot(dx, dz);
+        float yaw = flat < 0.08 ? p.getYRot() : (float) Math.toDegrees(Math.atan2(-dx, dz));
+        p.setYRot(yaw);
+        p.setYHeadRot(yaw);
+        mc.options.keyUp.setDown(flat > 0.12);
+        mc.options.keySprint.setDown(flat > 2.4);
+        mc.options.keyJump.setDown(p.onGround()
+                && (wp.y > p.getY() + 0.55 || p.horizontalCollision));
+        job.note = "following a path (" + (job.pathIndex + 1) + "/" + job.path.size() + ")";
         return false;
     }
 
