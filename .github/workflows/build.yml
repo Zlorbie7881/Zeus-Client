@@ -5,6 +5,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -22,12 +25,27 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew build --no-daemon --console=plain
+          rm -f build/libs/*-sources.jar
+          ls -la build/libs
 
-      - name: Upload jar
+      - name: Upload jar (Actions tab)
         uses: actions/upload-artifact@v4
         with:
           name: zeus-jar
-          path: |
-            build/libs/*.jar
-            !build/libs/*-sources.jar
+          path: build/libs/*.jar
           if-no-files-found: error
+
+      # A release gives a direct .jar link (no zip) served from GitHub's fast download CDN.
+      - name: Publish release with the jar
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Zeus build ${{ github.run_number }} (${{ github.ref_name }})
+          target_commitish: ${{ github.sha }}
+          prerelease: ${{ github.ref_name != 'main' }}
+          make_latest: ${{ github.ref_name == 'main' }}
+          body: |
+            Automatic build of `${{ github.ref_name }}` at ${{ github.sha }}.
+            Download the .jar below and put it in `.minecraft/mods` with Fabric API (Minecraft 1.21.11).
+          files: build/libs/*.jar
