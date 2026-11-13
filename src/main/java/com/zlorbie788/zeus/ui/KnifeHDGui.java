@@ -141,7 +141,20 @@ public final class KnifeHDGui {
             int o = 0;
             for (int i = from; i < to; i++) {
                 KnifeHD.Quad q = qs.get(i);
+                // GUI pipelines cull back faces.  A knife turned over (or any face seen from behind) arrives
+                // wound the other way and would simply vanish, leaving only its edges; emit those quads in
+                // reverse order so every quad faces the screen.  Signed area is taken after the pose, in GUI
+                // coordinates (y down), where the front winding of a vanilla fill has a negative area.
+                float area = 0f;
                 for (int c = 0; c < 4; c++) {
+                    int d = (c + 1) & 3;
+                    float ax = pose.m00() * q.x[c] + pose.m10() * q.y[c], ay = pose.m01() * q.x[c] + pose.m11() * q.y[c];
+                    float bx = pose.m00() * q.x[d] + pose.m10() * q.y[d], by = pose.m01() * q.x[d] + pose.m11() * q.y[d];
+                    area += ax * by - bx * ay;
+                }
+                boolean flip = area > 0f;
+                for (int k = 0; k < 4; k++) {
+                    int c = flip ? (4 - k) & 3 : k;
                     float x = q.x[c], y = q.y[c];
                     if (!Float.isFinite(x) || !Float.isFinite(y)) {
                         x = 0f;

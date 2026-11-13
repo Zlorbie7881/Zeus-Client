@@ -96,6 +96,7 @@ public final class AiPilot extends Module {
     private static final java.util.concurrent.atomic.AtomicInteger PLANS = new java.util.concurrent.atomic.AtomicInteger();
     private static volatile boolean paused;
     private static volatile String lastAsked = "";
+    private static volatile String waiting = "";
     private static volatile long lastLatency;
     static final java.util.concurrent.atomic.AtomicLong TOKENS = new java.util.concurrent.atomic.AtomicLong();
     private static volatile String followPrompt = "";
@@ -593,8 +594,11 @@ public final class AiPilot extends Module {
         }
         long now = System.currentTimeMillis();
         long gap = Math.round(wait.get() * 1000.0);
-        if (busy) return "Still thinking about the last request.";
-        if (now - LAST.get() < gap) return "One moment, the last request was just sent.";
+        if (busy || now - LAST.get() < gap) {
+            // Hold one request and send it as soon as the AI is free, instead of making the player retype it.
+            waiting = prompt;
+            return busy ? "Queued: I'll do that right after the current request." : "Queued: sending in a moment.";
+        }
         if (!allow()) return "Hourly request limit reached (" + perHour.i() + "). Raise it in the Zeus AI Functions settings.";
         busy = true;
         LAST.set(now);
@@ -724,6 +728,12 @@ public final class AiPilot extends Module {
 
     @Override
     protected void onTick(Minecraft mc) {
+        if (!waiting.isEmpty() && !busy && System.currentTimeMillis() - LAST.get() >= Math.round(wait.get() * 1000.0)) {
+            String next = waiting;
+            waiting = "";
+            String said = submit(next);
+            if (said != null && !said.startsWith("Thinking")) AiTutorial.chat(said, false);
+        }
         if (job != null) {
             tickJob(mc);
             return;
@@ -866,6 +876,10 @@ public final class AiPilot extends Module {
             }
             case "theme" -> {
                 theme(step.value());
+                return;
+            }
+            case "hold", "select", "equip" -> {
+                lastAction = hold(step.value());
                 return;
             }
             case "waypoint" -> {
@@ -1194,7 +1208,7 @@ public final class AiPilot extends Module {
         StringBuilder builder = new StringBuilder();
         builder.append("You are Zeus AI, the assistant inside the Zeus Minecraft client. You turn what the player types into actions. Answer with one JSON object only, no prose outside it, no code fences.\n");
         builder.append("Schema: {\"say\":\"one short friendly sentence for the player\",\"actions\":[{\"do\":\"<verb>\",\"module\":\"<id>\",\"setting\":\"<exact setting name>\",\"value\":\"<new value>\"}]}\n");
-        builder.append("Verbs: on, off, toggle, set (need module); job, stop, preset, theme, waypoint, explain, remember, forget, report, help, open, hud, keybinds, panic, undo (no module).\n");
+        builder.append("Verbs: on, off, toggle, set (need module); job, stop, hold, preset, theme, waypoint, explain, remember, forget, report, help, open, hud, keybinds, panic, undo (no module). hold puts an item in hand: value is the item (pickaxe, bread, diamond sword, nothing).\n");
         builder.append("Examples:\n");
         builder.append("turn on sprint and fullbright -> {\"say\":\"Sprint and Fullbright are on.\",\"actions\":[{\"do\":\"on\",\"module\":\"sprint\"},{\"do\":\"on\",\"module\":\"fullbright\"}]}\n");
         builder.append("make killaura reach 4 -> {\"say\":\"Range set to 4.\",\"actions\":[{\"do\":\"set\",\"module\":\"killaura\",\"setting\":\"Range\",\"value\":\"4\"}]}\n");
@@ -2029,6 +2043,7 @@ public final class AiPilot extends Module {
         job = null;
         lastAction = label + ": " + reason;
         Notify.good("Zeus AI: " + label + " — " + reason);
+        if (speak.on()) AiTutorial.chat((done ? "Done: " : "Stopped: ") + label + " — " + reason, !done);
         if (!done) {
             if (!chain.isEmpty()) {
                 Notify.info("Zeus AI: dropped " + chain.size() + " queued job(s) after the stop");
@@ -4561,6 +4576,34 @@ public final class AiPilot extends Module {
         return Direction.EAST;
     }
 
+    /** Put an item matching the words in hand, moving it to the hotbar when it is in the inventory. */
+    private String hold(String value) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null) return "not in a world";
+        String want = value == null ? "" : value.trim().toLowerCase(Locale.ROOT).replace(' ', '_');
+        if (want.isEmpty()) return "did not say what to hold";
+        if (want.equals("nothing") || want.equals("empty") || want.equals("empty_hand") || want.equals("fist")) {
+            for (int i = 0; i < 9; i++) {
+                if (mc.player.getInventory().getItem(i).isEmpty()) {
+                    Inv.select(i);
+                    return "holding nothing (slot " + (i + 1) + ")";
+                }
+            }
+            return "did not find an empty hotbar slot";
+        }
+        String bare = want.replaceAll("^(a|an|the|my)_", "");
+        java.util.function.Predicate<ItemStack> match = st -> {
+            if (st.isEmpty()) return false;
+            String id = BuiltInRegistries.ITEM.getKey(st.getItem()).getPath();
+            String name = st.getHoverName().getString().toLowerCase(Locale.ROOT).replace(' ', '_');
+            return id.equals(bare) || name.equals(bare) || id.endsWith("_" + bare) || id.contains(bare) || name.contains(bare);
+        };
+        int slot = ensureHotbar(mc, match);
+        if (slot < 0) return "did not find " + value + " in the inventory";
+        Inv.select(slot);
+        return "holding " + mc.player.getInventory().getItem(slot).getHoverName().getString();
+    }
+
     private void help() {
         if (!hasKey()) Notify.info("Not set up yet: /zeus ai tutorial walks you through it in about two minutes");
         Notify.info("Try: on sprint, off esp, set killaura range to 4, preset pvp, theme violet, undo, status");
@@ -4736,6 +4779,7 @@ public final class AiPilot extends Module {
         }
         Step work = jobStep(part);
         if (work != null) return work;
+        if (part.startsWith("hold ") || part.startsWith("equip ")) return new Step("hold", "", "", part.substring(part.indexOf(' ') + 1).trim());
         if (part.startsWith("explain ")) return new Step("explain", "", "", part.substring(8).trim());
         if (part.startsWith("what does ") && part.endsWith(" do")) return new Step("explain", "", "", part.substring(10, part.length() - 3).trim());
         if (part.startsWith("remember ")) return new Step("remember", "", "", part.substring(9).trim());
