@@ -809,7 +809,7 @@ public final class KnifeArt {
         new Straight("Machete", 8.6f, 1.35f, 16.5f, w(1.5f, 1.7f, 1.8f, 1.85f, 1.9f, 1.95f, 2f, 2f, 1.8f, 1.4f, 0.7f), w(1.6f, 1.8f, 1.9f, 1.95f, 2f, 2.05f, 2.1f, 2.1f, 1.9f, 1.5f, 0.75f), -8f, 30f, H_CORD, "p"),
         new Straight("Dagger", 5.8f, 1f, 10.8f, w(1.1f, 1.25f, 1.3f, 1.28f, 1.2f, 1.1f, 0.95f, 0.8f, 0.6f, 0.4f, 0.12f), w(1.1f, 1.25f, 1.3f, 1.28f, 1.2f, 1.1f, 0.95f, 0.8f, 0.6f, 0.42f, 0.12f), 0f, 0f, H_SCALES, "gp"),
 
-        // the HD tactical knives: drawn from the sheet atlas by KnifeHd, these entries are
+        // the HD tactical knives: drawn from the sheet atlas by KnifeHD, these entries are
         // their pixel fallback (same names, same order as knives/hd/tactical.json)
         new Straight("Tactical · Case hardened", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
         new Straight("Tactical · Crimson web", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_SKEL, "lps"),
@@ -821,7 +821,7 @@ public final class KnifeArt {
         new Straight("Tactical · Urban masked", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_SKEL, "ps"),
     };
 
-    /** How many of the last straight models are HD tactical knives drawn by {@link KnifeHd}. */
+    /** How many of the last straight models are HD tactical knives drawn by {@link KnifeHD}. */
     public static final int HD_COUNT = 8;
 
     /** HD knife index for a knife key (KR.length + straight index), or -1. */
@@ -829,7 +829,7 @@ public final class KnifeArt {
         int si = key - KR.length;
         if (si < 0 || si >= SMODELS.length) return -1;
         int hd = si - (SMODELS.length - HD_COUNT);
-        return hd >= 0 && hd < KnifeHd.count() ? hd : -1;
+        return hd >= 0 && hd < KnifeHD.count() ? hd : -1;
     }
 
     /** HD knife index for a knife type (0 butterfly, 1 karambit, 2.. straight), or -1. */
@@ -847,7 +847,7 @@ public final class KnifeArt {
     public static float gripOf(int key) {
         if (key < KR.length) return KGRIP;
         int hd = hdOf(key);
-        if (hd >= 0) return KnifeHd.grip(KnifeHd.model(hd));
+        if (hd >= 0) return KnifeHD.grip(KnifeHD.model(hd));
         Straight m = SMODELS[Math.min(SMODELS.length - 1, key - KR.length)];
         return (m.style == H_PUSH ? 1.6f : m.hl * 0.5f) * Q;
     }

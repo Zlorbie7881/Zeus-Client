@@ -33,6 +33,8 @@ LEN = 28.4
 HALF = 3.55
 ZMAX = 1.4
 CELLS = 7
+# (cell width, cell height) per detail level: the cell is square-ish in world units,
+# 28.4 long by 7.1 wide, so 1024x256 keeps the blade's proportions at full detail.
 LEVELS = [(1024, 256), (512, 128), (256, 64)]
 
 
@@ -261,13 +263,12 @@ def grip_colour(kind, u, v, h1):
     return (30, 30, 34)
 
 
-BRASS = (198, 158, 84)
-STEEL = (150, 156, 166)
+BRASS = (201, 161, 86)
+STEEL = (164, 170, 180)
 
 
 def render_face(k):
-    w, h = LEVELS[0]
-    cellh = h // CELLS
+    w, cellh = LEVELS[0]
     img = Image.new("RGBA", (w, cellh), (0, 0, 0, 0))
     px = img.load()
     b0, tipu, spine, edge = k.blade
@@ -304,8 +305,24 @@ def render_face(k):
                 frac = (vv - fe) / (fs - fe) if fs > fe else 0.5
                 if skin in ("plain", "damascus", "slaughter"):
                     lift = -34 + 46 * clamp01((frac - 0.62) / 0.38) - 18 * clamp01((0.30 - frac) / 0.30)
+                    # the grind line: a bright bevel with a shadow under it, like a real flat grind
+                    lift += 26 * math.exp(-((frac - 0.36) ** 2) / 0.0009)
+                    lift -= 22 * math.exp(-((frac - 0.31) ** 2) / 0.0006)
                     c = (max(0, min(255, c[0] + int(lift))), max(0, min(255, c[1] + int(lift))),
                          max(0, min(255, c[2] + int(lift))))
+            # a crisp dark line around the silhouette so the knife reads against the hand
+            if x < 1 or y < 1 or x >= w - 1 or y >= cellh - 1:
+                lit = 0.62
+            else:
+                lit = 1.0
+                for dx, dy in ((2, 0), (-2, 0), (0, 2), (0, -2)):
+                    uu = (x + dx + 0.5) / w * LEN
+                    vyy = -HALF + (y + dy + 0.5) / cellh * 2 * HALF + k.centre_curve(uu)
+                    if not k.inside(uu, vyy):
+                        lit = 0.60
+                        break
+            if lit < 1.0:
+                c = (int(c[0] * lit), int(c[1] * lit), int(c[2] * lit))
             g = int(shade_grain(u, vv))
             c = (max(0, min(255, c[0] + g)), max(0, min(255, c[1] + g)), max(0, min(255, c[2] + g)))
             px[x, y] = (c[0], c[1], c[2], 255)
@@ -381,8 +398,7 @@ def build_sheet(k):
     edge = light_cell(face, lambda t: max(0.0, min(1.0, (t - 0.55) / 0.45)), 0.5)
     cells = [face, offset_cell(face, 1, 1, 0.88), offset_cell(face, 2, 2, 0.74),
              flat_cell(face, (58, 58, 64)), gloss, edge, profile_cell(face)]
-    w, h = LEVELS[0]
-    cellh = h // CELLS
+    w, cellh = LEVELS[0]
     sheet = Image.new("RGBA", (w, cellh * CELLS), (0, 0, 0, 0))
     for i, c in enumerate(cells):
         sheet.alpha_composite(c, (0, i * cellh))
@@ -390,14 +406,14 @@ def build_sheet(k):
 
 
 def write_levels(k, sheet):
-    for wi, hi in LEVELS:
-        cellh = hi // CELLS
-        out = Image.new("RGBA", (wi, cellh * CELLS), (0, 0, 0, 0))
+    for wi, chi in LEVELS:
+        out = Image.new("RGBA", (wi, chi * CELLS), (0, 0, 0, 0))
         for i in range(CELLS):
-            band = sheet.crop((0, i * (LEVELS[0][1] // CELLS), LEVELS[0][0],
-                               (i + 1) * (LEVELS[0][1] // CELLS)))
-            out.alpha_composite(band.resize((wi, cellh), Image.LANCZOS), (0, i * cellh))
-        level = LEVELS.index((wi, hi))
+            band = sheet.crop((0, i * LEVELS[0][1], LEVELS[0][0], (i + 1) * LEVELS[0][1]))
+            if band.size != (wi, chi):
+                band = band.resize((wi, chi), Image.LANCZOS)
+            out.alpha_composite(band, (0, i * chi))
+        level = LEVELS.index((wi, chi))
         out.save(os.path.join(TEX, "%s_%d.png" % (k.id, level)))
 
 
