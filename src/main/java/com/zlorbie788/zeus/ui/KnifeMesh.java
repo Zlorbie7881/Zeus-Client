@@ -16,7 +16,7 @@ import net.minecraft.client.gui.GuiGraphics;
 public final class KnifeMesh {
     private static final float D = 90f;
     private static final float LX = -0.40f, LY = -0.55f, LZ = -0.73f;
-    private static final int MAX_TRIS = 520;
+    private static final int MAX_TRIS = 820;
 
     private static final String TRI = "textures/gui/anim/tri.png";
     private static boolean broken;
@@ -305,7 +305,11 @@ public final class KnifeMesh {
                     SX[n * 3 + 2] = cx * kc;
                     SY[n * 3 + 2] = cy * kc;
                     DEPTH[n] = mz;
-                    COL[n] = shade(mesh.mat, look, lam, nx, ny, alpha);
+                    float ly = (mesh.v[mesh.f[i] * 3 + 1] + mesh.v[mesh.f[i + 1] * 3 + 1]
+                            + mesh.v[mesh.f[i + 2] * 3 + 1]) / 3f;
+                    float lx = (mesh.v[mesh.f[i] * 3] + mesh.v[mesh.f[i + 1] * 3]
+                            + mesh.v[mesh.f[i + 2] * 3]) / 3f;
+                    COL[n] = shade(mesh.mat, look, lam, nx, ny, nz, lx, ly, i, alpha);
                     n++;
                 }
             }
@@ -354,29 +358,80 @@ public final class KnifeMesh {
         return k.move(px, py, pz).rotZ(ang).move(-px, -py, -pz);
     }
 
-    private static int shade(String mat, KnifeArt.Look look, float lam, float nx, float ny, float alpha) {
-        int light, mid, dark;
-        if ("handle".equals(mat)) {
-            light = look.handle[0];
-            mid = look.handle[1];
-            dark = look.handle[2];
+    private static final int[] BRASS = {0xFF3A2408, 0xFF5E3A0E, 0xFF9A6420, 0xFFC8933E, 0xFFEFC97A};
+
+    private static int shade(String mat, KnifeArt.Look look, float lam, float nx, float ny,
+                             float nz, float lx, float ly, int seed, float alpha) {
+        // Five stop ramps: deep shadow, shadow, body, lit and highlight.  A three stop ramp made
+        // every flat face one of two flat greys, which is what made the knives read as cardboard.
+        boolean grip = "handle".equals(mat) || "cord".equals(mat);
+        int a0, a1, a2, a3, a4;
+        if (grip) {
+            int base = "cord".equals(mat) ? Draw.darken(look.handle[1], 0.35f) : look.handle[0];
+            a4 = Draw.lighten(base, 0.30f);
+            a3 = base;
+            a2 = look.handle[1];
+            a1 = look.handle[2];
+            a0 = Draw.darken(look.handle[3], 0.35f);
+        } else if ("brass".equals(mat) || "accent".equals(mat)) {
+            // Fittings are warm metal whatever the blade finish is, the way a real knife has
+            // brass bolsters and rivets against steel.
+            a0 = BRASS[0];
+            a1 = BRASS[1];
+            a2 = BRASS[2];
+            a3 = BRASS[3];
+            a4 = BRASS[4];
         } else {
-            light = look.blade[0];
-            mid = look.blade[1];
-            dark = look.blade[2];
-            if ("pin".equals(mat) || "guard".equals(mat)) {
-                light = Draw.mix(look.blade[0], 0xFFFFFFFF, 0.2f);
-                mid = look.blade[1];
-                dark = look.blade[2];
+            int hi = look.blade[0], mid = look.blade[1], dark = look.blade[2];
+            if ("edge".equals(mat) || "guard".equals(mat) || "pin".equals(mat)) {
+                hi = Draw.lighten(look.blade[0], 0.30f);
+                mid = Draw.mix(look.blade[0], look.blade[1], 0.45f);
+            } else if ("dark".equals(mat)) {
+                hi = mid;
+                mid = dark;
+                dark = Draw.darken(dark, 0.4f);
+            }
+            a4 = Draw.lighten(hi, 0.45f);
+            a3 = hi;
+            a2 = mid;
+            a1 = dark;
+            a0 = Draw.darken(dark, 0.55f);
+        }
+
+        // Light, plus a lengthwise polish gradient, a lip of specular on the bevels and a little
+        // forged variance per face so a flat plane is never one dead colour.
+        float b = (grip ? 0.08f : -0.02f) + (grip ? 0.95f : 0.90f) * lam;
+        b -= 0.10f * Math.max(0f, ny);
+        if (!grip) {
+            b += 0.13f * Math.abs(nx);
+            b += 0.10f * (Math.max(0f, Math.min(1f, ly / 26f)) - 0.45f);
+            // Faces turned away from the viewer go dark, which draws a contour round the
+            // silhouette instead of letting the knife melt into the background.  The bevel is
+            // the cutting edge, so it is exempt and gets a highlight instead.
+            // Brushed steel: a fine lengthwise ripple so a big flat is never one tone.
+            b += ("handle".equals(mat) || "cord".equals(mat)) ? 0f
+                    : 0.045f * (float) Math.sin(lx * 6.3f + ly * 0.35f);
+            if ("edge".equals(mat)) {
+                b += 0.12f;
+            } else {
+                b -= 0.18f * (1f - Math.min(1f, Math.abs(nz)));
             }
         }
-        float t = Math.min(1f, 0.10f + lam * 1.05f);
-        int col = t < 0.5f ? Draw.mix(dark, mid, t * 2f) : Draw.mix(mid, light, (t - 0.5f) * 2f);
-        if (!"handle".equals(mat)) {
-            float glint = Math.max(0f, 1f - Math.abs(0.5f + nx * 0.9f - ny * 0.6f - 0.62f) * 5f);
-            col = Draw.mix(col, 0xFFFFFFFF, 0.28f * glint * lam);
-        }
-        col |= 0xFF000000;
-        return Draw.rgba(col, alpha);
+        b += jitter(seed) * (grip ? 0.045f : 0.075f);
+        if (b < 0f) b = 0f;
+        if (b > 1f) b = 1f;
+
+        int col = b < 0.25f ? Draw.mix(a0, a1, b * 4f)
+                : b < 0.5f ? Draw.mix(a1, a2, (b - 0.25f) * 4f)
+                : b < 0.75f ? Draw.mix(a2, a3, (b - 0.5f) * 4f)
+                : Draw.mix(a3, a4, (b - 0.75f) * 4f);
+        return Draw.rgba(col | 0xFF000000, alpha);
+    }
+
+    private static float jitter(int s) {
+        int h = s * 374761393 + 668265263;
+        h = (h ^ (h >> 13)) * 1274126177;
+        h ^= h >> 16;
+        return (h & 255) / 255f - 0.5f;
     }
 }

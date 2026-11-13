@@ -33,7 +33,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 JSON_PATH = os.path.join(ROOT, "src/main/resources/assets/zeus/knives/knives_lo.json")
-MAX_TRIS = 520
+MAX_TRIS = 820
 
 
 # ---------------------------------------------------------------- cross sections
@@ -42,7 +42,7 @@ def body_section(w, t, edge_w, fuller=0.0, swedge=0.0, belly=0.0, double=False):
     hw = w * 0.5
     ew = hw - edge_w
     spine = t * (0.5 - swedge) * (1.0 + belly)
-    groove = t * (0.5 - swedge) * 0.86 - fuller
+    groove = t * (0.5 - swedge) * 0.70 - fuller
     groove = max(groove, t * 0.12)
     if double:
         # Symmetric around the centre line: a centre ridge with a bevel on both sides.
@@ -258,8 +258,8 @@ def profile(u, table):
     return table[i] * (1 - k) + table[i + 1] * k
 
 
-def blade_solids(y0, length, widths, thick, *, xoff=None, slices=8, round_tip=True,
-                 edge_w=0.22, fuller=0.0, swedge=0.0, jimp=0.0, ricasso=0.0,
+def blade_solids(y0, length, widths, thick, *, xoff=None, slices=12, round_tip=True,
+                 edge_w=0.30, fuller=0.0, swedge=0.0, jimp=0.0, ricasso=0.0,
                  belly=0.0, slab=False, double=False, tip_shift=0.0):
     """Build the blade body and its edge bevels as separate closed solids."""
     body_rings, edge_rings, edge_rings_b = [], [], []
@@ -276,7 +276,12 @@ def blade_solids(y0, length, widths, thick, *, xoff=None, slices=8, round_tip=Tr
         if jimp and 0.12 < u < 0.62 and i % 2 == 1:
             sw += jimp
         ew = w * edge_w * (1.0 + 0.6 * max(0.0, (u - 0.6) / 0.4))
-        ew *= max(0.0, 1.0 - max(0.0, (u - (0.86 if round_tip else 0.88)) / (0.14 if round_tip else 0.12)))
+        if round_tip:
+            # Fatten the bevel towards the point, then run it out to nothing so the tip closes cleanly.
+            ew *= max(0.0, 1.0 - max(0.0, (u - 0.86) / 0.14))
+        else:
+            # Squared tip: a small chamfer on the last ring instead of a bevel spike.
+            ew *= 1.0 - 0.35 * max(0.0, (u - 0.9) / 0.1)
         xo = 0.0 if xoff is None else xoff(u)
         y = y0 + length * u
         if slab:
@@ -297,9 +302,9 @@ def blade_solids(y0, length, widths, thick, *, xoff=None, slices=8, round_tip=Tr
                          cap_end=not round_tip))
     solids = [("blade", body)]
     tip_e = (tip_x, tip_y, 0.0) if round_tip else None
-    solids.append(("guard", outward(*loft(edge_rings, tip=tip_e, cap_end=not round_tip))))
+    solids.append(("edge", outward(*loft(edge_rings, tip=tip_e, cap_end=not round_tip))))
     if double:
-        solids.append(("guard", outward(*loft(edge_rings_b, tip=tip_e, cap_end=not round_tip))))
+        solids.append(("edge", outward(*loft(edge_rings_b, tip=tip_e, cap_end=not round_tip))))
     return solids
 
 
@@ -315,15 +320,17 @@ def grip_section(hw, ht, style="oval", finger=0.0):
     return sec_handle(hw, ht, finger=finger)
 
 
-def handle_rings(length, hw, ht, slices=6, swell=0.14, wrap=0, grooves=0,
+def handle_rings(length, hw, ht, slices=8, swell=0.14, wrap=0, grooves=0,
                  style="oval", taper=0.88, swell_at=1.25, butt_flare=0.16):
     """Grip that is thin at the guard, full in the palm and flares at the butt."""
     rings = []
     for i in range(slices):
         u = i / (slices - 1)
         k = taper + swell * math.sin(min(1.0, u * swell_at) * math.pi * 0.5)
-        if u > 0.88:
-            k *= 1.0 + butt_flare * ((u - 0.88) / 0.12)
+        # a coke bottle waist just above the guard, then the butt flare
+        k *= 1.0 - 0.07 * math.sin(min(1.0, u * 2.2) * math.pi * 0.5) * (1.0 - u * 0.55)
+        if u > 0.84:
+            k *= 1.0 + butt_flare * ((u - 0.84) / 0.16)
         if wrap:
             k *= 1.0 + 0.05 * math.sin(u * math.pi * wrap * 2.0)
         finger = grooves * math.sin(u * math.pi * grooves) * 0.10 if grooves else 0.0
@@ -341,17 +348,18 @@ def cross_guard(cy, half_len, depth, th):
 
 
 def bolster_rings(y, hw, ht, depth, flare=1.35):
-    """Three ring bolster: narrow, flared, narrow - a shaped guard rather than a slab."""
-    a = sec_handle(hw * 0.94, ht * 1.02, 0.4)
-    b = sec_handle(hw * flare, ht * 1.30, 0.32)
-    c = sec_handle(hw * 0.78, ht * 0.9, 0.4)
-    return [(y, a), (y + depth * 0.45, b), (y + depth, c)]
+    """Four ring bolster swept towards the blade: a shaped guard rather than a slab."""
+    a = sec_handle(hw * 0.90, ht * 0.98, 0.42)
+    b = sec_handle(hw * flare * 0.94, ht * 1.26, 0.3)
+    c = sec_handle(hw * flare, ht * 1.16, 0.28)
+    d = sec_handle(hw * 0.74, ht * 0.86, 0.42)
+    return [(y, a), (y + depth * 0.32, b), (y + depth * 0.72, c), (y + depth, d)]
 
 
 def build(name, hl, bl, widths, thick, *, guard=None, tip_shift=0.0, hw=None, ht=1.15,
           xoff=None, point=True, fuller=0.0, swedge=0.0, jimp=0.0, ricasso=0.0,
           wrap=0, grooves=0, pins=2, ring=False, lanyard=False, butt=True,
-          width_scale=1.14, edge_w=0.2, slab=False, double=False, belly=0.0, slices=8,
+          width_scale=1.14, edge_w=0.30, slab=False, double=False, belly=0.0, slices=12,
           grip="oval", taper=0.88, swell=0.14, swell_at=1.25, butt_flare=0.16,
           guard_style="winged", pommel="cap"):
     """Assemble one knife: grip from 0 up, bolster, blade to hl + bl."""
@@ -375,13 +383,13 @@ def build(name, hl, bl, widths, thick, *, guard=None, tip_shift=0.0, hw=None, ht
         else:
             rings = [(0.0, gs(1.05)), (-0.3, gs(1.1)), (-0.5, gs(0.84))]
         parts.append({"n": "pommel", "p": [0.0, 0.0, 0.0],
-                      "meshes": [geo("guard", outward(*loft(rings)))]})
+                      "meshes": [geo("brass", outward(*loft(rings)))]})
 
     if pins:
         meshes = []
         for i in range(pins):
             u = 0.26 + 0.5 * (i / max(1, pins - 1)) if pins > 1 else 0.5
-            meshes.append(geo("pin", cylinder(0.0, hl * u, 0.22, ht * 1.02, sides=6)))
+            meshes.append(geo("brass", cylinder(0.0, hl * u, 0.22, ht * 1.02, sides=6)))
         parts.append({"n": "pins", "p": [0.0, 0.0, 0.0], "meshes": meshes})
 
     base = hl
@@ -399,7 +407,7 @@ def build(name, hl, bl, widths, thick, *, guard=None, tip_shift=0.0, hw=None, ht
             gpair = outward(*loft([(base, a), (base + gd * 0.8, b)]))
         else:
             gpair = outward(*loft(bolster_rings(base, hw * gw, ht, gd)))
-        parts.append({"n": "guard", "p": [0.0, base, 0.0], "meshes": [geo("guard", gpair)]})
+        parts.append({"n": "guard", "p": [0.0, base, 0.0], "meshes": [geo("brass", gpair)]})
         base += gd
 
     solids = blade_solids(base, bl, widths, thick, xoff=xoff, round_tip=point, slices=slices,
@@ -411,10 +419,10 @@ def build(name, hl, bl, widths, thick, *, guard=None, tip_shift=0.0, hw=None, ht
 
     if ring:
         parts.append({"n": "ring", "p": [0.0, 0.0, 0.0],
-                      "meshes": [geo("guard", torus((0.0, -0.5, 0.0), 0.62, 0.17, seg=10, side=3))]})
+                      "meshes": [geo("brass", torus((0.0, -0.5, 0.0), 0.62, 0.17, seg=10, side=3))]})
     if lanyard:
         parts.append({"n": "lanyard", "p": [0.0, 0.0, 0.0],
-                      "meshes": [geo("guard", torus((0.0, -0.72, 0.0), 0.3, 0.1, seg=6, side=3))]})
+                      "meshes": [geo("brass", torus((0.0, -0.72, 0.0), 0.3, 0.1, seg=6, side=3))]})
 
     return {"name": name, "hl": hl, "bl": bl, "tip": round(base + bl, 3),
             "grip": [0.0, round(hl * 0.5, 3), 0.0], "parts": parts}
