@@ -120,7 +120,11 @@ public final class KnifeSwing extends Module {
     }
     /** Knife kinds inside the renderer: 0 butterfly, 1 karambit, 2.. straight models; the HD knives are the last of those. */
     private static final int FIRST_HD = 2 + KnifeArt.SMODELS.length - KnifeArt.HD_COUNT;
-    private final Setting.Choice type = add(new Setting.Choice("HD knife", "Which HD tactical knife you hold: lit high-resolution 3D models (Damascus, Slaughter, Case hardened, Fade, Crimson web, Tiger tooth, Sapphire, Urban masked, Emerald, Marble fade, Ruby, Ultraviolet).", 0, TYPES));
+    private static final String[] SECTIONS = {"Knife & hand", "Position", "Tricks", "Effects"};
+    private final Setting.Choice section = add(new Setting.Choice("Show settings for", "The knife settings are split into four pages so you only see what you are changing.", 0, SECTIONS));
+    private final Setting.Action switchKnife = add(new Setting.Action("Switch knife", "Opens a window with every HD knife and a live 3D preview of each. Click one to hold it.", this::openGallery))
+            .showIf(() -> section.index() == 0);
+    private final Setting.Choice type = add(new Setting.Choice("HD knife", "Which HD tactical knife you hold: lit high-resolution 3D models (Damascus, Slaughter, Case hardened, Fade, Crimson web, Tiger tooth, Sapphire, Urban masked, Emerald, Marble fade, Ruby, Ultraviolet).", 0, TYPES)).showIf(() -> false);
 
     /** The renderer's knife kind for the chosen HD knife. */
     private int kind() {
@@ -130,42 +134,41 @@ public final class KnifeSwing extends Module {
     private void setKind(int kind) {
         if (kind >= FIRST_HD) type.set(kind - FIRST_HD);
     }
-    private final Setting.Choice sfinish = add(new Setting.Choice("Knife finish", "The paint of the straight knives: steel, Fade, Slaughter, Doppler, Case hardened and so on.", 0, KnifeArt.SFINISHES)).showIf(() -> self != null && self.kind() >= 2 && KnifeArt.hdType(self.kind()) < 0);
-    private final Setting.Choice when = add(new Setting.Choice("When it shows", "Choose when the knife overlay replaces the first-person hand: empty hand, both hands empty, always, or whenever you hold any sword.", 0, "Empty hand", "Both hands empty", "Always", "Replace any sword"));
-    private final Setting.Bool hideHand = add(new Setting.Bool("Hide the game's own hand", "Hides the game's arm and held item while the knife is in your hand, so the two do not overlap.", true));
-        private final Setting.Choice trick = add(new Setting.Choice("Tsuki / Butterfly (Butterfly)", "Plays the Tsuki / Butterfly animation: the trick key or right click plays it, and the knife changes to Butterfly to match. The repeat count is shown in its display.", 0, TRICKS)).showIf(() -> kind() == 0);
-        private final Setting.Choice ktrick = add(new Setting.Choice("Tsuki / Karambit & others (Karambit & other knives)", "Plays the Tsuki animation on a karambit and other knives. The knife changes to a karambit-style version to match the animation. The repeat count is shown in its display.", 0, KTRICKS)).showIf(() -> kind() >= 1);
-        private final Setting.Bool rightClick = add(new Setting.Bool("Keyboard & mouse trick", "The keyboard makes this Tsuki / Butterfly. Pick the Tsuki key in Controls and choose the animation. The move that is already in there decides which animation happens.", true));
-    private final Setting.Bool slash = add(new Setting.Bool("Slash when I attack", "The knife cuts across the screen when you attack.", true));
-    private final Setting.Bool hold = add(new Setting.Bool("Always in hand", "The knife stays in your hand between tricks. Off: it only shows while it moves.", true));
-    private final Setting.Bool auto = add(new Setting.Bool("Keep doing tricks", "Plays a trick by itself every few seconds.", false));
-    private final Setting.Choice preset = add(new Setting.Choice("Butterfly colours", "The colours of the butterfly knife's handles and blade.", 0, KnifeArt.PRESETS)).showIf(() -> kind() == 0);
-    private final Setting.Choice kcolor = add(new Setting.Choice("Karambit colours", "The colours of the karambit. Voidbloom is the dark purple one with the glowing magenta blade.", 0, KnifeArt.KPRESETS)).showIf(() -> kind() == 1);
-    private final Setting.Choice kcurve = add(new Setting.Choice("Karambit blade", "How the karambit's blade curves: the claw of the video, a wide hook or a long talon.", 0, KnifeArt.KCURVES)).showIf(() -> kind() == 1);
-    private final Setting.Choice shape = add(new Setting.Choice("Blade shape", "The shape of the butterfly knife's blade.", 0, KnifeArt.SHAPES)).showIf(() -> kind() == 0);
-    private final Setting.Choice finish = add(new Setting.Choice("Blade finish", "Overrides the blade colours of the chosen butterfly knife.", 0, KnifeArt.FINISHES)).showIf(() -> kind() == 0);
-    private final Setting.Choice design = add(new Setting.Choice("Handle design", "Slotted has the long slot and slanted teeth of the knife in the video.", 0, KnifeArt.DESIGNS)).showIf(() -> kind() == 0);
-    private final Setting.Choice hand = add(new Setting.Choice("Hand", "My skin: the arm wears your own skin, like the game's own hand. The others are painted.", 0, ArmArt.LOOKS));
-    private final Setting.Choice place = add(new Setting.Choice("Place", "Where on the screen. Bottom left is the left hand.", 0, "Bottom right", "Bottom left", "Centre"));
-    private final Setting.Bool showFingers = add(new Setting.Bool("Show fingers", "Draws the blocky fingers and thumb on the handle. Off: only the arm and the knife.", false));
-    private final Setting.Num size = add(new Setting.Num("Size", "How big the hand and knife are.", 1.0, 0.5, 2.5, 0.1, "x"));
-    private final Setting.Num height = add(new Setting.Num("Hand height", "How high the hand holding the knife sits, measured up from the bottom of the screen. Every knife type is placed so its grip lands here.", 30, 5, 70, 1, "%"));
-    private final Setting.Num inset = add(new Setting.Num("Hand distance from edge", "How far in from the side of the screen the hand sits.", 22, 5, 50, 1, "%"));
-    private final Setting.Num speed = add(new Setting.Num("Speed", "How fast the tricks play.", 1.0, 0.5, 2.0, 0.1, "x"));
-    private final Setting.Num spins = add(new Setting.Num("Rollovers", "How many times the knife turns in a rollover.", 2, 1, 4, 1, ""));
-    private final Setting.Bool sway = add(new Setting.Bool("Sway with the camera", "The hand lags behind when you turn, like the game's own.", true));
-    private final Setting.Bool handLight = add(new Setting.Bool("Light on the hand", "The knife throws a little of its colour on the hand when it flashes and spins.", true));
+    private final Setting.Choice sfinish = add(new Setting.Choice("Knife finish", "The paint of the straight knives: steel, Fade, Slaughter, Doppler, Case hardened and so on.", 0, KnifeArt.SFINISHES)).showIf(() -> false);
+    private final Setting.Choice when = add(new Setting.Choice("When it shows", "Choose when the knife overlay replaces the first-person hand: empty hand, both hands empty, always, or whenever you hold any sword.", 0, "Empty hand", "Both hands empty", "Always", "Replace any sword")).showIf(() -> section.index() == 0);
+    private final Setting.Bool hideHand = add(new Setting.Bool("Hide the game's own hand", "Hides the game's arm and held item while the knife is in your hand, so the two do not overlap.", true)).showIf(() -> section.index() == 0);
+        private final Setting.Choice trick = add(new Setting.Choice("Tsuki / Butterfly (Butterfly)", "Plays the Tsuki / Butterfly animation: the trick key or right click plays it, and the knife changes to Butterfly to match. The repeat count is shown in its display.", 0, TRICKS)).showIf(() -> false);
+        private final Setting.Choice ktrick = add(new Setting.Choice("Trick", "Plays the Tsuki animation on a karambit and other knives. The knife changes to a karambit-style version to match the animation. The repeat count is shown in its display.", 0, KTRICKS)).showIf(() -> section.index() == 2);
+        private final Setting.Bool rightClick = add(new Setting.Bool("Keyboard & mouse trick", "The keyboard makes this Tsuki / Butterfly. Pick the Tsuki key in Controls and choose the animation. The move that is already in there decides which animation happens.", true)).showIf(() -> section.index() == 2);
+    private final Setting.Bool slash = add(new Setting.Bool("Slash when I attack", "The knife cuts across the screen when you attack.", true)).showIf(() -> section.index() == 2);
+    private final Setting.Bool hold = add(new Setting.Bool("Always in hand", "The knife stays in your hand between tricks. Off: it only shows while it moves.", true)).showIf(() -> section.index() == 2);
+    private final Setting.Bool auto = add(new Setting.Bool("Keep doing tricks", "Plays a trick by itself every few seconds.", false)).showIf(() -> section.index() == 2);
+    private final Setting.Choice preset = add(new Setting.Choice("Butterfly colours", "The colours of the butterfly knife's handles and blade.", 0, KnifeArt.PRESETS)).showIf(() -> false);
+    private final Setting.Choice kcolor = add(new Setting.Choice("Karambit colours", "The colours of the karambit. Voidbloom is the dark purple one with the glowing magenta blade.", 0, KnifeArt.KPRESETS)).showIf(() -> false);
+    private final Setting.Choice kcurve = add(new Setting.Choice("Karambit blade", "How the karambit's blade curves: the claw of the video, a wide hook or a long talon.", 0, KnifeArt.KCURVES)).showIf(() -> false);
+    private final Setting.Choice shape = add(new Setting.Choice("Blade shape", "The shape of the butterfly knife's blade.", 0, KnifeArt.SHAPES)).showIf(() -> false);
+    private final Setting.Choice finish = add(new Setting.Choice("Blade finish", "Overrides the blade colours of the chosen butterfly knife.", 0, KnifeArt.FINISHES)).showIf(() -> false);
+    private final Setting.Choice design = add(new Setting.Choice("Handle design", "Slotted has the long slot and slanted teeth of the knife in the video.", 0, KnifeArt.DESIGNS)).showIf(() -> false);
+    private final Setting.Choice hand = add(new Setting.Choice("Hand", "My skin: the arm wears your own skin, like the game's own hand. The others are painted.", 0, ArmArt.LOOKS)).showIf(() -> section.index() == 0);
+    private final Setting.Choice place = add(new Setting.Choice("Place", "Where on the screen. Bottom left is the left hand.", 0, "Bottom right", "Bottom left", "Centre")).showIf(() -> section.index() == 1);
+    private final Setting.Bool showFingers = add(new Setting.Bool("Show fingers", "Draws the blocky fingers and thumb on the handle. Off: only the arm and the knife.", false)).showIf(() -> section.index() == 0);
+    private final Setting.Num size = add(new Setting.Num("Size", "How big the hand and knife are.", 1.0, 0.5, 2.5, 0.1, "x")).showIf(() -> section.index() == 1);
+    private final Setting.Num height = add(new Setting.Num("Hand height", "How high the hand holding the knife sits, measured up from the bottom of the screen. Every knife type is placed so its grip lands here.", 30, 5, 70, 1, "%")).showIf(() -> section.index() == 1);
+    private final Setting.Num inset = add(new Setting.Num("Hand distance from edge", "How far in from the side of the screen the hand sits.", 22, 5, 50, 1, "%")).showIf(() -> section.index() == 1);
+    private final Setting.Num speed = add(new Setting.Num("Speed", "How fast the tricks play.", 1.0, 0.5, 2.0, 0.1, "x")).showIf(() -> section.index() == 2);
+    private final Setting.Num spins = add(new Setting.Num("Rollovers", "How many times the knife turns in a rollover.", 2, 1, 4, 1, "")).showIf(() -> section.index() == 2);
+    private final Setting.Bool sway = add(new Setting.Bool("Sway with the camera", "The hand lags behind when you turn, like the game's own.", true)).showIf(() -> section.index() == 1);
+    private final Setting.Bool handLight = add(new Setting.Bool("Light on the hand", "The knife throws a little of its colour on the hand when it flashes and spins.", true)).showIf(() -> section.index() == 0);
     private final Setting.Bool safeDraw = add(new Setting.Bool("Safe draw", "Always uses the flat pixel knives, which draw on every setup. Turn it off to try the 3D models.", true)).showIf(() -> false);
-    private final Setting.Info status = add(new Setting.Info("Knife", this::lines));
+    private final Setting.Info status = add(new Setting.Info("Knife", this::lines)).showIf(() -> section.index() == 0);
     private final Setting.Bool model3d = add(new Setting.Bool("3D knife models", "Draws the knives as real 3D models (a few hundred triangles each, flat shaded, cheap). Off: the classic pixel knives. Falls back to the pixel knives by itself if a model cannot be loaded.", false)).showIf(() -> false);
-    private final Setting.Bool trail = add(new Setting.Bool("Light trail", "A fading trail behind the blade.", true));
-    private final Setting.Bool blur = add(new Setting.Bool("Motion blur", "Ghost images of the knife while it moves fast.", true));
-    private final Setting.Bool sparks = add(new Setting.Bool("Sparks and flash", "A flash and a few sparks when it locks open and when it cuts.", true));
-    private final Setting.Num trailStrength = add(new Setting.Num("Trail strength", "Opacity of the blade trail. Set to 0% to keep trails enabled but invisible, or lower it for a cleaner look.", 100, 0, 150, 5, "%")).showIf(() -> trail.on());
-    private final Setting.Num ghostStrength = add(new Setting.Num("Ghost opacity", "Opacity of the motion-blur ghost knives. Lower values make fast tricks less busy.", 100, 0, 150, 5, "%")).showIf(() -> blur.on());
-    private final Setting.Num flashStrength = add(new Setting.Num("Flash intensity", "Strength of the impact bloom and sparks. Lower it for a subtler knife effect.", 100, 0, 150, 5, "%")).showIf(() -> sparks.on());
-    private final Setting.Action gallery = add(new Setting.Action("Open the knife gallery", "A menu showing every knife and every finish, drawn the way the game draws them. Click one to use it.", this::openGallery));
-    private final Setting.Action showNow = add(new Setting.Action("Show it now", "Draws the knife for four seconds whatever your hand is doing, so you can check the knife and its trick without emptying your hand.", () -> previewUntil = System.currentTimeMillis() + 4000L));
+    private final Setting.Bool trail = add(new Setting.Bool("Light trail", "A fading trail behind the blade.", true)).showIf(() -> section.index() == 3);
+    private final Setting.Bool blur = add(new Setting.Bool("Motion blur", "Ghost images of the knife while it moves fast.", true)).showIf(() -> section.index() == 3);
+    private final Setting.Bool sparks = add(new Setting.Bool("Sparks and flash", "A flash and a few sparks when it locks open and when it cuts.", true)).showIf(() -> section.index() == 3);
+    private final Setting.Num trailStrength = add(new Setting.Num("Trail strength", "Opacity of the blade trail. Set to 0% to keep trails enabled but invisible, or lower it for a cleaner look.", 100, 0, 150, 5, "%")).showIf(() -> section.index() == 3 && trail.on());
+    private final Setting.Num ghostStrength = add(new Setting.Num("Ghost opacity", "Opacity of the motion-blur ghost knives. Lower values make fast tricks less busy.", 100, 0, 150, 5, "%")).showIf(() -> section.index() == 3 && blur.on());
+    private final Setting.Num flashStrength = add(new Setting.Num("Flash intensity", "Strength of the impact bloom and sparks. Lower it for a subtler knife effect.", 100, 0, 150, 5, "%")).showIf(() -> section.index() == 3 && sparks.on());
+    private final Setting.Action showNow = add(new Setting.Action("Show it now", "Draws the knife for four seconds whatever your hand is doing, so you can check the knife and its trick without emptying your hand.", () -> previewUntil = System.currentTimeMillis() + 4000L)).showIf(() -> section.index() == 0);
     private final Setting.Action[] play = new Setting.Action[TRICKS.length];
     private final Setting.Action[] kplay = new Setting.Action[KTRICKS.length];
     private int lastType;
@@ -203,10 +206,10 @@ public final class KnifeSwing extends Module {
     public KnifeSwing() {
         super("knife", "Knives", "An HD tactical knife in your own hand: lit high-resolution 3D models with spins, flips and inspects. Shows when your hand is empty by default, and right click or the trick key plays a trick.", Category.RENDER);
         self = this;
-        for (int i = 0; i < KTRICKS.length; i++) {
-            final int id = i;
-            kplay[i] = add(new Setting.Action("Play: " + KTRICKS[i], "Plays this trick now with your HD knife.", () -> perform(id)));
-        }
+        add(new Setting.Action("Play the chosen trick", "Plays the trick picked above right now, even with something in your hand.", () -> {
+            previewUntil = System.currentTimeMillis() + 4000L;
+            perform(ktrick.index());
+        })).showIf(() -> section.index() == 2);
     }
 
     private Setting.Choice finishFor(int t) {
