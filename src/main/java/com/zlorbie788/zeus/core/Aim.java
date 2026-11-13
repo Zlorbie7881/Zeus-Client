@@ -43,12 +43,31 @@ public final class Aim {
         return sendRotation(yaw, pitch);
     }
 
+    // A real mouse can only turn in whole steps set by the sensitivity slider, so every angle
+    // an ordinary player produces sits on that grid. Rotations between the steps are the
+    // cheapest thing a server-side check can spot, so sent angles are snapped onto it.
+    private static float step() {
+        Minecraft mc = Minecraft.getInstance();
+        try {
+            double f = mc.options.sensitivity().get() * 0.6 + 0.2;
+            return (float) Math.max(0.0008, f * f * f * 1.2);
+        } catch (RuntimeException e) {
+            return 0f;
+        }
+    }
+
+    private static float snap(float angle, float step) {
+        if (step <= 0f || !Float.isFinite(angle)) return angle;
+        return Math.round(angle / step) * step;
+    }
+
     public static boolean sendRotation(float yaw, float pitch) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.getConnection() == null) return false;
         float[] shaped = Hand.shape(yaw, Math.max(-90f, Math.min(90f, pitch)));
-        float y = shaped[0];
-        float p = Math.max(-90f, Math.min(90f, shaped[1]));
+        float grid = step();
+        float y = snap(shaped[0], grid);
+        float p = Math.max(-90f, Math.min(90f, snap(shaped[1], grid)));
         int tick = mc.player.tickCount;
         if (tick != sentTick) {
             sentTick = tick;
