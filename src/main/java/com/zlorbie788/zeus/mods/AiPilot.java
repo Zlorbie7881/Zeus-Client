@@ -95,6 +95,7 @@ public final class AiPilot extends Module {
     private static volatile long lastTestAt;
     private static final java.util.concurrent.atomic.AtomicInteger PLANS = new java.util.concurrent.atomic.AtomicInteger();
     private static volatile boolean paused;
+    private static volatile String lastAsked = "";
     private static volatile String followPrompt = "";
     private static volatile long followAt;
     private static volatile int followUps;
@@ -437,6 +438,48 @@ public final class AiPilot extends Module {
         return PLANS.get();
     }
 
+    /** List the models the provider offers, as clickable chat lines that select one. */
+    public static String models() {
+        AiPilot self = find();
+        if (self == null) return "Zeus AI Functions is missing.";
+        if (!hasKey()) return "Save a key first: /zeus ai key <key>, or /zeus ai tutorial.";
+        String secret = self.token.get();
+        String chat = self.url();
+        String base = chat.endsWith("/chat/completions") ? chat.substring(0, chat.length() - "/chat/completions".length()) : chat;
+        WORKER.submit(() -> {
+            try {
+                HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(base + "/models")).timeout(Duration.ofSeconds(20)).GET();
+                if (secret != null && !secret.isBlank()) builder.header("Authorization", "Bearer " + secret.trim());
+                HttpResponse<String> response = HTTP.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                    throw new IllegalStateException(self.explainError(response.statusCode(), errorText(response.body())));
+                }
+                JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
+                JsonArray data = root.has("data") && root.get("data").isJsonArray() ? root.getAsJsonArray("data")
+                        : root.has("models") && root.get("models").isJsonArray() ? root.getAsJsonArray("models") : new JsonArray();
+                List<String> ids = new ArrayList<>();
+                for (JsonElement e : data) {
+                    String id = e.isJsonObject() && e.getAsJsonObject().has("id") ? e.getAsJsonObject().get("id").getAsString()
+                            : e.isJsonObject() && e.getAsJsonObject().has("name") ? e.getAsJsonObject().get("name").getAsString()
+                            : e.isJsonPrimitive() ? e.getAsString() : null;
+                    if (id == null) continue;
+                    if (id.startsWith("models/")) id = id.substring(7);
+                    String l = id.toLowerCase(Locale.ROOT);
+                    if (l.contains("whisper") || l.contains("embed") || l.contains("tts") || l.contains("guard") || l.contains("dall-e")
+                            || l.contains("moderation") || l.contains("audio") || l.contains("image") || l.contains("transcribe")
+                            || l.contains("realtime") || l.contains("search") || l.contains("babbage") || l.contains("davinci")) continue;
+                    ids.add(id);
+                }
+                java.util.Collections.sort(ids);
+                Minecraft.getInstance().execute(() -> AiTutorial.models(ids, self.model.get()));
+            } catch (Throwable t) {
+                String why = self.describe(t);
+                Minecraft.getInstance().execute(() -> AiTutorial.chat("Could not list the models: " + why, true));
+            }
+        });
+        return "Asking the provider which models it has...";
+    }
+
     /**
      * Send one tiny request and report the result in chat: proves the key, the endpoint and the model
      * all work, and teaches the request layer any quirks of this provider before a real request.
@@ -486,8 +529,14 @@ public final class AiPilot extends Module {
 
     private String submit(String instruction) {
         if (!enabled()) return "Switch Zeus AI Functions on first (/zeus on aipilot)" + (hasKey() ? "." : ", or let /zeus ai tutorial walk you through the setup.");
-        String prompt = instruction == null ? "" : instruction.trim();
-        if (prompt.isEmpty()) return "Say what you want after /zeus ai.";
+        String typed = instruction == null ? "" : instruction.trim();
+        if (typed.isEmpty()) return "Say what you want after /zeus ai.";
+        String lowered = typed.toLowerCase(Locale.ROOT).replaceAll("[.!?]+$", "").trim();
+        boolean again = lowered.equals("again") || lowered.equals("repeat") || lowered.equals("repeat that") || lowered.equals("do it again")
+                || lowered.equals("same again") || lowered.equals("one more time");
+        if (again && lastAsked.isBlank()) return "Nothing to repeat yet.";
+        final String prompt = again ? lastAsked : typed;
+        if (!again && !prompt.startsWith("These actions were attempted")) lastAsked = prompt;
         Step work = jobStep(prompt.toLowerCase(Locale.ROOT));
         if (work != null) {
             if ("stop".equals(work.action())) {
@@ -1101,6 +1150,8 @@ public final class AiPilot extends Module {
         builder.append("get me 10 iron then come back -> {\"say\":\"Off to mine iron.\",\"actions\":[{\"do\":\"job\",\"value\":\"mine 10 iron then return\"}]}\n");
         builder.append("what does esp do? -> {\"say\":\"ESP outlines players and mobs through walls.\",\"actions\":[{\"do\":\"explain\",\"value\":\"esp\"}]}\n");
         builder.append("hi / thanks / a question with nothing to change -> {\"say\":\"<a short helpful answer>\",\"actions\":[]}\n");
+        builder.append("For a Minecraft or client question (a recipe, where to find something, what a module does), answer it in say in up to three sentences, with real facts for Minecraft 1.21. Do not make up mechanics. If something is ambiguous and a wrong guess would be costly, ask one short question in say and send no actions.\n");
+        builder.append("Refer back to the conversation: 'turn it off' or 'more' means the module or setting talked about last.\n");
         builder.append("Use the ids from the module list below, not guesses (the example ids above may not exist). Setting values: numbers as plain numbers, on/off for switches, one of the listed options for choices. To nudge a number you may write +1 or -0.5.\n");
         builder.append("Jobs understand tools: before mining a block it cannot harvest it crafts the pickaxe that can, and it will not count a block that dropped nothing. Say 'food' or 'kill for food' to hunt animals and eat.\n");
         builder.append("panic switches every module off. undo reverses the last change the AI made. report reads out what is on. remember stores value as a note for later sessions. theme takes value as one of: ");
@@ -4559,8 +4610,16 @@ public final class AiPilot extends Module {
     private Plan parseLocal(String prompt) {
         String clean = prompt.toLowerCase(Locale.ROOT).trim();
         List<Step> steps = new ArrayList<>();
+        String carry = "";
         for (String piece : CLAUSE.split(clean)) {
-            Step step = clause(piece.trim());
+            String part = piece.trim().replaceAll("^(please|pls|can you|could you|and)\\s+", "").replaceAll("[.!?]+$", "").trim();
+            Step step = clause(part);
+            // "turn on sprint and fullbright": the second part has no verb, so it inherits "on" instead of toggling.
+            if (step != null && "toggle".equals(step.action()) && !carry.isEmpty() && !startsWithVerb(part)) {
+                step = new Step(carry, step.module(), "", "");
+            }
+            if (step != null && ("on".equals(step.action()) || "off".equals(step.action()))) carry = step.action();
+            else if (step != null && !"toggle".equals(step.action())) carry = "";
             if (step != null) steps.add(step);
         }
         if (steps.isEmpty()) {
@@ -4603,6 +4662,14 @@ public final class AiPilot extends Module {
             return new Step("waypoint", "", "", name);
         }
         if (part.startsWith("set ")) return settingStep(part.substring(4).trim());
+        java.util.regex.Matcher nudge = java.util.regex.Pattern
+                .compile("^(increase|raise|decrease|lower|reduce) (.+?)(?: by ([0-9.]+))?$").matcher(part);
+        if (nudge.find()) {
+            boolean up = nudge.group(1).equals("increase") || nudge.group(1).equals("raise");
+            String by = nudge.group(3) == null ? "1" : nudge.group(3);
+            Step step = settingStep(nudge.group(2) + " to " + (up ? "+" : "-") + by);
+            if (step != null) return step;
+        }
         for (String word : ON_WORDS) {
             if (part.startsWith(word)) return moduleStep("on", part.substring(word.length()).trim());
         }
@@ -4615,6 +4682,13 @@ public final class AiPilot extends Module {
         return moduleStep("toggle", part);
     }
 
+    private static boolean startsWithVerb(String part) {
+        for (String[] list : new String[][]{ON_WORDS, OFF_WORDS, TOGGLE_WORDS}) {
+            for (String word : list) if (part.startsWith(word)) return true;
+        }
+        return false;
+    }
+
     private Step moduleStep(String action, String words) {
         if (words.isEmpty()) return null;
         Module module = findModule(words);
@@ -4624,9 +4698,18 @@ public final class AiPilot extends Module {
 
     private Step settingStep(String body) {
         int at = body.indexOf(" to ");
-        if (at <= 0) return null;
-        String left = body.substring(0, at).trim();
-        String value = body.substring(at + 4).trim();
+        String left;
+        String value;
+        if (at > 0) {
+            left = body.substring(0, at).trim();
+            value = body.substring(at + 4).trim();
+        } else {
+            // "set killaura range 4" or "set esp players on": the last word is the value.
+            int split = body.lastIndexOf(' ');
+            if (split <= 0) return null;
+            left = body.substring(0, split).trim();
+            value = body.substring(split + 1).trim();
+        }
         if (value.isEmpty()) return null;
         for (Module module : Zeus.all()) {
             if (BLOCKED.contains(module.id)) continue;

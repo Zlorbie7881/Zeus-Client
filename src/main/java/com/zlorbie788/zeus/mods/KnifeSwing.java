@@ -139,6 +139,8 @@ public final class KnifeSwing extends Module {
     private final Setting.Choice place = add(new Setting.Choice("Place", "Where on the screen. Bottom left is the left hand.", 0, "Bottom right", "Bottom left", "Centre"));
     private final Setting.Bool showFingers = add(new Setting.Bool("Show fingers", "Draws the blocky fingers and thumb on the handle. Off: only the arm and the knife.", false));
     private final Setting.Num size = add(new Setting.Num("Size", "How big the hand and knife are.", 1.0, 0.5, 2.5, 0.1, "x"));
+    private final Setting.Num height = add(new Setting.Num("Height", "How high on the screen the hand holds the knife. 0 is the old low position.", 12, 0, 30, 1, ""));
+    private final Setting.Num inset = add(new Setting.Num("Distance from the edge", "How far in from the side of the screen the hand sits.", 12, 4, 40, 1, ""));
     private final Setting.Num speed = add(new Setting.Num("Speed", "How fast the tricks play.", 1.0, 0.5, 2.0, 0.1, "x"));
     private final Setting.Num spins = add(new Setting.Num("Rollovers", "How many times the knife turns in a rollover.", 2, 1, 4, 1, ""));
     private final Setting.Bool sway = add(new Setting.Bool("Sway with the camera", "The hand lags behind when you turn, like the game's own.", true));
@@ -1238,7 +1240,7 @@ public final class KnifeSwing extends Module {
             return;
         }
         float sc = Math.max(0.5f, (float) size.f());
-        float unit = Math.max(0.6f, h / 540f * 4.6f * sc) * (0.62f + 0.38f * vis);
+        float unit = Math.max(0.6f, h / 540f * 5.6f * sc) * (0.62f + 0.38f * vis);
         if (!Float.isFinite(sc) || !Float.isFinite(unit) || unit <= 0f || w <= 0 || h <= 0) return;
         float yaw = mc.player.getYRot(), pitch = mc.player.getXRot();
         if (!Float.isNaN(lastYaw)) {
@@ -1259,8 +1261,9 @@ public final class KnifeSwing extends Module {
         swayY = Math.max(-lim, Math.min(lim, swayY));
 
         boolean left = place.index() == 1;
-        float x0 = place.index() == 2 ? w / 2f : left ? 9f * unit : w - 9f * unit;
-        float y0 = h + 4.6f * unit;
+        float edge = (float) inset.get() * unit;
+        float x0 = place.index() == 2 ? w / 2f : left ? edge : w - edge;
+        float y0 = h + 4.6f * unit - (float) height.get() * unit;
         float u = left ? -unit : unit;
 
         Pose p = shown(secs(), playing());
