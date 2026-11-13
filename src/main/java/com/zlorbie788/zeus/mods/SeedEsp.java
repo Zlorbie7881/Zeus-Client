@@ -215,6 +215,10 @@ public final class SeedEsp extends Module {
             "Every server and save with a remembered seed. Pick one to use it, or forget it from the list.",
             this::openSeedWorlds));
 
+    private final Setting.Action selfTest = add(new Setting.Action("Test the seed simulator",
+            "Generates one chunk from the seed right here and reports whether the local world generator works, "
+                    + "with the version, the chunk and how long it took.",
+            this::selfTest)).showIf(() -> predict.on());
     private final Setting.Action rescan = add(new Setting.Action("Scan from seed now",
             "Throws away what was cached for this world and scans the seed around you again from scratch.",
             this::restartScan));
@@ -332,9 +336,88 @@ public final class SeedEsp extends Module {
         return found + " shown · " + state;
     }
 
+    /** The client's own version. Worldgen only matches a scan made with the same version. */
+    public static String versionName() {
+        try {
+            return FabricLoader.getInstance().getModContainer("minecraft")
+                    .map(container -> container.getMetadata().getVersion().getFriendlyString())
+                    .orElse("unknown");
+        } catch (Throwable t) {
+            return "unknown";
+        }
+    }
+
+    private static String versionTag() {
+        return versionName().replaceAll("[^A-Za-z0-9._-]", "_");
+    }
+
+    private volatile String simReport = "not tested yet";
+
+    /**
+     * Generate a single chunk from the seed on the spot. The full scan runs the same code on a
+     * background server, so a failure here is the same failure, with a message a player can read
+     * instead of a job that silently shows nothing.
+     */
+    private void selfTest() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || mc.level == null) {
+            Zeus.toast("Join a world first", false);
+            return;
+        }
+        String text = seed.get().trim();
+        if (text.isBlank()) {
+            Zeus.toast("Type a seed into the Seed box first", false);
+            return;
+        }
+        OptionalLong parsed;
+        try {
+            parsed = WorldOptions.parseSeed(text);
+        } catch (RuntimeException e) {
+            Zeus.toast("That seed does not parse", false);
+            return;
+        }
+        if (parsed.isEmpty()) {
+            Zeus.toast("That seed does not parse", false);
+            return;
+        }
+        final long value = parsed.getAsLong();
+        final ResourceKey<Level> dim = mc.level.dimension();
+        final int x = mc.player.getBlockX();
+        final int z = mc.player.getBlockZ();
+        simReport = "testing…";
+        Zeus.toast("Seed simulator: generating one chunk at " + (x >> 4) + ", " + (z >> 4), true);
+        SeedJob probe = new SeedJob(value, text, dim, x, z, 1, false, true, mc);
+        probe.start();
+        Thread watch = new Thread(() -> {
+            long until = System.currentTimeMillis() + 90_000L;
+            while (!probe.finished && System.currentTimeMillis() < until) {
+                try {
+                    Thread.sleep(150L);
+                } catch (InterruptedException e) {
+                    return;
+                }
+            }
+            if (!probe.finished) {
+                probe.cancel();
+                simReport = "timed out after 90 s";
+            } else if (probe.failed) {
+                simReport = "failed: " + probe.message;
+            } else {
+                simReport = "OK · " + countHits(probe.hits) + " ore(s) in "
+                        + (probe.generated > 0 ? probe.generated : probe.hits.size()) + " chunk(s) in "
+                        + (System.currentTimeMillis() - probe.startedAt) + " ms · Minecraft " + versionName();
+            }
+            Zeus.toast("Seed simulator: " + simReport, !probe.failed && probe.finished);
+        }, "Zeus seed probe");
+        watch.setDaemon(true);
+        watch.start();
+    }
+
     private List<String> statusLines() {
         List<String> out = new ArrayList<>();
         SeedJob j = job;
+        out.add("Minecraft " + versionName() + " · ores are simulated with this version's worldgen");
+        out.add("Simulator: " + simReport);
         out.add("Real blocks: " + countHits(exact) + " from " + exact.size() + " loaded chunk(s)");
         if (j == null) {
             out.add("Seed scan: not started");
@@ -346,6 +429,16 @@ public final class SeedEsp extends Module {
         } else {
             out.add("Seed scan: " + countHits(j.hits) + " ore(s) from " + j.hits.size() + " chunk(s) · " + j.dimension);
             if (j.fromCache) out.add("Loaded from the cache, no generation needed");
+        }
+        if (j != null) {
+            Minecraft mc = Minecraft.getInstance();
+            String where = "Scan origin: " + (j.originX >> 4) + ", " + (j.originZ >> 4) + " (chunk)";
+            if (mc.player != null) {
+                double dx = mc.player.getX() - j.originX;
+                double dz = mc.player.getZ() - j.originZ;
+                where += " · you are " + Math.round(Math.hypot(dx, dz)) + " block(s) from it";
+            }
+            out.add(where);
         }
         if (!lastSeed.isBlank()) out.add("Seed: " + lastSeed);
         else out.add("Seed: empty, loaded chunks only. Use /zeus seed <seed> to see further.");
@@ -718,13 +811,38 @@ public final class SeedEsp extends Module {
         }
     }
 
+    /** /zeus seed test: run the one chunk probe and answer at once. */
+    public static String testNow() {
+        SeedEsp self = Zeus.get(SeedEsp.class);
+        if (self == null) return "Seed ESP is missing.";
+        self.selfTest();
+        return "Seed ESP: generating one chunk from the seed, watch the toast";
+    }
+
+    /** /zeus seed: a short report of what the simulator is doing right now. */
+    public static String statusText() {
+        SeedEsp self = Zeus.get(SeedEsp.class);
+        if (self == null) return "Seed ESP is missing.";
+        StringBuilder out = new StringBuilder();
+        for (String line : self.statusLines()) {
+            if (out.length() > 0) out.append(" · ");
+            out.append(line);
+        }
+        return out.toString();
+    }
+
     public static String useSeed(String text) {
         SeedEsp self = Zeus.get(SeedEsp.class);
         if (self == null) return "Seed ESP is missing.";
         self.seed.set(text == null ? "" : text.trim());
         self.setEnabled(true);
         self.restartScan();
-        return self.seed.get().isBlank() ? "Seed ESP is on and reading loaded chunks." : "Seed ESP: scanning with seed " + self.seed.get();
+        if (self.seed.get().isBlank()) return "Seed ESP is on and reading loaded chunks.";
+        Minecraft mc = Minecraft.getInstance();
+        String where = mc.player == null ? ""
+                : " around chunk " + (mc.player.getBlockX() >> 4) + ", " + (mc.player.getBlockZ() >> 4)
+                + " (" + mc.player.getBlockX() + " " + mc.player.getBlockZ() + ")";
+        return "Seed ESP: simulating seed " + self.seed.get() + where + " on Minecraft " + versionName();
     }
 
     private void seedTick(Minecraft mc) {
@@ -842,7 +960,7 @@ public final class SeedEsp extends Module {
             if (safe.length() > 32) safe = safe.substring(0, 32);
             if (safe.isEmpty()) safe = "world";
             return dir().resolve(safe + "-" + Integer.toHexString(base.hashCode()) + "-"
-                    + dim.identifier().getPath().replace('/', '_') + ".bin");
+                    + dim.identifier().getPath().replace('/', '_') + "-" + versionTag() + ".bin");
         }
 
         static OreCache read(Path file) {
@@ -1043,7 +1161,14 @@ public final class SeedEsp extends Module {
                 }
             } catch (Throwable t) {
                 failed = true;
-                message = t.getClass().getSimpleName() + (t.getMessage() == null ? "" : ": " + t.getMessage());
+                StringBuilder why = new StringBuilder(t.getClass().getSimpleName());
+                if (t.getMessage() != null) why.append(": ").append(t.getMessage());
+                for (Throwable cause = t.getCause(), depth = null; cause != null && cause != depth && why.length() < 300;
+                     depth = cause, cause = cause.getCause()) {
+                    why.append(" · ").append(cause.getClass().getSimpleName());
+                    if (cause.getMessage() != null) why.append(": ").append(cause.getMessage());
+                }
+                message = why.toString();
                 Zeus.LOG.warn("Seed ESP: the local seed scan failed", t);
             } finally {
                 if (cache != null) {
