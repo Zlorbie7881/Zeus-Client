@@ -97,7 +97,7 @@ public final class AiPilot extends Module {
     private final Setting.Info jobStatus = add(new Setting.Info("Job", this::jobLines));
 
     private enum JobKind { CHOP, MINE_UNTIL, MINE_COUNT, GOTO, FOLLOW, COLLECT, TUNNEL, FARM, SLEEP,
-                           REPLANT, EAT, HUNT, FLEE, SHOOT, SHEAR, MILK, QUARRY, PLACE, TORCH, DROP, RETURN, EXPLORE,
+                           REPLANT, EAT, FOOD, HUNT, FLEE, SHOOT, SHEAR, MILK, QUARRY, PLACE, TORCH, DROP, RETURN, EXPLORE,
                            HOUSE, SWIM, CLIMB, BRIDGE, TILL, CRAFT, SMELT, STORE, TAKE }
 
     private static final class Job {
@@ -138,6 +138,9 @@ public final class AiPilot extends Module {
         int crafts;
         int step;
         long biteAt;
+        int toolTried;
+        int progressMark;
+        long progressAt;
 
         Job(JobKind kind, String target, int wanted, Vec3 to) {
             this.kind = kind;
@@ -160,6 +163,7 @@ public final class AiPilot extends Module {
                 case SLEEP -> "looking for a bed";
                 case REPLANT -> "planting seeds" + (mined > 0 ? " (" + mined + " planted)" : "");
                 case EAT -> "eating";
+                case FOOD -> "hunting animals for food" + (mined > 0 ? " (" + mined + " killed)" : "");
                 case HUNT -> "fighting" + (mined > 0 ? " (" + mined + " hits)" : "");
                 case FLEE -> "running away";
                 case SHOOT -> "shooting" + (mined > 0 ? " (" + mined + " shots)" : "");
@@ -212,7 +216,7 @@ public final class AiPilot extends Module {
     private final Setting.Info status = add(new Setting.Info("Status", this::lines));
 
     public AiPilot() {
-        super("aipilot", "Zeus AI Functions", "Type /zeus ai <what you want>. It switches modules and changes settings, and it works in the world too: chop trees, mine, quarry, tunnel, farm, fight mobs, shoot, shear, milk, eat, place blocks, light the area, drop items, sleep, explore, walk or follow. Say stop to end a job.", Category.UTILITY);
+        super("aipilot", "Zeus AI Functions", "Type /zeus ai <what you want>. It switches modules and changes settings, and it works in the world too: chop trees, mine, quarry, tunnel, farm, fight mobs, shoot, shear, milk, eat, place blocks, light the area, drop items, sleep, explore, walk or follow, hunt animals for meat, and make the pickaxe it needs before mining. Say stop to end a job.", Category.UTILITY);
         anywhere();
         alias("ai", "assistant", "pilot", "zeus ai", "functions", "jobs");
     }
@@ -727,12 +731,13 @@ public final class AiPilot extends Module {
         StringBuilder builder = new StringBuilder();
         builder.append("You control the Zeus Minecraft client. Answer with one JSON object only, no prose, no code fences.\n");
         builder.append("Schema: {\"say\":\"one short sentence for the player\",\"actions\":[{\"do\":\"on|off|toggle|set|open|hud|keybinds|panic|theme|undo|waypoint\",\"module\":\"<id>\",\"setting\":\"<exact setting name>\",\"value\":\"<new value>\"}]}\n");
+        builder.append("Jobs understand tools: before mining a block it cannot harvest it crafts the pickaxe that can, and it will not count a block that dropped nothing. Say 'food' or 'kill for food' to hunt animals and eat.\n");
         builder.append("open, hud, keybinds, panic, theme, undo and waypoint need no module field. panic switches every module off. undo reverses the last change the AI made. theme takes value as one of: ");
         builder.append(String.join(", ", com.zlorbie788.zeus.ui.UiSettings.ACCENT.options)).append(". waypoint drops a waypoint where the player stands, using value as its name.\n");
         builder.append("Rules: module must be an id from the list. For \"set\" the setting name must match a setting the module shows. ");
         builder.append("Only send actions that are needed. Never invent ids. If the request cannot be done, return an empty actions list and explain in say.\n");
         builder.append("Prefix any job with repeat N to run the whole plan N times, for example: repeat 3 chop a tree then mine 10 stone.\n");
-        builder.append("go to mines a staircase down, cuts steps up or towers up on its own when the target sits at another height, and it never digs the block under its feet. mine until stops the moment the ore is in sight or in the inventory.\n");
+        builder.append("go to mines a staircase down, cuts steps up or towers up on its own when the target sits at another height, and it never digs the block under its feet. mine until only closes on ore it can already see, mines it, and reports the block that actually broke.\n");
         builder.append("do can also be job, where value is a phrase like: chop tree, chop 3 trees, mine until iron, mine 20 stone, quarry 10, tunnel 30, strip mine, farm, replant, till 9, collect, hunt, flee, shoot, shear 3, milk, eat, sleep, torch 8, place cobblestone here, place torch at 120 64 -300, drop 32 dirt, explore 60, return, build a house, swim to 120 62 -300, climb 8, bridge 12, go to 120 64 -300, come here, follow me, follow Steve, dig down, stop. Chain them in one value with then: chop 2 trees then mine until iron.\n");
         builder.append("Chests: store 20 cobblestone, put away 32 dirt, deposit 5 diamond, take 32 iron, loot 16 bread, grab 4 torch. The job finds a chest, barrel or trapped chest within five blocks, opens it and shift-clicks one stack at a time, counts real items against the number asked for, and only matches the exact item: iron means ingots, never ore or a sword, so say iron_ore for ore.\n");
         builder.append("Crafting and furnaces: craft 4 planks, craft a crafting table, craft sticks, craft a furnace, craft a stone pickaxe, craft iron sword, craft torch, craft chest, craft bucket, craft bed, smelt 8 iron, cook 4 porkchop. The job places and opens its own crafting table or furnace, crafts planks or sticks from logs first when it has to, and furnishes fuel itself. Known recipes: planks, stick, crafting_table, furnace, chest, torch, stone_pickaxe, stone_axe, stone_shovel, stone_sword, stone_hoe, iron_pickaxe, iron_sword, bucket, bed.\n");
@@ -912,7 +917,7 @@ public final class AiPilot extends Module {
         }
         if (text.contains(" then ") || text.contains(";") || text.contains("->")) {
             String head = text.split("\\s*(?:,|;|->|\\band then\\b|\\bthen\\b)\\s*")[0].trim();
-            if (head.matches("^(chop|cut|break|mine|dig|get|go|goto|walk|come|follow|farm|harvest|collect|pick|tunnel|strip|sleep|replant|torch|quarry|milk|shear|hunt|flee|shoot|eat|drop|return|explore|place|put|house|build|swim|climb|pillar|bridge|craft|make|smelt|cook)\\b.*")) {
+            if (head.matches("^(chop|cut|break|mine|dig|get|go|goto|walk|come|follow|farm|harvest|collect|pick|tunnel|strip|sleep|replant|torch|quarry|milk|shear|hunt|flee|shoot|eat|food|meat|drop|return|explore|place|put|house|build|swim|climb|pillar|bridge|craft|make|smelt|cook)\\b.*")) {
                 return new Step("job", "", "", text);
             }
         }
@@ -982,6 +987,12 @@ public final class AiPilot extends Module {
         if (text.contains("shear")) {
             java.util.regex.Matcher count = java.util.regex.Pattern.compile("(\\d+)").matcher(text);
             return new Step("job", "", "", "shear " + (count.find() ? count.group(1) : "1"));
+        }
+        if (text.contains("food") || text.contains("meat") || text.contains("something to eat")
+                || text.contains("kill an animal") || text.contains("kill animals")
+                || text.contains("hunt animals") || text.contains("hunt for food")) {
+            java.util.regex.Matcher count = java.util.regex.Pattern.compile("(\\d+)").matcher(text);
+            return new Step("job", "", "", "food " + (count.find() ? count.group(1) : "3"));
         }
         if (text.contains("hunt") || text.contains("kill mobs") || text.contains("kill a mob")
                 || text.contains("kill the mobs") || text.contains("slay")) {
@@ -1127,6 +1138,11 @@ public final class AiPilot extends Module {
             java.util.regex.Matcher count = java.util.regex.Pattern.compile("(\\d+)").matcher(text);
             started = new Job(JobKind.SHEAR, "",
                     count.find() ? Math.max(1, Math.min(64, Integer.parseInt(count.group(1)))) : 1, null);
+        } else if (text.startsWith("food") || text.startsWith("meat") || text.contains("kill for food")
+                || text.contains("hunt for food") || text.contains("hunt animals")) {
+            java.util.regex.Matcher count = java.util.regex.Pattern.compile("(\\d+)").matcher(text);
+            started = new Job(JobKind.FOOD, "meat",
+                    count.find() ? Math.max(1, Math.min(32, Integer.parseInt(count.group(1)))) : 3, null);
         } else if (text.startsWith("hunt") || text.startsWith("kill ") || text.startsWith("slay")) {
             started = new Job(JobKind.HUNT, "", 0, null);
         } else if (text.startsWith("flee") || text.startsWith("run away") || text.equals("run")) {
@@ -1359,8 +1375,26 @@ public final class AiPilot extends Module {
             case QUARRY, TUNNEL, MINE_UNTIL -> 600_000L;
             default -> 300_000L;
         };
+        long clock = System.currentTimeMillis();
         if (System.currentTimeMillis() - job.started > budget) {
             giveUp(mc, "gave up after " + (budget / 60_000L) + " minutes");
+            return;
+        }
+        // A job that neither moves nor gets anything done is wedged; say so instead of spinning.
+        if (job.progressAt == 0L) {
+            job.progressAt = clock;
+            job.progressMark = job.mined;
+            job.lastX = mc.player.getX();
+            job.lastZ = mc.player.getZ();
+        }
+        boolean moved = Math.abs(mc.player.getX() - job.lastX) > 0.6 || Math.abs(mc.player.getZ() - job.lastZ) > 0.6;
+        if (moved || job.mined != job.progressMark) {
+            job.lastX = mc.player.getX();
+            job.lastZ = mc.player.getZ();
+            job.progressMark = job.mined;
+            job.progressAt = clock;
+        } else if (clock - job.progressAt > 25_000L && waitsOnScreen(job.kind) == false) {
+            giveUp(mc, "stuck: nothing changed for 25 seconds");
             return;
         }
         switch (job.kind) {
@@ -1377,6 +1411,7 @@ public final class AiPilot extends Module {
             case SLEEP -> sleepTick(mc);
             case REPLANT -> replantTick(mc);
             case EAT -> eatTick(mc);
+            case FOOD -> foodTick(mc);
             case HUNT -> huntTick(mc);
             case FLEE -> fleeTick(mc);
             case SHOOT -> shootTick(mc);
@@ -1855,6 +1890,57 @@ public final class AiPilot extends Module {
         mc.gameMode.useItem(mc.player, InteractionHand.MAIN_HAND);
         job.note = "eating from the hotbar";
         if (System.currentTimeMillis() - job.started > 5000L) endJob(mc, "ate something");
+    }
+
+    /**
+     * Kill animals for food: stalk one animal at a time, hit it when the attack is charged, then
+     * move on. It stops with meat in the pack instead of swinging at nothing.
+     */
+    private void foodTick(Minecraft mc) {
+        Player p = mc.player;
+        int want = Math.max(1, job.wanted);
+        int meat = countMeat(mc);
+        if (meat >= want) {
+            endJob(mc, "got " + meat + " meat");
+            return;
+        }
+        net.minecraft.world.entity.Entity prey = nearestPrey(mc, 26);
+        if (prey == null) {
+            endJob(mc, meat > 0 ? "got " + meat + " meat" : "no animals within 26 blocks");
+            return;
+        }
+        int weapon = bestWeapon(mc);
+        if (weapon >= 0 && Inv.selected() != weapon) Inv.select(weapon);
+        lookAt(p, prey.getEyePosition());
+        job.note = "hunting a " + prey.getName().getString() + " (" + meat + "/" + want + " meat)";
+        if (p.distanceTo(prey) > 2.8) {
+            walkTo(mc, prey.position(), 1.8);
+            return;
+        }
+        mc.options.keyUp.setDown(false);
+        mc.options.keyJump.setDown(false);
+        if (p.getAttackStrengthScale(0.5f) < 0.9f) return;
+        mc.gameMode.attack(p, prey);
+        p.swing(InteractionHand.MAIN_HAND);
+    }
+
+    /** Animals worth killing for food, ignoring babies and anything already in water. */
+    private net.minecraft.world.entity.Entity nearestPrey(Minecraft mc, double radius) {
+        return nearestEntity(mc, radius, e -> {
+            if (!(e instanceof net.minecraft.world.entity.animal.Animal animal) || !animal.isAlive()) return false;
+            if (animal.isBaby() || animal.isInWater()) return false;
+            var type = e.getType();
+            return type == net.minecraft.world.entity.EntityType.COW || type == net.minecraft.world.entity.EntityType.PIG
+                    || type == net.minecraft.world.entity.EntityType.SHEEP || type == net.minecraft.world.entity.EntityType.CHICKEN
+                    || type == net.minecraft.world.entity.EntityType.RABBIT;
+        });
+    }
+
+    private static int countMeat(Minecraft mc) {
+        return countItems(mc, s -> s.is(Items.BEEF) || s.is(Items.PORKCHOP) || s.is(Items.MUTTON)
+                || s.is(Items.CHICKEN) || s.is(Items.RABBIT)
+                || s.is(Items.COOKED_BEEF) || s.is(Items.COOKED_PORKCHOP) || s.is(Items.COOKED_MUTTON)
+                || s.is(Items.COOKED_CHICKEN) || s.is(Items.COOKED_RABBIT));
     }
 
     private net.minecraft.world.entity.Entity nearestMonster(Minecraft mc, double radius) {
@@ -2623,23 +2709,29 @@ public final class AiPilot extends Module {
         // Look for the ore before anything else: the old order dug all the way to the ore's
         // usual depth first, so a vein right next to the player was walked straight past.
         XRay ray = Zeus.get(XRay.class);
-        int radius = ray != null && ray.enabled() ? Math.min(48, jobRange.i() * 2) : jobRange.i();
+        boolean seeThrough = ray != null && ray.enabled();
+        int radius = seeThrough ? Math.min(48, jobRange.i() * 2) : jobRange.i();
         if (now >= job.nextScan) {
             job.nextScan = now + 300L;
             BlockPos spotted = nearestOre(mc, job.target, radius, 24);
-            if (spotted != null) job.ore = spotted;
+            // Ore sealed inside stone is not a target: the old code walked at it and bounced off
+            // the wall. Anything the player can already see is fair game.
+            if (spotted != null && (seeThrough || exposed(mc, spotted))) job.ore = spotted;
         }
         if (job.ore != null) {
             BlockState ore = mc.level.getBlockState(job.ore);
-            if (ore.isAir()) {
-                reportFind(mc, job.ore, "mined");
-                return;
-            }
-            if (!matches(ore, job.target)) {
+            if (ore.isAir() || !matches(ore, job.target)) {
+                if (ore.isAir()) reportFind(mc, job.ore, "mined");
                 job.ore = null;
+            } else if (!seeThrough && !exposed(mc, job.ore)) {
+                job.ore = null;
+            } else if (Build.distTo(job.ore) > jobReach.get()) {
+                job.note = "walking to the " + job.target + " it can see";
+                navigate(mc, centre(job.ore));
+                return;
             } else {
-                job.note = "found " + job.target + ", stopping";
-                reportFind(mc, job.ore, "found");
+                job.note = "mining the " + job.target;
+                if (mineBlock(mc, job.ore)) reportFind(mc, job.ore, "mined");
                 return;
             }
         }
@@ -2885,6 +2977,59 @@ public final class AiPilot extends Module {
         if (best != Inv.selected()) Inv.select(best);
     }
 
+    /** Jobs that legitimately stand still while a screen is open. */
+    private static boolean waitsOnScreen(JobKind kind) {
+        return switch (kind) {
+            case CRAFT, SMELT, STORE, TAKE, SLEEP, EAT -> true;
+            default -> false;
+        };
+    }
+
+    /** True when something in the inventory can actually harvest this block and not just break it. */
+    private static boolean canHarvest(Minecraft mc, BlockState state) {
+        if (!state.requiresCorrectToolForDrops()) return true;
+        for (int i = 0; i < 36; i++) {
+            ItemStack stack = Inv.get(i);
+            if (!stack.isEmpty() && stack.isCorrectToolForDrops(state)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * The cheapest pickaxe the mod knows how to make that satisfies this block, asked from the
+     * game itself rather than a tier table, so gold, deepslate and modded ores all behave.
+     */
+    private static String neededPickaxe(BlockState state) {
+        for (String name : new String[] {"wooden_pickaxe", "stone_pickaxe", "iron_pickaxe", "diamond_pickaxe"}) {
+            Craft.Recipe recipe = Craft.find(name);
+            if (recipe == null) continue;
+            if (new ItemStack(recipe.result()).isCorrectToolForDrops(state)) return name;
+        }
+        return "iron_pickaxe";
+    }
+
+    /** An ore is only worth walking to when a face of it is already in open air. */
+    private static boolean exposed(Minecraft mc, BlockPos pos) {
+        if (mc.level == null) return false;
+        for (Direction d : Direction.values()) {
+            if (mc.level.isEmptyBlock(pos.relative(d))) return true;
+        }
+        return false;
+    }
+
+    /** The instruction that gets us back to this job after a detour, such as making a pickaxe. */
+    private static String resumeCommand(Job j) {
+        return switch (j.kind) {
+            case MINE_COUNT -> "mine " + Math.max(1, j.wanted) + " " + j.target;
+            case MINE_UNTIL -> "mine until " + j.target;
+            case CHOP -> "chop " + Math.max(1, j.wanted) + " trees";
+            case QUARRY -> "quarry " + Math.max(1, j.wanted);
+            case TUNNEL -> "tunnel " + Math.max(1, j.wanted);
+            case FOOD -> "food " + Math.max(1, j.wanted);
+            default -> j.target == null || j.target.isBlank() ? "stop" : j.target;
+        };
+    }
+
     private static boolean usable(ItemStack stack) {
         if (stack.isEmpty()) return false;
         return !stack.isDamageableItem() || stack.getMaxDamage() - stack.getDamageValue() > 5;
@@ -2981,6 +3126,25 @@ public final class AiPilot extends Module {
         }
         if (state.getDestroySpeed(mc.level, pos) < 0f) {
             if (job != null) job.note = "bedrock in the way";
+            return false;
+        }
+        // Breaking a block that needs a tool without one drops nothing and never finishes the
+        // job, so make the tool first and come back instead of grinding at it forever.
+        if (state.requiresCorrectToolForDrops() && !canHarvest(mc, state)) {
+            String pick = neededPickaxe(state);
+            String shown = pick.replace('_', ' ');
+            if (job != null) job.note = "needs a " + shown;
+            if (job != null && job.toolTried == 0) {
+                job.toolTried = 1;
+                String resume = resumeCommand(job);
+                releaseAttack(mc);
+                if (Craft.find(pick) != null && startOne("craft 1 " + shown)) {
+                    chain.addFirst(resume);
+                    Notify.warn("Zeus AI: making a " + shown + " first, then back to " + resume);
+                    return false;
+                }
+                giveUp(mc, "no " + shown + " and no way to make one");
+            }
             return false;
         }
         equipTool(mc, state);
