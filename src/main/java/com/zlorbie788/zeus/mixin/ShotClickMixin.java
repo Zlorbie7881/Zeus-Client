@@ -13,11 +13,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class ShotClickMixin {
     @Inject(method = "defaultHandleGameClickEvent", at = @At("HEAD"), cancellable = true, require = 0)
     private static void zeus$shotClickGame(ClickEvent event, Minecraft minecraft, Screen screen, CallbackInfo ci) {
-        if (ScreenshotTweaks.click(event)) ci.cancel();
+        if (ScreenshotTweaks.click(event) || com.zlorbie788.zeus.mods.AiTutorial.click(event)) ci.cancel();
     }
 
     @Inject(method = "defaultHandleClickEvent", at = @At("HEAD"), cancellable = true, require = 0)
     private static void zeus$shotClickBasic(ClickEvent event, Minecraft minecraft, Screen screen, CallbackInfo ci) {
-        if (ScreenshotTweaks.click(event)) ci.cancel();
+        if (ScreenshotTweaks.click(event) || com.zlorbie788.zeus.mods.AiTutorial.click(event)) ci.cancel();
     }
 }
