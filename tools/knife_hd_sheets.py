@@ -23,7 +23,8 @@ import json
 import math
 import os
 
-from PIL import Image, ImageDraw
+import numpy as np
+from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEX = os.path.join(ROOT, "src/main/resources/assets/zeus/textures/knives/hd")
@@ -105,10 +106,6 @@ class Knife:
                 return False
             if not (fe <= v <= fs):
                 return False
-            if self.slot:
-                s0, s1, sh = self.slot
-                if s0 <= u <= s1 and abs(v + 0.85) <= sh:
-                    return False
             for t0, t1, depth, count in self.teeth:
                 if t0 <= u <= t1:
                     k = (u - t0) / (t1 - t0) * count
@@ -160,173 +157,288 @@ def blade_profile(b0, tipu, wid, clip=0.0, tipv=0.0, teeth_side=0):
 
 
 # ----------------------------------------------------------------- art
-def shade_grain(u, v, scale=1.0):
-    return 4.0 * math.sin(u * 9.0 * scale + v * 0.7) + 2.5 * math.sin(u * 31.0 * scale)
+# The face cell is painted, not sampled: the alpha comes from the analytic outline drawn at
+# 4x and filtered down, and the colour from a height-field style shading pass, so edges are
+# smooth, the grind is a real bevel with a specular band, the fuller is a groove and the brass
+# parts have a round, lit cross section.
+
+ART_SCALE = 4
 
 
-def pattern(colour, kind, u, v, b0, tipu):
-    """The skin: returns rgb for a face pixel."""
-    r, g, b = colour
-    t = clamp01((u - b0) / max(1e-6, tipu - b0))
+def sstep(a, b, x):
+    t = np.clip((x - a) / (b - a), 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
 
-    def mix(c, k):
-        return (int(lerp(c[0], r, k)), int(lerp(c[1], g, k)), int(lerp(c[2], b, k)))
 
-    if kind == "plain":
-        return colour
+def mix(c0, c1, t):
+    t = np.asarray(t, dtype=np.float64)
+    if t.ndim == 2:
+        t = t[..., None]
+    return np.asarray(c0, dtype=np.float64) * (1.0 - t) + np.asarray(c1, dtype=np.float64) * t
+
+
+def blend(c, colour, w):
+    w = np.asarray(w, dtype=np.float64)
+    if w.ndim == 2:
+        w = w[..., None]
+    return c * (1.0 - w) + np.asarray(colour, dtype=np.float64) * w
+
+
+def noise(u, v, seed):
+    a = np.sin(u * 1.7 + v * 2.3 + seed) * np.sin(u * 0.63 - v * 1.9 + seed * 1.7)
+    b = np.sin(u * 4.3 - v * 3.1 + seed * 0.4) * np.sin(u * 2.1 + v * 1.1)
+    c = np.sin(u * 9.0 + v * 7.3 + seed * 2.2) * np.sin(u * 5.7 - v * 3.3)
+    return 0.55 * a + 0.32 * b + 0.13 * c
+
+
+def skin_colour(kind, U, V, b0, tipu):
+    """The blade finish, as smooth fields rather than hard thresholds."""
+    t = np.clip((U - b0) / max(1e-6, tipu - b0), 0.0, 1.0)
+    n = noise(U * 0.9, V * 1.6, 1.0)
     if kind == "case":
-        # blue and gold patchwork with violet blotches
-        m = (math.sin(u * 1.7 + v * 2.3) + math.sin(u * 0.9 - v * 3.1)
-             + 0.7 * math.sin(u * 3.1 + v * 5.2))
-        if m > 0.55:
-            return mix((52, 78, 168), 0.35)
-        if m > 0.0:
-            return mix((176, 140, 66), 0.30)
-        if m < -1.2:
-            return mix((116, 74, 92), 0.30)
-        return mix((206, 172, 92), 0.22)
-    if kind == "crimson":
-        web = (math.sin(u * 4.3 + v * 6.1) * math.sin(u * 2.7 - v * 4.4))
-        if abs(web) < 0.12:
-            return (198, 26, 34)
-        if abs(web) < 0.22:
-            return (120, 14, 20)
-        return mix((16, 14, 18), 0.06)
-    if kind == "damascus":
-        w = math.sin(u * 3.4 + 2.2 * math.sin(v * 1.6 + u * 0.4))
-        k = 0.5 + 0.5 * w
-        return (int(120 + 70 * k), int(126 + 70 * k), int(136 + 68 * k))
-    if kind == "doppler":
-        cloud = (math.sin(u * 1.1 + v * 1.7) + math.sin(u * 2.7 - v * 2.2)
-                 + 0.5 * math.sin(u * 5.1 + v * 4.3))
-        if cloud > 1.0:
-            return (26, 36, 96)
-        if cloud > 0.55:
-            return (40, 62, 170)
-        if cloud < -1.25:
-            return (196, 96, 150)
-        return (58, 92, 214)
-    if kind == "fade":
-        k = smooth(t)
-        stops = [(198, 26, 38), (170, 20, 70), (96, 16, 96), (44, 18, 120), (28, 40, 150)]
-        idx = min(len(stops) - 2, int(k * (len(stops) - 1)))
-        f = k * (len(stops) - 1) - idx
-        a, bb = stops[idx], stops[idx + 1]
-        return tuple(int(lerp(a[i], bb[i], f)) for i in range(3))
-    if kind == "slaughter":
-        m = math.sin(u * 2.2 + v * 3.4) + 0.6 * math.sin(u * 5.6 - v * 1.2)
-        if m > 0.9:
-            return (168, 44, 44)
-        if m > 0.3:
-            return (128, 34, 38)
-        g0 = int(126 + 16 * math.sin(u * 7.0))
-        return (g0, g0 + 2, g0 + 6)
-    if kind == "tiger":
-        if math.sin(u * 3.05 + 0.6 * v) > 0.15:
-            return (208, 152, 42)
-        return (26, 20, 12)
-    if kind == "camo":
-        m = math.sin(u * 1.4 + v * 2.1) + math.sin(u * 3.6 - v * 1.7)
-        if m > 0.8:
-            return (168, 172, 178)
-        if m > 0.2:
-            return (96, 100, 106)
-        return (34, 36, 40)
-    return colour
+        p = noise(U * 0.55, V * 0.9, 2.0)
+        q = noise(U * 1.6 + 3.0, V * 2.2, 5.0)
+        c = mix((50, 70, 150), (198, 160, 76), sstep(-0.50, 0.30, p))
+        c = blend(c, (118, 74, 106), 0.50 * sstep(0.10, 0.70, q))
+        c = blend(c, (228, 198, 124), 0.35 * sstep(-0.25, 0.20, p) * sstep(-0.2, 0.4, q))
+    elif kind == "crimson":
+        web = noise(U * 1.15, V * 1.45, 4.0)
+        line = 1.0 - sstep(0.05, 0.20, np.abs(web))
+        c = mix((20, 18, 22), (150, 16, 24), 0.85 * line)
+        c = blend(c, (216, 40, 46), 0.75 * line * sstep(0.45, 0.95, np.abs(np.sin(U * 1.4 + V * 1.1))))
+        c = blend(c, (60, 10, 14), 0.35 * sstep(0.2, 0.8, noise(U * 1.2, V * 1.4, 7.0)))
+    elif kind == "damascus":
+        w = np.sin(U * 1.35 + 2.8 * np.sin(V * 1.1 + U * 0.35) + n * 0.9)
+        c = mix((104, 110, 120), (198, 203, 212), 0.5 + 0.5 * w)
+        c = blend(c, (146, 152, 164), 0.22 * (0.5 + 0.5 * np.sin(U * 4.6 + V * 1.6)))
+        c = blend(c, (62, 66, 74), 0.28 * sstep(0.15, 0.85, noise(U * 0.9, V * 1.3, 11.0)))
+    elif kind == "doppler":
+        p = noise(U * 0.7, V * 1.2, 2.0) + 0.30 * np.sin(U * 0.9 - V * 1.4)
+        c = mix((20, 32, 92), (62, 108, 226), sstep(-0.45, 0.42, p))
+        c = blend(c, (22, 24, 62), 0.55 * sstep(0.42, 0.85, noise(U * 2.4, V * 3.0, 9.0)))
+        c = blend(c, (156, 196, 255), 0.28 * sstep(0.25, 0.75, p))
+    elif kind == "fade":
+        stops = np.array([(208, 32, 42), (190, 20, 62), (142, 20, 96),
+                          (88, 26, 132), (54, 44, 172), (40, 86, 198)], dtype=np.float64)
+        x = np.clip(t * (len(stops) - 1), 0, len(stops) - 1.001)
+        i0 = x.astype(int)
+        f = (x - i0)[..., None]
+        c = stops[i0] * (1 - f) + stops[i0 + 1] * f
+        c = blend(c, (255, 255, 255), 0.06 * sstep(0.6, 1.0, t))
+    elif kind == "slaughter":
+        p = noise(U * 0.55, V * 0.95, 3.0)
+        c = mix((176, 178, 186), (92, 96, 104), sstep(-0.35, 0.45, p))
+        red = sstep(0.05, 0.55, noise(U * 0.85, V * 1.15, 11.0))
+        c = blend(c, (168, 34, 38), 0.85 * red)
+        c = blend(c, (226, 218, 210), 0.35 * sstep(0.35, 0.85, noise(U * 1.5 + 1.0, V * 1.9, 5.0)))
+    elif kind == "tiger":
+        band = np.sin(U * 2.5 + 0.8 * np.sin(V * 0.9) + n * 0.7)
+        k = sstep(-0.32, 0.32, band)
+        c = mix((28, 22, 14), (226, 172, 48), k)
+        c = blend(c, (252, 216, 122), 0.30 * sstep(0.35, 0.9, k))
+    elif kind == "camo":
+        p = noise(U * 0.50, V * 0.85, 6.0)
+        c = mix((26, 28, 32), (176, 180, 186), sstep(0.05, 0.55, p))
+        c = blend(c, (74, 78, 86), 0.70 * sstep(-0.50, 0.10, noise(U * 1.15, V * 1.55, 13.0)))
+    else:
+        c = np.zeros(U.shape + (3,), dtype=np.float64) + np.array((158, 164, 174), dtype=np.float64)
+    return np.clip(c, 0, 255)
 
 
-def grip_colour(kind, u, v, h1):
-    t = clamp01((u - 1.4) / max(1e-6, h1 - 1.4))
+def grip_colour_v(kind, U, V, t):
+    """Grip skin, smooth across the handle."""
     if kind == "ribbed":
-        band = 0.5 + 0.5 * math.sin(t * math.pi * 2 * 26)
-        g = int(20 + 16 * band)
-        return (g, g, g + 2)
+        band = 0.5 + 0.5 * np.sin(t * np.pi * 2 * 26)
+        g = 34 + 26 * band
+        return np.stack([g, g, g + 2], axis=-1)
     if kind == "groove":
-        band = 0.5 + 0.5 * math.sin(t * math.pi * 2 * 14 + v * 0.6)
-        g = int(24 + 12 * band)
-        return (g, g + 1, g + 3)
+        band = 0.5 + 0.5 * np.sin(t * np.pi * 2 * 14 + V * 0.6)
+        g = 36 + 20 * band
+        return np.stack([g, g + 1, g + 3], axis=-1)
     if kind == "cord":
-        band = 0.5 + 0.5 * math.sin((t * 18 + v * 1.1) * math.pi)
-        g = int(28 + 14 * band)
-        return (g, g, g + 2)
+        band = 0.5 + 0.5 * np.sin((t * 18 + V * 1.1) * np.pi)
+        g = 46 + 24 * band
+        return np.stack([g, g, g + 4], axis=-1)
     if kind == "wood":
-        w = math.sin(v * 6.0 + t * 4.0) * 0.5 + 0.5
-        return (int(120 + 40 * w), int(28 + 12 * w), int(30 + 10 * w))
+        w = 0.5 + 0.5 * np.sin(V * 6.0 + t * 4.0 + noise(U * 6.0, V * 3.0, 2.0))
+        return np.stack([118 + 46 * w, 28 + 14 * w, 30 + 12 * w], axis=-1)
     if kind == "tiger":
-        s = 0.5 + 0.5 * math.sin((t * 30 - v * 1.4) * math.pi)
-        return (int(38 + 24 * s), int(66 + 44 * s), int(140 + 60 * s))
+        s = 0.5 + 0.5 * np.sin((t * 30 - V * 1.4) * np.pi)
+        return np.stack([36 + 26 * s, 66 + 46 * s, 140 + 62 * s], axis=-1)
     if kind == "orange":
-        n = 0.5 + 0.5 * math.sin(u * 22 + v * 6)
-        return (int(176 + 30 * n), int(72 + 18 * n), int(24 + 10 * n))
+        n = 0.5 + 0.5 * np.sin(U * 22 + V * 6 + noise(U * 9.0, V * 5.0, 4.0))
+        return np.stack([180 + 32 * n, 74 + 20 * n, 24 + 12 * n], axis=-1)
     if kind == "camo":
-        return (22, 23, 26)
-    return (30, 30, 34)
+        p = noise(U * 1.4, V * 2.2, 8.0)
+        return mix((20, 22, 25), (44, 46, 50), 0.5 + 0.5 * p)
+    return np.zeros(U.shape + (3,)) + np.array((30, 31, 34))
 
 
-BRASS = (201, 161, 86)
-STEEL = (164, 170, 180)
+def brass_shade(colour, frac):
+    """A round brass bar: darker at the rims, a specular band above the centre."""
+    f = np.clip(frac, -1, 1)
+    round_ = 0.55 + 0.55 * np.sqrt(np.clip(1.0 - f * f, 0, 1))
+    spec = 0.55 * np.exp(-((f - 0.32) / 0.20) ** 2)
+    c = np.asarray(colour, dtype=np.float64)[None, None, :] * round_[..., None]
+    return np.clip(c + 210.0 * spec[..., None], 0, 255)
+
+
+def knife_mask(k):
+    """The outline at 4x, filtered down: a smooth alpha edge at any zoom."""
+    w, cellh = LEVELS[0]
+    W, H = w * ART_SCALE, cellh * ART_SCALE
+    img = Image.new("L", (W, H), 0)
+    d = ImageDraw.Draw(img)
+
+    def P(uu, vv):
+        return (uu / LEN * W, ((vv + HALF) / (2 * HALF)) * H)
+
+    n = 900
+    b0, tipu, spine, edge = k.blade
+    us = [b0 + (tipu - b0) * i / n for i in range(n + 1)]
+    top = [P(x, spine(x)) for x in us]
+    bot = [P(x, edge(x)) for x in us]
+    d.polygon(top + bot[::-1], fill=255)
+
+    h0, h1, hw, style = k.handle
+    hu = [h0 + (h1 - h0) * i / n for i in range(n + 1)]
+    ht = [P(x, k.grip_half(x, hw, style)) for x in hu]
+    hb = [P(x, -k.grip_half(x, hw, style)) for x in hu]
+    d.polygon(ht + hb[::-1], fill=255)
+
+    if 0 <= 1.6:
+        d.rectangle([P(0.15, -1.30), P(1.6, 1.30)], fill=255)
+    if k.ferrule:
+        d.rectangle([P(k.ferrule[0], -1.34), P(k.ferrule[1], 1.34)], fill=255)
+    if k.guard:
+        d.rectangle([P(12.55, -1.62), P(13.35, 1.62)], fill=255)
+
+    if k.ring is not None:
+        cu, ro, ri = k.ring
+        d.ellipse([P(cu - ro, -ro), P(cu + ro, ro)], fill=255)
+        d.ellipse([P(cu - ri, -ri), P(cu + ri, ri)], fill=0)
+
+    if style == "skeleton":
+        for cu in (3.4, 6.6, 9.8):
+            d.ellipse([P(cu - 0.55, -0.62), P(cu + 0.55, 0.62)], fill=0)
+
+    for t0, t1, depth, count in k.teeth:
+        steps = 400
+        for i in range(steps):
+            uu = t0 + (t1 - t0) * i / steps
+            ph = ((uu - t0) / (t1 - t0) * count) % 1.0
+            if ph < 0.45:
+                fs = spine(uu)
+                du = (t1 - t0) / steps
+                d.polygon([P(uu, fs - depth), P(uu + du, fs - depth),
+                           P(uu + du, fs + 0.4), P(uu, fs + 0.4)], fill=0)
+    return img.resize((w, cellh), Image.LANCZOS)
 
 
 def render_face(k):
+    from PIL import ImageFilter
+
     w, cellh = LEVELS[0]
-    img = Image.new("RGBA", (w, cellh), (0, 0, 0, 0))
-    px = img.load()
+    U1 = (np.arange(w) + 0.5) / w * LEN
+    V1 = -HALF + (np.arange(cellh) + 0.5) / cellh * 2 * HALF
+    UU = np.broadcast_to(U1[None, :], (cellh, w)).astype(np.float64).copy()
+    cen = np.array([k.centre_curve(float(x)) for x in U1])[None, :]
+    V = np.broadcast_to(V1[:, None], (cellh, w)).astype(np.float64) + cen
+
     b0, tipu, spine, edge = k.blade
+    fs = np.array([spine(float(x)) for x in U1])[None, :]
+    fe = np.array([edge(float(x)) for x in U1])[None, :]
+    height = np.maximum(1e-4, fs - fe)
+    frac = (V - fe) / height                       # 0 at the edge, 1 at the spine
+
+    # ---- blade
+    col = skin_colour(k.skin, UU, V, b0, tipu)
+    shade = 0.76 + 0.26 * sstep(0.00, 0.22, frac) + 0.16 * sstep(0.62, 0.26, frac)
+    tipfade = np.clip(height / 1.8, 0.0, 1.0)
+    spec = (0.30 * np.exp(-((frac - 0.44) / 0.075) ** 2)
+            + 0.12 * np.exp(-((frac - 0.29) / 0.045) ** 2)) * tipfade
+    hot = 1.0 + 0.16 * sstep(0.12, 0.0, frac)
+    col = col * (shade * hot)[..., None] + 235.0 * spec[..., None]
+    # the plunge cut: the blade darkens where it leaves the guard
+    col = col * (1.0 - 0.18 * np.exp(-((UU - b0 - 0.45) / 0.45) ** 2))[..., None]
+    if k.slot and k.slot[2] > 0:
+        s0, s1, sh = k.slot
+        inr = (UU >= s0) & (UU <= s1)
+        d = np.abs(V + 0.85) / max(1e-4, sh)
+        groove = inr & (d <= 1.0)
+        col = np.where(groove[..., None], col * (1.0 - 0.40 * (1.0 - d * d))[..., None], col)
+        lip = inr & (d > 0.84) & (d <= 1.14)
+        col = np.where(lip[..., None], np.minimum(255.0, col * 1.09), col)
+    col = np.clip(col, 0, 255)
+
+    # ---- handle
     h0, h1, hw, style = k.handle
-    for y in range(cellh):
-        v = -HALF + (y + 0.5) / cellh * 2 * HALF
-        for x in range(w):
-            u = (x + 0.5) / w * LEN
-            vv = v + k.centre_curve(u)
-            if not k.inside(u, vv):
-                continue
-            if u < 1.5:
-                c = BRASS
-            elif k.ferrule and k.ferrule[0] <= u <= k.ferrule[1]:
-                c = (216, 96, 40) if style != "wood" else BRASS
-            elif k.guard and 12.55 <= u <= 13.35:
-                c = BRASS
-            elif h0 <= u <= h1:
-                c = grip_colour(style, u, vv, h1)
-                if style == "wood" and u < h0 + 0.9:
-                    c = BRASS
-                if style in ("groove", "camo"):
-                    for ru in (3.2, 8.4):
-                        if abs(u - ru) < 0.12 and abs(vv) < 0.9:
-                            c = (188, 152, 78)
-                if style == "skeleton":
-                    c = (26, 27, 30)
-            else:
-                skin = k.skin
-                c = pattern(STEEL, "plain", u, vv, b0, tipu) if skin == "plain" else pattern(
-                    STEEL, skin, u, vv, b0, tipu)
-                # grind: the edge band is brighter, the spine falls into shadow
-                fs, fe = spine(u), edge(u)
-                frac = (vv - fe) / (fs - fe) if fs > fe else 0.5
-                if skin in ("plain", "damascus", "slaughter"):
-                    lift = -34 + 46 * clamp01((frac - 0.62) / 0.38) - 18 * clamp01((0.30 - frac) / 0.30)
-                    # the grind line: a bright bevel with a shadow under it, like a real flat grind
-                    lift += 26 * math.exp(-((frac - 0.36) ** 2) / 0.0009)
-                    lift -= 22 * math.exp(-((frac - 0.31) ** 2) / 0.0006)
-                    c = (max(0, min(255, c[0] + int(lift))), max(0, min(255, c[1] + int(lift))),
-                         max(0, min(255, c[2] + int(lift))))
-            # a crisp dark line around the silhouette so the knife reads against the hand
-            if x < 1 or y < 1 or x >= w - 1 or y >= cellh - 1:
-                lit = 0.62
-            else:
-                lit = 1.0
-                for dx, dy in ((2, 0), (-2, 0), (0, 2), (0, -2)):
-                    uu = (x + dx + 0.5) / w * LEN
-                    vyy = -HALF + (y + dy + 0.5) / cellh * 2 * HALF + k.centre_curve(uu)
-                    if not k.inside(uu, vyy):
-                        lit = 0.60
-                        break
-            if lit < 1.0:
-                c = (int(c[0] * lit), int(c[1] * lit), int(c[2] * lit))
-            g = int(shade_grain(u, vv))
-            c = (max(0, min(255, c[0] + g)), max(0, min(255, c[1] + g)), max(0, min(255, c[2] + g)))
-            px[x, y] = (c[0], c[1], c[2], 255)
-    return img
+    t = np.clip((UU - h0) / max(1e-6, h1 - h0), 0.0, 1.0)
+    g = hw * (1.0 - 0.16 * sstep(0.75, 1.0, t))
+    if style in ("groove", "camo", "wood", "tiger"):
+        g = g + 0.10 * np.abs(np.sin(np.pi * 3.0 * t))
+    if style == "curve":
+        g = g * (1.0 + 0.10 * np.sin(np.pi * t))
+    gc = np.maximum(0.2, g)
+    across = np.clip(np.abs(V - cen) / gc, 0, 1)
+    round_ = 0.72 + 0.40 * np.sqrt(np.clip(1.0 - across * across, 0, 1))
+    hspec = 0.45 * np.exp(-((across - 0.42) / 0.22) ** 2)
+    hc = grip_colour_v(style, UU, V, t) * round_[..., None] + 190.0 * hspec[..., None]
+    if style == "wood":
+        for ru in (3.0, 7.0, 11.0):
+            for rv in (-0.55, 0.55):
+                m = ((UU - ru) ** 2 + (V - rv) ** 2) < 0.10
+                hc = np.where(m[..., None], np.array((206, 172, 96), dtype=np.float64), hc)
+    if style in ("ribbed", "groove"):
+        for ru in (3.2, 8.4):
+            m = (np.abs(UU - ru) < 0.11) & (np.abs(V) < 0.95)
+            hc = np.where(m[..., None], np.array((198, 160, 86), dtype=np.float64), hc)
+    hmask = (UU >= h0) & (UU <= h1) & (np.abs(V - cen) <= gc)
+    col = np.where(hmask[..., None], hc, col)
+
+    # ---- brass: pommel, ferrule, guard
+    def bar(u0, u1, halfw, colour):
+        nonlocal col
+        m = (UU >= u0) & (UU <= u1) & (np.abs(V - cen) <= halfw)
+        b = brass_shade(colour, (V - cen) / max(1e-4, halfw))
+        # rounded ends
+        e0 = np.clip((UU - u0) / 0.20, 0, 1)
+        e1 = np.clip((u1 - UU) / 0.20, 0, 1)
+        edge = np.minimum(e0, e1)
+        b = b * (0.72 + 0.28 * np.sqrt(np.clip(edge, 0, 1)))[..., None]
+        col = np.where(m[..., None], b, col)
+
+    bar(0.15, 1.6, 1.30, (198, 160, 88))
+    if k.ferrule:
+        bar(k.ferrule[0], k.ferrule[1], 1.34, (214, 126, 56) if style != "wood" else (200, 162, 90))
+    if k.guard:
+        bar(12.55, 13.35, 1.62, (200, 162, 90))
+        # the two rings of a guard
+        for ru in (12.62, 13.28):
+            m = (np.abs(UU - ru) < 0.07) & (np.abs(V - cen) <= 1.70)
+            col = np.where(m[..., None], np.array((228, 196, 128), dtype=np.float64), col)
+    if k.ring is not None:
+        cu, ro, ri = k.ring
+        d = np.sqrt((UU - cu) ** 2 + V ** 2)
+        m = (d <= ro) & (d >= ri)
+        ang = np.arctan2(V, UU - cu)
+        b = brass_shade((200, 162, 90), np.cos(ang) * 0.9)
+        col = np.where(m[..., None], b, col)
+
+    # ---- alpha and the silhouette line
+    mask = knife_mask(k)
+    a = np.asarray(mask, dtype=np.float64) / 255.0
+    inner = np.asarray(mask.filter(ImageFilter.MinFilter(7)), dtype=np.float64) / 255.0
+    border = np.clip(a - inner, 0, 1)
+    col = col * (1.0 - 0.45 * border)[..., None]
+    # a hint of grain so the flats are not perfectly clean
+    grain = 3.0 * np.sin(UU * 61.0 + V * 17.0) + 2.0 * np.sin(UU * 133.0 - V * 41.0)
+    col = np.clip(col + grain[..., None], 0, 255)
+
+    out = np.zeros((cellh, w, 4), dtype=np.uint8)
+    out[..., :3] = col.astype(np.uint8)
+    out[..., 3] = np.clip(a * 255.0, 0, 255).astype(np.uint8)
+    return Image.fromarray(out, "RGBA")
 
 
 def offset_cell(face, dx, dy, tint):
