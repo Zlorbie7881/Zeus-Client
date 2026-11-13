@@ -524,8 +524,6 @@ public final class KnifeArt {
         KLayer[] band;
     }
 
-    private static final KSet[][] KSETS = new KSet[KR.length + 18][4];
-
     public static int kRects(int curve, boolean fine) {
         return kSet(curve, fine ? 2 : 4, fine ? 3 : 2).full[0].rects.length / 5;
     }
@@ -700,7 +698,7 @@ public final class KnifeArt {
     }
 
     public static final String[] SFINISHES = {"Stainless", "Blue steel", "Fade", "Slaughter", "Crimson web", "Doppler", "Case hardened", "Night",
-        "Forest", "Gamma Doppler", "Gold", "Damascus", "Rainbow"};
+        "Forest", "Gamma Doppler", "Gold", "Damascus", "Emerald", "Obsidian", "Copper", "Ruby", "Tiger", "Rainbow"};
 
     private static final int[][] SFIN = {
         {0xFF8A8F98, 0xFF4A4F58, 0xFF24272E, 0xFF0E1014, 0xFFF4F7FB, 0xFFB7C0CC, 0xFF6B7684, 0xFFE8F1FF},
@@ -715,6 +713,11 @@ public final class KnifeArt {
         {0xFFB8FFE8, 0xFF22C894, 0xFF0E5440, 0xFF04201A, 0xFFC8FFF0, 0xFF3AE0B4, 0xFF108070, 0xFF5CFFD0},
         {0xFFFFF0B8, 0xFFD2A21E, 0xFF5C4208, 0xFF241A04, 0xFFFFF6C4, 0xFFF0C23A, 0xFFA27010, 0xFFFFD45E},
         {0xFFE2C79A, 0xFF8A6A3A, 0xFF3C2A14, 0xFF18100A, 0xFFEAEAEA, 0xFF9A9AA6, 0xFF50505C, 0xFFDDDDEE},
+        {0xFF8AE0B0, 0xFF14724A, 0xFF06301E, 0xFF02140C, 0xFFC8FFE0, 0xFF2AD08A, 0xFF0A5C3A, 0xFF5CFFB0},
+        {0xFF4A4A58, 0xFF23232E, 0xFF101018, 0xFF06060A, 0xFF9A9AB8, 0xFF43435C, 0xFF14141E, 0xFF8A7CFF},
+        {0xFFE8A878, 0xFFB06432, 0xFF4A2814, 0xFF1C0E06, 0xFFFFD0A8, 0xFFD07C3C, 0xFF6E3A18, 0xFFFFA860},
+        {0xFFFFA0B0, 0xFFB01838, 0xFF4A081A, 0xFF1C0208, 0xFFFFC0CC, 0xFFE0284C, 0xFF7A0A22, 0xFFFF4A6A},
+        {0xFFF0C860, 0xFF3A2A10, 0xFF1A1206, 0xFF0A0602, 0xFFFFF0B0, 0xFFE0A020, 0xFF6A4408, 0xFFFFC03A},
     };
 
     public static Look sLook(int finish, int model, float time) {
@@ -794,6 +797,14 @@ public final class KnifeArt {
         new Straight("Skeleton", 9.0f, 1.3f, 14f, w(1.1f, 1.3f, 1.4f, 1.4f, 1.3f, 1.1f, 0.9f, 0.7f, 0.45f, 0.2f, 0f), w(1.1f, 1.4f, 1.6f, 1.7f, 1.7f, 1.6f, 1.3f, 1.0f, 0.6f, 0.3f, 0f), 0f, 0f, H_SKEL, "pl"),
         new Straight("Kukri", 7.4f, 1.4f, 14f, w(1.0f, 1.1f, 1.2f, 1.4f, 1.7f, 2.1f, 2.5f, 2.6f, 2.2f, 1.3f, 0f), w(1.0f, 1.1f, 1.3f, 1.6f, 2.0f, 2.5f, 3.0f, 3.1f, 2.6f, 1.5f, 0f), -12f, 70f, H_RIBBED, "wf"),
         new Straight("Shadow Daggers", 3.4f, 0.9f, 10f, w(0.9f, 1.3f, 1.6f, 1.7f, 1.6f, 1.4f, 1.1f, 0.8f, 0.5f, 0.25f, 0f), w(0.9f, 1.3f, 1.6f, 1.7f, 1.6f, 1.4f, 1.1f, 0.8f, 0.5f, 0.25f, 0f), 0f, 0f, H_PUSH, "f"),
+        new Straight("Tantō", 7.4f, 1.35f, 13.6f, w(1.35f, 1.45f, 1.5f, 1.5f, 1.5f, 1.45f, 1.4f, 1.3f, 1.15f, 0.9f, 0.4f), w(1.4f, 1.5f, 1.55f, 1.55f, 1.55f, 1.5f, 1.45f, 1.35f, 1.2f, 0.95f, 0.45f), 0f, 0f, H_CORD, "gp"),
+        new Straight("Kris", 8f, 1.3f, 15.2f, w(1f, 1.35f, 1f, 1.4f, 1.05f, 1.5f, 1f, 1.35f, 0.9f, 1.1f, 0.3f), w(1.1f, 1.45f, 1.1f, 1.5f, 1.15f, 1.6f, 1.1f, 1.45f, 1f, 1.15f, 0.35f), 0f, 0f, H_RIBBED, "gp"),
+        new Straight("Cleaver", 7.2f, 1.5f, 12.8f, w(1.7f, 2f, 2.2f, 2.3f, 2.4f, 2.4f, 2.4f, 2.4f, 2.3f, 2.2f, 1.9f), w(1.9f, 2.2f, 2.4f, 2.5f, 2.6f, 2.6f, 2.6f, 2.6f, 2.5f, 2.4f, 2.1f), 0f, 0f, H_CORD, "p"),
+        new Straight("Kunai", 6.4f, 1f, 11.8f, w(0.9f, 1f, 1f, 0.95f, 0.9f, 0.8f, 0.7f, 0.6f, 0.45f, 0.3f, 0.1f), w(0.95f, 1.05f, 1.05f, 1f, 0.95f, 0.85f, 0.75f, 0.65f, 0.5f, 0.32f, 0.1f), 0f, 0f, H_CORD, "p"),
+        new Straight("Jambiya", 7f, 1.45f, 12.6f, w(1.5f, 1.7f, 1.8f, 1.8f, 1.7f, 1.6f, 1.4f, 1.2f, 0.9f, 0.55f, 0.15f), w(1.6f, 1.85f, 1.95f, 1.95f, 1.85f, 1.7f, 1.5f, 1.3f, 0.95f, 0.6f, 0.15f), -20f, 55f, H_RIBBED, "gp"),
+        new Straight("Khopesh", 7.8f, 1.3f, 15.4f, w(1.1f, 1.25f, 1.35f, 1.45f, 1.5f, 1.6f, 1.7f, 1.7f, 1.5f, 1f, 0.3f), w(1.2f, 1.35f, 1.45f, 1.55f, 1.6f, 1.7f, 1.8f, 1.8f, 1.6f, 1.1f, 0.3f), -26f, 78f, H_RIBBED, "h"),
+        new Straight("Machete", 8.6f, 1.35f, 16.5f, w(1.5f, 1.7f, 1.8f, 1.85f, 1.9f, 1.95f, 2f, 2f, 1.8f, 1.4f, 0.7f), w(1.6f, 1.8f, 1.9f, 1.95f, 2f, 2.05f, 2.1f, 2.1f, 1.9f, 1.5f, 0.75f), -8f, 30f, H_CORD, "p"),
+        new Straight("Dagger", 5.8f, 1f, 10.8f, w(1.1f, 1.25f, 1.3f, 1.28f, 1.2f, 1.1f, 0.95f, 0.8f, 0.6f, 0.4f, 0.12f), w(1.1f, 1.25f, 1.3f, 1.28f, 1.2f, 1.1f, 0.95f, 0.8f, 0.6f, 0.42f, 0.12f), 0f, 0f, H_SCALES, "gp"),
     };
 
     public static String[] straightNames() {
@@ -808,7 +819,8 @@ public final class KnifeArt {
         return (m.style == H_PUSH ? 1.6f : m.hl * 0.5f) * Q;
     }
 
-    private static final float[][] BOUNDS = new float[KR.length + 18][];
+    private static final float[][] BOUNDS = new float[KR.length + SMODELS.length][];
+    private static final KSet[][] KSETS = new KSet[KR.length + SMODELS.length][4];
 
     private static float[] bounds(int key) {
         key = Math.max(0, Math.min(KR.length + SMODELS.length - 1, key));
