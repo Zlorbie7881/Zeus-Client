@@ -1,98 +1,186 @@
 package com.zlorbie788.zeus.ui;
 
-import com.zlorbie788.zeus.ui.KnifeHD.Frame;
-import com.zlorbie788.zeus.ui.KnifeHD.Model;
-import com.zlorbie788.zeus.ui.KnifeHD.Quad;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.navigation.ScreenRectangle;
+import net.minecraft.client.gui.render.TextureSetup;
+import net.minecraft.client.gui.render.state.GuiElementRenderState;
 import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.texture.AbstractTexture;
 import org.joml.Matrix3x2f;
 
-import java.util.HashMap;
-import java.util.Map;
-
-/** Draws the quads {@link KnifeHD} builds, straight into the GUI, with no depth buffer needed. */
+/**
+ * Submits the quads {@link KnifeHD} builds as real GUI geometry: four free vertices per quad,
+ * each with its own uv and colour, so faces are smoothly lit and the outline is the texture's.
+ *
+ * <p>Quads of one group share a pipeline and go into one element; the light groups use the
+ * premultiplied pipeline, whose texels carry almost no alpha, so they add light.  Groups are
+ * submitted in paint order and their bounds overlap, so the GUI keeps that order.
+ */
 public final class KnifeHDGui {
     private KnifeHDGui() {
     }
 
-    private static final Frame FRAME = new Frame();
-    private static final Map<String, Tex.Img> SHEETS = new HashMap<>();
+    private static final KnifeHD.Frame FRAME = new KnifeHD.Frame();
+    private static boolean broken;
 
-    private static Tex.Img sheet(Model m, int level) {
-        String path = KnifeHD.sheet(m, level);
-        Tex.Img img = SHEETS.get(path);
-        if (img == null) {
-            img = Tex.sprite(path);
-            if (img != null) SHEETS.put(path, img);
-        }
-        return img;
+    public static boolean ready(int knife) {
+        if (broken) return false;
+        KnifeHD.Model m = KnifeHD.model(knife);
+        return m != null && Tex.sprite(KnifeHD.sheet(m, 1)) != null;
     }
 
-    /** Draw one HD knife. Returns false when there is nothing to draw. */
-    public static boolean draw(GuiGraphics g, int index, Rig.T k, float unit, float alpha, boolean light) {
-        return draw(g, KnifeHD.model(index), k, unit, alpha, light);
+    /** Draws a knife at the rig transform k.  Returns false if it could not be drawn. */
+    public static boolean draw(GuiGraphics g, int knife, Rig.T k, float unit, float alpha, boolean light) {
+        if (broken) return false;
+        try {
+            KnifeHD.Model m = KnifeHD.model(knife);
+            if (m == null) return false;
+            float pixels = (float) Minecraft.getInstance().getWindow().getGuiScale();
+            KnifeHD.Frame f = KnifeHD.build(FRAME, m, k, unit, pixels, alpha, light);
+            if (f.quads.isEmpty()) return false;
+            Tex.Img img = Tex.sprite(KnifeHD.sheet(m, f.level));
+            if (img == null && f.level != 1) img = Tex.sprite(KnifeHD.sheet(m, 1));
+            if (img == null) return false;
+            AbstractTexture tex = Minecraft.getInstance().getTextureManager().getTexture(img.id);
+            TextureSetup setup = TextureSetup.singleTexture(tex.getTextureView(), tex.getSampler());
+            Matrix3x2f pose = new Matrix3x2f(g.pose());
+            ScreenRectangle scissor = g.scissorStack.peek();
+            List<KnifeHD.Quad> qs = f.quads;
+            int start = 0;
+            while (start < qs.size()) {
+                int grp = qs.get(start).group;
+                int end = start;
+                while (end < qs.size() && qs.get(end).group == grp) end++;
+                boolean light2 = qs.get(start).light;
+                RenderPipeline pipe = light2 ? RenderPipelines.GUI_TEXTURED_PREMULTIPLIED_ALPHA : RenderPipelines.GUI_TEXTURED;
+                Element e = new Element(pipe, setup, pose, scissor, qs, start, end);
+                if (e.bounds != null) g.guiRenderState.submitGuiElement(e);
+                start = end;
+            }
+            return true;
+        } catch (RuntimeException | Error e) {
+            broken = true;
+            com.zlorbie788.zeus.core.Zeus.LOG.warn("HD knife could not be drawn; using the pixel knife", e);
+            return false;
+        }
     }
 
-    public static boolean draw(GuiGraphics g, Model m, Rig.T k, float unit, float alpha, boolean light) {
-        if (m == null || k == null || alpha <= 0.004f) return false;
-        float pixels = Math.max(1f, (float) Minecraft.getInstance().getWindow().getGuiScale());
-        Frame f = KnifeHD.build(FRAME, m, k, unit, pixels, alpha, light);
-        if (f.quads.isEmpty()) return false;
-        Tex.Img img = sheet(m, f.level);
-        if (img == null) return false;
-        float tw = img.w, th = img.h;
-        var pose = g.pose();
-        boolean drew = false;
-        for (Quad q : f.quads) {
-            float ex = q.x[1] - q.x[0], ey = q.y[1] - q.y[0];
-            float fx = q.x[3] - q.x[0], fy = q.y[3] - q.y[0];
-            if (Math.abs(ex * fy - ey * fx) < 2e-4f) continue;
-            if (!finite(q, ex, ey, fx, fy)) continue;
-            int col = tint(q, alpha);
-            if ((col >>> 24) < 2) continue;
-            float u0 = Math.min(q.u[0], q.u[1]), u1 = Math.max(q.u[0], q.u[1]);
-            float v0 = Math.min(q.v[0], q.v[1]), v1 = Math.max(q.v[0], q.v[1]);
-            pose.pushMatrix();
-            pose.mul(new Matrix3x2f(ex, ey, fx, fy, q.x[0], q.y[0]));
-            g.blit(RenderPipelines.GUI_TEXTURED, img.id, 0, 0, u0 * tw, v0 * th, 1, 1,
-                    Math.max(1, Math.round((u1 - u0) * tw)), Math.max(1, Math.round((v1 - v0) * th)),
-                    img.w, img.h, col);
-            pose.popMatrix();
-            drew = true;
+    private static final KnifeHD.Frame FIT = new KnifeHD.Frame();
+
+    /**
+     * The gallery view: the knife on a slow turn, fitted to the box.  The turn is gentle enough
+     * to keep the face towards the viewer and shows the highlights running along the blade.
+     */
+    public static boolean showcase(GuiGraphics g, int knife, int bx, int by, int bw, int bh, float time, boolean big) {
+        if (broken) return false;
+        KnifeHD.Model m = KnifeHD.model(knife);
+        if (m == null) return false;
+        float sway = (float) Math.sin(time * (big ? 0.9 : 0.7) + knife * 0.8);
+        Rig.T k = Rig.T.rz((float) Math.PI - 1.10f).rotY(-0.35f + 0.32f * sway).rotX(0.12f + 0.06f * sway);
+        // measure at unit 1, then scale to the box (projection is linear in unit)
+        KnifeHD.build(FIT, m, k, 1f, 1f, 1f, false);
+        if (FIT.quads.isEmpty()) return false;
+        float x0 = Float.MAX_VALUE, y0 = Float.MAX_VALUE, x1 = -Float.MAX_VALUE, y1 = -Float.MAX_VALUE;
+        for (KnifeHD.Quad q : FIT.quads) {
+            for (int i = 0; i < 4; i++) {
+                x0 = Math.min(x0, q.x[i]);
+                y0 = Math.min(y0, q.y[i]);
+                x1 = Math.max(x1, q.x[i]);
+                y1 = Math.max(y1, q.y[i]);
+            }
         }
-        return drew;
+        // the sheet has empty margins around the knife; 0.80 of the quads' box is the knife
+        float ew = Math.max(1e-3f, (x1 - x0) * 0.80f), eh = Math.max(1e-3f, (y1 - y0) * 0.80f);
+        float unit = Math.min(bw / ew, bh / eh) * 0.86f;
+        g.pose().pushMatrix();
+        g.pose().translate(bx + bw / 2f - (x0 + x1) / 2f * unit, by + bh / 2f - (y0 + y1) / 2f * unit);
+        boolean ok = draw(g, knife, k, unit, 1f, true);
+        g.pose().popMatrix();
+        return ok;
     }
 
-    private static boolean finite(Quad q, float ex, float ey, float fx, float fy) {
-        for (int i = 0; i < 4; i++) {
-            if (!Float.isFinite(q.x[i]) || !Float.isFinite(q.y[i])) return false;
-            if (!Float.isFinite(q.u[i]) || !Float.isFinite(q.v[i])) return false;
-        }
-        return Float.isFinite(ex + ey + fx + fy);
-    }
+    /** A batch of quads with their own vertices; a copy, because the frame is reused. */
+    private static final class Element implements GuiElementRenderState {
+        private final RenderPipeline pipeline;
+        private final TextureSetup setup;
+        private final Matrix3x2f pose;
+        private final ScreenRectangle scissor;
+        private final ScreenRectangle bounds;
+        private final float[] xy;
+        private final float[] uv;
+        private final int[] col;
 
-    /** One colour for the whole quad: the light pass is white, the solid passes keep their light. */
-    private static int tint(Quad q, float alpha) {
-        int r = 0, gg = 0, b = 0, a = 0;
-        for (int i = 0; i < 4; i++) {
-            int c = q.c[i];
-            a += (c >>> 24) & 255;
-            r += (c >> 16) & 255;
-            gg += (c >> 8) & 255;
-            b += c & 255;
+        Element(RenderPipeline pipeline, TextureSetup setup, Matrix3x2f pose, ScreenRectangle scissor,
+                List<KnifeHD.Quad> qs, int from, int to) {
+            this.pipeline = pipeline;
+            this.setup = setup;
+            this.pose = pose;
+            this.scissor = scissor;
+            int n = (to - from) * 4;
+            xy = new float[n * 2];
+            uv = new float[n * 2];
+            col = new int[n];
+            float minX = Float.MAX_VALUE, minY = Float.MAX_VALUE, maxX = -Float.MAX_VALUE, maxY = -Float.MAX_VALUE;
+            int o = 0;
+            for (int i = from; i < to; i++) {
+                KnifeHD.Quad q = qs.get(i);
+                for (int c = 0; c < 4; c++) {
+                    float x = q.x[c], y = q.y[c];
+                    if (!Float.isFinite(x) || !Float.isFinite(y)) {
+                        x = 0f;
+                        y = 0f;
+                    }
+                    xy[o * 2] = x;
+                    xy[o * 2 + 1] = y;
+                    uv[o * 2] = q.u[c];
+                    uv[o * 2 + 1] = q.v[c];
+                    col[o] = q.c[c];
+                    minX = Math.min(minX, x);
+                    minY = Math.min(minY, y);
+                    maxX = Math.max(maxX, x);
+                    maxY = Math.max(maxY, y);
+                    o++;
+                }
+            }
+            ScreenRectangle b = null;
+            if (n > 0 && maxX >= minX) {
+                int x0 = (int) Math.floor(minX), y0 = (int) Math.floor(minY);
+                int w = Math.max(1, (int) Math.ceil(maxX) - x0), h = Math.max(1, (int) Math.ceil(maxY) - y0);
+                b = new ScreenRectangle(x0, y0, w, h).transformMaxBounds(pose);
+                if (scissor != null) b = scissor.intersection(b);
+            }
+            bounds = b;
         }
-        a = Math.round(a / 4f * alpha);
-        if (q.light) {
-            int lv = Math.round((r + gg + b) / 12f);
-            int la = Math.min(255, Math.round(lv * alpha * 0.92f));
-            return (la << 24) | 0x00FFFFFF;
-        }
-        return (Math.min(255, a) << 24) | ((r / 4) << 16) | ((gg / 4) << 8) | (b / 4);
-    }
 
-    /** Drop the cached sheets, for a resource reload. */
-    public static void clear() {
-        SHEETS.clear();
+        @Override
+        public void buildVertices(VertexConsumer vc) {
+            for (int i = 0; i < col.length; i++) {
+                vc.addVertexWith2DPose(pose, xy[i * 2], xy[i * 2 + 1]).setUv(uv[i * 2], uv[i * 2 + 1]).setColor(col[i]);
+            }
+        }
+
+        @Override
+        public RenderPipeline pipeline() {
+            return pipeline;
+        }
+
+        @Override
+        public TextureSetup textureSetup() {
+            return setup;
+        }
+
+        @Override
+        public ScreenRectangle scissorArea() {
+            return scissor;
+        }
+
+        @Override
+        public ScreenRectangle bounds() {
+            return bounds;
+        }
     }
 }

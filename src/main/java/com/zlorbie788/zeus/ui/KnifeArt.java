@@ -401,12 +401,15 @@ public final class KnifeArt {
     }
 
     public static String[] finishNames(int type) {
+        if (hdType(type) >= 0) return new String[] {"Original"};
         return type == 0 ? PRESETS : type == 1 ? KPRESETS : SFINISHES;
     }
 
     private static final Rig SHOW_RIG = new Rig();
 
     public static void showcase(GuiGraphics g, int type, int finish, int bx, int by, int bw, int bh, float time, boolean fine) {
+        int hd = hdType(type);
+        if (hd >= 0 && KnifeHDGui.showcase(g, hd, bx, by, bw, bh, time, fine)) return;
         Rig rig = SHOW_RIG;
         rig.clear();
         rig.alpha(1f);
@@ -441,6 +444,8 @@ public final class KnifeArt {
     public static float[] kAt(Rig.T k, int curve, float t) {
         curve = Math.max(0, Math.min(KR.length + SMODELS.length - 1, curve));
         if (curve >= KR.length) {
+            int hd = hdOf(curve);
+            if (hd >= 0) return KnifeHD.along(KnifeHD.model(hd), k, t);
             Straight m = SMODELS[curve - KR.length];
             float y0 = m.hl + (m.guard ? 0.9f : 0f);
             if (m.bend == 0f) return k.point(0f, (y0 + m.bl * t) * Q, 0f);
@@ -809,34 +814,31 @@ public final class KnifeArt {
         new Straight("Machete", 8.6f, 1.35f, 16.5f, w(1.5f, 1.7f, 1.8f, 1.85f, 1.9f, 1.95f, 2f, 2f, 1.8f, 1.4f, 0.7f), w(1.6f, 1.8f, 1.9f, 1.95f, 2f, 2.05f, 2.1f, 2.1f, 1.9f, 1.5f, 0.75f), -8f, 30f, H_CORD, "p"),
         new Straight("Dagger", 5.8f, 1f, 10.8f, w(1.1f, 1.25f, 1.3f, 1.28f, 1.2f, 1.1f, 0.95f, 0.8f, 0.6f, 0.4f, 0.12f), w(1.1f, 1.25f, 1.3f, 1.28f, 1.2f, 1.1f, 0.95f, 0.8f, 0.6f, 0.42f, 0.12f), 0f, 0f, H_SCALES, "gp"),
 
-        // the HD tactical knives: drawn from the sheet atlas by KnifeHD, these entries are
-        // their pixel fallback (same names, same order as knives/hd/tactical.json)
+        // the HD tactical knives (KnifeHD); these entries are their pixel fallback
+        new Straight("Tactical · Damascus", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
+        new Straight("Tactical · Slaughter", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
         new Straight("Tactical · Case hardened", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
-        new Straight("Tactical · Crimson web", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_SKEL, "lps"),
-        new Straight("Tactical · Damascus", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_CORD, "gps"),
-        new Straight("Tactical · Sapphire", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_SCALES, "gps"),
-        new Straight("Tactical · Fade", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_SCALES, "lps"),
-        new Straight("Tactical · Slaughter", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_CORD, "lps"),
+        new Straight("Tactical · Fade", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
+        new Straight("Tactical · Crimson web", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
         new Straight("Tactical · Tiger tooth", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
-        new Straight("Tactical · Urban masked", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_SKEL, "ps"),
+        new Straight("Tactical · Sapphire", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
+        new Straight("Tactical · Urban masked", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
     };
 
-    /** How many of the last straight models are HD tactical knives drawn by {@link KnifeHD}. */
+    /** How many of the last straight models are HD tactical knives drawn by KnifeHD. */
     public static final int HD_COUNT = 8;
 
     /** HD knife index for a knife key (KR.length + straight index), or -1. */
     public static int hdOf(int key) {
         int si = key - KR.length;
-        if (si < 0 || si >= SMODELS.length) return -1;
         int hd = si - (SMODELS.length - HD_COUNT);
-        return hd >= 0 && hd < KnifeHD.count() ? hd : -1;
+        return si >= 0 && si < SMODELS.length && hd >= 0 && hd < KnifeHD.count() ? hd : -1;
     }
 
     /** HD knife index for a knife type (0 butterfly, 1 karambit, 2.. straight), or -1. */
     public static int hdType(int type) {
         return type >= 2 ? hdOf(KR.length + type - 2) : -1;
     }
-
 
     public static String[] straightNames() {
         String[] n = new String[SMODELS.length];

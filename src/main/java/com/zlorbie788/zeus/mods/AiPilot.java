@@ -85,6 +85,16 @@ public final class AiPilot extends Module {
     private static final java.nio.file.Path MEMORY = net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("zeus-ai-memory.json");
     private static volatile boolean memoryLoaded;
     private static volatile boolean noJsonMode;
+    // Provider quirks learned at run time: newer OpenAI models want max_completion_tokens and only
+    // their default temperature; some local servers reject response_format.  Each flag is set the
+    // first time a provider says so, and the request is sent again without the offending field.
+    private static volatile boolean completionTokens;
+    private static volatile boolean noTemperature;
+    private static volatile String lastTest = "";
+    private static volatile boolean lastTestOk;
+    private static volatile long lastTestAt;
+    private static final java.util.concurrent.atomic.AtomicInteger PLANS = new java.util.concurrent.atomic.AtomicInteger();
+    private static volatile boolean paused;
     private static volatile String followPrompt = "";
     private static volatile long followAt;
     private static volatile int followUps;
@@ -109,6 +119,7 @@ public final class AiPilot extends Module {
         int trees;
         long started = System.currentTimeMillis();
         long nextSearch;
+        long healUntil;
         long nextScan;
         long quietSince;
         BlockPos block;
@@ -233,36 +244,238 @@ public final class AiPilot extends Module {
     public static void key(String value) {
         AiPilot self = find();
         if (self == null) return;
-        self.token.set(value);
-        if (value != null && !value.isBlank()) self.provider();
-        Zeus.toast(value == null || value.isBlank() ? "AI token cleared" : "AI token saved", true);
-    }
-
-    private void provider() {
-        String secret = token.get();
-        if (secret == null) return;
-        boolean stock = endpoint.get().contains("api.openai.com");
-        if (secret.startsWith("gsk_")) {
-            if (stock) {
-                endpoint.set("https://api.groq.com/openai/v1/chat/completions");
-                if (model.get().startsWith("gpt")) model.set("llama-3.3-70b-versatile");
-            }
-        } else if (secret.startsWith("sk-or-")) {
-            if (stock) {
-                endpoint.set("https://openrouter.ai/api/v1/chat/completions");
-                if (model.get().startsWith("gpt")) model.set("openai/gpt-4o-mini");
-            }
-        } else if (secret.startsWith("AIza")) {
-            if (stock) {
-                endpoint.set("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions");
-                if (model.get().startsWith("gpt")) model.set("gemini-2.0-flash");
-            }
+        String clean = value == null ? "" : value.trim();
+        if (clean.startsWith("\"") && clean.endsWith("\"") && clean.length() > 1) clean = clean.substring(1, clean.length() - 1).trim();
+        if (clean.toLowerCase(Locale.ROOT).startsWith("bearer ")) clean = clean.substring(7).trim();
+        self.token.set(clean);
+        completionTokens = false;
+        noTemperature = false;
+        noJsonMode = false;
+        lastTestOk = false;
+        lastTest = "";
+        Provider picked = clean.isBlank() ? null : self.provider();
+        Zeus.toast(clean.isBlank() ? "AI key cleared" : "AI key saved", true);
+        if (!clean.isBlank()) {
+            Provider now = currentProvider();
+            Notify.good("Key saved (" + mask(clean) + ")" + (picked != null ? ", recognised as " + picked.label() + ": model " + self.model.get()
+                    : now != null ? " for " + now.label() : "") + ". Check it with /zeus ai test");
+            AiTutorial.onKey();
         }
     }
 
+    /** First and last characters only, so a key never shows in full in chat or screenshots. */
+    public static String mask(String secret) {
+        if (secret == null || secret.length() < 10) return "****";
+        return secret.substring(0, 4) + "…" + secret.substring(secret.length() - 4);
+    }
+
+    /** Recognise the provider from the key's prefix and point the endpoint at it, unless a custom endpoint is set. */
+    private Provider provider() {
+        String secret = token.get();
+        if (secret == null) return null;
+        String id = secret.startsWith("gsk_") ? "groq"
+                : secret.startsWith("sk-or-") ? "openrouter"
+                : secret.startsWith("AIza") ? "gemini"
+                : secret.startsWith("sk-proj-") || secret.startsWith("sk-svcacct-") ? "openai"
+                : null;
+        if (id == null) return null;
+        Provider target = providerById(id);
+        Provider now = currentProvider();
+        boolean custom = now == null && endpoint.get() != null && !endpoint.get().isBlank()
+                && !endpoint.get().contains("api.openai.com");
+        if (target == null || custom || now == target) return now == target ? target : null;
+        endpoint.set(target.url());
+        model.set(target.model());
+        return target;
+    }
+
+    /** True when the AI can be asked: a key is saved, or the endpoint is a local server that needs none. */
     public static boolean hasKey() {
         AiPilot self = find();
+        if (self == null) return false;
+        if (self.token.get() != null && !self.token.get().isBlank()) return true;
+        return local(self.url());
+    }
+
+    /** True when a real key is saved (as opposed to a keyless local server). */
+    public static boolean hasSecret() {
+        AiPilot self = find();
         return self != null && self.token.get() != null && !self.token.get().isBlank();
+    }
+
+    /** The endpoint as typed, completed to a chat completions URL when only a base was given. */
+    String url() {
+        String raw = endpoint.get() == null ? "" : endpoint.get().trim();
+        if (raw.isEmpty()) return "https://api.openai.com/v1/chat/completions";
+        if (!raw.startsWith("http://") && !raw.startsWith("https://")) {
+            raw = (raw.startsWith("localhost") || raw.startsWith("127.") ? "http://" : "https://") + raw;
+        }
+        while (raw.endsWith("/")) raw = raw.substring(0, raw.length() - 1);
+        if (raw.endsWith("/chat/completions")) return raw;
+        if (raw.endsWith("/v1") || raw.endsWith("/openai") || raw.endsWith("/v1beta/openai") || raw.endsWith("/api/v1")) {
+            return raw + "/chat/completions";
+        }
+        if (raw.matches("https?://[^/]+")) return raw + "/v1/chat/completions";
+        return raw;
+    }
+
+    /** A server on this computer or the home network: no key is needed and none is sent. */
+    static boolean local(String url) {
+        try {
+            String host = URI.create(url).getHost();
+            if (host == null) return false;
+            host = host.toLowerCase(Locale.ROOT);
+            return host.equals("localhost") || host.startsWith("127.") || host.equals("0.0.0.0") || host.equals("::1")
+                    || host.startsWith("192.168.") || host.startsWith("10.") || host.endsWith(".local")
+                    || host.equals("host.docker.internal");
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /** Provider presets for /zeus ai provider: endpoint, a sensible default model, and where keys come from. */
+    public record Provider(String id, String label, String url, String model, String keys, boolean free, boolean keyless) {}
+
+    public static final List<Provider> PROVIDERS = List.of(
+            new Provider("groq", "Groq", "https://api.groq.com/openai/v1/chat/completions", "llama-3.3-70b-versatile",
+                    "https://console.groq.com/keys", true, false),
+            new Provider("gemini", "Google Gemini", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+                    "gemini-2.0-flash", "https://aistudio.google.com/app/apikey", true, false),
+            new Provider("openrouter", "OpenRouter", "https://openrouter.ai/api/v1/chat/completions", "openai/gpt-4o-mini",
+                    "https://openrouter.ai/keys", false, false),
+            new Provider("openai", "OpenAI", "https://api.openai.com/v1/chat/completions", "gpt-4o-mini",
+                    "https://platform.openai.com/api-keys", false, false),
+            new Provider("deepseek", "DeepSeek", "https://api.deepseek.com/chat/completions", "deepseek-chat",
+                    "https://platform.deepseek.com/api_keys", false, false),
+            new Provider("mistral", "Mistral", "https://api.mistral.ai/v1/chat/completions", "mistral-small-latest",
+                    "https://console.mistral.ai/api-keys", false, false),
+            new Provider("ollama", "Ollama (on this PC)", "http://localhost:11434/v1/chat/completions", "llama3.1",
+                    "https://ollama.com/download", true, true),
+            new Provider("lmstudio", "LM Studio (on this PC)", "http://localhost:1234/v1/chat/completions", "local-model",
+                    "https://lmstudio.ai", true, true));
+
+    public static Provider providerById(String id) {
+        if (id == null) return null;
+        String key = id.trim().toLowerCase(Locale.ROOT).replace(" ", "").replace("-", "");
+        for (Provider p : PROVIDERS) if (p.id().equals(key) || p.label().toLowerCase(Locale.ROOT).replace(" ", "").startsWith(key)) return p;
+        if (key.equals("google")) return providerById("gemini");
+        if (key.equals("chatgpt") || key.equals("gpt")) return providerById("openai");
+        return null;
+    }
+
+    /** Switch the endpoint and model to a provider preset.  Returns what changed, for chat. */
+    public static String useProvider(String id) {
+        AiPilot self = find();
+        if (self == null) return "Zeus AI Functions is missing.";
+        Provider p = providerById(id);
+        if (p == null) {
+            StringBuilder names = new StringBuilder();
+            for (Provider each : PROVIDERS) names.append(names.length() == 0 ? "" : ", ").append(each.id());
+            return "No provider called " + id + ". Pick one of: " + names + ".";
+        }
+        self.endpoint.set(p.url());
+        self.model.set(p.model());
+        noJsonMode = false;
+        completionTokens = false;
+        noTemperature = false;
+        lastTestOk = false;
+        lastTest = "";
+        return p.label() + " selected: model " + p.model() + (p.keyless() ? ", no key needed." : ".");
+    }
+
+    public static String setModel(String name) {
+        AiPilot self = find();
+        if (self == null) return "Zeus AI Functions is missing.";
+        if (name == null || name.isBlank()) return "Model is " + self.model.get() + ".";
+        self.model.set(name.trim());
+        completionTokens = false;
+        noTemperature = false;
+        lastTestOk = false;
+        return "Model set to " + name.trim() + ". Run /zeus ai test to check it.";
+    }
+
+    public static String setEndpoint(String url) {
+        AiPilot self = find();
+        if (self == null) return "Zeus AI Functions is missing.";
+        if (url == null || url.isBlank()) return "Endpoint is " + self.url() + ".";
+        self.endpoint.set(url.trim());
+        noJsonMode = false;
+        completionTokens = false;
+        noTemperature = false;
+        lastTestOk = false;
+        return "Endpoint set to " + self.url() + (local(self.url()) ? " (local, no key needed)." : ".");
+    }
+
+    /** Which provider preset the current endpoint belongs to, or null for a custom one. */
+    public static Provider currentProvider() {
+        AiPilot self = find();
+        if (self == null) return null;
+        String url = self.url();
+        for (Provider p : PROVIDERS) if (url.equalsIgnoreCase(p.url())) return p;
+        return null;
+    }
+
+    public static String modelName() {
+        AiPilot self = find();
+        return self == null ? "" : self.model.get();
+    }
+
+    public static String endpointUrl() {
+        AiPilot self = find();
+        return self == null ? "" : self.url();
+    }
+
+    public static boolean testPassed() {
+        return lastTestOk;
+    }
+
+    public static String testResult() {
+        return lastTest;
+    }
+
+    public static int plansDone() {
+        return PLANS.get();
+    }
+
+    /**
+     * Send one tiny request and report the result in chat: proves the key, the endpoint and the model
+     * all work, and teaches the request layer any quirks of this provider before a real request.
+     */
+    public static String test() {
+        AiPilot self = find();
+        if (self == null) return "Zeus AI Functions is missing.";
+        if (!hasKey()) return "No key saved yet. Type /zeus ai key <your key>, or /zeus ai tutorial for help.";
+        if (busy) return "Busy with another request, try again in a moment.";
+        busy = true;
+        String secret = self.token.get();
+        lastTest = "testing";
+        WORKER.submit(() -> {
+            long start = System.currentTimeMillis();
+            try {
+                String content = self.exchange("Reply with exactly this JSON object: {\"say\":\"ready\",\"actions\":[]}",
+                        secret, true);
+                Plan plan = self.parse(content);
+                long ms = System.currentTimeMillis() - start;
+                lastTestOk = true;
+                lastTestAt = System.currentTimeMillis();
+                lastTest = "connected to " + self.model.get() + " in " + ms + " ms";
+                Minecraft.getInstance().execute(() -> {
+                    Notify.good("Zeus AI test passed: " + self.model.get() + " answered in " + ms + " ms"
+                            + (plan.say().isBlank() ? "" : " (\"" + shorten(plan.say()) + "\")"));
+                    AiTutorial.onTest(true);
+                });
+            } catch (Throwable t) {
+                lastTestOk = false;
+                lastTest = self.describe(t);
+                Minecraft.getInstance().execute(() -> {
+                    Notify.bad("Zeus AI test failed: " + lastTest);
+                    AiTutorial.onTest(false);
+                });
+            } finally {
+                busy = false;
+            }
+        });
+        return "Testing the connection to " + self.model.get() + "...";
     }
 
     public static String ask(String instruction) {
@@ -272,7 +485,7 @@ public final class AiPilot extends Module {
     }
 
     private String submit(String instruction) {
-        if (!enabled()) return "Switch Zeus AI Functions on first (/zeus on aipilot).";
+        if (!enabled()) return "Switch Zeus AI Functions on first (/zeus on aipilot)" + (hasKey() ? "." : ", or let /zeus ai tutorial walk you through the setup.");
         String prompt = instruction == null ? "" : instruction.trim();
         if (prompt.isEmpty()) return "Say what you want after /zeus ai.";
         Step work = jobStep(prompt.toLowerCase(Locale.ROOT));
@@ -288,7 +501,10 @@ public final class AiPilot extends Module {
         loadMemory();
         if (!prompt.startsWith("These actions were attempted")) followUps = 0;
         String secret = token.get();
-        if (secret == null || secret.isBlank()) return local(prompt, "No token saved, so the built-in parser handled it");
+        if (!hasKey()) {
+            String done = local(prompt, "No AI key saved, so the built-in parser handled it");
+            return done + " Set the AI up with /zeus ai tutorial.";
+        }
         long now = System.currentTimeMillis();
         long gap = Math.round(wait.get() * 1000.0);
         if (busy) return "Still thinking about the last request.";
@@ -300,25 +516,22 @@ public final class AiPilot extends Module {
         context = readContext();
         WORKER.submit(() -> {
             try {
-                String answer;
-                try {
-                    answer = call(body(prompt), secret);
-                } catch (RuntimeException first) {
-                    if (!strictJson.on() || noJsonMode || !String.valueOf(first.getMessage()).contains("400")) throw first;
-                    noJsonMode = true;
-                    answer = call(body(prompt), secret);
-                }
+                String answer = exchange(prompt, secret, false);
                 Plan plan;
                 try {
-                    plan = read(answer);
+                    plan = parse(answer);
                 } catch (RuntimeException malformed) {
-                    answer = call(body(prompt + "\n\nYour previous answer was not valid JSON. Reply with the single JSON object and nothing else."), secret);
-                    plan = read(answer);
+                    answer = exchange(prompt + "\n\nYour previous answer was not valid JSON. Reply with the single JSON object and nothing else.", secret, false);
+                    plan = parse(answer);
                 }
                 reply = plan.say();
                 answered = System.currentTimeMillis();
-                if (speak.on() && !reply.isBlank()) Notify.good(reply);
+                if (speak.on() && !reply.isBlank()) {
+                    String said = reply;
+                    Minecraft.getInstance().execute(() -> AiTutorial.chat(said, false));
+                }
                 remember(prompt, answer);
+                PLANS.incrementAndGet();
                 recordPlan(prompt, plan.steps());
                 for (Step step : plan.steps()) QUEUE.add(step);
                 lastAction = plan.steps().isEmpty() ? "nothing to do" : plan.steps().size() + " action(s) queued";
@@ -326,7 +539,11 @@ public final class AiPilot extends Module {
                 failure = describe(t);
                 busy = false;
                 Minecraft client = Minecraft.getInstance();
-                client.execute(() -> local(prompt, "The AI could not answer (" + failure + "), so the built-in parser handled it"));
+                String why = failure;
+                client.execute(() -> {
+                    AiTutorial.chat("The AI could not answer: " + why, true);
+                    local(prompt, "The built-in parser handled it instead");
+                });
                 return;
             } finally {
                 busy = false;
@@ -471,7 +688,17 @@ public final class AiPilot extends Module {
 
     private void apply(Step step) {
         if (step == null) return;
-        String verb = step.action() == null ? "" : step.action().toLowerCase(Locale.ROOT);
+        String verb = step.action() == null ? "" : step.action().toLowerCase(Locale.ROOT).trim();
+        verb = switch (verb) {
+            case "activate", "start", "turn_on", "turn on", "switch_on" -> "on";
+            case "deactivate", "turn_off", "turn off", "switch_off" -> "off";
+            case "change", "adjust", "configure", "setting", "set_setting", "update" -> "set";
+            case "status", "state", "info" -> "report";
+            case "note", "save" -> "remember";
+            case "describe", "what" -> "explain";
+            case "cancel", "halt" -> "stop";
+            default -> verb;
+        };
         if (verb.equals("report")) {
             report();
             return;
@@ -554,10 +781,14 @@ public final class AiPilot extends Module {
             default -> {
             }
         }
-        if (step.module() == null || step.module().isBlank()) return;
-        Module module = Zeus.byName(step.module());
+        if (step.module() == null || step.module().isBlank()) {
+            if (!verb.isBlank()) lastAction = "did not understand the action " + verb;
+            return;
+        }
+        Module module = findModule(step.module());
         if (module == null) {
             Notify.warn("The AI asked for a module that does not exist: " + step.module());
+            lastAction = step.module() + " does not exist";
             return;
         }
         if (BLOCKED.contains(module.id)) {
@@ -610,11 +841,26 @@ public final class AiPilot extends Module {
         }
         if (target == null) {
             for (Setting setting : module.settings()) {
-                if (setting instanceof Setting.Secret) continue;
+                if (setting instanceof Setting.Secret || setting instanceof Setting.Info) continue;
                 String name = normalise(setting.name);
+                if (name.isEmpty()) continue;
                 if (name.contains(key) || key.contains(name)) {
                     target = setting;
                     break;
+                }
+            }
+        }
+        if (target == null) {
+            // Last resort: the closest setting name by edit distance, for typos like "rnage".
+            int best = Integer.MAX_VALUE;
+            for (Setting setting : module.settings()) {
+                if (setting instanceof Setting.Secret || setting instanceof Setting.Info) continue;
+                String name = normalise(setting.name);
+                if (name.isEmpty()) continue;
+                int d = distance(name, key);
+                if (d < best && d <= Math.max(1, key.length() / 3)) {
+                    best = d;
+                    target = setting;
                 }
             }
         }
@@ -629,11 +875,55 @@ public final class AiPilot extends Module {
                 target instanceof Setting.Text text ? text.get() : null,
                 target instanceof Setting.Choice choice ? choice.index() : target instanceof Setting.Pick pick ? pick.index() : 0,
                 target instanceof Setting.Num num ? num.get() : 0));
-        if (target instanceof Setting.Bool bool) bool.set(truthy(value));
-        else if (target instanceof Setting.Num num) num.set(number(value, num.get()));
-        else if (target instanceof Setting.Choice choice) choice.set(choiceIndex(choice, value));
-        else if (target instanceof Setting.Text text) text.set(value);
-        else if (target instanceof Setting.Pick pick) pick.set(pickIndex(pick, value));
+        if (target instanceof Setting.Bool bool) {
+            String lower = value.toLowerCase(Locale.ROOT);
+            bool.set(lower.equals("toggle") || lower.equals("flip") ? !bool.on() : truthy(value));
+            lastAction = module.name + " " + target.name + " set to " + (bool.on() ? "on" : "off");
+            return;
+        }
+        if (target instanceof Setting.Num num) {
+            double was = num.get();
+            String clean = value.toLowerCase(Locale.ROOT).trim();
+            double next;
+            if (clean.equals("max") || clean.equals("maximum") || clean.equals("highest")) next = num.max;
+            else if (clean.equals("min") || clean.equals("minimum") || clean.equals("lowest")) next = num.min;
+            else if (clean.startsWith("+")) next = was + number(clean.substring(1), Double.NaN);
+            else if (clean.startsWith("-") && num.min >= 0) next = was + number(clean, Double.NaN);   // a negative value is impossible, so it is a nudge down
+            else next = number(clean, Double.NaN);
+            if (Double.isNaN(next)) {
+                lastAction = module.name + " " + target.name + " did not change: " + value + " is not a number";
+                Notify.warn(lastAction);
+                return;
+            }
+            num.set(next);
+            lastAction = module.name + " " + target.name + " set to " + num.text()
+                    + (num.get() != next ? " (limit " + trim(num.min) + " to " + trim(num.max) + ")" : "");
+            return;
+        }
+        if (target instanceof Setting.Choice choice) {
+            int index = choiceIndex(choice, value);
+            if (index < 0) {
+                lastAction = module.name + " " + target.name + " did not change: no option " + value
+                        + " (options: " + String.join(", ", choice.options) + ")";
+                Notify.warn(lastAction);
+                return;
+            }
+            choice.set(index);
+            lastAction = module.name + " " + target.name + " set to " + choice.value();
+            return;
+        }
+        if (target instanceof Setting.Pick pick) {
+            int index = pickIndex(pick, value);
+            if (index < 0) {
+                lastAction = module.name + " " + target.name + " did not change: no option " + value;
+                Notify.warn(lastAction);
+                return;
+            }
+            pick.set(index);
+            lastAction = module.name + " " + target.name + " set to " + pick.label();
+            return;
+        }
+        if (target instanceof Setting.Text text) text.set(value);
         lastAction = module.name + " " + target.name + " set to " + value;
     }
 
@@ -691,34 +981,102 @@ public final class AiPilot extends Module {
         }
     }
 
+    /** Exact option, then same letters ignoring spaces and case, then a unique prefix or substring. -1 when none fits. */
     private static int choiceIndex(Setting.Choice choice, String value) {
-        for (int i = 0; i < choice.options.length; i++) {
-            if (choice.options[i].equalsIgnoreCase(value)) return i;
-        }
-        return choice.index();
+        return bestOption(choice.options, null, value);
     }
 
     private static int pickIndex(Setting.Pick pick, String value) {
-        for (int i = 0; i < pick.ids.length; i++) {
-            if (pick.ids[i].equalsIgnoreCase(value) || (i < pick.labels.length && pick.labels[i].equalsIgnoreCase(value))) return i;
+        return bestOption(pick.labels, pick.ids, value);
+    }
+
+    private static int bestOption(String[] labels, String[] ids, String value) {
+        String key = normalise(value == null ? "" : value);
+        if (key.isEmpty()) return -1;
+        int n = labels.length;
+        for (int i = 0; i < n; i++) {
+            if (labels[i].equalsIgnoreCase(value) || ids != null && i < ids.length && ids[i].equalsIgnoreCase(value)) return i;
         }
-        return pick.index();
+        for (int i = 0; i < n; i++) {
+            if (normalise(labels[i]).equals(key) || ids != null && i < ids.length && normalise(ids[i]).equals(key)) return i;
+        }
+        int found = -1;
+        for (int i = 0; i < n; i++) {
+            if (normalise(labels[i]).startsWith(key)) {
+                if (found >= 0) return -1;
+                found = i;
+            }
+        }
+        if (found >= 0) return found;
+        for (int i = 0; i < n; i++) {
+            if (normalise(labels[i]).contains(key)) {
+                if (found >= 0) return -1;
+                found = i;
+            }
+        }
+        return found;
+    }
+
+    /** Levenshtein distance, used to forgive small typos in module and setting names. */
+    static int distance(String a, String b) {
+        int[] prev = new int[b.length() + 1];
+        int[] cur = new int[b.length() + 1];
+        for (int j = 0; j <= b.length(); j++) prev[j] = j;
+        for (int i = 1; i <= a.length(); i++) {
+            cur[0] = i;
+            for (int j = 1; j <= b.length(); j++) {
+                int cost = a.charAt(i - 1) == b.charAt(j - 1) ? 0 : 1;
+                cur[j] = Math.min(Math.min(cur[j - 1] + 1, prev[j] + 1), prev[j - 1] + cost);
+            }
+            int[] t = prev;
+            prev = cur;
+            cur = t;
+        }
+        return prev[b.length()];
+    }
+
+    /** A module by id, name or alias, then by a close spelling, so "kill_aura" or "autototm" still land. */
+    static Module findModule(String text) {
+        Module module = Zeus.byName(text);
+        if (module != null || text == null) return module;
+        String key = normalise(text);
+        if (key.length() < 3) return null;
+        Module best = null;
+        int bestDistance = Integer.MAX_VALUE;
+        for (Module m : Zeus.all()) {
+            for (String name : new String[]{m.id, m.name}) {
+                int d = distance(normalise(name), key);
+                if (d < bestDistance) {
+                    bestDistance = d;
+                    best = m;
+                }
+            }
+        }
+        return bestDistance <= Math.max(1, key.length() / 4) ? best : null;
     }
 
     private String body(String instruction) {
+        return body(instruction, false);
+    }
+
+    private String body(String instruction, boolean bare) {
         JsonObject root = new JsonObject();
         root.addProperty("model", model.get().trim());
-        root.addProperty("temperature", temperature.get());
-        root.addProperty("max_tokens", tokens.i());
+        if (!noTemperature) root.addProperty("temperature", temperature.get());
+        root.addProperty(completionTokens ? "max_completion_tokens" : "max_tokens", tokens.i());
         if (strictJson.on() && !noJsonMode) {
             JsonObject format = new JsonObject();
             format.addProperty("type", "json_object");
             root.add("response_format", format);
         }
         JsonArray messages = new JsonArray();
-        messages.add(message("system", system(instruction)));
-        synchronized (HISTORY) {
-            for (JsonObject past : HISTORY) messages.add(past);
+        if (bare) {
+            messages.add(message("system", "You answer with one JSON object only."));
+        } else {
+            messages.add(message("system", system(instruction)));
+            synchronized (HISTORY) {
+                for (JsonObject past : HISTORY) messages.add(past);
+            }
         }
         messages.add(message("user", instruction));
         root.add("messages", messages);
@@ -734,10 +1092,18 @@ public final class AiPilot extends Module {
 
     private String system(String prompt) {
         StringBuilder builder = new StringBuilder();
-        builder.append("You control the Zeus Minecraft client. Answer with one JSON object only, no prose, no code fences.\n");
-        builder.append("Schema: {\"say\":\"one short sentence for the player\",\"actions\":[{\"do\":\"on|off|toggle|set|open|hud|keybinds|panic|theme|undo|waypoint\",\"module\":\"<id>\",\"setting\":\"<exact setting name>\",\"value\":\"<new value>\"}]}\n");
+        builder.append("You are Zeus AI, the assistant inside the Zeus Minecraft client. You turn what the player types into actions. Answer with one JSON object only, no prose outside it, no code fences.\n");
+        builder.append("Schema: {\"say\":\"one short friendly sentence for the player\",\"actions\":[{\"do\":\"<verb>\",\"module\":\"<id>\",\"setting\":\"<exact setting name>\",\"value\":\"<new value>\"}]}\n");
+        builder.append("Verbs: on, off, toggle, set (need module); job, stop, preset, theme, waypoint, explain, remember, forget, report, help, open, hud, keybinds, panic, undo (no module).\n");
+        builder.append("Examples:\n");
+        builder.append("turn on sprint and fullbright -> {\"say\":\"Sprint and Fullbright are on.\",\"actions\":[{\"do\":\"on\",\"module\":\"sprint\"},{\"do\":\"on\",\"module\":\"fullbright\"}]}\n");
+        builder.append("make killaura reach 4 -> {\"say\":\"Range set to 4.\",\"actions\":[{\"do\":\"set\",\"module\":\"killaura\",\"setting\":\"Range\",\"value\":\"4\"}]}\n");
+        builder.append("get me 10 iron then come back -> {\"say\":\"Off to mine iron.\",\"actions\":[{\"do\":\"job\",\"value\":\"mine 10 iron then return\"}]}\n");
+        builder.append("what does esp do? -> {\"say\":\"ESP outlines players and mobs through walls.\",\"actions\":[{\"do\":\"explain\",\"value\":\"esp\"}]}\n");
+        builder.append("hi / thanks / a question with nothing to change -> {\"say\":\"<a short helpful answer>\",\"actions\":[]}\n");
+        builder.append("Use the ids from the module list below, not guesses (the example ids above may not exist). Setting values: numbers as plain numbers, on/off for switches, one of the listed options for choices. To nudge a number you may write +1 or -0.5.\n");
         builder.append("Jobs understand tools: before mining a block it cannot harvest it crafts the pickaxe that can, and it will not count a block that dropped nothing. Say 'food' or 'kill for food' to hunt animals and eat.\n");
-        builder.append("open, hud, keybinds, panic, theme, undo and waypoint need no module field. panic switches every module off. undo reverses the last change the AI made. theme takes value as one of: ");
+        builder.append("panic switches every module off. undo reverses the last change the AI made. report reads out what is on. remember stores value as a note for later sessions. theme takes value as one of: ");
         builder.append(String.join(", ", com.zlorbie788.zeus.ui.UiSettings.ACCENT.options)).append(". waypoint drops a waypoint where the player stands, using value as its name.\n");
         builder.append("Rules: module must be an id from the list. For \"set\" the setting name must match a setting the module shows. ");
         builder.append("Only send actions that are needed. Never invent ids. If the request cannot be done, return an empty actions list and explain in say.\n");
@@ -770,13 +1136,34 @@ public final class AiPilot extends Module {
                 if (setting instanceof Setting.Secret || !setting.visible()) continue;
                 String value = read(setting);
                 if (value == null) continue;
-                block.append("  ").append(setting.name).append(" = ").append(value).append('\n');
+                block.append("  ").append(setting.name).append(" = ").append(value).append(shape(setting)).append('\n');
             }
             if (block.length() == 0) continue;
-            builder.append("Settings of ").append(module.id).append(":\n").append(block);
+            String about = module.desc == null ? "" : module.desc.length() > 110 ? module.desc.substring(0, 110) + "…" : module.desc;
+            builder.append("Settings of ").append(module.id).append(" (").append(module.name)
+                    .append(about.isBlank() ? "" : ": " + about).append("):\n").append(block);
             detailed++;
         }
         return builder.toString();
+    }
+
+    /** The allowed values of a setting, so the model picks a value that exists. */
+    private static String shape(Setting setting) {
+        if (setting instanceof Setting.Num num) {
+            return " (" + trim(num.min) + " to " + trim(num.max) + ")";
+        }
+        if (setting instanceof Setting.Choice choice && choice.options.length <= 12) {
+            return " (one of: " + String.join(", ", choice.options) + ")";
+        }
+        if (setting instanceof Setting.Pick pick && pick.labels.length <= 12) {
+            return " (one of: " + String.join(", ", pick.labels) + ")";
+        }
+        if (setting instanceof Setting.Bool) return " (on/off)";
+        return "";
+    }
+
+    private static String trim(double value) {
+        return value == Math.rint(value) ? Long.toString((long) value) : Double.toString(value);
     }
 
     private static boolean mentions(String lower, Module module) {
@@ -798,27 +1185,170 @@ public final class AiPilot extends Module {
         return null;
     }
 
+    /**
+     * Send a request and return the model's message content, adapting to the provider: when it
+     * rejects JSON mode, max_tokens or a custom temperature, the field is changed and the request
+     * is sent again, and the provider is remembered so later requests go right first time.
+     */
+    String exchange(String instruction, String secret, boolean bare) throws Exception {
+        IllegalStateException last = null;
+        for (int attempt = 0; attempt < 4; attempt++) {
+            try {
+                return content(call(body(instruction, bare), secret));
+            } catch (ProviderError e) {
+                last = e;
+                if (e.code != 400 && e.code != 422) throw e;
+                String m = e.detail.toLowerCase(Locale.ROOT);
+                if (!noJsonMode && (m.contains("response_format") || m.contains("json_object") || m.contains("json mode"))) {
+                    noJsonMode = true;
+                } else if (!completionTokens && m.contains("max_tokens")) {
+                    completionTokens = true;
+                } else if (!noTemperature && m.contains("temperature")) {
+                    noTemperature = true;
+                } else if (!noJsonMode && strictJson.on()) {
+                    noJsonMode = true;     // an unexplained 400 is most often JSON mode
+                } else {
+                    throw e;
+                }
+            }
+        }
+        throw last == null ? new IllegalStateException("the provider kept rejecting the request") : last;
+    }
+
+    /** A provider error with the HTTP code and the provider's own message. */
+    static final class ProviderError extends IllegalStateException {
+        final int code;
+        final String detail;
+
+        ProviderError(int code, String detail, String message) {
+            super(message);
+            this.code = code;
+            this.detail = detail == null ? "" : detail;
+        }
+    }
+
     private String call(String payload, String secret) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(endpoint.get().trim()))
-                .timeout(Duration.ofSeconds(25))
+        String url = url();
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofSeconds(45))
                 .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + secret)
-                .POST(HttpRequest.BodyPublishers.ofString(payload))
-                .build();
+                .header("User-Agent", "ZeusClient")
+                .POST(HttpRequest.BodyPublishers.ofString(payload));
+        if (secret != null && !secret.isBlank()) builder.header("Authorization", "Bearer " + secret.trim());
+        if (url.contains("openrouter.ai")) builder.header("X-Title", "Zeus Client");
+        HttpRequest request = builder.build();
         int attempt = 0;
         while (true) {
-            HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response;
+            try {
+                response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+            } catch (java.net.ConnectException e) {
+                throw new IllegalStateException(local(url)
+                        ? "nothing is answering at " + url + ". Is the local AI server running?"
+                        : "could not connect to " + URI.create(url).getHost() + ". Check your internet connection.");
+            } catch (java.net.http.HttpTimeoutException e) {
+                throw new IllegalStateException("the provider took longer than 45 seconds. Try a faster model.");
+            }
             int code = response.statusCode();
-            if (code == 429 || code >= 500) {
-                if (++attempt >= 3) throw new IllegalStateException("HTTP " + code + " " + shorten(response.body()));
-                Thread.sleep(900L * attempt);
+            if ((code == 429 || code >= 500) && ++attempt < 3) {
+                long waitMs = 1200L * attempt;
+                String after = response.headers().firstValue("retry-after").orElse("");
+                try {
+                    if (!after.isBlank()) waitMs = Math.min(10_000L, Math.max(500L, (long) (Double.parseDouble(after.trim()) * 1000)));
+                } catch (NumberFormatException ignored) {
+                }
+                Thread.sleep(waitMs);
                 continue;
             }
             if (code < 200 || code >= 300) {
-                throw new IllegalStateException("HTTP " + code + " " + shorten(response.body()));
+                String detail = errorText(response.body());
+                throw new ProviderError(code, detail, explainError(code, detail));
             }
             return response.body();
         }
+    }
+
+    /** The provider's own error message out of an error body, or the body itself. */
+    private static String errorText(String body) {
+        if (body == null) return "";
+        try {
+            JsonElement root = JsonParser.parseString(body);
+            if (root.isJsonArray() && !root.getAsJsonArray().isEmpty()) root = root.getAsJsonArray().get(0);
+            if (root.isJsonObject()) {
+                JsonObject o = root.getAsJsonObject();
+                JsonElement error = o.get("error");
+                if (error != null && error.isJsonObject() && error.getAsJsonObject().has("message")) {
+                    return error.getAsJsonObject().get("message").getAsString();
+                }
+                if (error != null && error.isJsonPrimitive()) return error.getAsString();
+                if (o.has("message") && o.get("message").isJsonPrimitive()) return o.get("message").getAsString();
+            }
+        } catch (RuntimeException ignored) {
+        }
+        return shorten(body);
+    }
+
+    /** Turn an HTTP failure into a sentence that says what to do about it. */
+    private String explainError(int code, String detail) {
+        String said = detail.isBlank() ? "" : " (" + shorten(detail) + ")";
+        return switch (code) {
+            case 401 -> "the provider rejected the API key. Paste it again with /zeus ai key <key>" + said;
+            case 402 -> "the provider account has no credit left" + said;
+            case 403 -> "the key is not allowed to use this model or endpoint" + said;
+            case 404 -> "the endpoint or the model " + model.get() + " was not found. Check /zeus ai model and /zeus ai endpoint" + said;
+            case 413 -> "the request was too large for this model" + said;
+            case 429 -> "rate limited or out of quota at the provider, wait a minute" + said;
+            default -> code >= 500 ? "the provider had a server error (HTTP " + code + "), try again soon" + said
+                    : "HTTP " + code + said;
+        };
+    }
+
+    /** The model's message text from a chat completions response, whatever shape it came in. */
+    private static String content(String body) {
+        JsonObject root;
+        try {
+            root = JsonParser.parseString(body).getAsJsonObject();
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("the provider sent something that is not JSON: " + shorten(body));
+        }
+        if (root.has("error") && !root.get("error").isJsonNull()) throw new IllegalStateException("the provider said: " + errorText(body));
+        JsonArray choices = root.has("choices") && root.get("choices").isJsonArray() ? root.getAsJsonArray("choices") : null;
+        if (choices == null || choices.isEmpty()) throw new IllegalStateException("the provider returned no answer");
+        JsonObject first = choices.get(0).getAsJsonObject();
+        JsonObject message = first.has("message") && first.get("message").isJsonObject() ? first.getAsJsonObject("message") : null;
+        if (message == null) throw new IllegalStateException("the provider returned an empty answer");
+        String text = flatten(message.get("content"));
+        if (text.isBlank() && message.has("tool_calls") && message.get("tool_calls").isJsonArray()) {
+            for (JsonElement call : message.getAsJsonArray("tool_calls")) {
+                JsonObject fn = call.isJsonObject() ? call.getAsJsonObject().getAsJsonObject("function") : null;
+                if (fn != null && fn.has("arguments")) {
+                    text = flatten(fn.get("arguments"));
+                    break;
+                }
+            }
+        }
+        if (text.isBlank()) text = flatten(message.get("reasoning_content"));
+        if (text.isBlank()) {
+            String why = first.has("finish_reason") && !first.get("finish_reason").isJsonNull() ? first.get("finish_reason").getAsString() : "";
+            throw new IllegalStateException(why.equals("length")
+                    ? "the answer was cut off. Raise Answer length in the Zeus AI settings"
+                    : "the provider returned an empty answer");
+        }
+        return text;
+    }
+
+    private static String flatten(JsonElement element) {
+        if (element == null || element.isJsonNull()) return "";
+        if (element.isJsonPrimitive()) return element.getAsString();
+        if (element.isJsonArray()) {
+            StringBuilder out = new StringBuilder();
+            for (JsonElement part : element.getAsJsonArray()) {
+                if (part.isJsonObject() && part.getAsJsonObject().has("text")) out.append(part.getAsJsonObject().get("text").getAsString());
+                else if (part.isJsonPrimitive()) out.append(part.getAsString());
+            }
+            return out.toString();
+        }
+        return element.toString();
     }
 
     private static String shorten(String text) {
@@ -829,23 +1359,21 @@ public final class AiPilot extends Module {
 
     private record Plan(String say, List<Step> steps) {}
 
-    private Plan read(String body) {
-        JsonObject root = JsonParser.parseString(body).getAsJsonObject();
-        JsonArray choices = root.getAsJsonArray("choices");
-        if (choices == null || choices.isEmpty()) throw new IllegalStateException("the provider returned no choices");
-        JsonObject first = choices.get(0).getAsJsonObject();
-        JsonObject message = first.getAsJsonObject("message");
-        String content = message != null && message.has("content") ? message.get("content").getAsString() : "";
+    private Plan parse(String content) {
         String json = strip(content);
         JsonObject parsed = JsonParser.parseString(json).getAsJsonObject();
-        String say = parsed.has("say") && !parsed.get("say").isJsonNull() ? parsed.get("say").getAsString() : "";
+        String say = parsed.has("say") && !parsed.get("say").isJsonNull() ? flatten(parsed.get("say")) : "";
         List<Step> steps = new ArrayList<>();
-        JsonArray actions = parsed.has("actions") && parsed.get("actions").isJsonArray() ? parsed.getAsJsonArray("actions") : new JsonArray();
+        JsonElement list = parsed.has("actions") ? parsed.get("actions") : parsed.get("steps");
+        JsonArray actions = list != null && list.isJsonArray() ? list.getAsJsonArray() : new JsonArray();
+        if (list != null && list.isJsonObject()) actions.add(list);
         for (JsonElement element : actions) {
             if (!element.isJsonObject()) continue;
             JsonObject action = element.getAsJsonObject();
+            String verb = text(action, "do");
+            if (verb.isBlank()) verb = text(action, "action");
             steps.add(new Step(
-                    text(action, "do"),
+                    verb,
                     text(action, "module"),
                     text(action, "setting"),
                     text(action, "value")));
@@ -862,6 +1390,8 @@ public final class AiPilot extends Module {
 
     private static String strip(String content) {
         String text = content == null ? "" : content.trim();
+        int think = text.lastIndexOf("</think>");
+        if (think >= 0) text = text.substring(think + 8).trim();
         if (text.startsWith("```")) {
             int first = text.indexOf('\n');
             if (first >= 0) text = text.substring(first + 1);
@@ -960,6 +1490,11 @@ public final class AiPilot extends Module {
         if (text.startsWith("follow")) {
             String who = text.substring(6).replaceFirst("^\\s*(me|the nearest player)$", "").trim();
             return new Step("job", "", "", who.isEmpty() ? "follow" : "follow " + who);
+        }
+        java.util.regex.Matcher counted = java.util.regex.Pattern
+                .compile("^(?:mine|dig|get|collect|gather) (\\d+) ([a-z_ ]+)$").matcher(text);
+        if (counted.find() && !counted.group(2).contains("crop") && !counted.group(2).contains("drop")) {
+            return new Step("job", "", "", "mine " + counted.group(1) + " " + counted.group(2).trim());
         }
         if (text.contains("farm") || text.contains("harvest") || text.contains("crops")) {
             return new Step("job", "", "", "farm");
@@ -1386,9 +1921,43 @@ public final class AiPilot extends Module {
             giveUp(mc, "jobs were switched off");
             return;
         }
-        if (mc.player.getHealth() <= 6.0f) {
-            giveUp(mc, "stopped, health is low");
+        if (mc.player.isDeadOrDying()) {
+            giveUp(mc, "stopped, you died");
             return;
+        }
+        if (mc.player.getHealth() <= 6.0f && job.kind != JobKind.EAT && job.kind != JobKind.FLEE) {
+            // Low health: stand still and eat to regenerate for a while before abandoning the job.
+            long now = System.currentTimeMillis();
+            java.util.function.Predicate<ItemStack> edible = s -> s.has(net.minecraft.core.component.DataComponents.FOOD);
+            boolean canHeal = mc.player.getFoodData().getFoodLevel() < 20 && countItems(mc, edible) > 0
+                    && nearestMonster(mc, 6.0) == null;
+            if (canHeal && (job.healUntil == 0L || now < job.healUntil)) {
+                if (job.healUntil == 0L) {
+                    job.healUntil = now + 40_000L;
+                    Notify.warn("Zeus AI: health is low, pausing " + job.label() + " to eat");
+                }
+                mc.options.keyUp.setDown(false);
+                mc.options.keyDown.setDown(false);
+                mc.options.keyLeft.setDown(false);
+                mc.options.keyRight.setDown(false);
+                mc.options.keyAttack.setDown(false);
+                job.started += 50L;           // healing time does not count against the job's budget
+                if (!mc.player.isUsingItem()) {
+                    int slot = ensureHotbar(mc, edible);
+                    if (slot >= 0) {
+                        if (!Inv.holding(edible)) Inv.select(slot);
+                        mc.options.keyUse.setDown(true);
+                    }
+                }
+                job.note = "low health, eating to heal";
+                return;
+            }
+            giveUp(mc, "stopped, health is low" + (canHeal ? " and eating did not help" : ""));
+            return;
+        }
+        if (job.healUntil != 0L && mc.player.getHealth() > 6.0f) {
+            job.healUntil = 0L;
+            mc.options.keyUse.setDown(false);
         }
         if (mc.screen == null && defend(mc)) return;
         if (mc.screen == null) snack(mc);
@@ -3857,6 +4426,7 @@ public final class AiPilot extends Module {
     }
 
     private void help() {
+        if (!hasKey()) Notify.info("Not set up yet: /zeus ai tutorial walks you through it in about two minutes");
         Notify.info("Try: on sprint, off esp, set killaura range to 4, preset pvp, theme violet, undo, status");
         Notify.info("Jobs: chop that tree, mine until you find iron, mine 20 stone, go to 120 64 -300, come here, follow me, dig down, stop");
         lastAction = "showed the command help";
@@ -4047,7 +4617,7 @@ public final class AiPilot extends Module {
 
     private Step moduleStep(String action, String words) {
         if (words.isEmpty()) return null;
-        Module module = Zeus.byName(words);
+        Module module = findModule(words);
         if (module == null || BLOCKED.contains(module.id)) return null;
         return new Step(action, module.id, "", "");
     }
@@ -4091,26 +4661,64 @@ public final class AiPilot extends Module {
         return null;
     }
 
-    private static String readContext() {
+    private String readContext() {
         Minecraft client = Minecraft.getInstance();
         StringBuilder builder = new StringBuilder();
         builder.append("Theme: ").append(com.zlorbie788.zeus.ui.UiSettings.ACCENT.value()).append('.');
         if (client.player == null || client.level == null) {
-            return builder.append(" The player is not in a world.").toString();
+            return builder.append(" The player is not in a world, so jobs cannot run; module and setting changes still work.").toString();
         }
-        builder.append(" World: ").append(client.level.dimension().identifier()).append('.');
-        builder.append(" Health: ").append(Math.round(client.player.getHealth())).append("/20, food ")
-                .append(client.player.getFoodData().getFoodLevel()).append("/20.");
-        builder.append(" Position: ").append(Math.round(client.player.getX())).append(' ')
-                .append(Math.round(client.player.getY())).append(' ')
-                .append(Math.round(client.player.getZ())).append('.');
-        builder.append(" FPS: ").append(client.getFps()).append('.');
+        var p = client.player;
+        builder.append(" World: ").append(client.level.dimension().identifier())
+                .append(client.hasSingleplayerServer() ? " (singleplayer)" : " (multiplayer)").append('.');
+        long clock = client.level.getDayTime() % 24000L;
+        builder.append(" Time: ").append(clock < 12300L || clock > 23850L ? "day" : "night").append('.');
+        builder.append(" Health ").append(Math.round(p.getHealth())).append("/20, food ")
+                .append(p.getFoodData().getFoodLevel()).append("/20, armor ").append(p.getArmorValue()).append('.');
+        builder.append(" Position ").append(Math.round(p.getX())).append(' ').append(Math.round(p.getY())).append(' ')
+                .append(Math.round(p.getZ())).append(", facing ").append(p.getDirection().getName()).append('.');
+        ItemStack held = p.getMainHandItem();
+        builder.append(" Holding ").append(held.isEmpty() ? "nothing" : held.getCount() + " " + held.getHoverName().getString()).append('.');
+        if (client.hitResult instanceof net.minecraft.world.phys.BlockHitResult hit
+                && client.hitResult.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
+            builder.append(" Looking at ").append(client.level.getBlockState(hit.getBlockPos()).getBlock().getName().getString())
+                    .append(" at ").append(hit.getBlockPos().getX()).append(' ').append(hit.getBlockPos().getY())
+                    .append(' ').append(hit.getBlockPos().getZ()).append('.');
+        }
+        int hostile = 0;
+        int players = 0;
+        for (net.minecraft.world.entity.Entity e : client.level.entitiesForRendering()) {
+            if (e == p || !e.isAlive() || e.distanceToSqr(p) > 24 * 24) continue;
+            if (e instanceof net.minecraft.world.entity.monster.Monster) hostile++;
+            else if (e instanceof Player) players++;
+        }
+        builder.append(" Nearby: ").append(hostile).append(" hostile mob(s), ").append(players).append(" other player(s).");
+        java.util.Map<String, Integer> items = new java.util.LinkedHashMap<>();
+        var inventory = p.getInventory();
+        for (int i = 0; i < Math.min(36, inventory.getContainerSize()); i++) {
+            ItemStack stack = inventory.getItem(i);
+            if (stack.isEmpty()) continue;
+            items.merge(stack.getHoverName().getString(), stack.getCount(), Integer::sum);
+        }
+        if (!items.isEmpty()) {
+            List<java.util.Map.Entry<String, Integer>> sorted = new ArrayList<>(items.entrySet());
+            sorted.sort((a, b) -> b.getValue() - a.getValue());
+            builder.append(" Inventory:");
+            for (int i = 0; i < Math.min(14, sorted.size()); i++) {
+                builder.append(i == 0 ? " " : ", ").append(sorted.get(i).getValue()).append(' ').append(sorted.get(i).getKey());
+            }
+            builder.append('.');
+        } else {
+            builder.append(" Inventory empty.");
+        }
+        if (job != null) builder.append(" Job running: ").append(job.label()).append(job.note == null || job.note.isBlank() ? "" : " (" + job.note + ")").append('.');
+        builder.append(" FPS ").append(client.getFps()).append('.');
         builder.append(" Modules on:");
         int shown = 0;
         for (Module module : Zeus.all()) {
             if (!module.enabled()) continue;
             builder.append(' ').append(module.id);
-            if (++shown >= 12) break;
+            if (++shown >= 24) break;
         }
         if (shown == 0) builder.append(" none");
         return builder.toString();
@@ -4138,7 +4746,10 @@ public final class AiPilot extends Module {
 
     private List<String> lines() {
         List<String> out = new ArrayList<>();
-        out.add((hasKey() ? "Token saved" : "Token missing (/zeus ai key)") + " · " + model.get());
+        Provider provider = currentProvider();
+        out.add((hasSecret() ? "Key " + mask(token.get()) : hasKey() ? "Local, no key" : "No key (/zeus ai tutorial)")
+                + " · " + (provider == null ? "custom endpoint" : provider.label()) + " · " + model.get());
+        if (!lastTest.isBlank()) out.add((lastTestOk ? "Test passed: " : lastTest.equals("testing") ? "Test: " : "Test failed: ") + shorten(lastTest));
         out.add((busy ? "Working" : QUEUE.isEmpty() ? "Idle" : QUEUE.size() + " action(s) running")
                 + " · " + USED.get() + "/" + perHour.i() + " this hour" + (preview.on() ? " · preview" : "")
                 + " · " + NOTES.size() + " note(s)");
@@ -4159,6 +4770,22 @@ public final class AiPilot extends Module {
         synchronized (UNDO) {
             if (!UNDO.isEmpty()) out.add("Undo: " + UNDO.size() + " step(s) back (/zeus ai undo)");
         }
+        return out;
+    }
+
+    /** Everything /zeus ai status shows. */
+    public static List<String> statusLines() {
+        AiPilot self = find();
+        List<String> out = new ArrayList<>();
+        if (self == null) {
+            out.add("Zeus AI Functions is missing.");
+            return out;
+        }
+        out.add("Zeus AI Functions is " + (self.enabled() ? "on" : "off (switch it on with /zeus on aipilot)")
+                + (self.job != null ? " · job: " + self.job.label() : ""));
+        out.add("Endpoint: " + self.url());
+        out.addAll(self.lines());
+        if (!hasKey()) out.add("Not set up yet: /zeus ai tutorial");
         return out;
     }
 
