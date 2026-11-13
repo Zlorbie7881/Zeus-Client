@@ -808,7 +808,35 @@ public final class KnifeArt {
         new Straight("Khopesh", 7.8f, 1.3f, 15.4f, w(1.1f, 1.25f, 1.35f, 1.45f, 1.5f, 1.6f, 1.7f, 1.7f, 1.5f, 1f, 0.3f), w(1.2f, 1.35f, 1.45f, 1.55f, 1.6f, 1.7f, 1.8f, 1.8f, 1.6f, 1.1f, 0.3f), -26f, 78f, H_RIBBED, "h"),
         new Straight("Machete", 8.6f, 1.35f, 16.5f, w(1.5f, 1.7f, 1.8f, 1.85f, 1.9f, 1.95f, 2f, 2f, 1.8f, 1.4f, 0.7f), w(1.6f, 1.8f, 1.9f, 1.95f, 2f, 2.05f, 2.1f, 2.1f, 1.9f, 1.5f, 0.75f), -8f, 30f, H_CORD, "p"),
         new Straight("Dagger", 5.8f, 1f, 10.8f, w(1.1f, 1.25f, 1.3f, 1.28f, 1.2f, 1.1f, 0.95f, 0.8f, 0.6f, 0.4f, 0.12f), w(1.1f, 1.25f, 1.3f, 1.28f, 1.2f, 1.1f, 0.95f, 0.8f, 0.6f, 0.42f, 0.12f), 0f, 0f, H_SCALES, "gp"),
+
+        // the HD tactical knives: drawn from the sheet atlas by KnifeHd, these entries are
+        // their pixel fallback (same names, same order as knives/hd/tactical.json)
+        new Straight("Tactical · Case hardened", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
+        new Straight("Tactical · Crimson web", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_SKEL, "lps"),
+        new Straight("Tactical · Damascus", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_CORD, "gps"),
+        new Straight("Tactical · Sapphire", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_SCALES, "gps"),
+        new Straight("Tactical · Fade", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_SCALES, "lps"),
+        new Straight("Tactical · Slaughter", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_CORD, "lps"),
+        new Straight("Tactical · Tiger tooth", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
+        new Straight("Tactical · Urban masked", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_SKEL, "ps"),
     };
+
+    /** How many of the last straight models are HD tactical knives drawn by {@link KnifeHd}. */
+    public static final int HD_COUNT = 8;
+
+    /** HD knife index for a knife key (KR.length + straight index), or -1. */
+    public static int hdOf(int key) {
+        int si = key - KR.length;
+        if (si < 0 || si >= SMODELS.length) return -1;
+        int hd = si - (SMODELS.length - HD_COUNT);
+        return hd >= 0 && hd < KnifeHd.count() ? hd : -1;
+    }
+
+    /** HD knife index for a knife type (0 butterfly, 1 karambit, 2.. straight), or -1. */
+    public static int hdType(int type) {
+        return type >= 2 ? hdOf(KR.length + type - 2) : -1;
+    }
+
 
     public static String[] straightNames() {
         String[] n = new String[SMODELS.length];
@@ -818,6 +846,8 @@ public final class KnifeArt {
 
     public static float gripOf(int key) {
         if (key < KR.length) return KGRIP;
+        int hd = hdOf(key);
+        if (hd >= 0) return KnifeHd.grip(KnifeHd.model(hd));
         Straight m = SMODELS[Math.min(SMODELS.length - 1, key - KR.length)];
         return (m.style == H_PUSH ? 1.6f : m.hl * 0.5f) * Q;
     }
