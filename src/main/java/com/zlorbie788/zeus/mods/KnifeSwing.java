@@ -6,6 +6,7 @@ import com.zlorbie788.zeus.core.Zeus;
 import com.zlorbie788.zeus.ui.ArmArt;
 import com.zlorbie788.zeus.ui.Draw;
 import com.zlorbie788.zeus.ui.KnifeArt;
+import com.zlorbie788.zeus.ui.KnifeHd;
 import com.zlorbie788.zeus.ui.KnifeMesh;
 import com.zlorbie788.zeus.ui.KnifePickerScreen;
 import com.zlorbie788.zeus.ui.Lightning;
@@ -1181,7 +1182,8 @@ public final class KnifeSwing extends Module {
         look.fine = !Perf.gameFast();
         look.mirror = left;
         float fade = Math.min(1f, vis);
-        boolean mesh = meshReady();
+        int hdKnife = KnifeArt.hdType(type.index());
+        boolean mesh = hdKnife < 0 && meshReady();
         int colour = Draw.rgba(look.glow, 0.85f * fade);
 
         g.pose().pushMatrix();
@@ -1230,6 +1232,7 @@ public final class KnifeSwing extends Module {
             float[] a = ghostAngle.get(i);
             float al = 0.20f * ghostFade * (1f - i / (float) Math.max(1, ghostAt.size())) * fade;
             if (al < 0.02f) continue;
+            if (hdKnife >= 0 && KnifeHd.draw(g, KnifeArt.nameOf(key()), ghostAt.get(i), look, u, al)) continue;
             if (!mesh || !drawMesh(g, ghostAt.get(i), a[0], a[1], a[2], look, u, al)) pixelKnife(g, ghostAt.get(i), a[0], a[1], a[2], look, u, al);
         }
 
@@ -1245,7 +1248,9 @@ public final class KnifeSwing extends Module {
         rig.flush(g, u);
 
         boolean knifeDrawn;
-        if (mesh && p.clip != null && KnifeMesh.hasClip(meshName(), p.clip)) {
+        if (hdKnife >= 0 && KnifeHd.draw(g, KnifeArt.nameOf(key()), f.knife, look, u, fade)) {
+            knifeDrawn = true;
+        } else if (mesh && p.clip != null && KnifeMesh.hasClip(meshName(), p.clip)) {
             try {
                 knifeDrawn = KnifeMesh.drawClip(g, meshName(), p.clip, p.clipT, f.knife, look, u, fade, Perf.gameFast());
             } catch (Throwable t) {
