@@ -734,7 +734,7 @@ public final class AiPilot extends Module {
         builder.append("Prefix any job with repeat N to run the whole plan N times, for example: repeat 3 chop a tree then mine 10 stone.\n");
         builder.append("go to mines a staircase down, cuts steps up or towers up on its own when the target sits at another height, and it never digs the block under its feet. mine until stops the moment the ore is in sight or in the inventory.\n");
         builder.append("do can also be job, where value is a phrase like: chop tree, chop 3 trees, mine until iron, mine 20 stone, quarry 10, tunnel 30, strip mine, farm, replant, till 9, collect, hunt, flee, shoot, shear 3, milk, eat, sleep, torch 8, place cobblestone here, place torch at 120 64 -300, drop 32 dirt, explore 60, return, build a house, swim to 120 62 -300, climb 8, bridge 12, go to 120 64 -300, come here, follow me, follow Steve, dig down, stop. Chain them in one value with then: chop 2 trees then mine until iron.\n");
-        builder.append("Chests: store 20 cobblestone, put away 32 dirt, deposit 5 diamond, take 32 iron, loot 16 bread, grab 4 torch. The job finds a chest, barrel or trapped chest within five blocks, opens it and shift-clicks one stack at a time.\n");
+        builder.append("Chests: store 20 cobblestone, put away 32 dirt, deposit 5 diamond, take 32 iron, loot 16 bread, grab 4 torch. The job finds a chest, barrel or trapped chest within five blocks, opens it and shift-clicks one stack at a time, counts real items against the number asked for, and only matches the exact item: iron means ingots, never ore or a sword, so say iron_ore for ore.\n");
         builder.append("Crafting and furnaces: craft 4 planks, craft a crafting table, craft sticks, craft a furnace, craft a stone pickaxe, craft iron sword, craft torch, craft chest, craft bucket, craft bed, smelt 8 iron, cook 4 porkchop. The job places and opens its own crafting table or furnace, crafts planks or sticks from logs first when it has to, and furnishes fuel itself. Known recipes: planks, stick, crafting_table, furnace, chest, torch, stone_pickaxe, stone_axe, stone_shovel, stone_sword, stone_hoe, iron_pickaxe, iron_sword, bucket, bed.\n");
         if (!context.isBlank()) builder.append("Context: ").append(context).append('\n');
         if (!NOTES.isEmpty()) builder.append("Notes from earlier sessions: ").append(String.join(" | ", NOTES)).append('\n');
@@ -1236,7 +1236,10 @@ public final class AiPilot extends Module {
         } else if (text.startsWith("store ") || text.startsWith("put away ") || text.startsWith("deposit ")) {
             String rest = text.replaceFirst("^(store|put away|deposit) ", "")
                     .replaceFirst("^(some|a|an|the) ", "").replaceFirst(" (in|into|inside) (a|the) chest$", "").trim();
-            started = new Job(JobKind.STORE, tidy(rest), 0, null);
+            java.util.regex.Matcher many = java.util.regex.Pattern.compile("^(\\d+) (.+)$").matcher(rest);
+            started = many.find()
+                    ? new Job(JobKind.STORE, tidy(many.group(2)), Math.max(1, Integer.parseInt(many.group(1))), null)
+                    : new Job(JobKind.STORE, tidy(rest), 0, null);
             if (started.target.isBlank()) {
                 Notify.warn("Name an item to store, for example: store 20 cobblestone");
                 return false;
@@ -1246,7 +1249,7 @@ public final class AiPilot extends Module {
                     .replaceFirst("^(some|a|an|the) ", "").trim();
             java.util.regex.Matcher many = java.util.regex.Pattern.compile("^(\\d+) (.+)$").matcher(rest);
             started = many.find()
-                    ? new Job(JobKind.TAKE, tidy(many.group(2)), 0, null)
+                    ? new Job(JobKind.TAKE, tidy(many.group(2)), Math.max(1, Integer.parseInt(many.group(1))), null)
                     : new Job(JobKind.TAKE, tidy(rest), 0, null);
             if (started.target.isBlank()) {
                 Notify.warn("Name an item to take, for example: take 32 iron");
@@ -1397,6 +1400,18 @@ public final class AiPilot extends Module {
         }
     }
 
+    // Rather than giving up on a recipe, work out which job produces the ingredient that is short.
+    private java.util.List<String> gatherPlan(Minecraft mc, Craft.Recipe recipe) {
+        java.util.function.Predicate<ItemStack> cell = Craft.missing(mc.player.inventoryMenu, recipe);
+        if (cell == null) return java.util.List.of();
+        if (cell == Craft.LOGS) return java.util.List.of("chop 2 trees");
+        if (cell == Craft.COBBLE) return java.util.List.of("mine 16 stone");
+        if (cell == Craft.COAL) return java.util.List.of("mine 8 coal");
+        if (cell == Craft.WOOL) return java.util.List.of("shear 3");
+        if (cell == Craft.IRON) return java.util.List.of("mine 6 iron", "smelt 6 iron");
+        return java.util.List.of();
+    }
+
     private void craftTick(Minecraft mc) {
         Craft.Recipe recipe = Craft.find(job.target);
         Craft.Book book = recipe == null ? Craft.book(mc, job.target) : null;
@@ -1456,6 +1471,13 @@ public final class AiPilot extends Module {
                 startOne("craft " + Math.max(1, job.wanted) + " " + sub.name());
                 return;
             }
+            java.util.List<String> plan = gatherPlan(mc, recipe);
+            if (!plan.isEmpty() && job.attempts++ < 3) {
+                for (int i = 1; i < plan.size(); i++) chain.addLast(plan.get(i));
+                chain.addLast("craft " + Math.max(1, job.wanted) + " " + recipe.name());
+                startOne(plan.get(0));
+                return;
+            }
             giveUp(mc, "no materials for " + shown);
             return;
         }
@@ -1511,21 +1533,34 @@ public final class AiPilot extends Module {
     }
 
     private void storeTick(Minecraft mc) {
+        java.util.function.Predicate<ItemStack> want = Craft.only(job.target);
+        if (want == null) {
+            giveUp(mc, "I do not know the item " + job.target.replace('_', ' '));
+            return;
+        }
+        String shown = job.target.replace('_', ' ');
+        int limit = Math.max(0, job.wanted);
         if (mc.screen != null) {
             AbstractContainerMenu menu = mc.player.containerMenu;
             if (!(menu instanceof net.minecraft.world.inventory.ChestMenu)) {
                 mc.setScreen(null);
                 return;
             }
-            int from = Craft.find(menu, s -> Craft.itemMatches(s, job.target));
-            if (from < 0) {
+            if (limit > 0 && job.mined >= limit) {
                 mc.setScreen(null);
-                endJob(mc, "put " + job.mined + " away");
+                endJob(mc, "stored " + job.mined + " x " + shown);
                 return;
             }
+            int from = Craft.find(menu, want);
+            if (from < 0) {
+                mc.setScreen(null);
+                endJob(mc, "stored " + job.mined + " x " + shown);
+                return;
+            }
+            ItemStack stack = menu.getSlot(from).getItem();
             Craft.click(mc, menu, from, 0, ClickType.QUICK_MOVE);
-            job.mined++;
-            job.note = "putting " + job.target.replace('_', ' ') + " away";
+            job.mined += stack.getCount();
+            job.note = "storing " + shown + " (" + job.mined + ")";
             return;
         }
         BlockPos chest = chestNear(mc);
@@ -1538,23 +1573,35 @@ public final class AiPilot extends Module {
     }
 
     private void takeTick(Minecraft mc) {
+        java.util.function.Predicate<ItemStack> want = Craft.only(job.target);
+        if (want == null) {
+            giveUp(mc, "I do not know the item " + job.target.replace('_', ' '));
+            return;
+        }
+        String shown = job.target.replace('_', ' ');
+        int limit = Math.max(0, job.wanted);
         if (mc.screen != null) {
             AbstractContainerMenu menu = mc.player.containerMenu;
             if (!(menu instanceof net.minecraft.world.inventory.ChestMenu)) {
                 mc.setScreen(null);
                 return;
             }
+            if (limit > 0 && job.mined >= limit) {
+                mc.setScreen(null);
+                endJob(mc, "took " + job.mined + " x " + shown);
+                return;
+            }
             int chestSlots = menu.slots.size() - 36;
             for (int i = 0; i < chestSlots; i++) {
                 ItemStack stack = menu.getSlot(i).getItem();
-                if (stack.isEmpty() || !Craft.itemMatches(stack, job.target)) continue;
+                if (stack.isEmpty() || !want.test(stack)) continue;
                 Craft.click(mc, menu, i, 0, ClickType.QUICK_MOVE);
                 job.mined += stack.getCount();
-                job.note = "taking " + job.target.replace('_', ' ') + " (" + job.mined + ")";
+                job.note = "taking " + shown + " (" + job.mined + ")";
                 return;
             }
             mc.setScreen(null);
-            endJob(mc, "took " + job.mined + " x " + job.target.replace('_', ' '));
+            endJob(mc, "took " + job.mined + " x " + shown);
             return;
         }
         BlockPos chest = chestNear(mc);
@@ -1572,6 +1619,11 @@ public final class AiPilot extends Module {
 
     private void smeltTick(Minecraft mc) {
         String shown = job.target.replace('_', ' ');
+        java.util.function.Predicate<ItemStack> input = Craft.smeltInput(job.target);
+        if (input == null) {
+            giveUp(mc, "I do not know the item " + shown);
+            return;
+        }
         if (mc.screen != null) {
             AbstractContainerMenu menu = mc.player.containerMenu;
             if (!(menu instanceof FurnaceMenu)) {
@@ -1590,7 +1642,7 @@ public final class AiPilot extends Module {
                 return;
             }
             if (menu.getSlot(0).getItem().isEmpty()) {
-                int from = Craft.find(menu, s -> itemMatches(s, job.target));
+                int from = Craft.find(menu, input);
                 if (from < 0) {
                     mc.setScreen(null);
                     giveUp(mc, "no " + shown + " to smelt");
