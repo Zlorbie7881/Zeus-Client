@@ -104,13 +104,17 @@ def sec_handle(hw, ht, cham=0.5, finger=0.0):
 
 
 # ------------------------------------------------------------------------ lofting
-def loft(rings, tip=None, cap_start=True, cap_end=True):
-    """Skin a list of (y, [(x, z), ...]) rings.  All rings need the same point count."""
+def loft(rings, tip=None, cap_start=True, cap_end=True, axis="y"):
+    """Skin a list of rings.  ``axis`` names the coordinate the rings march along."""
     verts, faces = [], []
     n = len(rings[0][1])
-    for y, pts in rings:
-        for x, z in pts:
-            verts.append([x, y, z])
+
+    def place(p, a, b):
+        return [a, p, b] if axis == "y" else [p, a, b]
+
+    for p, pts in rings:
+        for a, b in pts:
+            verts.append(place(p, a, b))
     rows = len(rings)
 
     def vi(r, i):
@@ -124,11 +128,11 @@ def loft(rings, tip=None, cap_start=True, cap_end=True):
             faces.append([a, c, d])
 
     if cap_start:
-        y = rings[0][0]
-        cx = sum(p[0] for p in rings[0][1]) / n
-        cz = sum(p[1] for p in rings[0][1]) / n
+        p0 = rings[0][0]
+        ca = sum(q[0] for q in rings[0][1]) / n
+        cb = sum(q[1] for q in rings[0][1]) / n
         c = len(verts)
-        verts.append([cx, y, cz])
+        verts.append(place(p0, ca, cb))
         for i in range(n):
             faces.append([c, vi(0, i + 1), vi(0, i)])
 
@@ -139,11 +143,11 @@ def loft(rings, tip=None, cap_start=True, cap_end=True):
         for i in range(n):
             faces.append([vi(last, i), vi(last, i + 1), t])
     elif cap_end:
-        y = rings[-1][0]
-        cx = sum(p[0] for p in rings[-1][1]) / n
-        cz = sum(p[1] for p in rings[-1][1]) / n
+        p0 = rings[-1][0]
+        ca = sum(q[0] for q in rings[-1][1]) / n
+        cb = sum(q[1] for q in rings[-1][1]) / n
         c = len(verts)
-        verts.append([cx, y, cz])
+        verts.append(place(p0, ca, cb))
         for i in range(n):
             faces.append([c, vi(last, i), vi(last, i + 1)])
     return verts, faces
@@ -181,7 +185,7 @@ def torus(centre, ring_r, tube_r, seg=10, side=3):
         for j in range(side):
             b = 2 * math.pi * j / side
             rr = ring_r + tube_r * math.cos(b)
-            verts.append([cx + rr * math.cos(a), cy + tube_r * math.sin(b), cz + rr * math.sin(a)])
+            verts.append([cx + rr * math.cos(a), cy + rr * math.sin(a), cz + tube_r * math.sin(b)])
     def vi(i, j):
         return (i % seg) * side + (j % side)
     for i in range(seg):
@@ -299,19 +303,41 @@ def blade_solids(y0, length, widths, thick, *, xoff=None, slices=8, round_tip=Tr
     return solids
 
 
-def handle_rings(length, hw, ht, slices=6, swell=0.14, wrap=0, grooves=0):
+def grip_section(hw, ht, style="oval", finger=0.0):
+    """One grip cross section.  Hex reads as a slab-sided handle, round as a turned one."""
+    if style == "hex":
+        return [(hw, ht * 0.26), (hw * 0.66, ht * 0.88), (-hw * 0.66, ht * 0.88),
+                (-hw, ht * 0.26), (-hw, -ht * 0.26), (-hw * 0.66, -ht * 0.88),
+                (hw * 0.66, -ht * 0.88), (hw, -ht * 0.26)]
+    if style == "round":
+        return [(hw * math.cos(2 * math.pi * i / 8), ht * math.sin(2 * math.pi * i / 8))
+                for i in range(8)]
+    return sec_handle(hw, ht, finger=finger)
+
+
+def handle_rings(length, hw, ht, slices=6, swell=0.14, wrap=0, grooves=0,
+                 style="oval", taper=0.88, swell_at=1.25, butt_flare=0.16):
     """Grip that is thin at the guard, full in the palm and flares at the butt."""
     rings = []
     for i in range(slices):
         u = i / (slices - 1)
-        k = 0.88 + swell * math.sin(min(1.0, u * 1.25) * math.pi * 0.5)
+        k = taper + swell * math.sin(min(1.0, u * swell_at) * math.pi * 0.5)
         if u > 0.88:
-            k *= 1.0 + 0.16 * ((u - 0.88) / 0.12)
+            k *= 1.0 + butt_flare * ((u - 0.88) / 0.12)
         if wrap:
             k *= 1.0 + 0.05 * math.sin(u * math.pi * wrap * 2.0)
         finger = grooves * math.sin(u * math.pi * grooves) * 0.10 if grooves else 0.0
-        rings.append((length * u, [(x * k, z * k) for x, z in sec_handle(hw, ht, finger=finger)]))
+        rings.append((length * u, [(x * k, z * k) for x, z in grip_section(hw, ht, style, finger)]))
     return rings
+
+
+def cross_guard(cy, half_len, depth, th):
+    """A bar across the blade: the classic double edged dagger guard, lofted along x."""
+    rings = []
+    for x, s in ((-half_len, 0.55), (0.0, 1.0), (half_len, 0.55)):
+        d, t = depth * s, th * s
+        rings.append((x, [(cy - d, -t), (cy - d, t), (cy + d, t), (cy + d, -t)]))
+    return outward(*loft(rings, axis="x"))
 
 
 def bolster_rings(y, hw, ht, depth, flare=1.35):
@@ -325,21 +351,31 @@ def bolster_rings(y, hw, ht, depth, flare=1.35):
 def build(name, hl, bl, widths, thick, *, guard=None, tip_shift=0.0, hw=None, ht=1.15,
           xoff=None, point=True, fuller=0.0, swedge=0.0, jimp=0.0, ricasso=0.0,
           wrap=0, grooves=0, pins=2, ring=False, lanyard=False, butt=True,
-          width_scale=1.14, edge_w=0.2, slab=False, double=False, belly=0.0, slices=8):
+          width_scale=1.14, edge_w=0.2, slab=False, double=False, belly=0.0, slices=8,
+          grip="oval", taper=0.88, swell=0.14, swell_at=1.25, butt_flare=0.16,
+          guard_style="winged", pommel="cap"):
     """Assemble one knife: grip from 0 up, bolster, blade to hl + bl."""
     hw = hw if hw is not None else max(0.85, min(1.9, max(widths) * 0.62))
     widths = [w * width_scale for w in widths]
     parts = []
 
-    handle = outward(*loft(handle_rings(hl, hw, ht, swell=0.14, wrap=wrap, grooves=grooves),
+    handle = outward(*loft(handle_rings(hl, hw, ht, swell=swell, wrap=wrap, grooves=grooves,
+                                        style=grip, taper=taper, swell_at=swell_at,
+                                        butt_flare=butt_flare),
                            cap_start=butt))
     parts.append({"n": "handle", "p": [0.0, round(hl * 0.5, 3), 0.0],
                   "meshes": [geo("handle", handle)]})
 
-    if butt:
-        cap = outward(*loft([(0.0, [(x * 1.06, z * 1.06) for x, z in sec_handle(hw, ht)]),
-                             (-0.5, [(x * 1.14, z * 1.14) for x, z in sec_handle(hw, ht)])]))
-        parts.append({"n": "pommel", "p": [0.0, 0.0, 0.0], "meshes": [geo("guard", cap)]})
+    if butt and pommel != "none":
+        gs = lambda f: [(x * f, z * f) for x, z in grip_section(hw * 1.02, ht * 1.02, grip)]
+        if pommel == "ball":
+            rings = [(0.0, gs(1.05)), (-0.28, gs(1.20)), (-0.55, gs(0.4))]
+        elif pommel == "flat":
+            rings = [(0.0, gs(1.0)), (-0.34, gs(0.96))]
+        else:
+            rings = [(0.0, gs(1.05)), (-0.3, gs(1.1)), (-0.5, gs(0.84))]
+        parts.append({"n": "pommel", "p": [0.0, 0.0, 0.0],
+                      "meshes": [geo("guard", outward(*loft(rings)))]})
 
     if pins:
         meshes = []
@@ -351,8 +387,19 @@ def build(name, hl, bl, widths, thick, *, guard=None, tip_shift=0.0, hw=None, ht
     base = hl
     if guard is not None:
         gw, gd = guard
-        parts.append({"n": "guard", "p": [0.0, base, 0.0],
-                      "meshes": [geo("guard", outward(*loft(bolster_rings(base, hw * gw, ht, gd))))]})
+        if guard_style == "cross":
+            gpair = cross_guard(base + gd * 0.5, hw * gw * 1.55, gd * 0.55, ht * 1.06)
+        elif guard_style == "block":
+            a = [(x, z) for x, z in grip_section(hw * gw, ht * 1.1, "oval")]
+            b = [(x * 1.14, z * 1.2) for x, z in grip_section(hw * gw, ht * 1.1, "oval")]
+            gpair = outward(*loft([(base, a), (base + gd, b)]))
+        elif guard_style == "collar":
+            a = [(x * 0.82, z * 1.0) for x, z in grip_section(hw * gw, ht, "oval")]
+            b = [(x * 1.02, z * 1.06) for x, z in grip_section(hw * gw, ht, "oval")]
+            gpair = outward(*loft([(base, a), (base + gd * 0.8, b)]))
+        else:
+            gpair = outward(*loft(bolster_rings(base, hw * gw, ht, gd)))
+        parts.append({"n": "guard", "p": [0.0, base, 0.0], "meshes": [geo("guard", gpair)]})
         base += gd
 
     solids = blade_solids(base, bl, widths, thick, xoff=xoff, round_tip=point, slices=slices,
@@ -364,10 +411,10 @@ def build(name, hl, bl, widths, thick, *, guard=None, tip_shift=0.0, hw=None, ht
 
     if ring:
         parts.append({"n": "ring", "p": [0.0, 0.0, 0.0],
-                      "meshes": [geo("guard", torus((0.0, -1.2, 0.0), 0.85, 0.2, seg=10, side=3))]})
+                      "meshes": [geo("guard", torus((0.0, -0.5, 0.0), 0.62, 0.17, seg=10, side=3))]})
     if lanyard:
         parts.append({"n": "lanyard", "p": [0.0, 0.0, 0.0],
-                      "meshes": [geo("guard", torus((0.0, -0.05, ht * 1.1), 0.32, 0.1, seg=6, side=3))]})
+                      "meshes": [geo("guard", torus((0.0, -0.72, 0.0), 0.3, 0.1, seg=6, side=3))]})
 
     return {"name": name, "hl": hl, "bl": bl, "tip": round(base + bl, 3),
             "grip": [0.0, round(hl * 0.5, 3), 0.0], "parts": parts}
@@ -388,56 +435,63 @@ def build_tanto():
     # Flat ground tantō: jimping, a step at the ricasso, an angled point.
     return build("Tantō", 7.4, 13.6, [1.5, 1.7, 1.8, 1.8, 1.75, 1.7, 1.6, 1.45, 1.3, 1.0, 0.35],
                  0.62, guard=(1.35, 0.5), tip_shift=0.7, jimp=0.14, ricasso=1.0,
-                 swedge=0.18, pins=2, grooves=2, edge_w=0.16)
+                 swedge=0.18, pins=2, grooves=2, edge_w=0.16, taper=0.92,
+                 guard_style="winged", pommel="cap")
 
 
 def build_kris():
     # Serpentine blade with a full-length fuller and a waved edge.
     return build("Kris", 8.0, 15.2, [1.2, 1.5, 1.2, 1.6, 1.2, 1.7, 1.2, 1.6, 1.1, 1.3, 0.32],
-                 0.52, guard=(1.25, 0.44), xoff=lambda u: 0.6 * math.sin(u * math.pi * 3.0),
-                 fuller=0.1, swedge=0.14, pins=2, wrap=3, edge_w=0.18)
+                 0.52, guard=(1.25, 0.44), hw=1.05, xoff=lambda u: 0.6 * math.sin(u * math.pi * 3.0),
+                 fuller=0.1, swedge=0.14, pins=2, wrap=3, edge_w=0.18, grip="round",
+                 taper=0.84, swell=0.2, butt_flare=0.1, guard_style="collar", pommel="ball")
 
 
 def build_cleaver():
     # Wide flat stock, squared off, stout bolster, three rivets.
     return build("Cleaver", 7.2, 12.8, [2.0, 2.6, 3.0, 3.2, 3.3, 3.3, 3.3, 3.2, 3.2, 3.05, 2.95],
                  0.48, guard=(1.35, 0.42), hw=1.5, ht=1.08, point=False, belly=0.1,
-                 slab=True, pins=3, edge_w=0.14)
+                 slab=True, pins=3, edge_w=0.14, grip="hex", taper=0.95, swell=0.1,
+                 butt_flare=0.05, grooves=2, guard_style="block", pommel="flat")
 
 
 def build_kunai():
     # Leaf blade, no guard, cord wrap and a pommel ring.
     return build("Kunai", 6.4, 11.8, [1.35, 1.5, 1.55, 1.5, 1.35, 1.2, 1.0, 0.82, 0.6, 0.36, 0.1],
                  0.6, hw=0.95, ht=0.95, fuller=0.08, pins=1, ring=True, wrap=4, grooves=1,
-                 edge_w=0.24)
+                 edge_w=0.24, grip="round", taper=0.8, swell=0.08, pommel="none")
 
 
 def build_jambiya():
     # Wide sweeping blade, deep fuller, long bolster, lanyard hole.
     return build("Jambiya", 7.0, 12.6, [2.2, 2.5, 2.6, 2.5, 2.3, 2.0, 1.7, 1.3, 0.9, 0.5, 0.15],
                  0.56, guard=(1.45, 0.6), xoff=lambda u: -1.4 * u * u, fuller=0.12,
-                 swedge=0.1, pins=2, lanyard=True, edge_w=0.2, slices=7)
+                 swedge=0.1, pins=1, lanyard=True, edge_w=0.2, slices=7, hw=1.2,
+                 taper=0.9, swell=0.22, guard_style="winged", pommel="ball")
 
 
 def build_khopesh():
     # Hooked blade: strong sweep, thinned spine, wrapped grip.
     return build("Khopesh", 7.8, 15.4, [1.3, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0, 2.0, 1.7, 1.1, 0.28],
                  0.54, guard=(1.2, 0.4), xoff=lambda u: -2.95 * u * u, swedge=0.16,
-                 fuller=0.08, pins=2, wrap=3, edge_w=0.18)
+                 fuller=0.08, pins=2, wrap=3, edge_w=0.18, grip="round", taper=0.86,
+                 swell=0.18, guard_style="winged", pommel="cap")
 
 
 def build_machete():
     # Long slab blade with a fuller, no guard, wrapped grip and a lanyard hole.
     return build("Machete", 8.6, 16.5, [2.0, 2.2, 2.3, 2.35, 2.4, 2.45, 2.5, 2.45, 2.2, 1.7, 0.75],
                  0.52, hw=1.35, ht=1.1, xoff=lambda u: 0.55 * u * u, fuller=0.07, belly=0.08,
-                 slab=True, pins=2, wrap=3, lanyard=True, edge_w=0.16)
+                 slab=True, pins=2, wrap=3, lanyard=True, edge_w=0.16, grip="hex",
+                 taper=0.9, swell=0.12, guard_style="collar", pommel="flat")
 
 
 def build_dagger():
     # Double edged diamond section with fullers and a crossguard.
     return build("Dagger", 5.8, 10.8, [1.5, 1.8, 1.9, 1.85, 1.7, 1.5, 1.25, 1.0, 0.7, 0.45, 0.12],
                  0.62, guard=(1.5, 0.42), hw=1.0, ht=1.0, fuller=0.07, double=True,
-                 pins=1, edge_w=0.2)
+                 pins=1, edge_w=0.2, taper=0.84, swell=0.16, guard_style="cross",
+                 pommel="ball")
 
 
 BUILDERS = [build_tanto, build_kris, build_cleaver, build_kunai,
