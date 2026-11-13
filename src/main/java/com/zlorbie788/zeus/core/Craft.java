@@ -1,12 +1,18 @@
 package com.zlorbie788.zeus.core;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.recipebook.RecipeCollection;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.protocol.game.ServerboundPlaceRecipePacket;
 import net.minecraft.tags.ItemTags;
+import net.minecraft.util.context.ContextMap;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.crafting.display.RecipeDisplayEntry;
+import net.minecraft.world.item.crafting.display.SlotDisplayContext;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -204,6 +210,50 @@ public final class Craft {
         if (table) return 1 + row * 3 + col;
         if (row > 1 || col > 1) return -1;
         return 1 + row * 2 + col;
+    }
+
+    public static boolean itemMatches(ItemStack stack, String wanted) {
+        if (stack.isEmpty() || wanted == null || wanted.isBlank()) return false;
+        String id = BuiltInRegistries.ITEM.getKey(stack.getItem()).getPath();
+        String key = wanted.toLowerCase(Locale.ROOT).trim().replace(' ', '_');
+        if (key.endsWith("_ore")) key = key.substring(0, key.length() - 4);
+        if (key.endsWith("s") && key.length() > 3) key = key.substring(0, key.length() - 1);
+        return id.equals(key) || id.endsWith("_" + key) || id.contains(key);
+    }
+
+    /**
+     * The vanilla recipe book knows every recipe the player has unlocked, which is far more than the
+     * table above. When the item is not in the table, look it up here and let the server fill the grid.
+     */
+    public record Book(RecipeDisplayEntry entry, boolean table) {}
+
+    public static Book book(Minecraft mc, String wanted) {
+        if (mc.player == null || mc.level == null) return null;
+        ContextMap context = SlotDisplayContext.fromLevel(mc.level);
+        for (RecipeCollection collection : mc.player.getRecipeBook().getCollections()) {
+            for (RecipeDisplayEntry entry : collection.getRecipes()) {
+                ItemStack result;
+                try {
+                    result = entry.display().result().resolveForFirstStack(context);
+                } catch (RuntimeException e) {
+                    continue;
+                }
+                if (result.isEmpty() || !itemMatches(result, wanted)) continue;
+                boolean table = false;
+                try {
+                    ItemStack station = entry.display().craftingStation().resolveForFirstStack(context);
+                    table = !station.isEmpty() && station.is(Items.CRAFTING_TABLE);
+                } catch (RuntimeException ignored) {
+                }
+                return new Book(entry, table);
+            }
+        }
+        return null;
+    }
+
+    public static void bookPlace(Minecraft mc, AbstractContainerMenu menu, RecipeDisplayEntry entry) {
+        if (mc.getConnection() == null || mc.player == null) return;
+        mc.getConnection().send(new ServerboundPlaceRecipePacket(menu.containerId, entry.id(), false));
     }
 
     public static boolean fuel(ItemStack stack) {
