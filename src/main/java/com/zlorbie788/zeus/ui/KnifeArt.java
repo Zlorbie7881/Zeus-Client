@@ -60,6 +60,7 @@ public final class KnifeArt {
         public int glow;
         public int shape;
         public int design;
+        public int finish;
         public boolean mirror;
 
         public boolean fine = true;
@@ -95,6 +96,7 @@ public final class KnifeArt {
             l.blade[1] = hsv(h, 0.5f, 0.92f);
             l.blade[2] = hsv(h, 0.7f, 0.6f);
         }
+        l.finish = Math.max(0, Math.min(FINISH_COLOURS.length - 1, finish));
         l.shape = Math.max(0, Math.min(SHAPES.length - 1, shape));
         l.design = Math.max(0, Math.min(DESIGNS.length - 1, design));
         return l;
@@ -740,6 +742,7 @@ public final class KnifeArt {
             System.arraycopy(f, 4, l.blade, 0, 3);
             l.glow = f[7];
         }
+        l.finish = finish;
         l.shape = KR.length + Math.max(0, Math.min(SMODELS.length - 1, model));
         return l;
     }

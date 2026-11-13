@@ -1,2 +1,9 @@
 # UV mapped knife models, one id per line
-tactical
+karambit
+m9_bayonet
+huntsman
+bowie
+butterfly_knife
+skeleton
+kukri
+stiletto
