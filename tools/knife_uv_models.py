@@ -60,11 +60,11 @@ def blade_sheet(pattern):
         v = row / (h - 1.0)
         for x in range(w):
             u = x / (w - 1.0)
-            g = 150 + 40 * u
-            g -= 34 * math.exp(-((u - 0.10) ** 2) / 0.006)
-            g -= 30 * math.exp(-((u - 0.42) ** 2) / 0.020)
-            g += 26 * math.exp(-((u - 0.58) ** 2) / 0.004)
-            g += 46 * math.exp(-((u - 0.92) ** 2) / 0.010)
+            g = 148 + 34 * u
+            g -= 26 * math.exp(-((u - 0.08) ** 2) / 0.010)
+            g -= 14 * math.exp(-((u - 0.40) ** 2) / 0.030)
+            g += 10 * math.exp(-((u - 0.60) ** 2) / 0.008)
+            g += 52 * math.exp(-((u - 0.95) ** 2) / 0.012)
             if u < 0.035:
                 g = 44 + 120 * u / 0.035
             if u > 0.968:
@@ -183,11 +183,12 @@ def strip(spine, edge, tex, thick, uv=None, v_from=0.0, v_to=1.0, caps=True, rim
         quads.append({"t": tex, "v": [el0[0], el0[1], tz_e, sl0[0], sl0[1], tz_s,
                                       sl1[0], sl1[1], tz_s, el1[0], el1[1], tz_e],
                       "uv": [u0, v0 + (v1 - v0) * va, u1, v0 + (v1 - v0) * vb]})
-        if rims[0]:
+        tipband = i >= n - 3
+        if rims[0] and not tipband:
             quads.append({"t": "#rim", "v": [sl0[0], sl0[1], -tz_s, sl1[0], sl1[1], -tz_s,
                                              sl1[0], sl1[1], tz_s, sl0[0], sl0[1], tz_s],
                           "uv": [ru0, rv0 + (rv1 - rv0) * va, ru1, rv0 + (rv1 - rv0) * vb]})
-        if rims[1]:
+        if rims[1] and not tipband:
             quads.append({"t": "#rim", "v": [el0[0], el0[1], -tz_e, el0[0], el0[1], tz_e,
                                              el1[0], el1[1], tz_e, el1[0], el1[1], -tz_e],
                           "uv": [ru0, rv0 + (rv1 - rv0) * va, ru1, rv0 + (rv1 - rv0) * vb]})
@@ -209,17 +210,26 @@ def blade(spine, edge, thick, bevel=0.55, smooth=None):
         edge = resample(edge, len(spine))
     # the grind line follows the smooth spine, so saw teeth stay on the spine rim instead
     # of corrugating the whole face
-    # collapse the last stations onto the tip so a mismatched pair cannot leave a spur
-    tip = ((spine[-1][0] + edge[-1][0]) * 0.5, max(spine[-1][1], edge[-1][1]))
+    # pull the last stations into the tip so the knife ends in a point of its own outline
+    n = len(spine)
+    tipx = (spine[-1][0] + edge[-1][0]) * 0.5
+    tipy = max(spine[-1][1], edge[-1][1])
+    k = min(3, n - 2)
     spine = list(spine)
     edge = list(edge)
-    for k in (-1, -2):
-        spine[k] = tip
-        edge[k] = tip
+    for j in range(k + 1):
+        i = n - 1 - j
+        f = (1.0 - j / k) ** 1.25
+        for pts in (spine, edge):
+            px, py = pts[i]
+            pts[i] = (px + (tipx - px) * f, py + (tipy - py) * f)
     if smooth is not None:
         smooth = list(smooth)
-        smooth[-1] = tip
-        smooth[-2] = ((smooth[-2][0] + tip[0]) * 0.5, (smooth[-2][1] + tip[1]) * 0.5)
+        for j in range(k + 1):
+            i = n - 1 - j
+            f = (1.0 - j / k) ** 1.25
+            px, py = smooth[i]
+            smooth[i] = (px + (tipx - px) * f, py + (tipy - py) * f)
     base = spine if smooth is None else smooth
     mid = [((base[i][0] + edge[i][0]) * 0.5, (base[i][1] + edge[i][1]) * 0.5)
            for i in range(len(spine))]
@@ -352,138 +362,122 @@ def knife(name, parts, ident=None):
 
 
 # ------------------------------------------------------------------ the eight knives
+# Proportions are fixed per knife: grip 0..g, guard g..g2, blade g2..tip, with the blade
+# about 60% of the total length.  Every part overlaps its neighbour by at least a quarter
+# unit, so nothing can float apart.
+
 def karambit():
     parts = []
-    # contoured grip with three finger grooves on the front edge
-    spine = [(-1.35, 0.6), (-1.5, 2.0), (-1.45, 3.6), (-1.55, 5.2), (-1.4, 6.8), (-1.5, 8.2), (-1.25, 9.4)]
-    edge = [(1.30, 0.6), (1.15, 1.6), (1.45, 2.4), (1.05, 3.2), (1.40, 4.1), (1.00, 4.9),
-            (1.35, 5.9), (1.05, 6.8), (1.35, 7.8), (1.15, 9.4)]
-    parts.extend(grip(0.6, 9.4, "#knurl", 0.62, halfw=1.35, swell=0.20, skew=0.06))
-    parts.append(rectangle(-1.45, 1.45, 9.4, 10.1, "#brass", 0.68))
+    parts.extend(grip(0.5, 9.2, "#knurl", 0.62, halfw=1.30, swell=0.18, skew=0.10))
+    parts.append(rectangle(-1.40, 1.40, 8.9, 9.9, "#brass", 0.66))
     # claw: spine arcs up and forward, edge follows inside, tip hooks down
-    spine = [(-1.30, 10.2), (0.40, 12.6), (2.60, 14.8), (4.90, 16.2), (6.90, 16.4), (8.30, 15.2), (9.00, 13.2)]
-    edge = [(1.30, 10.2), (0.60, 11.4), (1.60, 13.4), (3.60, 15.0), (5.60, 15.6), (7.40, 14.8), (9.00, 13.2)]
-    parts.extend(blade(resample(spine, 14), resample(edge, 14), 0.46))
-    parts.append(ring(-0.05, -0.95, 1.00, 1.90, 0.52, "#brass", BRASS_UV))
+    spine = [(-1.25, 9.5), (0.30, 12.0), (2.40, 14.2), (4.70, 15.6), (6.90, 15.9),
+             (8.40, 14.9), (9.10, 12.9)]
+    edge = [(1.25, 9.5), (0.55, 10.9), (1.55, 12.9), (3.50, 14.5), (5.60, 15.1),
+            (7.40, 14.3), (9.10, 12.9)]
+    parts.extend(blade(resample(spine, 16), resample(edge, 16), 0.46))
+    parts.append(ring(-0.05, -0.85, 0.95, 1.80, 0.52, "#brass", BRASS_UV))
     knife("Karambit", parts)
 
 
 def m9():
     parts = []
-    spine = [(-1.55, 0.7), (-1.45, 2.4), (-1.60, 4.2), (-1.45, 6.0), (-1.60, 7.8), (-1.45, 9.6), (-1.50, 11.3)]
-    edge = [(1.45, 0.7), (1.30, 2.4), (1.45, 4.2), (1.30, 6.0), (1.45, 7.8), (1.30, 9.6), (1.35, 11.3)]
-    parts.extend(grip(0.7, 11.3, "#rib", 0.58, halfw=1.50, skew=-0.06))
-    parts.append(rectangle(-2.35, 2.35, 11.3, 12.3, "#brass", 0.75))
-    parts.append(ring(0.85, 11.8, 0.5, 1.25, 0.75, "#brass", BRASS_UV, seg=10))
-    # clip point blade with saw teeth on the spine
-    spine = [(-1.15, 12.3), (-2.15, 14.4), (-2.25, 17.4), (-2.25, 21.2), (-2.05, 23.2),
-             (-1.45, 25.4), (-0.55, 27.0), (0.45, 27.8)]
-    edge = [(1.15, 12.3), (2.15, 14.4), (2.30, 17.4), (2.30, 21.4), (2.15, 23.6),
-            (1.75, 25.6), (1.05, 27.2), (0.45, 27.8)]
+    parts.extend(grip(0.6, 10.5, "#rib", 0.56, halfw=1.45, swell=0.14, skew=-0.06))
+    parts.append(rectangle(-2.10, 2.10, 10.5, 11.4, "#brass", 0.72))
+    # hollow muzzle ring through the crossguard, not a solid knob
+    parts.append(ring(0.0, 11.0, 0.60, 1.06, 0.76, "#brass", BRASS_UV, seg=12))
+    # slim bayonet: parallel edges, clip point in the last quarter, flush spine teeth
+    spine = [(-1.05, 11.4), (-1.72, 13.2), (-1.78, 16.4), (-1.78, 20.4), (-1.72, 23.4),
+             (-1.38, 25.9), (-0.72, 28.0)]
+    edge = [(1.05, 11.4), (1.72, 13.2), (1.84, 16.4), (1.86, 20.6), (1.78, 23.6),
+            (1.48, 26.0), (0.72, 28.2)]
     spine_all = resample(spine, 56)
-    parts.extend(blade(teeth(spine_all, 6, 0.17, 0.30, 0.64), edge, 0.40, smooth=spine_all))
+    parts.extend(blade(teeth(spine_all, 6, 0.10, 0.24, 0.58), edge, 0.38, smooth=spine_all))
     knife("M9 Bayonet", parts, "m9_bayonet")
 
 
 def huntsman():
     parts = []
-    spine = [(-1.50, 0.7), (-1.40, 2.4), (-1.55, 4.1), (-1.40, 5.8), (-1.55, 7.5), (-1.45, 10.6)]
-    edge = [(1.40, 0.7), (1.25, 2.4), (1.40, 4.1), (1.25, 5.8), (1.40, 7.5), (1.30, 10.6)]
-    parts.extend(grip(0.7, 10.6, "#cord", 0.60, halfw=1.45, swell=0.26))
-    parts.append(rectangle(-1.9, 1.9, 10.6, 11.6, "#brass", 0.72))
-    spine = [(-1.15, 11.6), (-2.10, 13.6), (-2.20, 16.6), (-2.20, 19.6), (-2.10, 22.0),
-             (-1.75, 25.0)]
-    edge = [(1.15, 11.6), (2.10, 13.6), (2.25, 16.6), (2.30, 19.8), (2.10, 22.6),
-            (1.55, 24.6), (0.75, 26.2)]
+    parts.extend(grip(0.6, 10.0, "#cord", 0.58, halfw=1.40, swell=0.22))
+    parts.append(rectangle(-1.85, 1.85, 10.0, 10.9, "#brass", 0.70))
+    spine = [(-1.15, 10.9), (-1.98, 12.9), (-2.05, 16.6), (-2.02, 20.6), (-1.92, 23.6),
+             (-1.42, 25.9), (-0.62, 27.4)]
+    edge = [(1.15, 10.9), (2.02, 12.9), (2.14, 16.6), (2.18, 20.8), (2.06, 23.9),
+            (1.66, 26.1), (0.92, 27.6)]
     spine_all = resample(spine, 48)
-    spine = teeth(spine_all, 5, 0.22, 0.12, 0.42)
-    edge = resample(edge, 34)
-    # make the two polylines end at the same tip
-    edge[-1] = spine[-1] = ((spine[-1][0] + edge[-1][0]) * 0.5, max(spine[-1][1], edge[-1][1]) + 0.25)
-    parts.extend(blade(spine, edge, 0.38, smooth=spine_all))
+    parts.extend(blade(teeth(spine_all, 5, 0.12, 0.12, 0.42), edge, 0.38, smooth=spine_all))
     knife("Huntsman", parts)
 
 
 def bowie():
     parts = []
-    spine = [(-1.70, 0.8), (-1.55, 2.6), (-1.75, 4.6), (-1.55, 6.6), (-1.75, 8.6), (-1.60, 12.2)]
-    edge = [(1.55, 0.8), (1.40, 2.6), (1.60, 4.6), (1.40, 6.6), (1.60, 8.6), (1.45, 12.2)]
-    parts.extend(grip(0.8, 12.2, "#wood", 0.66, halfw=1.65, swell=0.30))
-    # curved crossguard: three blocks stepping outwards
-    parts.append(rectangle(-2.55, 2.55, 12.2, 13.0, "#brass", 0.55))
-    parts.append(rectangle(-1.85, 1.85, 12.9, 13.5, "#brass", 0.72))
-    spine = [(-1.20, 13.5), (-2.10, 15.8), (-2.20, 19.0), (-2.20, 22.4), (-1.90, 25.6)]
-    edge = [(1.20, 13.5), (2.35, 15.8), (2.55, 19.0), (2.55, 22.6), (1.95, 25.8), (0.90, 28.4)]
-    spine = resample(spine, 26)
-    edge = resample(edge, 26)
-    edge[-1] = spine[-1] = (0.35, 29.0)
-    parts.extend(blade(spine, edge, 0.42))
+    parts.extend(grip(0.7, 11.0, "#wood", 0.64, halfw=1.55, swell=0.26, skew=0.08))
+    # curved crossguard: two stacked blocks of different reach
+    parts.append(rectangle(-2.30, 2.30, 11.0, 11.9, "#brass", 0.54))
+    parts.append(rectangle(-1.60, 1.60, 11.7, 12.2, "#brass", 0.70))
+    # heavy sweeping clip point
+    spine = [(-1.10, 12.2), (-1.95, 14.2), (-2.12, 17.6), (-2.10, 21.2), (-1.92, 24.2),
+             (-1.50, 26.6), (-0.78, 28.6)]
+    edge = [(1.10, 12.2), (2.28, 14.4), (2.60, 17.6), (2.66, 21.2), (2.42, 24.4),
+            (1.84, 27.0), (0.98, 29.0)]
+    parts.extend(blade(resample(spine, 24), resample(edge, 24), 0.42))
     knife("Bowie", parts)
 
 
 def butterfly():
     parts = []
+    # two handle channels that converge onto the pivot pin at the tang
     for side in (-1, 1):
-        # two handle channels, split apart, with vent slots between them
-        spine = [(side * 0.75, 0.4), (side * 0.85, 2.4), (side * 0.75, 4.4), (side * 0.85, 6.4), (side * 0.75, 8.6)]
-        edge = [(side * 1.95, 0.4), (side * 2.05, 2.4), (side * 1.95, 4.4), (side * 2.05, 6.4), (side * 1.95, 8.6)]
-        parts.append(strip(resample(spine, 10), resample(edge, 10), "#knurl", 0.44))
-        parts.append(rectangle(side * 0.6, side * 2.1, 8.6, 9.5, "#brass", 0.5))
-    spine = [(-0.95, 9.5), (-1.35, 12.0), (-1.30, 15.0), (-1.10, 18.0), (-0.75, 20.6), (-0.10, 22.6)]
-    edge = [(0.95, 9.5), (1.35, 12.0), (1.45, 15.0), (1.40, 18.0), (1.25, 20.4), (0.85, 22.6)]
-    spine = resample(spine, 16)
-    edge = resample(edge, 16)
-    edge[-1] = spine[-1] = (0.30, 23.6)
-    parts.extend(blade(spine, edge, 0.26))
+        outer = [(side * 1.92, 0.3), (side * 1.75, 2.6), (side * 1.60, 5.0),
+                 (side * 1.40, 7.2), (side * 1.10, 8.8)]
+        inner = [(side * 0.62, 0.3), (side * 0.70, 2.6), (side * 0.70, 5.0),
+                 (side * 0.62, 7.2), (side * 0.28, 8.8)]
+        parts.append(strip(resample(outer, 10), resample(inner, 10), "#knurl", 0.42))
+    # the tang: both channels pivot on this block, blade grows straight out of it
+    parts.append(rectangle(-2.05, 2.05, 8.2, 9.6, "#brass", 0.52))
+    spine = [(-0.85, 9.4), (-1.12, 12.6), (-1.15, 16.2), (-1.05, 19.8), (-0.82, 22.6), (-0.45, 24.4)]
+    edge = [(0.78, 9.4), (1.02, 12.6), (1.10, 16.2), (1.10, 19.8), (1.00, 22.6), (0.78, 24.4)]
+    parts.extend(blade(resample(spine, 20), resample(edge, 20), 0.26))
     knife("Butterfly knife", parts, "butterfly_knife")
 
 
 def skeleton():
     parts = []
-    for side in (-1, 1):
-        parts.append(rectangle(side * 0.65, side * 1.45, 0.5, 5.4, "#cord", 0.34))
-    parts.append(rectangle(-1.55, 1.55, 0.2, 0.95, "#brass", 0.42))
-    parts.append(ring(0.0, 3.2, 1.0, 1.7, 0.30, "#brass", BRASS_UV))
-    # double edged dagger: symmetric by design, this is the throwing knife
-    spine = [(-0.55, 5.8), (-1.10, 8.0), (-1.25, 11.0), (-1.15, 14.0), (-0.85, 17.0), (-0.40, 19.6)]
-    edge = [(0.55, 5.8), (1.10, 8.0), (1.25, 11.0), (1.15, 14.0), (0.85, 17.0), (0.40, 19.6)]
-    spine = resample(spine, 18)
-    edge = resample(edge, 18)
-    edge[-1] = spine[-1] = (0.0, 21.6)
-    parts.extend(blade(spine, edge, 0.34))
+    # the finger hole is a closed loop of grip material: bars above and below an annulus
+    # whose outer radius equals the handle half width, so the three merge without a seam
+    parts.append(rectangle(-1.45, 1.45, 0.0, 2.2, "#cord", 0.34))
+    parts.append(ring(0.0, 3.45, 0.86, 1.45, 0.34, "#cord", CORD_UV, seg=12))
+    parts.append(rectangle(-1.45, 1.45, 4.6, 7.2, "#cord", 0.34))
+    parts.append(rectangle(-1.60, 1.60, 7.2, 7.9, "#brass", 0.48))
+    # double edged dagger: parallel for two thirds, then a clean point
+    spine = [(-0.50, 7.9), (-1.30, 10.2), (-1.42, 13.6), (-1.42, 17.2), (-1.28, 19.8), (-0.92, 21.6)]
+    edge = [(0.50, 7.9), (1.30, 10.2), (1.42, 13.6), (1.42, 17.2), (1.28, 19.8), (0.92, 21.6)]
+    parts.extend(blade(resample(spine, 22), resample(edge, 22), 0.34))
     knife("Skeleton", parts)
 
 
 def kukri():
     parts = []
-    spine = [(-1.45, 0.7), (-1.35, 2.4), (-1.50, 4.1), (-1.35, 5.8), (-1.50, 7.4), (-1.40, 10.4)]
-    edge = [(1.35, 0.7), (1.20, 2.4), (1.35, 4.1), (1.20, 5.8), (1.35, 7.4), (1.25, 10.4)]
-    parts.extend(grip(0.7, 10.4, "#wood", 0.60, halfw=1.45, swell=0.26, skew=0.12))
-    parts.append(rectangle(-1.55, 1.55, 10.4, 11.2, "#brass", 0.66))
-    # forward swept kukri belly: spine stays near vertical, edge bulges far forward
-    spine = [(-1.15, 11.2), (-1.35, 13.6), (-1.20, 16.2), (-0.70, 18.8), (0.30, 21.2), (1.70, 23.2), (3.05, 24.6)]
-    edge = [(1.15, 11.2), (2.15, 13.4), (3.40, 15.8), (4.45, 18.4), (4.85, 21.0), (4.55, 23.2), (3.60, 25.0)]
-    spine = resample(spine, 22)
-    edge = resample(edge, 22)
-    edge[-1] = spine[-1] = (3.30, 26.4)
-    parts.extend(blade(spine, edge, 0.40))
+    parts.extend(grip(0.6, 10.0, "#wood", 0.58, halfw=1.35, swell=0.24, skew=0.16))
+    parts.append(rectangle(-1.45, 1.45, 10.0, 10.8, "#brass", 0.62))
+    # spine stays tall, the edge sweeps forward into the kukri belly
+    spine = [(-1.05, 10.8), (-1.10, 13.6), (-0.92, 16.6), (-0.30, 19.6), (0.72, 22.2),
+             (1.92, 24.6), (3.05, 26.4)]
+    edge = [(1.05, 10.8), (1.92, 13.2), (3.02, 16.2), (4.12, 19.2), (4.78, 22.0),
+            (4.85, 24.4), (4.25, 26.6)]
+    spine_all = resample(spine, 26)
+    parts.extend(blade(spine_all, edge, 0.40))
     knife("Kukri", parts)
 
 
 def stiletto():
     parts = []
-    spine = [(-1.05, 0.6), (-0.95, 2.4), (-1.05, 4.2), (-0.95, 6.0), (-1.05, 7.8), (-0.95, 10.0), (-1.00, 11.6)]
-    edge = [(1.00, 0.6), (0.90, 2.4), (1.00, 4.2), (0.90, 6.0), (1.00, 7.8), (0.90, 10.0), (0.95, 11.6)]
-    parts.extend(grip(0.6, 11.6, "#knurl", 0.44, halfw=0.95, crown=1.05, swell=0.14))
-    # swing guard / bolster
-    parts.append(rectangle(-1.65, 1.65, 11.6, 12.3, "#brass", 0.52))
-    parts.append(rectangle(-0.95, 0.95, 12.2, 13.1, "#brass", 0.60))
-    spine = [(-0.75, 13.1), (-0.80, 16.0), (-0.72, 19.0), (-0.55, 22.0), (-0.35, 24.8), (-0.12, 27.0)]
-    edge = [(0.75, 13.1), (0.80, 16.0), (0.72, 19.0), (0.55, 22.0), (0.35, 24.8), (0.12, 27.0)]
-    spine = resample(spine, 20)
-    edge = resample(edge, 20)
-    edge[-1] = spine[-1] = (0.0, 28.8)
-    parts.extend(blade(spine, edge, 0.20))
+    parts.extend(grip(0.6, 10.5, "#knurl", 0.42, halfw=0.95, crown=1.05, swell=0.12))
+    parts.append(rectangle(-1.55, 1.55, 10.5, 11.2, "#brass", 0.50))
+    parts.append(rectangle(-0.85, 0.85, 11.1, 11.9, "#brass", 0.58))
+    spine = [(-0.58, 11.9), (-0.70, 14.8), (-0.74, 18.2), (-0.70, 21.8), (-0.56, 24.8), (-0.34, 27.0)]
+    edge = [(0.58, 11.9), (0.70, 14.8), (0.74, 18.2), (0.70, 21.8), (0.56, 24.8), (0.34, 27.0)]
+    parts.extend(blade(resample(spine, 22), resample(edge, 22), 0.20))
     knife("Stiletto", parts)
 
 
@@ -548,6 +542,10 @@ def render(model, sheets, tint, size, ax=-8.0, ay=-18.0):
         tw, th = sheet.size
         u0, v0, u1, v1 = [k * tw / 16.0 for k in uv]
         scr = [(ox + p[0] * S, oy - p[1] * S) for p in pts]
+        area = 0.5 * abs(sum(scr[i][0] * scr[(i + 1) % 4][1] - scr[(i + 1) % 4][0] * scr[i][1]
+                             for i in range(4)))
+        if area < 2.5:
+            continue
         c0, c1, c3 = scr[0], scr[1], scr[3]
         ex = (c1[0] - c0[0], c1[1] - c0[1])
         ey = (c3[0] - c0[0], c3[1] - c0[1])
