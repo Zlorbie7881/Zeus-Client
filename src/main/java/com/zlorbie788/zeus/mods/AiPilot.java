@@ -1553,6 +1553,12 @@ public final class AiPilot extends Module {
         BlockPos bench = stationAt(mc, state -> state.is(Blocks.CRAFTING_TABLE), 5);
         if (bench == null) {
             if (ensureHotbar(mc, s -> s.is(Items.CRAFTING_TABLE)) < 0) {
+                if (job.attempts++ < 2 && !job.target.contains("crafting_table")) {
+                    String resume = "craft " + Math.max(1, job.wanted) + " " + job.target.replace('_', ' ');
+                    chain.addFirst(resume);
+                    Notify.info("Zeus AI: making a crafting table first");
+                    if (startOne("craft 1 crafting table")) return;
+                }
                 giveUp(mc, "no crafting table, craft one first");
                 return;
             }
@@ -1736,6 +1742,12 @@ public final class AiPilot extends Module {
         BlockPos oven = stationAt(mc, state -> state.is(Blocks.FURNACE) || state.is(Blocks.BLAST_FURNACE) || state.is(Blocks.SMOKER), 5);
         if (oven == null) {
             if (ensureHotbar(mc, s -> s.is(Items.FURNACE)) < 0) {
+                if (job.attempts++ < 2 && !job.target.contains("furnace")) {
+                    String resume = "smelt " + Math.max(1, job.wanted) + " " + job.target.replace('_', ' ');
+                    chain.addFirst(resume);
+                    Notify.info("Zeus AI: making a furnace first");
+                    if (startOne("craft 1 furnace")) return;
+                }
                 giveUp(mc, "no furnace, craft one first");
                 return;
             }

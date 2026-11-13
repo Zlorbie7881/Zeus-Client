@@ -185,7 +185,16 @@ public final class Commands {
                     ZeusClient.openHudEditorLater();
                     return 1;
                 }))
-                .then(literal("seed").then(argument("seed", StringArgumentType.greedyString()).executes(c -> {
+                .then(literal("seed")
+                        .then(literal("test").executes(c -> {
+                            say(com.zlorbie788.zeus.mods.SeedEsp.testNow());
+                            return 1;
+                        }))
+                        .executes(c -> {
+                            say(com.zlorbie788.zeus.mods.SeedEsp.statusText());
+                            return 1;
+                        })
+                        .then(argument("seed", StringArgumentType.greedyString()).executes(c -> {
                     say(com.zlorbie788.zeus.mods.SeedEsp.useSeed(StringArgumentType.getString(c, "seed")));
                     return 1;
                 })))
