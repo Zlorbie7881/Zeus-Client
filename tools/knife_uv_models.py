@@ -1,25 +1,18 @@
 #!/usr/bin/env python3
-"""Author the eight Counter-Strike 2 knives as UV mapped quads plus their textures.
+"""Author the eight Counter-Strike 2 knives as hand-drawn silhouettes with UV textures.
 
-Format produced (per knife), ``assets/zeus/knives/models/<id>.json``::
+Why this is not a swept centreline any more: each part is defined by two *independent*
+polylines, the spine and the cutting edge, sampled at the same station count.  Every
+silhouette is therefore authored point by point - the karambit's claw hook, the M9's clip
+point and saw teeth, the kukri's forward belly, the bowie's sweeping clip - instead of
+being the symmetric taper a centreline sweep can produce.
 
-    {
-      "name": "M9 Bayonet",
-      "textures": {"steel": "zeus:knives/blade_plain", "trim": "zeus:knives/trim"},
-      "quads": [
-        {"t": "#steel", "v": [x,y,z, x,y,z, x,y,z, x,y,z], "uv": [u0,v0,u1,v1]},
-        ...
-      ]
-    }
+The two polylines are zipped into one quad per station pair, so a part is a strip of
+textured quads with UVs that follow the outline: u = 0 on the spine, u = 1 on the edge,
+v = arc length along the part.  Nothing is stretched by station index, which is what made
+the previous pass look like a cone with a rubber sheet pulled over it.
 
-Every knife is built from *lofts*: a centre line with a spine offset and an edge offset.
-That gives asymmetric blades (one cutting edge, one spine), curved silhouettes (karambit,
-kukri) and saw teeth (spine serrations) directly in geometry, and every quad carries a uv
-rectangle into a shared 128x128 texture sheet, so the surface is real texture, not a tint.
-
-Sheets (shared by all knives, same layout):
-    blade_plain/damascus/fade/case/tiger/doppler.png   128x128, greyscale art + rim strip
-    trim.png                                           128x128, brass + grip patterns
+Model space: y up, x across, z thickness, grip base at y = 0.
 
 Run: python3 tools/knife_uv_models.py
 """
@@ -35,14 +28,17 @@ MODEL_DIR = os.path.join(ROOT, "src/main/resources/assets/zeus/knives/models")
 TEX_DIR = os.path.join(ROOT, "src/main/resources/assets/zeus/textures/knives")
 TEX = 128
 
-# atlas regions in uv units (0..16 over the sheet)
-FACE_UV = (0.0, 0.0, 12.0, 16.0)      # blade / handle face art, 96x128 texels
-RIM_UV = (12.0, 0.0, 16.0, 16.0)      # thickness strip, 32x128
-BRASS_UV = (0.0, 0.0, 8.0, 8.0)       # trim sheet, top left 64x64
-KNURL_UV = (8.0, 0.0, 12.0, 6.0)
-WOOD_UV = (8.0, 6.0, 12.0, 12.0)
-CORD_UV = (12.0, 0.0, 16.0, 6.0)
-RIB_UV = (12.0, 6.0, 16.0, 12.0)
+# atlas regions, uv in 0..16
+FACE_UV = (0.0, 0.0, 12.0, 16.0)
+RIM_UV = (12.0, 0.0, 16.0, 16.0)
+BRASS_UV = (0.0, 0.0, 6.0, 6.0)
+KNURL_UV = (6.0, 0.0, 10.0, 8.0)
+WOOD_UV = (10.0, 0.0, 14.0, 8.0)
+CORD_UV = (6.0, 8.0, 10.0, 16.0)
+RIB_UV = (10.0, 8.0, 14.0, 16.0)
+
+UV_BY_TEX = {"#steel": FACE_UV, "#brass": BRASS_UV, "#knurl": KNURL_UV,
+             "#wood": WOOD_UV, "#cord": CORD_UV, "#rib": RIB_UV}
 
 
 def tex_px(uv):
@@ -51,93 +47,68 @@ def tex_px(uv):
 
 
 # ------------------------------------------------------------------ texture sheets
-PATTERNS = {
-    "plain": None,
-    "damascus": "swirl",
-    "fade": "fade",
-    "case": "case",
-    "tiger": "tiger",
-    "doppler": "doppler",
-}
-
-
 def blade_sheet(pattern):
-    """Greyscale blade art: brushed grain, spine shade, fuller, bright edge bevel."""
+    """Blade art authored across u: dark spine, fuller, grind line, bright edge bevel."""
     img = Image.new("RGBA", (TEX, TEX), (0, 0, 0, 0))
     fx0, fy0, fx1, fy1 = tex_px(FACE_UV)
     w, h = fx1 - fx0, fy1 - fy0
     pix = img.load()
+    # Broad, low frequency bands only: a blade is barely twenty pixels wide on screen, so
+    # fine detail turns into moire rather than surface.  The shading is a smooth ramp with
+    # one fuller channel and one bright bevel, exactly what reads as steel at this size.
     for row in range(h):
         v = row / (h - 1.0)
         for x in range(w):
             u = x / (w - 1.0)
-            base = 168 + int(26 * math.sin(v * 41.0 + u * 7.0)) + int(8 * math.sin(v * 113.0))
-            # spine side darker, cutting edge brighter
-            base += int(26 * (u - 0.5))
-            # ground bevel along the cutting edge
-            if u > 0.80:
-                base = 224 + int(26 * (u - 0.80) / 0.20)
-            elif u > 0.74:
-                base = 118                      # the grind line
-            # fuller: recessed channel with a lit lower lip
-            if 0.30 < u < 0.58:
-                base = 126 + int(14 * (u - 0.30) / 0.28)
-                if 0.545 < u < 0.58:
-                    base = 226
-                elif 0.30 < u < 0.325:
-                    base = 84
-            # brushed grain
-            base += int(6 * math.sin(u * 96 + v * 3)) + int(4 * math.sin(v * 220))
-            # silhouette outline, so quads read as separate parts
-            if u < 0.012 or u > 0.988:
-                base = 44
-            base = max(0, min(255, base))
-            pix[fx0 + x, fy0 + row] = (base, base + 3, base + 10, 255)
+            g = 150 + 40 * u
+            g -= 34 * math.exp(-((u - 0.10) ** 2) / 0.006)
+            g -= 30 * math.exp(-((u - 0.42) ** 2) / 0.020)
+            g += 26 * math.exp(-((u - 0.58) ** 2) / 0.004)
+            g += 46 * math.exp(-((u - 0.92) ** 2) / 0.010)
+            if u < 0.035:
+                g = 44 + 120 * u / 0.035
+            if u > 0.968:
+                g = 44 + 120 * (1.0 - u) / 0.032
+            g += 3 * math.sin(v * 22.0 + u * 6.0)
+            g = max(0, min(255, int(g)))
+            pix[fx0 + x, fy0 + row] = (g, g + 3, g + 10, 255)
 
-    pat = PATTERNS.get(pattern)
-    if pat == "swirl":
-        d = ImageDraw.Draw(img)
-        for i in range(22):
-            pts = []
-            for k in range(0, w + 1, 2):
-                y = int(8 + i * (h - 16) / 22.0 + 3.2 * math.sin(k * 0.16 + i * 0.9))
-                pts.append((fx0 + k, fy0 + y))
-            d.line(pts, fill=(96, 100, 108, 60))
-            d.line([(x, y + 1) for x, y in pts], fill=(232, 238, 248, 46))
-    elif pat == "fade":
-        d = ImageDraw.Draw(img)
-        for row in range(h):
-            v = row / (h - 1.0)
-            a = int(120 * (1.0 - v) ** 1.4)
-            if a > 0:
-                d.line([(fx0, fy0 + row), (fx1, fy0 + row)], fill=(255, 255, 255, a))
-    elif pat == "case":
-        d = ImageDraw.Draw(img)
-        for i in range(26):
-            x0 = (i * 37) % w
-            d.ellipse([fx0 + x0 - 9, fy0 + (i * 23) % h - 9, fx0 + x0 + 9, fy0 + (i * 23) % h + 9],
-                      fill=(84, 96, 128, 70))
-    elif pat == "tiger":
-        d = ImageDraw.Draw(img)
-        for i in range(12):
-            y0 = fx0 + 0
-            d.polygon([(fx0 + w * 0.05, fy0 + (i * 11) % h),
-                       (fx0 + w * 0.95, fy0 + (i * 11 + 24) % h),
-                       (fx0 + w * 0.95, fy0 + (i * 11 + 34) % h),
-                       (fx0 + w * 0.05, fy0 + (i * 11 + 10) % h)], fill=(58, 40, 12, 210))
-    elif pat == "doppler":
+    if pattern == "damascus":
         d = ImageDraw.Draw(img)
         for i in range(9):
-            x = fx0 + int(w * i / 9.0)
-            d.line([(x, fy0), (x + 20, fy1)], fill=(70, 90, 160, 90), width=6)
+            pts = [(fx0 + k, fy0 + int(i * h / 9.0 + 5.0 * math.sin(k * 0.09 + i)))
+                   for k in range(0, w, 3)]
+            d.line(pts, fill=(96, 100, 112, 120), width=3)
+            d.line([(x, y + 2) for x, y in pts], fill=(238, 244, 252, 90), width=2)
+    elif pattern == "fade":
+        d = ImageDraw.Draw(img)
+        for row in range(h):
+            a = int(150 * (1.0 - row / (h - 1.0)) ** 1.5)
+            if a:
+                d.line([(fx0, fy0 + row), (fx1, fy0 + row)], fill=(255, 255, 255, a))
+    elif pattern == "case":
+        d = ImageDraw.Draw(img)
+        for i in range(18):
+            x = fx0 + (i * 53) % w
+            y = fy0 + (i * 37) % h
+            d.ellipse([x - 11, y - 11, x + 11, y + 11], fill=(84, 100, 146, 110))
+    elif pattern == "tiger":
+        d = ImageDraw.Draw(img)
+        for i in range(11):
+            y = fy0 + int((i + 0.5) * h / 11.0)
+            d.polygon([(fx0, y), (fx1, y + 18), (fx1, y + 30), (fx0, y + 12)], fill=(196, 150, 60, 120))
+    elif pattern == "doppler":
+        d = ImageDraw.Draw(img)
+        for i in range(10):
+            x = fx0 + i * w // 10
+            d.line([(x, fy0), (x + 26, fy1)], fill=(60, 74, 150, 80), width=8)
 
-    # rim strip: thickness, lit on the edge side
     rx0, ry0, rx1, ry1 = tex_px(RIM_UV)
     for x in range(rx0, rx1):
         k = (x - rx0) / max(1, rx1 - rx0 - 1)
-        v = 96 + int(92 * k)
+        g = 84 + int(104 * k)
         for y in range(ry0, ry1):
-            pix[x, y] = (v, v + 3, v + 10, 255)
+            pix[x, y] = (g, g + 3, g + 10, 255)
     return img
 
 
@@ -145,117 +116,129 @@ def trim_sheet():
     img = Image.new("RGBA", (TEX, TEX), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
 
-    # brass
     bx0, by0, bx1, by1 = tex_px(BRASS_UV)
     for y in range(by0, by1):
         k = (y - by0) / max(1, by1 - by0 - 1)
-        v = int(212 - 86 * k)
-        d.line([(bx0, y), (bx1, y)], fill=(v, int(v * 0.75), int(v * 0.28), 255))
-    d.line([(bx0, by0), (bx1, by0)], fill=(255, 242, 198, 255))
-    d.line([(bx0, by1 - 2), (bx1, by1 - 2)], fill=(92, 62, 18, 255))
+        g = int(214 - 92 * k)
+        d.line([(bx0, y), (bx1, y)], fill=(g, int(g * 0.74), int(g * 0.26), 255))
+    d.line([(bx0, by0), (bx1, by0)], fill=(255, 242, 200, 255))
+    d.line([(bx0, by1 - 2), (bx1, by1 - 2)], fill=(88, 58, 16, 255))
 
-    # knurled rubber: diamond checkering
     kx0, ky0, kx1, ky1 = tex_px(KNURL_UV)
-    d.rectangle([kx0, ky0, kx1, ky1], fill=(32, 33, 38, 255))
-    for i in range(-40, 80, 4):
-        d.line([(kx0 + i, ky0), (kx0 + i + 24, ky1)], fill=(52, 54, 62, 255), width=2)
-        d.line([(kx0 + i, ky1), (kx0 + i + 24, ky0)], fill=(22, 23, 27, 255), width=2)
+    d.rectangle([kx0, ky0, kx1 - 1, ky1 - 1], fill=(34, 35, 41, 255))
+    for i in range(-32, 64, 4):
+        d.line([(kx0 + i, ky0), (kx0 + i + 22, ky1)], fill=(58, 60, 68, 255), width=2)
+        d.line([(kx0 + i, ky1), (kx0 + i + 22, ky0)], fill=(20, 21, 25, 255), width=2)
 
-    # wood grain
     wx0, wy0, wx1, wy1 = tex_px(WOOD_UV)
-    d.rectangle([wx0, wy0, wx1, wy1], fill=(96, 62, 34, 255))
-    for i in range(18):
-        y = wy0 + int((wy1 - wy0) * i / 18.0)
-        d.line([(wx0, y), (wx1, y + 2)], fill=(124, 82, 46, 255))
-        d.line([(wx0, y + 1), (wx1, y + 3)], fill=(70, 44, 24, 255))
+    d.rectangle([wx0, wy0, wx1 - 1, wy1 - 1], fill=(104, 66, 36, 255))
+    for i in range(20):
+        y = wy0 + int((wy1 - wy0) * i / 20.0)
+        d.line([(wx0, y), (wx1, y + 2)], fill=(132, 86, 48, 255))
+        d.line([(wx0, y + 2), (wx1, y + 4)], fill=(74, 46, 24, 255))
 
-    # paracord braid
     cx0, cy0, cx1, cy1 = tex_px(CORD_UV)
-    d.rectangle([cx0, cy0, cx1, cy1], fill=(38, 40, 46, 255))
-    for i in range(-30, 60, 6):
-        d.line([(cx0 + i, cy0), (cx0 + i + 20, cy1)], fill=(64, 66, 76, 255), width=3)
-        d.line([(cx0 + i + 3, cy0), (cx0 + i + 23, cy1)], fill=(24, 25, 30, 255), width=1)
+    d.rectangle([cx0, cy0, cx1 - 1, cy1 - 1], fill=(40, 42, 48, 255))
+    for i in range(-40, 80, 7):
+        d.line([(cx0 + i, cy0), (cx0 + i + 26, cy1)], fill=(66, 68, 78, 255), width=4)
+        d.line([(cx0 + i + 4, cy0), (cx0 + i + 30, cy1)], fill=(24, 25, 30, 255), width=1)
 
-    # ribbed tactical grip
     rx0, ry0, rx1, ry1 = tex_px(RIB_UV)
-    d.rectangle([rx0, ry0, rx1, ry1], fill=(30, 31, 36, 255))
-    for y in range(ry0, ry1, 5):
-        d.line([(rx0, y), (rx1, y)], fill=(54, 56, 64, 255), width=2)
-        d.line([(rx0, y + 2), (rx1, y + 2)], fill=(20, 21, 25, 255), width=1)
+    d.rectangle([rx0, ry0, rx1 - 1, ry1 - 1], fill=(30, 31, 37, 255))
+    for y in range(ry0, ry1, 6):
+        d.line([(rx0, y), (rx1, y)], fill=(56, 58, 66, 255), width=3)
+        d.line([(rx0, y + 3), (rx1, y + 3)], fill=(18, 19, 23, 255), width=1)
     return img
 
 
-# ------------------------------------------------------------------ lofting
-def stations(centre, widths, thickness=0.0, skew=0.0):
-    """Turn a centre line plus (spine width, edge width) into left/right points."""
-    out = []
-    n = len(centre)
-    for i, (x, y) in enumerate(centre):
-        px, py = centre[max(0, i - 1)]
-        nx, ny = centre[min(n - 1, i + 1)]
-        dx, dy = nx - px, ny - py
-        ln = math.hypot(dx, dy) or 1.0
-        # normal pointing to the edge side
-        ox, oy = dy / ln, -dx / ln
-        wl, wr = widths[i]
-        out.append(((x - ox * wl + skew, y - oy * wl), (x + ox * wr + skew, y + oy * wr)))
-    return out
-
-
-UV_BY_TEX = {"#steel": FACE_UV, "#brass": BRASS_UV, "#knurl": KNURL_UV,
-             "#wood": WOOD_UV, "#cord": CORD_UV, "#rib": RIB_UV}
-
-
-def loft(st, tex, hz, uv=None, rim=None, uv_v=(0.0, 1.0)):
+# ------------------------------------------------------------------ strip builder
+def strip(spine, edge, tex, thick, uv=None, v_from=0.0, v_to=1.0, caps=True, rims=(True, True)):
+    """One solid between two equally sized polylines: front, back, two rims, two caps."""
     if uv is None:
         uv = UV_BY_TEX.get(tex, FACE_UV)
-    if rim is None:
-        rim = RIM_UV if tex == "#steel" else uv
-    """Quads for one solid part: front, back, two rims, and end caps."""
-    quads = []
     u0, v0, u1, v1 = uv
+    rim = RIM_UV if tex == "#steel" else uv
     ru0, rv0, ru1, rv1 = rim
-    n = len(st)
+    n = len(spine)
+    assert n == len(edge)
+    # arc length along the part, so v never stretches with station spacing
+    acc = [0.0]
+    for i in range(1, n):
+        ax, ay = edge[i - 1]
+        bx, by = edge[i]
+        sx, sy = spine[i - 1]
+        tx, ty = spine[i]
+        acc.append(acc[-1] + 0.5 * (math.hypot(bx - ax, by - ay) + math.hypot(tx - sx, ty - sy)))
+    total = acc[-1] or 1.0
+    vs = [v_from + (v_to - v_from) * (a / total) for a in acc]
+    tz_s, tz_e = (thick, thick) if isinstance(thick, (int, float)) else thick
+    quads = []
     for i in range(n - 1):
-        (la, ra), (lb, rb) = st[i], st[i + 1]
-        va = uv_v[0] + (uv_v[1] - uv_v[0]) * (i / (n - 1.0))
-        vb = uv_v[0] + (uv_v[1] - uv_v[0]) * ((i + 1) / (n - 1.0))
-        t = hz if isinstance(hz, float) else hz[i]
-        t2 = hz if isinstance(hz, float) else hz[i + 1]
-        # front (-z) and back (+z): u across the part, v along it
-        quads.append({"t": tex, "v": [la[0], la[1], -t, ra[0], ra[1], -t, rb[0], rb[1], -t2, lb[0], lb[1], -t2],
-                      "uv": [u0, va, u1, vb]})
-        quads.append({"t": tex, "v": [ra[0], ra[1], t, la[0], la[1], t, lb[0], lb[1], t2, rb[0], rb[1], t2],
-                      "uv": [u0, va, u1, vb]})
-        # rims: spine side and edge side
-        quads.append({"t": rim_tex(tex), "v": [la[0], la[1], -t, lb[0], lb[1], -t2, lb[0], lb[1], t2, la[0], la[1], t],
-                      "uv": [ru0, va, ru1, vb]})
-        quads.append({"t": rim_tex(tex), "v": [ra[0], ra[1], -t, ra[0], ra[1], t, rb[0], rb[1], t2, rb[0], rb[1], -t2],
-                      "uv": [ru0, va, ru1, vb]})
-    # caps
-    (la, ra) = st[0]
-    quads.append({"t": tex, "v": [la[0], la[1], -hz0(hz), ra[0], ra[1], -hz0(hz), ra[0], ra[1], hz0(hz), la[0], la[1], hz0(hz)],
-                  "uv": [u0, v0, u1, v0 + 0.05]})
-    (lb, rb) = st[-1]
-    quads.append({"t": tex, "v": [rb[0], rb[1], -hz1(hz), lb[0], lb[1], -hz1(hz), lb[0], lb[1], hz1(hz), rb[0], rb[1], hz1(hz)],
-                  "uv": [u0, v1 - 0.05, u1, v1]})
+        sl0, el0 = spine[i], edge[i]
+        sl1, el1 = spine[i + 1], edge[i + 1]
+        va, vb = vs[i], vs[i + 1]
+        quads.append({"t": tex, "v": [sl0[0], sl0[1], -tz_s, el0[0], el0[1], -tz_e,
+                                      el1[0], el1[1], -tz_e, sl1[0], sl1[1], -tz_s],
+                      "uv": [u0, v0 + (v1 - v0) * va, u1, v0 + (v1 - v0) * vb]})
+        quads.append({"t": tex, "v": [el0[0], el0[1], tz_e, sl0[0], sl0[1], tz_s,
+                                      sl1[0], sl1[1], tz_s, el1[0], el1[1], tz_e],
+                      "uv": [u0, v0 + (v1 - v0) * va, u1, v0 + (v1 - v0) * vb]})
+        if rims[0]:
+            quads.append({"t": "#rim", "v": [sl0[0], sl0[1], -tz_s, sl1[0], sl1[1], -tz_s,
+                                             sl1[0], sl1[1], tz_s, sl0[0], sl0[1], tz_s],
+                          "uv": [ru0, rv0 + (rv1 - rv0) * va, ru1, rv0 + (rv1 - rv0) * vb]})
+        if rims[1]:
+            quads.append({"t": "#rim", "v": [el0[0], el0[1], -tz_e, el0[0], el0[1], tz_e,
+                                             el1[0], el1[1], tz_e, el1[0], el1[1], -tz_e],
+                          "uv": [ru0, rv0 + (rv1 - rv0) * va, ru1, rv0 + (rv1 - rv0) * vb]})
+    if caps:
+        s0, e0 = spine[0], edge[0]
+        quads.append({"t": tex, "v": [s0[0], s0[1], -tz_s, e0[0], e0[1], -tz_e,
+                                      e0[0], e0[1], tz_e, s0[0], s0[1], tz_s],
+                      "uv": [u0, v0, u1, v0 + 0.03]})
+        s1, e1 = spine[-1], edge[-1]
+        quads.append({"t": tex, "v": [e1[0], e1[1], -tz_e, s1[0], s1[1], -tz_s,
+                                      s1[0], s1[1], tz_s, e1[0], e1[1], tz_e],
+                      "uv": [u0, v1 - 0.03, u1, v1]})
     return quads
 
 
-def rim_tex(tex):
-    return "#rim" if tex == "#steel" else tex
+def blade(spine, edge, thick, bevel=0.55, smooth=None):
+    """Flat spine side plus an angled grind bevel down to the edge."""
+    if len(edge) != len(spine):
+        edge = resample(edge, len(spine))
+    # the grind line follows the smooth spine, so saw teeth stay on the spine rim instead
+    # of corrugating the whole face
+    # collapse the last stations onto the tip so a mismatched pair cannot leave a spur
+    tip = ((spine[-1][0] + edge[-1][0]) * 0.5, max(spine[-1][1], edge[-1][1]))
+    spine = list(spine)
+    edge = list(edge)
+    for k in (-1, -2):
+        spine[k] = tip
+        edge[k] = tip
+    if smooth is not None:
+        smooth = list(smooth)
+        smooth[-1] = tip
+        smooth[-2] = ((smooth[-2][0] + tip[0]) * 0.5, (smooth[-2][1] + tip[1]) * 0.5)
+    base = spine if smooth is None else smooth
+    mid = [((base[i][0] + edge[i][0]) * 0.5, (base[i][1] + edge[i][1]) * 0.5)
+           for i in range(len(spine))]
+    # flat takes the spine half of the blade art, the bevel the polished edge half, so the
+    # two faces read as one continuous sheet of steel with a grind line between them
+    out = strip(spine, mid, "#steel", (thick, thick), uv=(0.0, 0.0, 7.5, 16.0), rims=(True, False))
+    out += strip(mid, edge, "#steel", (thick, thick * bevel), uv=(7.5, 0.0, 12.0, 16.0),
+                 rims=(False, True))
+    return out
 
 
-def hz0(hz):
-    return hz if isinstance(hz, float) else hz[0]
+def rectangle(x0, x1, y0, y1, tex, thick, uv=None, v_from=0.0, v_to=1.0):
+    """Axis aligned block: used for guards, bolsters and pommels."""
+    spine = [(x0, y0), (x0, y1)]
+    edge = [(x1, y0), (x1, y1)]
+    return strip(spine, edge, tex, thick, uv=uv, v_from=v_from, v_to=v_to)
 
 
-def hz1(hz):
-    return hz if isinstance(hz, float) else hz[-1]
-
-
-def ring_quads(cx, cy, r_in, r_out, hz, tex, uv, seg=12):
-    """Annulus extruded into a finger ring: front, back and inner/outer rims."""
+def ring(cx, cy, r_in, r_out, thick, tex, uv, seg=14):
     quads = []
     u0, v0, u1, v1 = uv
     for i in range(seg):
@@ -267,209 +250,276 @@ def ring_quads(cx, cy, r_in, r_out, hz, tex, uv, seg=12):
         po1 = (cx + r_out * math.cos(a1), cy + r_out * math.sin(a1))
         ui = u0 + (u1 - u0) * i / seg
         ui2 = u0 + (u1 - u0) * (i + 1) / seg
-        quads.append({"t": tex, "v": [pi0[0], pi0[1], -hz, po0[0], po0[1], -hz, po1[0], po1[1], -hz, pi1[0], pi1[1], -hz],
+        for v in ((pi0, po0, po1, pi1), (po0, pi0, pi1, po1)):
+            quads.append({"t": tex, "v": [v[0][0], v[0][1], -thick, v[1][0], v[1][1], -thick,
+                                          v[2][0], v[2][1], -thick, v[3][0], v[3][1], -thick],
+                          "uv": [ui, v0, ui2, v1]})
+            quads.append({"t": tex, "v": [v[1][0], v[1][1], thick, v[0][0], v[0][1], thick,
+                                          v[3][0], v[3][1], thick, v[2][0], v[2][1], thick],
+                          "uv": [ui, v0, ui2, v1]})
+        quads.append({"t": tex, "v": [po0[0], po0[1], -thick, po1[0], po1[1], -thick,
+                                      po1[0], po1[1], thick, po0[0], po0[1], thick],
                       "uv": [ui, v0, ui2, v1]})
-        quads.append({"t": tex, "v": [po0[0], po0[1], hz, pi0[0], pi0[1], hz, pi1[0], pi1[1], hz, po1[0], po1[1], hz],
-                      "uv": [ui, v0, ui2, v1]})
-        quads.append({"t": tex, "v": [po0[0], po0[1], -hz, po1[0], po1[1], -hz, po1[0], po1[1], hz, po0[0], po0[1], hz],
-                      "uv": [ui, v0, ui2, v1]})
-        quads.append({"t": tex, "v": [pi0[0], pi0[1], hz, pi1[0], pi1[1], hz, pi1[0], pi1[1], -hz, pi0[0], pi0[1], -hz],
+        quads.append({"t": tex, "v": [pi0[0], pi0[1], thick, pi1[0], pi1[1], thick,
+                                      pi1[0], pi1[1], -thick, pi0[0], pi0[1], -thick],
                       "uv": [ui, v0, ui2, v1]})
     return quads
 
 
-def handle(cx_line, widths, hz, tex="#knurl"):
-    return loft(stations(cx_line, widths, hz), tex, hz)
-
-
-def serrate(y0, y1, teeth, half):
-    """Saw teeth on the spine: width spikes that cut into the silhouette."""
-    pts = []
-    span = (y1 - y0) / teeth
-    for i in range(teeth * 2 + 1):
-        y = y0 + span * i * 0.5
-        pts.append((0.0, y, half * (0.42 if i % 2 else 1.0)))
-    return pts
-
-
-def blade_line(y0, y1, n, w0, w1, curve=0.0, tip=0.0, teeth=None, tooth_from=0.0, tooth_to=0.0, clip=0.0):
-    """Centre line with (spine width, edge width) pairs: asymmetric, one cutting edge."""
-    centre, widths = [], []
+def grip(y0, y1, tex, thick, halfw=1.4, swell=0.22, crown=1.30, skew=0.0, grooves=3, rivets=2):
+    """A contoured handle: pommel crown, mid swell, finger grooves on the front edge."""
+    parts = []
+    n = 11
+    spine, edge = [], []
     for i in range(n):
         t = i / (n - 1.0)
         y = y0 + (y1 - y0) * t
-        x = curve * (t ** 2)
-        front = min(1.0, max(0.0, (t - tooth_from) / max(1e-6, (tooth_to - tooth_from))))
-        taper = 1.0 - tip * max(0.0, (t - 0.72) / 0.28) ** 1.6
-        half = (w0 + (w1 - w0) * t) * taper
-        spine = half * 0.62
-        if clip:
-            spine *= 1.0 - clip * max(0.0, (t - 0.55) / 0.45) ** 0.9
-        if teeth and tooth_from <= t <= tooth_to:
-            k = (t - tooth_from) / (tooth_to - tooth_from) * teeth
-            spine *= 0.55 if int(k * 2) % 2 == 0 else 1.0
-        centre.append((x, y))
-        widths.append((spine, half))
-    return centre, widths
+        w = halfw + swell * math.sin(math.pi * t)
+        if t < 0.10:
+            w = crown * 0.92 + (halfw - crown * 0.92) * (t / 0.10)
+        if t > 0.93:
+            w = halfw * 0.90
+        x = skew * t
+        g = 0.11 * abs(math.sin(math.pi * grooves * (t - 0.12))) if 0.12 < t < 0.92 else 0.0
+        spine.append((x - w, y))
+        edge.append((x + w + g, y))
+    parts.append(strip(spine, edge, tex, thick))
+    for j in range(rivets):
+        rx = skew * (0.5 + 0.28 * j) - 0.08
+        ry = y0 + (y1 - y0) * (0.52 + 0.26 * j)
+        parts.append(rectangle(rx, rx + 0.26, ry - 0.15, ry + 0.15, "#brass", thick * 0.82))
+    return parts
+
+
+def resample(points, n):
+    """Even arc length resample, so control points can be placed where the shape needs them."""
+    acc = [0.0]
+    for i in range(1, len(points)):
+        acc.append(acc[-1] + math.hypot(points[i][0] - points[i - 1][0],
+                                        points[i][1] - points[i - 1][1]))
+    total = acc[-1] or 1.0
+    out = []
+    for k in range(n):
+        target = total * k / (n - 1.0)
+        i = 1
+        while i < len(acc) - 1 and acc[i] < target:
+            i += 1
+        span = acc[i] - acc[i - 1] or 1.0
+        f = (target - acc[i - 1]) / span
+        x = points[i - 1][0] + (points[i][0] - points[i - 1][0]) * f
+        y = points[i - 1][1] + (points[i][1] - points[i - 1][1]) * f
+        out.append((x, y))
+    return out
+
+
+def teeth(points, count, depth, start=0.0, end=1.0):
+    """Saw teeth cut into the spine: a square notch per wavelength, never a noisy edge."""
+    n = len(points)
+    out = []
+    for i, (x, y) in enumerate(points):
+        t = i / (n - 1.0)
+        if start <= t <= end:
+            k = (t - start) / max(1e-6, end - start) * count
+            if (k % 1.0) < 0.5:
+                out.append((x - depth, y))
+                continue
+        out.append((x, y))
+    return out
 
 
 KNIVES = {}
 
 
-def knife(name, parts, tex_extra=None):
-    quads = []
-    for p in parts:
-        quads.extend(p)
+def flatten(node):
+    if isinstance(node, dict):
+        return [node]
+    if isinstance(node, (list, tuple)):
+        out = []
+        for child in node:
+            out.extend(flatten(child))
+        return out
+    return []
+
+
+def knife(name, parts, ident=None):
+    quads = flatten(parts)
     textures = {"steel": "zeus:knives/blade_plain", "trim": "zeus:knives/trim",
                 "rim": "zeus:knives/blade_plain"}
     for key in ("#knurl", "#wood", "#cord", "#rib"):
         textures[key[1:]] = "zeus:knives/trim"
-    model = {"name": name, "textures": textures, "quads": quads}
-    KNIVES[slug(name)] = model
+    KNIVES[ident or name.lower().replace(" ", "_")] = {
+        "name": name, "textures": textures, "quads": quads}
 
 
-def slug(name):
-    return name.lower().replace(" ", "_").replace("/", "_")
-
-
-def build_karambit():
-    # claw: handle angled back, blade sweeping forward and down, ring at the pommel
-    hc = [(-0.6 + 0.10 * i, 1.2 * i) for i in range(9)]
-    hw = [(1.55, 1.55) if i not in (2, 5) else (1.35, 1.35) for i in range(9)]
-    parts = [loft(stations(hc, hw, 0.62), "#knurl", 0.62)]
-    # brass collar
-    parts.append(loft(stations([(-0.3, 9.2), (-0.1, 10.1)], [(1.05, 1.05)] * 2), "#brass", 0.7))
-    # claw blade: leaves the handle top, sweeps forward and hooks up to a point
-    centre, widths = [], []
-    for i in range(20):
-        t = i / 19.0
-        a = math.radians(4 + 86 * t)
-        centre.append((0.5 + 6.9 * math.sin(a), 9.7 + 6.9 * (1.0 - math.cos(a))))
-        widths.append((2.2 * (1 - 0.78 * t), 0.9 * (1 - 0.75 * t)))
-    parts.append(loft(stations(centre, widths, 0.42), "#steel", 0.42, uv_v=(0.0, 1.0)))
-    parts.append(ring_quads(-2.0, 0.2, 1.15, 1.95, 0.6, "#brass", BRASS_UV, seg=14))
+# ------------------------------------------------------------------ the eight knives
+def karambit():
+    parts = []
+    # contoured grip with three finger grooves on the front edge
+    spine = [(-1.35, 0.6), (-1.5, 2.0), (-1.45, 3.6), (-1.55, 5.2), (-1.4, 6.8), (-1.5, 8.2), (-1.25, 9.4)]
+    edge = [(1.30, 0.6), (1.15, 1.6), (1.45, 2.4), (1.05, 3.2), (1.40, 4.1), (1.00, 4.9),
+            (1.35, 5.9), (1.05, 6.8), (1.35, 7.8), (1.15, 9.4)]
+    parts.extend(grip(0.6, 9.4, "#knurl", 0.62, halfw=1.35, swell=0.20, skew=0.06))
+    parts.append(rectangle(-1.45, 1.45, 9.4, 10.1, "#brass", 0.68))
+    # claw: spine arcs up and forward, edge follows inside, tip hooks down
+    spine = [(-1.30, 10.2), (0.40, 12.6), (2.60, 14.8), (4.90, 16.2), (6.90, 16.4), (8.30, 15.2), (9.00, 13.2)]
+    edge = [(1.30, 10.2), (0.60, 11.4), (1.60, 13.4), (3.60, 15.0), (5.60, 15.6), (7.40, 14.8), (9.00, 13.2)]
+    parts.extend(blade(resample(spine, 14), resample(edge, 14), 0.46))
+    parts.append(ring(-0.05, -0.95, 1.00, 1.90, 0.52, "#brass", BRASS_UV))
     knife("Karambit", parts)
 
 
-def build_m9():
-    # clip point bayonet, spine saw teeth, muzzle ring on the guard
-    hc = [(0.0, 0.9 * i) for i in range(14)]
-    hw = [(1.45, 1.45)] * 14
-    parts = [loft(stations(hc, hw, 0.55), "#rib", 0.55)]
-    parts.append(loft(stations([(-1.7, 11.7), (0.0, 12.0), (1.7, 11.7)], [(0.9, 0.9)] * 3), "#brass", 0.8))
-    parts.append(ring_quads(0.0, 12.1, 0.6, 1.5, 0.72, "#brass", BRASS_UV, seg=10))
-    centre, widths = blade_line(12.6, 28.6, 46, 2.35, 1.85, tip=0.30, teeth=7, tooth_from=0.26, tooth_to=0.66, clip=0.55)
-    parts.append(loft(stations(centre, widths, 0.36), "#steel", 0.36))
-    knife("M9 Bayonet", parts)
+def m9():
+    parts = []
+    spine = [(-1.55, 0.7), (-1.45, 2.4), (-1.60, 4.2), (-1.45, 6.0), (-1.60, 7.8), (-1.45, 9.6), (-1.50, 11.3)]
+    edge = [(1.45, 0.7), (1.30, 2.4), (1.45, 4.2), (1.30, 6.0), (1.45, 7.8), (1.30, 9.6), (1.35, 11.3)]
+    parts.extend(grip(0.7, 11.3, "#rib", 0.58, halfw=1.50, skew=-0.06))
+    parts.append(rectangle(-2.35, 2.35, 11.3, 12.3, "#brass", 0.75))
+    parts.append(ring(0.85, 11.8, 0.5, 1.25, 0.75, "#brass", BRASS_UV, seg=10))
+    # clip point blade with saw teeth on the spine
+    spine = [(-1.15, 12.3), (-2.15, 14.4), (-2.25, 17.4), (-2.25, 21.2), (-2.05, 23.2),
+             (-1.45, 25.4), (-0.55, 27.0), (0.45, 27.8)]
+    edge = [(1.15, 12.3), (2.15, 14.4), (2.30, 17.4), (2.30, 21.4), (2.15, 23.6),
+            (1.75, 25.6), (1.05, 27.2), (0.45, 27.8)]
+    spine_all = resample(spine, 56)
+    parts.extend(blade(teeth(spine_all, 6, 0.17, 0.30, 0.64), edge, 0.40, smooth=spine_all))
+    knife("M9 Bayonet", parts, "m9_bayonet")
 
 
-def build_huntsman():
-    hc = [(0.0, 0.85 * i) for i in range(13)]
-    hw = [(1.4, 1.4)] * 13
-    parts = [loft(stations(hc, hw, 0.55), "#cord", 0.55)]
-    parts.append(loft(stations([(-1.5, 10.7), (0.0, 11.0), (1.5, 10.7)], [(0.85, 0.85)] * 3), "#brass", 0.76))
-    centre, widths = blade_line(11.5, 27.0, 40, 2.75, 2.55, tip=0.45, teeth=5, tooth_from=0.12, tooth_to=0.48, clip=0.5)
-    parts.append(loft(stations(centre, widths, 0.34), "#steel", 0.34))
+def huntsman():
+    parts = []
+    spine = [(-1.50, 0.7), (-1.40, 2.4), (-1.55, 4.1), (-1.40, 5.8), (-1.55, 7.5), (-1.45, 10.6)]
+    edge = [(1.40, 0.7), (1.25, 2.4), (1.40, 4.1), (1.25, 5.8), (1.40, 7.5), (1.30, 10.6)]
+    parts.extend(grip(0.7, 10.6, "#cord", 0.60, halfw=1.45, swell=0.26))
+    parts.append(rectangle(-1.9, 1.9, 10.6, 11.6, "#brass", 0.72))
+    spine = [(-1.15, 11.6), (-2.10, 13.6), (-2.20, 16.6), (-2.20, 19.6), (-2.10, 22.0),
+             (-1.75, 25.0)]
+    edge = [(1.15, 11.6), (2.10, 13.6), (2.25, 16.6), (2.30, 19.8), (2.10, 22.6),
+            (1.55, 24.6), (0.75, 26.2)]
+    spine_all = resample(spine, 48)
+    spine = teeth(spine_all, 5, 0.22, 0.12, 0.42)
+    edge = resample(edge, 34)
+    # make the two polylines end at the same tip
+    edge[-1] = spine[-1] = ((spine[-1][0] + edge[-1][0]) * 0.5, max(spine[-1][1], edge[-1][1]) + 0.25)
+    parts.extend(blade(spine, edge, 0.38, smooth=spine_all))
     knife("Huntsman", parts)
 
 
-def build_bowie():
-    hc = [(0.0, 0.95 * i) for i in range(13)]
-    hw = [(1.6, 1.6)] * 13
-    parts = [loft(stations(hc, hw, 0.62), "#wood", 0.62)]
-    # curved crossguard
-    parts.append(loft(stations([(-2.1, 12.0), (0.0, 12.3), (2.1, 12.0)],
-                               [(0.55, 0.55), (0.75, 0.75), (0.55, 0.55)], 0.7), "#brass", 0.7))
-    centre, widths = blade_line(12.3, 30.0, 22, 3.0, 2.8, tip=0.4, clip=0.6)
-    parts.append(loft(stations(centre, widths, 0.38), "#steel", 0.38))
+def bowie():
+    parts = []
+    spine = [(-1.70, 0.8), (-1.55, 2.6), (-1.75, 4.6), (-1.55, 6.6), (-1.75, 8.6), (-1.60, 12.2)]
+    edge = [(1.55, 0.8), (1.40, 2.6), (1.60, 4.6), (1.40, 6.6), (1.60, 8.6), (1.45, 12.2)]
+    parts.extend(grip(0.8, 12.2, "#wood", 0.66, halfw=1.65, swell=0.30))
+    # curved crossguard: three blocks stepping outwards
+    parts.append(rectangle(-2.55, 2.55, 12.2, 13.0, "#brass", 0.55))
+    parts.append(rectangle(-1.85, 1.85, 12.9, 13.5, "#brass", 0.72))
+    spine = [(-1.20, 13.5), (-2.10, 15.8), (-2.20, 19.0), (-2.20, 22.4), (-1.90, 25.6)]
+    edge = [(1.20, 13.5), (2.35, 15.8), (2.55, 19.0), (2.55, 22.6), (1.95, 25.8), (0.90, 28.4)]
+    spine = resample(spine, 26)
+    edge = resample(edge, 26)
+    edge[-1] = spine[-1] = (0.35, 29.0)
+    parts.extend(blade(spine, edge, 0.42))
     knife("Bowie", parts)
 
 
-def build_butterfly():
-    # two separated vented handles either side of the tang, slim clip point blade
+def butterfly():
     parts = []
     for side in (-1, 1):
-        rail = [(side * 1.25, 0.6 + 0.9 * i) for i in range(11)]
-        parts.append(loft(stations(rail, [(0.42, 0.42)] * 11, 0.5), "#knurl", 0.5))
-        rail2 = [(side * 2.15, 0.6 + 0.9 * i) for i in range(11)]
-        parts.append(loft(stations(rail2, [(0.30, 0.30)] * 11, 0.36), "#brass", 0.36))
-    centre, widths = blade_line(10.4, 25.0, 16, 1.25, 0.95, tip=0.6, clip=0.45)
-    parts.append(loft(stations(centre, widths, 0.26), "#steel", 0.26))
-    knife("Butterfly knife", parts)
+        # two handle channels, split apart, with vent slots between them
+        spine = [(side * 0.75, 0.4), (side * 0.85, 2.4), (side * 0.75, 4.4), (side * 0.85, 6.4), (side * 0.75, 8.6)]
+        edge = [(side * 1.95, 0.4), (side * 2.05, 2.4), (side * 1.95, 4.4), (side * 2.05, 6.4), (side * 1.95, 8.6)]
+        parts.append(strip(resample(spine, 10), resample(edge, 10), "#knurl", 0.44))
+        parts.append(rectangle(side * 0.6, side * 2.1, 8.6, 9.5, "#brass", 0.5))
+    spine = [(-0.95, 9.5), (-1.35, 12.0), (-1.30, 15.0), (-1.10, 18.0), (-0.75, 20.6), (-0.10, 22.6)]
+    edge = [(0.95, 9.5), (1.35, 12.0), (1.45, 15.0), (1.40, 18.0), (1.25, 20.4), (0.85, 22.6)]
+    spine = resample(spine, 16)
+    edge = resample(edge, 16)
+    edge[-1] = spine[-1] = (0.30, 23.6)
+    parts.extend(blade(spine, edge, 0.26))
+    knife("Butterfly knife", parts, "butterfly_knife")
 
 
-def build_skeleton():
-    # double edged dagger, skeletonised handle with a large finger hole
+def skeleton():
     parts = []
     for side in (-1, 1):
-        rail = [(side * 1.15, 0.5 + 0.8 * i) for i in range(9)]
-        parts.append(loft(stations(rail, [(0.34, 0.34)] * 9, 0.34), "#brass", 0.34))
-    parts.append(loft(stations([(0.0, 0.4), (0.0, 0.9)], [(1.25, 1.25)] * 2), "#brass", 0.4))
-    parts.append(ring_quads(0.0, 3.6, 0.95, 1.55, 0.34, "#brass", BRASS_UV, seg=12))
-    centre, widths = [], []
-    for i in range(20):
-        t = i / 19.0
-        y = 7.6 + 15.4 * t
-        half = 1.5 * (1.0 - 0.92 * max(0.0, (t - 0.35) / 0.65) ** 1.5)
-        centre.append((0.0, y))
-        widths.append((half, half))      # symmetric: this one is double edged
-    parts.append(loft(stations(centre, widths, 0.3), "#steel", 0.3))
+        parts.append(rectangle(side * 0.65, side * 1.45, 0.5, 5.4, "#cord", 0.34))
+    parts.append(rectangle(-1.55, 1.55, 0.2, 0.95, "#brass", 0.42))
+    parts.append(ring(0.0, 3.2, 1.0, 1.7, 0.30, "#brass", BRASS_UV))
+    # double edged dagger: symmetric by design, this is the throwing knife
+    spine = [(-0.55, 5.8), (-1.10, 8.0), (-1.25, 11.0), (-1.15, 14.0), (-0.85, 17.0), (-0.40, 19.6)]
+    edge = [(0.55, 5.8), (1.10, 8.0), (1.25, 11.0), (1.15, 14.0), (0.85, 17.0), (0.40, 19.6)]
+    spine = resample(spine, 18)
+    edge = resample(edge, 18)
+    edge[-1] = spine[-1] = (0.0, 21.6)
+    parts.extend(blade(spine, edge, 0.34))
     knife("Skeleton", parts)
 
 
-def build_kukri():
-    # forward curving kukri belly with a contoured handle
-    hc = [(0.0, 0.85 * i) for i in range(13)]
-    hw = [(1.45, 1.45) if i % 3 else (1.28, 1.28) for i in range(13)]
-    parts = [loft(stations(hc, hw, 0.56), "#wood", 0.56)]
-    parts.append(loft(stations([(-1.4, 10.5), (0.0, 10.8), (1.4, 10.5)], [(0.8, 0.8)] * 3), "#brass", 0.72))
-    centre, widths = [], []
-    for i in range(20):
-        t = i / 19.0
-        y = 11.2 + 15.6 * t
-        x = 1.5 * (t ** 1.7) - 0.6 * t
-        half = 1.25 + 1.25 * math.sin(min(1.0, t * 1.15) * math.pi * 0.9) - 0.9 * max(0.0, (t - 0.8) / 0.2) ** 1.4
-        centre.append((x, y))
-        widths.append((half * 0.55, half))
-    parts.append(loft(stations(centre, widths, 0.34), "#steel", 0.34))
+def kukri():
+    parts = []
+    spine = [(-1.45, 0.7), (-1.35, 2.4), (-1.50, 4.1), (-1.35, 5.8), (-1.50, 7.4), (-1.40, 10.4)]
+    edge = [(1.35, 0.7), (1.20, 2.4), (1.35, 4.1), (1.20, 5.8), (1.35, 7.4), (1.25, 10.4)]
+    parts.extend(grip(0.7, 10.4, "#wood", 0.60, halfw=1.45, swell=0.26, skew=0.12))
+    parts.append(rectangle(-1.55, 1.55, 10.4, 11.2, "#brass", 0.66))
+    # forward swept kukri belly: spine stays near vertical, edge bulges far forward
+    spine = [(-1.15, 11.2), (-1.35, 13.6), (-1.20, 16.2), (-0.70, 18.8), (0.30, 21.2), (1.70, 23.2), (3.05, 24.6)]
+    edge = [(1.15, 11.2), (2.15, 13.4), (3.40, 15.8), (4.45, 18.4), (4.85, 21.0), (4.55, 23.2), (3.60, 25.0)]
+    spine = resample(spine, 22)
+    edge = resample(edge, 22)
+    edge[-1] = spine[-1] = (3.30, 26.4)
+    parts.extend(blade(spine, edge, 0.40))
     knife("Kukri", parts)
 
 
-def build_stiletto():
-    # narrow needle blade with a curved bolster and slim handle
-    hc = [(0.0, 0.95 * i) for i in range(14)]
-    hw = [(1.05, 1.05)] * 14
-    parts = [loft(stations(hc, hw, 0.42), "#knurl", 0.42)]
-    parts.append(loft(stations([(0.0, 12.3), (0.0, 13.0), (0.0, 13.6)],
-                               [(1.0, 1.0), (1.15, 1.15), (0.7, 0.7)], 0.5), "#brass", 0.5))
-    centre, widths = blade_line(13.6, 29.4, 20, 0.95, 0.7, tip=0.82)
-    parts.append(loft(stations(centre, widths, 0.22), "#steel", 0.22))
+def stiletto():
+    parts = []
+    spine = [(-1.05, 0.6), (-0.95, 2.4), (-1.05, 4.2), (-0.95, 6.0), (-1.05, 7.8), (-0.95, 10.0), (-1.00, 11.6)]
+    edge = [(1.00, 0.6), (0.90, 2.4), (1.00, 4.2), (0.90, 6.0), (1.00, 7.8), (0.90, 10.0), (0.95, 11.6)]
+    parts.extend(grip(0.6, 11.6, "#knurl", 0.44, halfw=0.95, crown=1.05, swell=0.14))
+    # swing guard / bolster
+    parts.append(rectangle(-1.65, 1.65, 11.6, 12.3, "#brass", 0.52))
+    parts.append(rectangle(-0.95, 0.95, 12.2, 13.1, "#brass", 0.60))
+    spine = [(-0.75, 13.1), (-0.80, 16.0), (-0.72, 19.0), (-0.55, 22.0), (-0.35, 24.8), (-0.12, 27.0)]
+    edge = [(0.75, 13.1), (0.80, 16.0), (0.72, 19.0), (0.55, 22.0), (0.35, 24.8), (0.12, 27.0)]
+    spine = resample(spine, 20)
+    edge = resample(edge, 20)
+    edge[-1] = spine[-1] = (0.0, 28.8)
+    parts.extend(blade(spine, edge, 0.20))
     knife("Stiletto", parts)
 
 
-BUILDERS = [build_karambit, build_m9, build_huntsman, build_bowie,
-            build_butterfly, build_skeleton, build_kukri, build_stiletto]
+BUILDERS = [karambit, m9, huntsman, bowie, butterfly, skeleton, kukri, stiletto]
+
+PATTERNS = {"plain": None, "damascus": "damascus", "fade": "fade",
+            "case": "case", "tiger": "tiger", "doppler": "doppler"}
+
+FINISH_TINTS = {
+    "Stainless": (208, 214, 224),
+    "Damascus": (198, 204, 214),
+    "Fade": (240, 176, 150),
+    "Case hardened": (214, 196, 156),
+    "Tiger Tooth": (236, 190, 110),
+    "Doppler": (150, 170, 236),
+    "Crimson": (226, 140, 140),
+    "Night": (150, 154, 166),
+}
 
 
 # ------------------------------------------------------------------ preview
-def shade_for(v):
-    """Minecraft style fixed face shading from the quad normal."""
-    a = v[0:3]
-    b = v[3:6]
-    c = v[6:9]
+def face_shade(v):
+    a, b, c = v[0:3], v[3:6], v[6:9]
     u = [b[i] - a[i] for i in range(3)]
     w = [c[i] - a[i] for i in range(3)]
     n = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]]
     ln = math.sqrt(sum(t * t for t in n)) or 1.0
     n = [t / ln for t in n]
     if abs(n[2]) > 0.7:
-        return 1.0 if n[2] < 0 else 0.72
+        return 1.0 if n[2] < 0 else 0.74
     if abs(n[1]) > 0.7:
-        return 0.92 if n[1] > 0 else 0.6
+        return 0.92 if n[1] > 0 else 0.62
     return 0.84
 
 
-def render(model, sheets, tint, size, ax=-10.0, ay=-20.0):
+def render(model, sheets, tint, size, ax=-8.0, ay=-18.0):
     def proj(p):
         x, y, z = p
         cx, sx = math.cos(math.radians(ax)), math.sin(math.radians(ax))
@@ -482,12 +532,12 @@ def render(model, sheets, tint, size, ax=-10.0, ay=-20.0):
     for q in model["quads"]:
         v = q["v"]
         pts = [proj((v[i], v[i + 1], v[i + 2])) for i in range(0, 12, 3)]
-        quads.append((sum(p[2] for p in pts) / 4.0, pts, q["uv"], q["t"], shade_for(v)))
+        quads.append((sum(p[2] for p in pts) / 4.0, pts, q["uv"], q["t"], face_shade(v)))
     allp = [p for _, pts, _, _, _ in quads for p in pts]
     xs = [p[0] for p in allp]
     ys = [p[1] for p in allp]
     span = max(max(xs) - min(xs), max(ys) - min(ys)) or 1.0
-    S = size * 0.92 / span
+    S = size * 0.86 / span
     ox = size / 2 - (min(xs) + max(xs)) / 2 * S
     oy = size / 2 + (min(ys) + max(ys)) / 2 * S
 
@@ -511,7 +561,7 @@ def render(model, sheets, tint, size, ax=-10.0, ay=-20.0):
         C = u0 - c0[0] * A - c0[1] * B
         D, E = ib[0] * sv, ib[1] * sv
         F = v0 - c0[0] * D - c0[1] * E
-        warped = sheet.transform((size, size), Image.AFFINE, (A, B, C, D, E, F), resample=Image.NEAREST)
+        warped = sheet.transform((size, size), Image.AFFINE, (A, B, C, D, E, F),         resample=Image.BILINEAR)
         if tex == "#steel":
             r, g, b, a = warped.split()
             warped = Image.merge("RGBA", (r.point(lambda q: q * tint[0] // 255),
@@ -519,37 +569,12 @@ def render(model, sheets, tint, size, ax=-10.0, ay=-20.0):
                                           b.point(lambda q: q * tint[2] // 255), a))
         if sh < 1.0:
             dark = Image.new("RGBA", (size, size), (0, 0, 0, int(255 * (1 - sh))))
-            mask = ImageChops.multiply(warped.split()[3], Image.new("L", (size, size), 255))
-            warped = Image.composite(dark, warped, Image.composite(Image.new("L", (size, size), 255),
-                                                                   Image.new("L", (size, size), 0),
-                                                                   warped.split()[3]))
+            warped = Image.composite(dark, warped, warped.split()[3])
         clip = Image.new("L", (size, size), 0)
         ImageDraw.Draw(clip).polygon(scr, fill=255)
         warped.putalpha(ImageChops.multiply(warped.split()[3], clip))
         canvas.alpha_composite(warped)
     return canvas
-
-
-FINISH_TINTS = {
-    "Stainless": (206, 212, 222),
-    "Blue steel": (150, 180, 235),
-    "Fade": (240, 176, 150),
-    "Slaughter": (226, 140, 140),
-    "Crimson web": (214, 120, 120),
-    "Doppler": (156, 132, 232),
-    "Case hardened": (214, 196, 156),
-    "Night": (150, 154, 166),
-    "Forest": (150, 186, 150),
-    "Gamma Doppler": (150, 226, 190),
-    "Gold": (236, 209, 108),
-    "Damascus": (198, 204, 214),
-    "Emerald": (140, 220, 170),
-    "Obsidian": (150, 148, 168),
-    "Copper": (224, 170, 128),
-    "Ruby": (228, 130, 150),
-    "Tiger": (236, 190, 110),
-    "Rainbow": (200, 190, 230),
-}
 
 
 def main():
@@ -564,34 +589,32 @@ def main():
         fh.write("# UV mapped knife models, one id per line\n")
         for ident in KNIVES:
             fh.write(ident + "\n")
-
     for name in PATTERNS:
         blade_sheet(name).save(os.path.join(TEX_DIR, "blade_%s.png" % name))
     trim_sheet().save(os.path.join(TEX_DIR, "trim.png"))
-    print("wrote %d models and %d texture sheets" % (len(KNIVES), len(PATTERNS) + 1))
+    print("wrote %d models, %d sheets" % (len(KNIVES), len(PATTERNS) + 1))
 
-    # contact sheet: 2 rows of 4, one finish per knife, like the reference photo
-    os.makedirs(os.path.join(ROOT, "artifacts"), exist_ok=True)
-    order = list(KNIVES.items())
-    cell = 300
-    sheet = Image.new("RGBA", (cell * 4, cell * 2), (18, 20, 26, 255))
+    cell = 320
+    sheet = Image.new("RGBA", (cell * 4, cell * 2), (12, 20, 38, 255))
     d = ImageDraw.Draw(sheet)
-    finishes = list(FINISH_TINTS.items())
-    for i, (ident, model) in enumerate(order):
-        pat = ["plain", "damascus", "fade", "tiger", "doppler", "plain", "case", "fade"][i % 8]
-        sheets = {"#steel": Image.open(os.path.join(TEX_DIR, "blade_%s.png" % pat)).convert("RGBA"),
-                  "#trim": Image.open(os.path.join(TEX_DIR, "trim.png")).convert("RGBA"),
-                  "#knurl": Image.open(os.path.join(TEX_DIR, "trim.png")).convert("RGBA"),
-                  "#cord": Image.open(os.path.join(TEX_DIR, "trim.png")).convert("RGBA"),
-                  "#rib": Image.open(os.path.join(TEX_DIR, "trim.png")).convert("RGBA"),
-                  "#wood": Image.open(os.path.join(TEX_DIR, "trim.png")).convert("RGBA"),
-                  "#brass": Image.open(os.path.join(TEX_DIR, "trim.png")).convert("RGBA")}
-        tint = FINISH_TINTS[finishes[i * 2][0]]
-        img = render(model, sheets, tint, cell)
+    picks = [("plain", "Stainless"), ("damascus", "Damascus"), ("fade", "Fade"),
+             ("case", "Case hardened"), ("tiger", "Tiger Tooth"), ("plain", "Night"),
+             ("doppler", "Doppler"), ("fade", "Crimson")]
+    cache = {}
+    for i, (ident, model) in enumerate(KNIVES.items()):
+        pat, fin = picks[i % len(picks)]
+        sheet_img = cache.get(pat) or Image.open(os.path.join(TEX_DIR, "blade_%s.png" % pat)).convert("RGBA")
+        cache[pat] = sheet_img
+        trim = cache.get("trim") or Image.open(os.path.join(TEX_DIR, "trim.png")).convert("RGBA")
+        cache["trim"] = trim
+        sheets = {"#steel": sheet_img, "#rim": sheet_img, "#trim": trim, "#brass": trim,
+                  "#knurl": trim, "#wood": trim, "#cord": trim, "#rib": trim}
+        img = render(model, sheets, FINISH_TINTS[fin], cell)
         x, y = (i % 4) * cell, (i // 4) * cell
         sheet.alpha_composite(img, (x, y))
-        d.text((x + 10, y + cell - 18), model["name"], fill=(214, 222, 236))
-        d.rectangle([x + 2, y + 2, x + cell - 3, y + cell - 3], outline=(34, 40, 52))
+        d.text((x + 10, y + cell - 20), model["name"], fill=(206, 216, 234))
+        d.text((x + 10, y + cell - 32), fin, fill=(120, 134, 158))
+    os.makedirs(os.path.join(ROOT, "artifacts"), exist_ok=True)
     sheet.convert("RGB").save(os.path.join(ROOT, "artifacts", "cs2_knives.png"))
     print("preview -> artifacts/cs2_knives.png")
 
