@@ -91,14 +91,18 @@ the repo), so they cannot be copied into `assets/` from here. Drop the PNGs into
 The HD sheet system is now in this workspace and wired into the module:
 
 - `tools/knife_hd_sheets.py` draws the eight tactical knives (case hardened, crimson web,
-  damascus, sapphire, fade, slaughter, tiger tooth, urban masked) into 7 cell atlases at the
-  three levels, and writes `assets/zeus/knives/hd/tactical.json` from the same silhouettes.
-- `ui/KnifeHd.java` loads that table and draws the knives as layered slabs, picking the sheet
-  level from the on screen length and shading each quad with Minecraft's face brightness.
+  damascus, sapphire, fade, slaughter, tiger tooth, urban masked) into 7 cell atlases, one cell
+  per layer at 1024x256 and the two smaller levels, and writes
+  `assets/zeus/knives/hd/tactical.json` from the same silhouettes.
+- `ui/KnifeHD.java` is the porter of the supplied model: layered slab parts, inset rim
+  shoulders, a profile strip through the thickness, per vertex key and fill light, and the
+  gloss and bevel glint light passes. It loads `tactical.json` and builds quads only.
+- `ui/KnifeHDGui.java` paints those quads into the GUI, one flat tinted quad at a time, in
+  build order so the lit face lands on top of its shoulders.
 - `ui/KnifeArt.java` gained the eight `Tactical · ...` straight knife entries, `HD_COUNT`,
   `hdOf`, `hdType` and HD aware `gripOf`.
-- `mods/KnifeSwing.java` draws HD knives (and their motion ghosts) through `KnifeHd` before
-  the quad mesh and pixel fallbacks.
+- `mods/KnifeSwing.java` draws HD knives (and their motion ghosts) through `KnifeHDGui`
+  before the quad mesh and pixel fallbacks.
 - `tools/knife_hd_preview.py` is the offline check: it rasterises the same quads straight from
   the atlas, so the cells, the alpha outline and the part transforms can be seen without the
   game.
