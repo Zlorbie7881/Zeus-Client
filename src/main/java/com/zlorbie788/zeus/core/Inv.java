@@ -74,9 +74,22 @@ public final class Inv {
         };
     }
 
+    private static int clickTick = -1;
+    private static int clickSlot = -1;
+    private static int clickButton = -1;
+    private static ClickType clickType;
+
     public static void click(int menuSlot, int button, ClickType type) {
         Minecraft mc = mc();
         if (mc.gameMode == null || mc.player == null) return;
+        int tick = mc.player.tickCount;
+        // Two identical clicks on the same slot inside one tick never come from a hand; they only
+        // make the click stream look scripted, so the repeat is dropped and the module tries again.
+        if (tick == clickTick && menuSlot == clickSlot && button == clickButton && type == clickType) return;
+        clickTick = tick;
+        clickSlot = menuSlot;
+        clickButton = button;
+        clickType = type;
         mc.gameMode.handleInventoryMouseClick(mc.player.inventoryMenu.containerId, menuSlot, button, type, mc.player);
     }
 
