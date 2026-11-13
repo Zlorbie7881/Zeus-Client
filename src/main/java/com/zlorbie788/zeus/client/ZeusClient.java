@@ -33,6 +33,7 @@ public class ZeusClient implements ClientModInitializer {
     public static KeyMapping SPEAR_LUNGE;
 
     public static KeyMapping PALETTE;
+    public static KeyMapping ASK_AI;
 
     private static boolean pendingOpen;
     private static boolean pendingHudEditor;
@@ -59,6 +60,7 @@ public class ZeusClient implements ClientModInitializer {
         ATTRIBUTE_SWAP = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.zeus.attribute_swap", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, CATEGORY));
         SPEAR_LUNGE = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.zeus.spear_lunge", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, CATEGORY));
         PALETTE = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.zeus.palette", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_K, CATEGORY));
+        ASK_AI = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.zeus.ask_ai", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_J, CATEGORY));
         Zeus.init();
         for (Module m : Zeus.all()) {
             if (!m.toggleable()) continue;
@@ -162,6 +164,10 @@ public class ZeusClient implements ClientModInitializer {
             while (PALETTE.consumeClick()) {
                 if (controlDown(mc) && !Zeus.destroyed()) mc.setScreen(new com.zlorbie788.zeus.ui.PaletteScreen(null));
             }
+            while (ASK_AI.consumeClick()) {
+                // Opens chat with /zeus ai already typed, so asking the AI is one key away.
+                if (mc.screen == null && !Zeus.destroyed()) mc.setScreen(new net.minecraft.client.gui.screens.ChatScreen("/zeus ai ", false));
+            }
             if (mc.screen == null) {
                 for (Module m : Zeus.all()) {
                     if (m.key == null) continue;
@@ -178,6 +184,7 @@ public class ZeusClient implements ClientModInitializer {
             while (ATTRIBUTE_SWAP.consumeClick()) {  }
             while (SPEAR_LUNGE.consumeClick()) {  }
             while (PALETTE.consumeClick()) {  }
+            while (ASK_AI.consumeClick()) {  }
             for (Module m : Zeus.all()) {
                 if (m.key == null) continue;
                 while (m.key.consumeClick()) {
