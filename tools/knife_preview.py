@@ -18,11 +18,13 @@ from PIL import Image, ImageDraw
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 JSON_PATH = os.path.join(ROOT, "src/main/resources/assets/zeus/knives/knives_lo.json")
 
+# KnifeArt.shade(): handle uses the grip palette, pin and guard are a brighterened blade,
+# everything else is the blade palette.  The preview mirrors that so it matches the game.
 MATS = {
     "blade": ((214, 224, 236), (120, 132, 150), (46, 52, 64)),
     "handle": ((92, 98, 112), (54, 58, 70), (22, 24, 30)),
-    "guard": ((150, 158, 172), (86, 92, 106), (34, 38, 46)),
-    "pin": ((226, 206, 150), (150, 126, 74), (60, 48, 26)),
+    "guard": ((232, 240, 250), (132, 144, 162), (50, 56, 68)),
+    "pin": ((232, 240, 250), (132, 144, 162), (50, 56, 68)),
 }
 
 
