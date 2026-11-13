@@ -120,13 +120,93 @@ public final class Commands {
                 }));
     }
 
+    private static final SuggestionProvider<FabricClientCommandSource> AI_PROVIDERS = (ctx, builder) -> {
+        String start = builder.getRemainingLowerCase();
+        for (com.zlorbie788.zeus.mods.AiPilot.Provider p : com.zlorbie788.zeus.mods.AiPilot.PROVIDERS) {
+            if (p.id().startsWith(start)) builder.suggest(p.id());
+        }
+        return builder.buildFuture();
+    };
+
+    private static final SuggestionProvider<FabricClientCommandSource> AI_TUTORIAL = (ctx, builder) -> {
+        for (String s : new String[]{"next", "back", "stop", "restart"}) if (s.startsWith(builder.getRemainingLowerCase())) builder.suggest(s);
+        return builder.buildFuture();
+    };
+
     private static LiteralArgumentBuilder<FabricClientCommandSource> aiTree(String name) {
         return literal(name)
-                .then(literal("key").then(argument("token", StringArgumentType.word()).executes(c -> {
-                    com.zlorbie788.zeus.mods.AiPilot.key(StringArgumentType.getString(c, "token"));
-                    say("The AI token is saved on this install.");
+                .executes(c -> {
+                    aiHelp();
+                    return 1;
+                })
+                .then(literal("tutorial").executes(c -> {
+                    com.zlorbie788.zeus.mods.AiTutorial.command("");
+                    return 1;
+                }).then(argument("step", StringArgumentType.word()).suggests(AI_TUTORIAL).executes(c -> {
+                    com.zlorbie788.zeus.mods.AiTutorial.command(StringArgumentType.getString(c, "step"));
                     return 1;
                 })))
+                .then(literal("setup").executes(c -> {
+                    com.zlorbie788.zeus.mods.AiTutorial.command("restart");
+                    return 1;
+                }))
+                .then(literal("help").executes(c -> {
+                    aiHelp();
+                    return 1;
+                }))
+                .then(literal("key")
+                        .executes(c -> {
+                            say(com.zlorbie788.zeus.mods.AiPilot.hasSecret()
+                                    ? "A key is saved. Replace it with /zeus ai key <key>, or remove it with /zeus ai key clear."
+                                    : "No key saved. Paste one with /zeus ai key <key>, or follow /zeus ai tutorial.");
+                            return 1;
+                        })
+                        .then(literal("clear").executes(c -> {
+                            com.zlorbie788.zeus.mods.AiPilot.key("");
+                            say("The AI key was removed from this install.");
+                            return 1;
+                        }))
+                        .then(argument("token", StringArgumentType.greedyString()).executes(c -> {
+                            com.zlorbie788.zeus.mods.AiPilot.key(StringArgumentType.getString(c, "token"));
+                            return 1;
+                        })))
+                .then(literal("test").executes(c -> {
+                    say(com.zlorbie788.zeus.mods.AiPilot.test());
+                    return 1;
+                }))
+                .then(literal("provider")
+                        .executes(c -> {
+                            com.zlorbie788.zeus.mods.AiPilot.Provider p = com.zlorbie788.zeus.mods.AiPilot.currentProvider();
+                            StringBuilder all = new StringBuilder();
+                            for (com.zlorbie788.zeus.mods.AiPilot.Provider each : com.zlorbie788.zeus.mods.AiPilot.PROVIDERS) {
+                                all.append(all.length() == 0 ? "" : ", ").append(each.id());
+                            }
+                            say("Provider: " + (p == null ? "custom (" + com.zlorbie788.zeus.mods.AiPilot.endpointUrl() + ")" : p.label())
+                                    + ". Switch with /zeus ai provider <" + all + ">");
+                            return 1;
+                        })
+                        .then(argument("id", StringArgumentType.word()).suggests(AI_PROVIDERS).executes(c -> {
+                            say(com.zlorbie788.zeus.mods.AiPilot.useProvider(StringArgumentType.getString(c, "id")));
+                            return 1;
+                        })))
+                .then(literal("model")
+                        .executes(c -> {
+                            say(com.zlorbie788.zeus.mods.AiPilot.setModel(""));
+                            return 1;
+                        })
+                        .then(argument("name", StringArgumentType.greedyString()).executes(c -> {
+                            say(com.zlorbie788.zeus.mods.AiPilot.setModel(StringArgumentType.getString(c, "name")));
+                            return 1;
+                        })))
+                .then(literal("endpoint")
+                        .executes(c -> {
+                            say(com.zlorbie788.zeus.mods.AiPilot.setEndpoint(""));
+                            return 1;
+                        })
+                        .then(argument("url", StringArgumentType.greedyString()).executes(c -> {
+                            say(com.zlorbie788.zeus.mods.AiPilot.setEndpoint(StringArgumentType.getString(c, "url")));
+                            return 1;
+                        })))
                 .then(literal("undo").executes(c -> {
                     com.zlorbie788.zeus.mods.AiPilot.undo();
                     return 1;
@@ -142,14 +222,35 @@ public final class Commands {
                 }))
                 .then(literal("status").executes(c -> {
                     com.zlorbie788.zeus.mods.AiPilot pilot = com.zlorbie788.zeus.mods.AiPilot.find();
-                    if (pilot == null) say("Zeus AI Functions is missing.");
-                    else say("Zeus AI Functions: " + pilot.info() + (com.zlorbie788.zeus.mods.AiPilot.hasKey() ? "" : " - no token yet"));
+                    if (pilot == null) {
+                        say("Zeus AI Functions is missing.");
+                        return 1;
+                    }
+                    for (String line : com.zlorbie788.zeus.mods.AiPilot.statusLines()) say(line);
                     return 1;
                 }))
                 .then(argument("instruction", StringArgumentType.greedyString()).executes(c -> {
                     say(com.zlorbie788.zeus.mods.AiPilot.ask(StringArgumentType.getString(c, "instruction")));
                     return 1;
                 }));
+    }
+
+    private static void aiHelp() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.gui == null) return;
+        say("Zeus AI: type /zeus ai <what you want>, e.g. /zeus ai turn on sprint, /zeus ai mine 10 iron then come back");
+        String[][] rows = {
+                {"/zeus ai tutorial", "step-by-step setup"},
+                {"/zeus ai test", "check the key, endpoint and model"},
+                {"/zeus ai provider <id>", "groq, gemini, openrouter, openai, deepseek, mistral, ollama, lmstudio"},
+                {"/zeus ai model <name>", "change the model"},
+                {"/zeus ai stop / undo / plan / status", "stay in control"},
+        };
+        for (String[] row : rows) {
+            mc.gui.getChat().addMessage(Component.literal("  " + row[0]).withStyle(s -> s.withColor(ChatFormatting.AQUA)
+                            .withClickEvent(new ClickEvent.SuggestCommand(row[0].replaceAll(" <.*|/ .*| /.*", "") + " ")))
+                    .append(Component.literal("  " + row[1]).withStyle(ChatFormatting.GRAY)));
+        }
     }
 
     private static void register(CommandDispatcher<FabricClientCommandSource> d, CommandBuildContext ctx) {

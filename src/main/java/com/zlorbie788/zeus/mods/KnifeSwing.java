@@ -6,6 +6,7 @@ import com.zlorbie788.zeus.core.Zeus;
 import com.zlorbie788.zeus.ui.ArmArt;
 import com.zlorbie788.zeus.ui.Draw;
 import com.zlorbie788.zeus.ui.KnifeArt;
+import com.zlorbie788.zeus.ui.KnifeHD;
 import com.zlorbie788.zeus.ui.KnifeHDGui;
 import com.zlorbie788.zeus.ui.KnifeMesh;
 import com.zlorbie788.zeus.ui.KnifePickerScreen;
@@ -71,6 +72,11 @@ public final class KnifeSwing extends Module {
     private static final int SK_SPIN = 48;
     private static final int SK_PIN = 49;
     private static final int SK_TOSS = 50;
+    // tricks made for the heavy HD tactical knives (any straight knife can play them)
+    private static final int T_INSPECT = 51;
+    private static final int T_REVERSE = 52;
+    private static final int T_ROLL = 53;
+    private static final int T_XCUT = 54;
     private static final String[] CLIP_NAME = {"draw", "inspect2", "fan", "zen", "aerial", "inspect", "draw", "inspect", "inspect2", "spin", "pinwheel", "toss"};
     private static final float[] CLIP_D = {1.35f, 3.4f, 3.2f, 3.0f, 2.6f, 3.9f, 1.3f, 3.5f, 3.0f, 2.2f, 3.0f, 2.8f};
 
@@ -80,7 +86,8 @@ public final class KnifeSwing extends Module {
         1.2f, 0.85f, 1.6f, 0.95f, 1.15f, 1.35f, 1.7f, 1.9f,
         0.95f, 1.1f, 1.3f,
         1.5f, 1.4f, 1.9f, 1.5f, 1.5f, 2.0f, 1.1f, 3.0f, 3.2f,
-        1.35f * 1.3f, 3.4f * 1.3f, 3.2f * 1.3f, 3.0f * 1.3f, 2.6f * 1.3f, 3.9f * 1.3f, 1.3f * 1.3f, 3.5f * 1.3f, 3.0f * 1.3f, 2.2f * 1.3f, 3.0f * 1.3f, 2.8f * 1.3f};
+        1.35f * 1.3f, 3.4f * 1.3f, 3.2f * 1.3f, 3.0f * 1.3f, 2.6f * 1.3f, 3.9f * 1.3f, 1.3f * 1.3f, 3.5f * 1.3f, 3.0f * 1.3f, 2.2f * 1.3f, 3.0f * 1.3f, 2.8f * 1.3f,
+        3.4f, 1.75f, 1.45f, 1.05f};
     public static final String[] TRICKS = {"Chaos combo", "Flick open", "Fan", "Showcase", "Handle whirl", "Rollover", "Reverse rollover", "Twirl", "Gunslinger", "Aerial toss", "Snap shut", "Speed fan", "Hyper whirl", "Flip frenzy", "Helicopter", "Double toss", "Latch flip", "Cascade", "Inspect", "Studio draw", "Studio rollover", "Studio fan", "Studio zen", "Studio aerial toss", "Studio inspect", "Random"};
     private static final int[][] SCRIPT = {
         {FAN, SFAN, SHOW, HWHIRL, ROLL, HELI, TWIRL, FRENZY, GUN, BDOUBLE, ROLL_BACK, CASCADE, CLOSE},
@@ -89,12 +96,14 @@ public final class KnifeSwing extends Module {
         {SB_DRAW}, {SB_ROLL}, {SB_FAN}, {SB_ZEN}, {SB_AERIAL}, {SB_INSPECT}
     };
     public static final String[] KTRICKS = {"Chaos combo", "Ring spin", "Reverse spin", "Ring flurry", "Pinwheel", "Backflip", "Toss and catch", "Showcase", "Slash",
-        "Triple spin", "Catch flip", "Figure eight", "Side flip", "Slash combo", "Spin stop", "Hyper spin", "Juggle", "Wrist orbit", "Cross spin", "Double toss", "Ring storm", "Inspect", "Studio draw", "Studio ring spin", "Studio back flip", "Studio pinwheel", "Studio toss", "Studio inspect", "Random"};
+        "Triple spin", "Catch flip", "Figure eight", "Side flip", "Slash combo", "Spin stop", "Hyper spin", "Juggle", "Wrist orbit", "Cross spin", "Double toss", "Ring storm", "Inspect", "Studio draw", "Studio ring spin", "Studio back flip", "Studio pinwheel", "Studio toss", "Studio inspect",
+        "Tactical inspect", "Reverse grip flip", "Thumb roll", "X cut", "Random"};
     private static final int[][] KSCRIPT = {
         {KSHOW, RSPIN, KORBIT, KTRIPLE, KEIGHT, KCROSS, RFLURRY, KFLIP, KDOUBLE, KSNAP, KHYPER},
         {RSPIN}, {RREV}, {RFLURRY}, {RPIN}, {KFLIP}, {KAERIAL}, {KSHOW}, {KSLASH},
         {KTRIPLE}, {KCATCH}, {KEIGHT}, {KFLIPY}, {KSLASH3}, {KSNAP}, {KHYPER}, {KJUGGLE}, {KORBIT}, {KCROSS}, {KDOUBLE}, {KSTORM}, {INSPECT},
-        {SK_DRAW}, {SK_SPIN}, {SK_FLIP}, {SK_PIN}, {SK_TOSS}, {SK_INSPECT}
+        {SK_DRAW}, {SK_SPIN}, {SK_FLIP}, {SK_PIN}, {SK_TOSS}, {SK_INSPECT},
+        {T_INSPECT}, {T_REVERSE}, {T_ROLL}, {T_XCUT}
     };
     private static KnifeSwing self;
     private long drewAt;
@@ -111,7 +120,7 @@ public final class KnifeSwing extends Module {
         return all;
     }
     private final Setting.Choice type = add(new Setting.Choice("Knife type", "Butterfly knife: the balisong with its flips. Karambit: the curved claw knife whose ring sits on your finger and which spins around it. The others are the straight and curved knives of CS2 (Bayonet, M9 Bayonet, Huntsman, Flip, Gut, Falchion, Bowie, Navaja, Stiletto, Talon, Ursus, Classic, Paracord, Survival, Nomad, Skeleton, Kukri and the Shadow Daggers) plus the Tantō, Kris, Cleaver, Kunai, Jambiya, Khopesh, Machete and Dagger. They all use the karambit's tricks.", 0, TYPES));
-    private final Setting.Choice sfinish = add(new Setting.Choice("Knife finish", "The paint of the straight knives: steel, Fade, Slaughter, Doppler, Case hardened and so on.", 0, KnifeArt.SFINISHES)).showIf(() -> self != null && self.type.index() >= 2);
+    private final Setting.Choice sfinish = add(new Setting.Choice("Knife finish", "The paint of the straight knives: steel, Fade, Slaughter, Doppler, Case hardened and so on.", 0, KnifeArt.SFINISHES)).showIf(() -> self != null && self.type.index() >= 2 && KnifeArt.hdType(self.type.index()) < 0);
     private final Setting.Choice when = add(new Setting.Choice("When it shows", "Choose when the knife overlay replaces the first-person hand: empty hand, both hands empty, always, or whenever you hold any sword.", 0, "Empty hand", "Both hands empty", "Always", "Replace any sword"));
     private final Setting.Bool hideHand = add(new Setting.Bool("Hide the game's own hand", "Hides the game's arm and held item while the knife is in your hand, so the two do not overlap.", true));
         private final Setting.Choice trick = add(new Setting.Choice("Tsuki / Butterfly (Butterfly)", "Plays the Tsuki / Butterfly animation: the trick key or right click plays it, and the knife changes to Butterfly to match. The repeat count is shown in its display.", 0, TRICKS)).showIf(() -> type.index() == 0);
@@ -208,7 +217,7 @@ public final class KnifeSwing extends Module {
         for (int i = 0; i < n; i++) fins[i] = finishFor(i).index();
         mc.setScreen(new KnifePickerScreen(mc.screen, type.index(), fins, (k, f) -> {
             type.set(k);
-            finishFor(k).set(f);
+            if (KnifeArt.hdType(k) < 0) finishFor(k).set(f);
         }));
     }
     private static final String[] INSPECT_STYLES = {
@@ -254,10 +263,16 @@ public final class KnifeSwing extends Module {
         String name = TYPES[idx];
         String mesh = karambit() ? KnifeArt.nameOf(key()) : "Butterfly knife";
         boolean loaded = KnifeMesh.has(mesh);
-        String render = !model3d.on() ? "pixel knife (3D off)"
+        String render = hd() >= 0 ? (KnifeHDGui.ready(hd()) ? "HD model: lit 3D, high resolution" : "HD model missing, using pixels")
+                : !model3d.on() ? "pixel knife (3D off)"
                 : loaded ? (safeDraw.on() ? "3D model ready (safe draw on)" : "3D model in use") : "3D mesh missing, using pixels";
         String state = playing() ? "playing a trick" : (isOpen ? "open in hand" : "closed in hand");
         return java.util.List.of(name, render, state, "Tricks: " + (karambit() ? KTRICKS.length : TRICKS.length) + " loaded");
+    }
+
+    /** The HD tactical knife in use, or -1. */
+    private int hd() {
+        return KnifeArt.hdType(type.index());
     }
 
     private boolean ring() {
@@ -297,7 +312,7 @@ public final class KnifeSwing extends Module {
     }
 
     private int studioOr(int m) {
-        if (m < SB_DRAW) return m;
+        if (m < SB_DRAW || m > SK_TOSS) return m;
         String mesh = !model3d.on() ? null : karambit() ? KnifeArt.nameOf(key()) : "Butterfly knife";
         if (mesh != null && KnifeMesh.has(mesh) && KnifeMesh.hasClip(mesh, CLIP_NAME[m - SB_DRAW])) return m;
         return switch (m) {
@@ -662,7 +677,7 @@ public final class KnifeSwing extends Module {
         boolean kb = karambit();
         p.c = kb ? 0f : startsOpen ? PI : 0f;
         if (kb) p.gripY = grip();
-        if (move >= SB_DRAW) {
+        if (move >= SB_DRAW && move <= SK_TOSS) {
             int ci = move - SB_DRAW;
             p.clip = CLIP_NAME[ci];
             p.clipT = x * CLIP_D[ci];
@@ -1066,6 +1081,61 @@ public final class KnifeSwing extends Module {
                 if (x < 0.62f) return movePose(WHIRL, (x - 0.30f) / 0.32f, t, true);
                 return movePose(ROLL, (x - 0.62f) / 0.38f, t, true);
             }
+            case T_INSPECT -> {
+                // raise it into the light, turn it edge on to show the spine and its thickness,
+                // over to the other face, then home; every hold lets the highlights travel
+                float[] ts = {0f, 0.12f, 0.30f, 0.44f, 0.60f, 0.78f, 1f};
+                p.ry = keys(x, ts, 0f, 0.40f, 1.50f, 1.50f, PI + 0.30f, PI + 0.30f, TAU);
+                p.rx = keys(x, ts, 0f, -0.28f, -0.12f, -0.18f, 0.22f, 0.18f, 0f);
+                p.rz = keys(x, ts, 0f, 0.30f, 0.45f, 0.42f, 0.22f, 0.12f, 0f);
+                p.gx = keys(x, ts, 0f, -7f, -8.5f, -8.5f, -7f, -5f, 0f);
+                p.gy = keys(x, ts, 0f, -5.5f, -6.5f, -6.5f, -5.5f, -3.5f, 0f);
+                p.flickZ = 0.06f * bump(x);
+                p.flash = 0.45f * bump((x - 0.58f) / 0.14f) + 0.30f * bump((x - 0.26f) / 0.10f);
+            }
+            case T_REVERSE -> {
+                // toss into a reverse grip (one and a half turns), a short stab, a half turn home
+                float u1 = c01(x / 0.42f), u3 = c01((x - 0.70f) / 0.30f);
+                p.rz = -3f * PI * easeSmoother(u1) - PI * easeSmoother(u3);
+                float up = arc(u1);
+                p.ky = -9f * up;
+                p.kx = -1.5f * up;
+                p.rx = 0.35f * (float) Math.sin(u1 * PI);
+                p.release = Math.max(let(u1), 0.15f * bump(u3));
+                float stab = bump((x - 0.44f) / 0.26f);
+                // lift the hand while the blade points down, so the reverse grip stays in view
+                float lift = keys(x, new float[] {0f, 0.30f, 0.42f, 0.72f, 0.88f, 1f}, 0f, 4f, 9f, 9f, 3f, 0f);
+                p.gy = -lift + 4.2f * stab + kick(x, 0.42f, 0.6f) + kick(x, 1f, 0.4f);
+                p.gx = -0.75f * lift;
+                p.gz = -1.5f * stab;
+                p.rush = (u1 > 0.04f && u1 < 0.96f) || (u3 > 0.04f && u3 < 0.96f) ? 1f : 0f;
+                p.shake = 0.45f * bump((x - 0.42f) / 0.08f);
+                p.flash = 0.9f * bump((x - 0.52f) / 0.10f);
+            }
+            case T_ROLL -> {
+                // two full rolls round the vertical, so both faces and both edges sweep past
+                p.ry = spin(x, 2f, 0.35f);
+                p.rz = 0.32f * (float) Math.sin(x * TAU) * bump(x);
+                p.rx = -0.18f * bump(x);
+                spinHand(p, x);
+                p.release = 0.25f * p.release;
+                p.gx = -2.5f * (float) Math.sin(x * TAU);
+                p.gy = -2.2f * bump(x) + kick(x, 0.9f, 0.4f);
+                float face = (float) Math.abs(Math.cos(p.ry));
+                p.flash = 0.55f * (float) Math.pow(face, 24.0) * bump(x);
+            }
+            case T_XCUT -> {
+                // a two stroke cross: down and in, back up and across
+                float[] ts = {0f, 0.14f, 0.34f, 0.46f, 0.66f, 0.82f, 1f};
+                p.gx = keys(x, ts, 0f, 1.5f, -16f, -13f, 3f, 1f, 0f);
+                p.gy = keys(x, ts, 0f, -6f, 2f, -6f, 3f, 1f, 0f);
+                p.rz = keys(x, ts, 0f, 0.40f, -0.85f, -0.55f, 0.55f, 0.15f, 0f);
+                p.flickZ = keys(x, ts, 0f, 0.16f, -0.50f, -0.32f, 0.20f, 0.05f, 0f);
+                p.flickY = 0.15f * bump((x - 0.14f) / 0.32f) - 0.15f * bump((x - 0.46f) / 0.30f);
+                p.rush = (x > 0.16f && x < 0.36f) || (x > 0.48f && x < 0.68f) ? 1f : 0f;
+                p.flash = 0.9f * bump((x - 0.28f) / 0.10f) + 0.9f * bump((x - 0.60f) / 0.10f);
+                p.shake = 0.3f * bump((x - 0.30f) / 0.08f) + 0.3f * bump((x - 0.62f) / 0.08f);
+            }
             case KSLASH -> {
                 slashPose(p, t);
                 p.b = 0f;
@@ -1075,6 +1145,23 @@ public final class KnifeSwing extends Module {
             default -> slashPose(p, t);
         }
         return p;
+    }
+
+    /**
+     * Keyframed curve: values at the times ts (0..1), joined by Catmull-Rom splines, so a move
+     * flows through its key poses with no stop at each one, and eases at the ends.
+     */
+    private static float keys(float x, float[] ts, float... vs) {
+        int n = ts.length;
+        if (x <= ts[0]) return vs[0];
+        if (x >= ts[n - 1]) return vs[n - 1];
+        int i = 0;
+        while (i < n - 2 && x > ts[i + 1]) i++;
+        float t0 = ts[i], t1 = ts[i + 1], h = t1 - t0;
+        float u = (x - t0) / h, u2 = u * u, u3 = u2 * u;
+        float m0 = i == 0 ? 0f : (vs[i + 1] - vs[i - 1]) / (ts[i + 1] - ts[i - 1]) * h;
+        float m1 = i + 2 >= n ? 0f : (vs[i + 2] - vs[i]) / (ts[i + 2] - ts[i]) * h;
+        return (2 * u3 - 3 * u2 + 1) * vs[i] + (u3 - 2 * u2 + u) * m0 + (-2 * u3 + 3 * u2) * vs[i + 1] + (u3 - u2) * m1;
     }
 
     private static void spinHand(Pose p, float x) {
@@ -1182,7 +1269,7 @@ public final class KnifeSwing extends Module {
         look.fine = !Perf.gameFast();
         look.mirror = left;
         float fade = Math.min(1f, vis);
-        int hdKnife = KnifeArt.hdType(type.index());
+        int hdKnife = hd();
         boolean mesh = hdKnife < 0 && meshReady();
         int colour = Draw.rgba(look.glow, 0.85f * fade);
 
@@ -1248,8 +1335,8 @@ public final class KnifeSwing extends Module {
         rig.flush(g, u);
 
         boolean knifeDrawn;
-        if (hdKnife >= 0 && KnifeHDGui.draw(g, hdKnife, f.knife, u, fade, true)) {
-            knifeDrawn = true;
+        if (hdKnife >= 0) {
+            knifeDrawn = KnifeHDGui.draw(g, hdKnife, f.knife, u, fade, true);
         } else if (mesh && p.clip != null && KnifeMesh.hasClip(meshName(), p.clip)) {
             try {
                 knifeDrawn = KnifeMesh.drawClip(g, meshName(), p.clip, p.clipT, f.knife, look, u, fade, Perf.gameFast());
@@ -1293,7 +1380,16 @@ public final class KnifeSwing extends Module {
         float time = (System.nanoTime() % 60_000_000_000L) / 1e9f;
         if (type.index() == 0) return KnifeArt.look(preset.index(), shape.index(), finish.index(), design.index(), time);
         if (type.index() == 1) return KnifeArt.kLook(kcolor.index(), kcurve.index(), time);
-        return KnifeArt.sLook(sfinish.index(), type.index() - 2, time);
+        KnifeArt.Look l = KnifeArt.sLook(sfinish.index(), type.index() - 2, time);
+        int hd = hd();
+        KnifeHD.Model m = hd >= 0 ? KnifeHD.model(hd) : null;
+        if (m != null) {
+            l.glow = m.glow;
+            l.blade[0] = Draw.lighten(m.glow, 0.35f);
+            l.blade[1] = m.glow;
+            l.blade[2] = Draw.darken(m.glow, 0.45f);
+        }
+        return l;
     }
 
     private String meshName() {

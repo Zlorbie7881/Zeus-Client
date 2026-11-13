@@ -167,19 +167,9 @@ public final class KnifeHD {
         return models().size();
     }
 
-    /** HD index for a knife name, or -1. */
-    public static int indexOf(String name) {
-        if (name == null) return -1;
-        List<Model> ms = models();
-        for (int i = 0; i < ms.size(); i++) {
-            if (name.equals(ms.get(i).name) || name.equals(ms.get(i).id)) return i;
-        }
-        return -1;
-    }
-
     /** Sheet path for a knife at a detail level (0 full, 1 half, 2 quarter). */
     public static String sheet(Model m, int level) {
-        return "textures/knives/hd/" + m.id + "_" + Math.max(0, Math.min(2, level)) + ".png";
+        return "textures/knives/hd/" + m.id + "_" + level + ".png";
     }
 
     // ------------------------------------------------------------------ model space
@@ -210,7 +200,6 @@ public final class KnifeHD {
 
     /** How far up the knife the hand holds it, in rig units. */
     public static float grip(Model m) {
-        if (m == null) return my(6f);
         for (Part p : m.parts) {
             if ("handle".equals(p.name)) return my(p.u0 + (p.u1 - p.u0) * 0.42f);
         }
@@ -246,6 +235,7 @@ public final class KnifeHD {
         float[] r = k.r;
         float nx = r[2], ny = r[5], nz = r[8];
         float ex = r[0], ey = r[3], ez = r[6];
+        float ax = r[1], ay = r[4], az = r[7];
 
         // detail level from the on screen length
         world(k, 0f, 0f, 0f, W);
@@ -305,7 +295,7 @@ public final class KnifeHD {
                 layer(f, m, k, p, SIDE, z, unit, sideLum, sideLum, alpha, group, false, fx, fy, fz, ex, ey, ez);
             }
             // the side wall: a strip through the thickness, so an edge-on knife is still solid
-            float sx = ex * (toCamX(cx)) + ey * (toCamY(cy)) + ez * (-D - cz) >= 0f ? 1f : -1f;
+            float sx = ex * (toCamX(cx) ) + ey * (toCamY(cy)) + ez * (-D - cz) >= 0f ? 1f : -1f;
             float sKey = Math.max(0f, sx * (ex * LX + ey * LY + ez * LZ));
             float sFill = Math.max(0f, sx * (ex * FX + ey * FY + ez * FZ));
             strip(f, m, k, p, unit, clamp(0.50f + 0.45f * sKey + 0.12f * sFill), alpha, group);
