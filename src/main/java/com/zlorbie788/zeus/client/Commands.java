@@ -189,6 +189,10 @@ public final class Commands {
                             say(com.zlorbie788.zeus.mods.AiPilot.useProvider(StringArgumentType.getString(c, "id")));
                             return 1;
                         })))
+                .then(literal("models").executes(c -> {
+                    say(com.zlorbie788.zeus.mods.AiPilot.models());
+                    return 1;
+                }))
                 .then(literal("model")
                         .executes(c -> {
                             say(com.zlorbie788.zeus.mods.AiPilot.setModel(""));
@@ -243,7 +247,9 @@ public final class Commands {
                 {"/zeus ai tutorial", "step-by-step setup"},
                 {"/zeus ai test", "check the key, endpoint and model"},
                 {"/zeus ai provider <id>", "groq, gemini, openrouter, openai, deepseek, mistral, ollama, lmstudio"},
+                {"/zeus ai models", "list the provider's models, click one to use it"},
                 {"/zeus ai model <name>", "change the model"},
+                {"/zeus ai again", "repeat the last request"},
                 {"/zeus ai stop / undo / plan / status", "stay in control"},
         };
         for (String[] row : rows) {
