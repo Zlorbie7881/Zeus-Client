@@ -14,6 +14,8 @@ public final class KnifePickerScreen extends Screen {
         void pick(int knife, int finish);
     }
 
+    /** Only the HD knives are shown; tile i is knife kind FIRST + i. */
+    private static final int FIRST = KnifeArt.allKnives().length - KnifeArt.HD_COUNT;
     private final Screen parent;
     private final Chosen chosen;
     private final int[] finishOf;
@@ -25,7 +27,7 @@ public final class KnifePickerScreen extends Screen {
         this.parent = parent;
         this.chosen = chosen;
         this.finishOf = finishes.clone();
-        this.knife = Math.max(0, Math.min(KnifeArt.allKnives().length - 1, knife));
+        this.knife = Math.max(FIRST, Math.min(KnifeArt.allKnives().length - 1, knife));
     }
 
     @Override
@@ -62,7 +64,7 @@ public final class KnifePickerScreen extends Screen {
     }
 
     private int kTileH() {
-        int rows = (KnifeArt.allKnives().length + KCOLS - 1) / KCOLS;
+        int rows = (KnifeArt.HD_COUNT + KCOLS - 1) / KCOLS;
         return Math.max(20, Math.min(46, (gridH() - (rows - 1) * 3) / rows));
     }
 
@@ -108,8 +110,9 @@ public final class KnifePickerScreen extends Screen {
         Draw.textRight(g, "The same art the game draws", px + pw - 12, py + 10, 0xFF8EA2CC);
 
         int tw = kTileW(), th = kTileH(), gx = px + 12, gy = gridTop();
-        for (int i = 0; i < knives.length; i++) {
-            int x = gx + (i % KCOLS) * (tw + 3), y = gy + (i / KCOLS) * (th + 3);
+        for (int t = 0; t < KnifeArt.HD_COUNT; t++) {
+            int i = FIRST + t;
+            int x = gx + (t % KCOLS) * (tw + 3), y = gy + (t / KCOLS) * (th + 3);
             boolean on = i == knife, hot = mouseX >= x && mouseX < x + tw && mouseY >= y && mouseY < y + th;
             Draw.rrect(g, x, y, tw, th, 4, on ? 0xFF14306A : hot ? 0xFF10224A : 0xFF0A1530);
             Draw.rrectLine(g, x, y, tw, th, 4, on ? 0xFF5CA8FF : 0xFF1E3A70);
@@ -154,11 +157,10 @@ public final class KnifePickerScreen extends Screen {
                 return true;
             }
             int tw = kTileW(), th = kTileH(), gx = px + 12, gy = gridTop();
-            int n = KnifeArt.allKnives().length;
-            for (int i = 0; i < n; i++) {
-                int tx = gx + (i % KCOLS) * (tw + 3), ty = gy + (i / KCOLS) * (th + 3);
+            for (int t = 0; t < KnifeArt.HD_COUNT; t++) {
+                int tx = gx + (t % KCOLS) * (tw + 3), ty = gy + (t / KCOLS) * (th + 3);
                 if (x >= tx && x < tx + tw && y >= ty && y < ty + th) {
-                    knife = i;
+                    knife = FIRST + t;
                     chosen.pick(knife, finishOf[knife]);
                     return true;
                 }
