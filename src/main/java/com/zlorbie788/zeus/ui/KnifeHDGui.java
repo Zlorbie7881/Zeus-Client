@@ -133,7 +133,10 @@ public final class KnifeHDGui {
             this.setup = setup;
             this.pose = pose;
             this.scissor = scissor;
-            int n = (to - from) * 4;
+            // Every quad is sent twice, once in each winding.  GUI pipelines cull back faces, and which
+            // winding survives depends on how the 3D knife is turned; with both copies exactly one passes
+            // the cull test, so no face of the knife can disappear and none is drawn twice.
+            int n = (to - from) * 8;
             xy = new float[n * 2];
             uv = new float[n * 2];
             col = new int[n];
@@ -141,35 +144,25 @@ public final class KnifeHDGui {
             int o = 0;
             for (int i = from; i < to; i++) {
                 KnifeHD.Quad q = qs.get(i);
-                // GUI pipelines cull back faces.  A knife turned over (or any face seen from behind) arrives
-                // wound the other way and would simply vanish, leaving only its edges; emit those quads in
-                // reverse order so every quad faces the screen.  Signed area is taken after the pose, in GUI
-                // coordinates (y down), where the front winding of a vanilla fill has a negative area.
-                float area = 0f;
-                for (int c = 0; c < 4; c++) {
-                    int d = (c + 1) & 3;
-                    float ax = pose.m00() * q.x[c] + pose.m10() * q.y[c], ay = pose.m01() * q.x[c] + pose.m11() * q.y[c];
-                    float bx = pose.m00() * q.x[d] + pose.m10() * q.y[d], by = pose.m01() * q.x[d] + pose.m11() * q.y[d];
-                    area += ax * by - bx * ay;
-                }
-                boolean flip = area > 0f;
-                for (int k = 0; k < 4; k++) {
-                    int c = flip ? (4 - k) & 3 : k;
-                    float x = q.x[c], y = q.y[c];
-                    if (!Float.isFinite(x) || !Float.isFinite(y)) {
-                        x = 0f;
-                        y = 0f;
+                for (int pass = 0; pass < 2; pass++) {
+                    for (int k = 0; k < 4; k++) {
+                        int c = pass == 0 ? k : (4 - k) & 3;
+                        float x = q.x[c], y = q.y[c];
+                        if (!Float.isFinite(x) || !Float.isFinite(y)) {
+                            x = 0f;
+                            y = 0f;
+                        }
+                        xy[o * 2] = x;
+                        xy[o * 2 + 1] = y;
+                        uv[o * 2] = q.u[c];
+                        uv[o * 2 + 1] = q.v[c];
+                        col[o] = q.c[c];
+                        minX = Math.min(minX, x);
+                        minY = Math.min(minY, y);
+                        maxX = Math.max(maxX, x);
+                        maxY = Math.max(maxY, y);
+                        o++;
                     }
-                    xy[o * 2] = x;
-                    xy[o * 2 + 1] = y;
-                    uv[o * 2] = q.u[c];
-                    uv[o * 2 + 1] = q.v[c];
-                    col[o] = q.c[c];
-                    minX = Math.min(minX, x);
-                    minY = Math.min(minY, y);
-                    maxX = Math.max(maxX, x);
-                    maxY = Math.max(maxY, y);
-                    o++;
                 }
             }
             ScreenRectangle b = null;
