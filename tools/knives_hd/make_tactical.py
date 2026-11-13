@@ -356,6 +356,58 @@ def fin_urban(kn, mask, sfrac, d_edge, d_spine, bev):
     return alb, 0.85, 0.65
 
 
+def doppler_like(seed, stops, sparkle_colour, sparkle=0.9993):
+    """Swirled anodised gem finish, used by the Sapphire, Emerald and Ruby blades."""
+    n = fbm(1.6, seed, 5)
+    def swirl(u, v):
+        return np.sin(u * 0.9 + v * 1.7) + 0.6 * np.sin(u * 2.1 - v * 1.1)
+    sw = warp(swirl, 3.2, 1.8, seed + 2)
+    t = 0.52 + 0.22 * sw + 0.35 * (n - 0.5)
+    alb = ramp(t, stops)
+    dots = (np.random.default_rng(seed + 4).random((GH, GW)) > sparkle).astype(np.float32)
+    dots = ndimage.gaussian_filter(dots, 1.0) * 6
+    return np.clip(alb + dots[..., None] * hexc(sparkle_colour) * 0.6, 0, 1)
+
+
+def fin_emerald(kn, mask, sfrac, d_edge, d_spine, bev):
+    alb = doppler_like(1101, [(0.0, hexc("010805")), (0.22, hexc("053a1c")), (0.45, hexc("0b7a36")),
+                              (0.66, hexc("1cc05a")), (0.82, hexc("5cf09a")), (0.92, hexc("2fd0c0")), (1.0, hexc("c8ffe0"))], "9cffc8")
+    return alb, 1.0, 1.0
+
+
+def fin_ruby(kn, mask, sfrac, d_edge, d_spine, bev):
+    alb = doppler_like(1201, [(0.0, hexc("0c0103")), (0.22, hexc("4a0310")), (0.45, hexc("9a0a22")),
+                              (0.66, hexc("dc1834")), (0.82, hexc("ff4a5c")), (0.92, hexc("ff7a8a")), (1.0, hexc("ffd0d6"))], "ffb0ba")
+    return alb, 1.0, 1.0
+
+
+def fin_marble(kn, mask, sfrac, d_edge, d_spine, bev):
+    """Marble fade: a red-yellow flame swirl that runs into a blue tip."""
+    def flame(u, v):
+        return np.sin(u * 0.7 + v * 2.3) + 0.8 * np.sin(u * 1.7 - v * 1.3 + 1.0)
+    sw = warp(flame, 2.4, 1.5, 1301)
+    t = 0.5 + 0.25 * sw + 0.25 * (fbm(1.1, 1303, 4) - 0.5)
+    fire = ramp(t, [(0.0, hexc("5a0606")), (0.25, hexc("c41810")), (0.5, hexc("f05a10")),
+                    (0.72, hexc("ffb020")), (0.9, hexc("ffe68a")), (1.0, hexc("fff8e0"))])
+    ice = ramp(t, [(0.0, hexc("0a1440")), (0.5, hexc("2050e0")), (1.0, hexc("8ab4ff"))])
+    blue = smoothstep(0.55, 0.85, sfrac + 0.12 * (fbm(0.8, 1305, 3) - 0.5))
+    alb = lerp(fire, ice, blue)
+    alb *= (0.95 + 0.07 * brushed(1306))[..., None]
+    return alb, 1.0, 0.95
+
+
+def fin_ultraviolet(kn, mask, sfrac, d_edge, d_spine, bev):
+    """Ultraviolet: dark anodised steel with a violet cast, worn bright along scratches and the edge."""
+    n = fbm(1.2, 1401, 5, aniso=(1.8, 1.0))
+    alb = ramp(n, [(0, hexc("08060e")), (0.4, hexc("1c1430")), (0.65, hexc("3a2a66")), (1, hexc("7058b0"))])
+    scr = smoothstep(0.80, 0.86, fbm(0.25, 1403, 4, aniso=(6.0, 0.18)))
+    alb = lerp(alb, hexc("b8b2c8"), scr * 0.55)
+    wear = smoothstep(0.62, 0.78, fbm(0.7, 1405, 4)) * smoothstep(0.35, 0.0, d_edge) if d_edge is not None else 0
+    alb = lerp(alb, hexc("9a96a6"), np.clip(wear, 0, 1) * 0.6)
+    alb *= (0.94 + 0.08 * brushed(1406))[..., None]
+    return alb, 0.9, 0.8
+
+
 def outline(stations, cv=0.0):
     """stations: (u, top_half, bottom_half) -> polygon around the centre line."""
     top = [(u, cv - a) for u, a, b in stations]
@@ -712,7 +764,101 @@ def k8():
     return kn
 
 
-KNIVES = [k1, k2, k3, k4, k5, k6, k7, k8]
+def k9():
+    kn = Knife("tac_emerald", "Tactical · Emerald")
+    st = interp_stations([(0.45, 1.20, 1.20), (1.2, 1.58, 1.62), (3.0, 1.60, 1.70), (6.0, 1.50, 1.60),
+                          (9.5, 1.50, 1.70), (12.0, 1.55, 1.80), (12.9, 1.45, 1.62)])
+    st = finger_grooves(st, 6.4, 12.3, 3, 0.22)
+    m, inside = handle_body(kn, st)
+    alb = g10(hexc("0f1712"), 901)
+    kn.paint(m, alb, height=np.zeros((GH, GW), np.float32), metal=0.0, gloss=0.55, rnd=0.58, side=hexc("070b08"))
+    inlay = np.clip(1 - np.abs(inside - 0.20) / 0.045, 0, 1) * ((U > 2.0) & (U < 12.0)) * m
+    kn.alb = lerp(kn.alb, hexc("18b05a"), inlay * 0.85)
+    for cu in (3.2, 7.4, 11.2):
+        screw(kn, cu, 0.05, 0.21, colour="1c2a22")
+    cap = poly_mask(outline(interp_stations([(0.2, 1.05, 1.05), (0.55, 1.42, 1.42), (1.2, 1.55, 1.58), (1.5, 1.5, 1.52)])))
+    brass(kn, cap, h=np.clip(sdf_inside(cap) / 0.3, 0, 1) ** 0.5 * 0.2, seed=905)
+    hole(kn, 0.85, 0.0, 0.26, lip_colour=True)
+    guard_cross(kn, GUARD_A, GUARD_A + 0.8, 2.15, 2.25, knob=0.38, curve=0.08, seed=907)
+    blade(kn, GUARD_A + 0.8, 28.0, -1.55, 1.78, 0.55, clip=0.60, belly=0.72, clip_pow=1.15,
+          teeth=(0.05, 0.46, 0.44, 0.68), fuller=(0.09, 0.50, -0.62, 0.14),
+          etch=("ZEUS", 0.64, 0.55, 0.42), finish=fin_emerald)
+    kn.part("pommel", 0.2, 1.5, 1.05, 0.30)
+    kn.part("handle", 1.5, GUARD_A, 1.06, 0.58)
+    kn.part("guard", GUARD_A, GUARD_A + 0.8, 1.15, 0.22)
+    kn.part("blade", GUARD_A + 0.8, 28.2, 0.26, 0.0)
+    kn.glow = "#34e07a"
+    return kn
+
+
+def k10():
+    kn = Knife("tac_marble", "Tactical · Marble fade")
+    st = interp_stations([(2.6, 1.20, 1.20), (3.2, 1.45, 1.45), (6.5, 1.40, 1.45), (10.0, 1.42, 1.50),
+                          (12.2, 1.48, 1.55), (12.75, 1.42, 1.48)])
+    m, inside = handle_body(kn, st)
+    paracord(kn, m, 3.2, 12.2, hexc("c42a18"), 1001)
+    for a, b in ((2.55, 3.25), (12.15, 12.75)):
+        f = poly_mask(outline([(a, 1.48, 1.50), (b, 1.48, 1.50)]))
+        brass(kn, f, h=np.clip(sdf_inside(f) / 0.2, 0, 1) * 0.14, seed=int(a * 11))
+    ring(kn, 1.45, 0.0, 1.25, 0.78)
+    guard_cross(kn, GUARD_A, GUARD_A + 0.62, 2.05, 2.15, knob=0.32, curve=0.10, seed=1007)
+    blade(kn, GUARD_A + 0.62, 28.0, -1.50, 1.70, 0.45, clip=0.62, belly=0.70, clip_pow=1.15,
+          teeth=(0.05, 0.48, 0.38, 0.62), fuller=(0.10, 0.48, -0.60, 0.13), finish=fin_marble)
+    kn.part("ring", 0.1, 2.7, 0.40, 0.30)
+    kn.part("handle", 2.7, GUARD_A, 0.98, 0.55)
+    kn.part("guard", GUARD_A, GUARD_A + 0.62, 1.1, 0.16)
+    kn.part("blade", GUARD_A + 0.62, 28.2, 0.26, 0.0)
+    kn.glow = "#ff8a2a"
+    return kn
+
+
+def k11():
+    kn = Knife("tac_ruby", "Tactical · Ruby")
+    st = interp_stations([(0.35, 0.60, 0.60), (0.9, 1.20, 1.25), (2.0, 1.42, 1.48), (5.5, 1.30, 1.40),
+                          (9.0, 1.30, 1.45), (11.6, 1.40, 1.55), (12.9, 1.35, 1.45)])
+    st = finger_grooves(st, 6.8, 12.4, 3, 0.14)
+    m, inside = handle_body(kn, st)
+    alb = g10(hexc("1a0a0e"), 1101)
+    kn.paint(m, alb, height=np.zeros((GH, GW), np.float32), metal=0.0, gloss=0.6, rnd=0.55, side=hexc("0c0406"))
+    for cu in (3.0, 7.0, 11.0):
+        screw(kn, cu, 0.05, 0.20, colour="3a1018")
+    guard_cross(kn, GUARD_A, GUARD_A + 0.55, 2.35, 2.35, knob=0.30, curve=0.0, seed=1107)
+    blade(kn, GUARD_A + 0.55, 28.0, -1.35, 1.55, 0.05, clip=0.66, belly=0.55, clip_pow=1.6,
+          teeth=None, serr=(0.05, 0.36, 0.26, 0.45), fuller=None,
+          etch=("ZEUS", 0.30, -0.65, 0.40), finish=fin_ruby)
+    kn.part("handle", 0.2, GUARD_A, 0.95, 0.50)
+    kn.part("guard", GUARD_A, GUARD_A + 0.55, 1.05, 0.15)
+    kn.part("blade", GUARD_A + 0.55, 28.2, 0.26, 0.0)
+    kn.glow = "#ff2a48"
+    return kn
+
+
+def k12():
+    kn = Knife("tac_ultraviolet", "Tactical · Ultraviolet")
+    st = interp_stations([(0.55, 1.35, 1.35), (1.6, 1.50, 1.55), (3.5, 1.60, 1.62), (7.0, 1.52, 1.58),
+                          (10.5, 1.58, 1.68), (12.9, 1.45, 1.55)])
+    m, inside = handle_body(kn, st)
+    rubber(kn, m, hexc("15111c"), 1201)
+    rb, zone, ph = ribs(2.1, 12.3, 0.62, 0.10)
+    kn.height += rb * m
+    kn.alb = kn.alb * (1 - 0.35 * (zone * m * (1 - np.sin(ph * math.pi) ** 2))[..., None])
+    cap = poly_mask(outline(interp_stations([(0.25, 1.2, 1.2), (0.7, 1.48, 1.48), (1.4, 1.55, 1.58), (1.75, 1.5, 1.52)])))
+    ci = sdf_inside(cap)
+    kn.paint(cap, steel_base(1205, 0.55), height=np.clip(ci / 0.3, 0, 1) ** 0.5 * 0.2, metal=1.0, gloss=0.8,
+             bevel=np.clip(1 - ci / 0.1, 0, 1) * 0.5, rnd=0.12, side=hexc("3a3e46"))
+    guard_cross(kn, GUARD_A, GUARD_A + 0.95, 2.0, 2.1, knob=0.40, curve=0.16, seed=1207)
+    blade(kn, GUARD_A + 0.95, 28.0, -1.50, 1.72, 0.50, clip=0.62, belly=0.72, clip_pow=1.15,
+          teeth=(0.05, 0.44, 0.40, 0.64), fuller=(0.09, 0.50, -0.60, 0.13),
+          etch=("ZEUS", 0.64, 0.55, 0.40), finish=fin_ultraviolet)
+    kn.part("pommel", 0.2, 1.8, 1.05, 0.30)
+    kn.part("handle", 1.8, GUARD_A, 1.05, 0.60)
+    kn.part("guard", GUARD_A, GUARD_A + 0.95, 1.15, 0.22)
+    kn.part("blade", GUARD_A + 0.95, 28.2, 0.26, 0.0)
+    kn.glow = "#9a6cff"
+    return kn
+
+
+KNIVES = [k1, k2, k3, k4, k5, k6, k7, k8, k9, k10, k11, k12]
 
 
 # =================================================================== bake
@@ -879,7 +1025,8 @@ def main():
         kn = fn()
         print("baking", kn.id, flush=True)
         old[kn.id] = write(kn)
-    order = ["tac_damascus", "tac_slaughter", "tac_case", "tac_fade", "tac_crimson", "tac_tiger", "tac_doppler", "tac_urban"]
+    order = ["tac_damascus", "tac_slaughter", "tac_case", "tac_fade", "tac_crimson", "tac_tiger", "tac_doppler", "tac_urban",
+             "tac_emerald", "tac_marble", "tac_ruby", "tac_ultraviolet"]
     meta["knives"] = [old[k] for k in order if k in old]
     os.makedirs(os.path.dirname(OUT_JSON), exist_ok=True)
     with open(OUT_JSON, "w") as f:
