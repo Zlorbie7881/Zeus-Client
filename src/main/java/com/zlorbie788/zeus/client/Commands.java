@@ -214,7 +214,13 @@ public final class Commands {
                 .then(literal("undo").executes(c -> {
                     com.zlorbie788.zeus.mods.AiPilot.undo();
                     return 1;
-                }))
+                }).then(literal("all").executes(c -> {
+                    com.zlorbie788.zeus.mods.AiPilot.undo(0);
+                    return 1;
+                })).then(argument("count", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1, 50)).executes(c -> {
+                    com.zlorbie788.zeus.mods.AiPilot.undo(com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(c, "count"));
+                    return 1;
+                })))
                 .then(literal("plan").executes(c -> {
                     for (String line : com.zlorbie788.zeus.mods.AiPilot.planLines()) say(line);
                     return 1;
@@ -250,7 +256,7 @@ public final class Commands {
                 {"/zeus ai models", "list the provider's models, click one to use it"},
                 {"/zeus ai model <name>", "change the model"},
                 {"/zeus ai again", "repeat the last request"},
-                {"/zeus ai stop / undo / plan / status", "stay in control"},
+                {"/zeus ai stop / undo [n|all] / plan / status", "stay in control"},
         };
         for (String[] row : rows) {
             mc.gui.getChat().addMessage(Component.literal("  " + row[0]).withStyle(s -> s.withColor(ChatFormatting.AQUA)

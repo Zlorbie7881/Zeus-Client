@@ -119,7 +119,9 @@ public final class KnifeSwing extends Module {
         System.arraycopy(st, 0, all, 2, st.length);
         return all;
     }
-    private final Setting.Choice type = add(new Setting.Choice("Knife type", "Butterfly knife: the balisong with its flips. Karambit: the curved claw knife whose ring sits on your finger and which spins around it. The others are the straight and curved knives of CS2 (Bayonet, M9 Bayonet, Huntsman, Flip, Gut, Falchion, Bowie, Navaja, Stiletto, Talon, Ursus, Classic, Paracord, Survival, Nomad, Skeleton, Kukri and the Shadow Daggers) plus the Tantō, Kris, Cleaver, Kunai, Jambiya, Khopesh, Machete and Dagger. They all use the karambit's tricks.", 0, TYPES));
+    /** The first HD tactical knife: the default, because it is the best looking one. */
+    private static final int FIRST_HD = 2 + KnifeArt.SMODELS.length - KnifeArt.HD_COUNT;
+    private final Setting.Choice type = add(new Setting.Choice("Knife type", "The HD Tactical knives are lit high-resolution 3D models (Damascus, Slaughter, Case hardened, Fade, Crimson web, Tiger tooth, Sapphire, Urban masked, Emerald, Marble fade, Ruby, Ultraviolet). Butterfly knife: the balisong with its flips. Karambit: the curved claw knife whose ring sits on your finger. The others are the pixel versions of the CS2 knives plus the Tantō, Kris, Cleaver, Kunai, Jambiya, Khopesh, Machete and Dagger. They all use the karambit's tricks.", FIRST_HD, TYPES));
     private final Setting.Choice sfinish = add(new Setting.Choice("Knife finish", "The paint of the straight knives: steel, Fade, Slaughter, Doppler, Case hardened and so on.", 0, KnifeArt.SFINISHES)).showIf(() -> self != null && self.type.index() >= 2 && KnifeArt.hdType(self.type.index()) < 0);
     private final Setting.Choice when = add(new Setting.Choice("When it shows", "Choose when the knife overlay replaces the first-person hand: empty hand, both hands empty, always, or whenever you hold any sword.", 0, "Empty hand", "Both hands empty", "Always", "Replace any sword"));
     private final Setting.Bool hideHand = add(new Setting.Bool("Hide the game's own hand", "Hides the game's arm and held item while the knife is in your hand, so the two do not overlap.", true));
@@ -265,8 +267,9 @@ public final class KnifeSwing extends Module {
         String name = TYPES[idx];
         String mesh = karambit() ? KnifeArt.nameOf(key()) : "Butterfly knife";
         boolean loaded = KnifeMesh.has(mesh);
-        String render = hd() >= 0 ? (KnifeHDGui.ready(hd()) ? "HD model: lit 3D, high resolution" : "HD model missing, using pixels")
-                : !model3d.on() ? "pixel knife (3D off)"
+        String render = hd() >= 0 ? (KnifeHDGui.ready(hd()) ? "HD model: lit 3D, high resolution"
+                : KnifeHDGui.problem().isEmpty() ? "HD model missing, using pixels" : "HD model failed: " + KnifeHDGui.problem())
+                : !model3d.on() ? "pixel knife: pick an HD Tactical knife for the lit 3D look"
                 : loaded ? (safeDraw.on() ? "3D model ready (safe draw on)" : "3D model in use") : "3D mesh missing, using pixels";
         String state = playing() ? "playing a trick" : (isOpen ? "open in hand" : "closed in hand");
         return java.util.List.of(name, render, state, "Tricks: " + (karambit() ? KTRICKS.length : TRICKS.length) + " loaded");

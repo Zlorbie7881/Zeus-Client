@@ -25,17 +25,28 @@ public final class KnifeHDGui {
     }
 
     private static final KnifeHD.Frame FRAME = new KnifeHD.Frame();
-    private static boolean broken;
+    private static volatile long brokenUntil;
+    private static int failures;
+    private static String lastError = "";
+
+    /** One failure (a texture still uploading, a resource reload) should not cost the HD knife for the whole session. */
+    private static boolean broken() {
+        return failures >= 5 || System.currentTimeMillis() < brokenUntil;
+    }
+
+    public static String problem() {
+        return failures == 0 ? "" : lastError;
+    }
 
     public static boolean ready(int knife) {
-        if (broken) return false;
+        if (broken()) return false;
         KnifeHD.Model m = KnifeHD.model(knife);
         return m != null && Tex.sprite(KnifeHD.sheet(m, 1)) != null;
     }
 
     /** Draws a knife at the rig transform k.  Returns false if it could not be drawn. */
     public static boolean draw(GuiGraphics g, int knife, Rig.T k, float unit, float alpha, boolean light) {
-        if (broken) return false;
+        if (broken()) return false;
         try {
             KnifeHD.Model m = KnifeHD.model(knife);
             if (m == null) return false;
@@ -63,8 +74,10 @@ public final class KnifeHDGui {
             }
             return true;
         } catch (RuntimeException | Error e) {
-            broken = true;
-            com.zlorbie788.zeus.core.Zeus.LOG.warn("HD knife could not be drawn; using the pixel knife", e);
+            failures++;
+            brokenUntil = System.currentTimeMillis() + 5_000L;
+            lastError = e.getClass().getSimpleName() + (e.getMessage() == null ? "" : ": " + e.getMessage());
+            com.zlorbie788.zeus.core.Zeus.LOG.warn("HD knife could not be drawn (attempt {}); using the pixel knife", failures, e);
             return false;
         }
     }
@@ -76,7 +89,7 @@ public final class KnifeHDGui {
      * to keep the face towards the viewer and shows the highlights running along the blade.
      */
     public static boolean showcase(GuiGraphics g, int knife, int bx, int by, int bw, int bh, float time, boolean big) {
-        if (broken) return false;
+        if (broken()) return false;
         KnifeHD.Model m = KnifeHD.model(knife);
         if (m == null) return false;
         float sway = (float) Math.sin(time * (big ? 0.9 : 0.7) + knife * 0.8);
