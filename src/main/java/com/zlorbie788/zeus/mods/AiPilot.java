@@ -96,6 +96,8 @@ public final class AiPilot extends Module {
     private static final java.util.concurrent.atomic.AtomicInteger PLANS = new java.util.concurrent.atomic.AtomicInteger();
     private static volatile boolean paused;
     private static volatile String lastAsked = "";
+    private static volatile long lastLatency;
+    static final java.util.concurrent.atomic.AtomicLong TOKENS = new java.util.concurrent.atomic.AtomicLong();
     private static volatile String followPrompt = "";
     private static volatile long followAt;
     private static volatile int followUps;
@@ -444,32 +446,9 @@ public final class AiPilot extends Module {
         if (self == null) return "Zeus AI Functions is missing.";
         if (!hasKey()) return "Save a key first: /zeus ai key <key>, or /zeus ai tutorial.";
         String secret = self.token.get();
-        String chat = self.url();
-        String base = chat.endsWith("/chat/completions") ? chat.substring(0, chat.length() - "/chat/completions".length()) : chat;
         WORKER.submit(() -> {
             try {
-                HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(base + "/models")).timeout(Duration.ofSeconds(20)).GET();
-                if (secret != null && !secret.isBlank()) builder.header("Authorization", "Bearer " + secret.trim());
-                HttpResponse<String> response = HTTP.send(builder.build(), HttpResponse.BodyHandlers.ofString());
-                if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                    throw new IllegalStateException(self.explainError(response.statusCode(), errorText(response.body())));
-                }
-                JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
-                JsonArray data = root.has("data") && root.get("data").isJsonArray() ? root.getAsJsonArray("data")
-                        : root.has("models") && root.get("models").isJsonArray() ? root.getAsJsonArray("models") : new JsonArray();
-                List<String> ids = new ArrayList<>();
-                for (JsonElement e : data) {
-                    String id = e.isJsonObject() && e.getAsJsonObject().has("id") ? e.getAsJsonObject().get("id").getAsString()
-                            : e.isJsonObject() && e.getAsJsonObject().has("name") ? e.getAsJsonObject().get("name").getAsString()
-                            : e.isJsonPrimitive() ? e.getAsString() : null;
-                    if (id == null) continue;
-                    if (id.startsWith("models/")) id = id.substring(7);
-                    String l = id.toLowerCase(Locale.ROOT);
-                    if (l.contains("whisper") || l.contains("embed") || l.contains("tts") || l.contains("guard") || l.contains("dall-e")
-                            || l.contains("moderation") || l.contains("audio") || l.contains("image") || l.contains("transcribe")
-                            || l.contains("realtime") || l.contains("search") || l.contains("babbage") || l.contains("davinci")) continue;
-                    ids.add(id);
-                }
+                List<String> ids = self.listModels(secret);
                 java.util.Collections.sort(ids);
                 Minecraft.getInstance().execute(() -> AiTutorial.models(ids, self.model.get()));
             } catch (Throwable t) {
@@ -478,6 +457,64 @@ public final class AiPilot extends Module {
             }
         });
         return "Asking the provider which models it has...";
+    }
+
+    /** The provider's chat models (blocking; call on the worker thread). */
+    List<String> listModels(String secret) throws Exception {
+        String chat = url();
+        String base = chat.endsWith("/chat/completions") ? chat.substring(0, chat.length() - "/chat/completions".length()) : chat;
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(base + "/models")).timeout(Duration.ofSeconds(20)).GET();
+        if (secret != null && !secret.isBlank()) builder.header("Authorization", "Bearer " + secret.trim());
+        HttpResponse<String> response = HTTP.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IllegalStateException(explainError(response.statusCode(), errorText(response.body())));
+        }
+        JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
+        JsonArray data = root.has("data") && root.get("data").isJsonArray() ? root.getAsJsonArray("data")
+                : root.has("models") && root.get("models").isJsonArray() ? root.getAsJsonArray("models") : new JsonArray();
+        List<String> ids = new ArrayList<>();
+        for (JsonElement e : data) {
+            String id = e.isJsonObject() && e.getAsJsonObject().has("id") ? e.getAsJsonObject().get("id").getAsString()
+                    : e.isJsonObject() && e.getAsJsonObject().has("name") ? e.getAsJsonObject().get("name").getAsString()
+                    : e.isJsonPrimitive() ? e.getAsString() : null;
+            if (id == null) continue;
+            if (id.startsWith("models/")) id = id.substring(7);
+            String l = id.toLowerCase(Locale.ROOT);
+            if (l.contains("whisper") || l.contains("embed") || l.contains("tts") || l.contains("guard") || l.contains("dall-e")
+                    || l.contains("moderation") || l.contains("audio") || l.contains("image") || l.contains("transcribe")
+                    || l.contains("realtime") || l.contains("search") || l.contains("babbage") || l.contains("davinci")) continue;
+            ids.add(id);
+        }
+        return ids;
+    }
+
+    /**
+     * The best replacement when the configured model is gone: same family first (llama-3.3 for a retired
+     * llama-3.1), then a known good general chat family, then anything with instruct or chat in its name.
+     */
+    static String replacementModel(String old, List<String> ids) {
+        if (ids.isEmpty()) return null;
+        String o = old == null ? "" : old.toLowerCase(Locale.ROOT);
+        String family = o.replaceAll("[^a-z]+.*$", "");
+        String[] prefer = {"llama-3.3-70b", "gpt-4o-mini", "gpt-4.1-mini", "gemini-2.5-flash", "gemini-2.0-flash", "deepseek-chat",
+                "mistral-small", "qwen", "llama", "gpt", "gemini", "mistral"};
+        if (!family.isEmpty()) {
+            for (String id : ids) {
+                String l = id.toLowerCase(Locale.ROOT);
+                if (l.startsWith(family) && !l.contains("vision") && !l.contains("preview")) return id;
+            }
+        }
+        for (String want : prefer) {
+            for (String id : ids) {
+                String l = id.toLowerCase(Locale.ROOT);
+                if (l.contains(want) && !l.contains("vision") && !l.contains("mini-tts")) return id;
+            }
+        }
+        for (String id : ids) {
+            String l = id.toLowerCase(Locale.ROOT);
+            if (l.contains("instruct") || l.contains("chat")) return id;
+        }
+        return ids.get(0);
     }
 
     /**
@@ -608,6 +645,20 @@ public final class AiPilot extends Module {
             USED.set(0);
         }
         return USED.incrementAndGet() <= Math.max(1, perHour.i());
+    }
+
+    /** Undo several AI changes at once; all of them when count is 0 or less. */
+    public static void undo(int count) {
+        int n = 0;
+        while (count <= 0 || n < count) {
+            synchronized (UNDO) {
+                if (UNDO.isEmpty()) break;
+            }
+            undo();
+            n++;
+        }
+        if (n == 0) Notify.info("Nothing to undo");
+        else Notify.good("Undid " + n + " change(s)");
     }
 
     public static void undo() {
@@ -1244,13 +1295,42 @@ public final class AiPilot extends Module {
      */
     String exchange(String instruction, String secret, boolean bare) throws Exception {
         IllegalStateException last = null;
-        for (int attempt = 0; attempt < 4; attempt++) {
+        boolean healed = false;
+        for (int attempt = 0; attempt < 5; attempt++) {
             try {
-                return content(call(body(instruction, bare), secret));
+                long start = System.currentTimeMillis();
+                String content = content(call(body(instruction, bare), secret));
+                lastLatency = System.currentTimeMillis() - start;
+                return content;
             } catch (ProviderError e) {
                 last = e;
-                if (e.code != 400 && e.code != 422) throw e;
                 String m = e.detail.toLowerCase(Locale.ROOT);
+                String current = model.get() == null ? "" : model.get().toLowerCase(Locale.ROOT).trim();
+                boolean aboutParameter = m.contains("parameter") || m.contains("max_tokens") || m.contains("temperature") || m.contains("response_format");
+                boolean modelGone = (e.code == 404 || e.code == 400) && !aboutParameter
+                        && ((!current.isEmpty() && m.contains(current)) || m.contains("model_not_found") || m.contains("model not found")
+                        || m.contains("unknown model") || m.contains("invalid model") || m.contains("decommissioned"))
+                        && (m.contains("not found") || m.contains("does not exist") || m.contains("decommissioned") || m.contains("deprecated")
+                        || m.contains("not supported") || m.contains("invalid") || m.contains("no longer") || m.contains("unknown"));
+                if (modelGone && !healed) {
+                    // Providers retire models; pick the closest one they still offer instead of breaking.
+                    healed = true;
+                    String old = model.get();
+                    String next = null;
+                    try {
+                        next = replacementModel(old, listModels(secret));
+                    } catch (Exception ignored) {
+                    }
+                    if (next == null || next.equalsIgnoreCase(old)) throw e;
+                    model.set(next);
+                    String said = "The model " + old + " is not available any more, so Zeus AI switched to " + next + ".";
+                    try {
+                        Minecraft.getInstance().execute(() -> AiTutorial.chat(said, false));
+                    } catch (Throwable ignored) {
+                    }
+                    continue;
+                }
+                if (e.code != 400 && e.code != 422) throw e;
                 if (!noJsonMode && (m.contains("response_format") || m.contains("json_object") || m.contains("json mode"))) {
                     noJsonMode = true;
                 } else if (!completionTokens && m.contains("max_tokens")) {
@@ -1364,6 +1444,10 @@ public final class AiPilot extends Module {
             throw new IllegalStateException("the provider sent something that is not JSON: " + shorten(body));
         }
         if (root.has("error") && !root.get("error").isJsonNull()) throw new IllegalStateException("the provider said: " + errorText(body));
+        if (root.has("usage") && root.get("usage").isJsonObject()) {
+            JsonObject usage = root.getAsJsonObject("usage");
+            if (usage.has("total_tokens") && usage.get("total_tokens").isJsonPrimitive()) TOKENS.addAndGet(usage.get("total_tokens").getAsLong());
+        }
         JsonArray choices = root.has("choices") && root.get("choices").isJsonArray() ? root.getAsJsonArray("choices") : null;
         if (choices == null || choices.isEmpty()) throw new IllegalStateException("the provider returned no answer");
         JsonObject first = choices.get(0).getAsJsonObject();
@@ -4900,7 +4984,9 @@ public final class AiPilot extends Module {
         if (!lastTest.isBlank()) out.add((lastTestOk ? "Test passed: " : lastTest.equals("testing") ? "Test: " : "Test failed: ") + shorten(lastTest));
         out.add((busy ? "Working" : QUEUE.isEmpty() ? "Idle" : QUEUE.size() + " action(s) running")
                 + " · " + USED.get() + "/" + perHour.i() + " this hour" + (preview.on() ? " · preview" : "")
-                + " · " + NOTES.size() + " note(s)");
+                + " · " + NOTES.size() + " note(s)"
+                + (TOKENS.get() > 0 ? " · " + TOKENS.get() + " tokens this session" : "")
+                + (lastLatency > 0 ? " · last answer " + lastLatency + " ms" : ""));
         if (!lastPrompt.isBlank()) out.add("Asked: " + shorten(lastPrompt));
         synchronized (PLAN) {
             int shown = 0;

@@ -203,7 +203,7 @@ public final class ZeusScreen extends Screen {
             search = new EditBox(minecraft.font, 0, 0, 100, 12, Component.empty());
             search.setMaxLength(32);
             search.setBordered(false);
-            search.setHint(Component.literal("Search modules"));
+            search.setHint(Component.literal("Search modules, or type active"));
             search.setResponder(s -> scroll = 0);
         }
         addRenderableWidget(search);
@@ -1028,6 +1028,34 @@ public final class ZeusScreen extends Screen {
         syncSearchCache(q);
         Integer cached = scoreCache.get(m);
         if (cached != null) return cached;
+        // "active" (or on / enabled) lists the modules that are switched on, "inactive" (off / disabled)
+        // the ones that are off; "active esp" narrows that down by name.
+        String lower = q.trim().toLowerCase(java.util.Locale.ROOT);
+        Boolean wantOn = null;
+        String rest = lower;
+        for (String[] group : STATE_WORDS) {
+            for (String word : group) {
+                if (lower.equals(word) || lower.startsWith(word + " ")) {
+                    wantOn = group == STATE_WORDS[0];
+                    rest = lower.substring(word.length()).trim();
+                    break;
+                }
+            }
+            if (wantOn != null) break;
+        }
+        if (wantOn != null) {
+            int score = !m.toggleable() || m.enabled() != wantOn ? -1 : rest.isEmpty() ? 1500 - Math.min(400, m.name.length()) : textScore(m, rest);
+            scoreCache.put(m, score);
+            return score;
+        }
+        int best = textScore(m, q);
+        scoreCache.put(m, best);
+        return best;
+    }
+
+    private static final String[][] STATE_WORDS = {{"active", "enabled", "on", "running"}, {"inactive", "disabled", "off"}};
+
+    private int textScore(Module m, String q) {
         Index ix = INDEX.computeIfAbsent(m, Index::new);
         String needle = normalizeSearch(q);
         int best = Math.max(scoreText(ix.name, m.name, needle), scoreText(ix.id, m.id, needle));
@@ -1039,7 +1067,6 @@ public final class ZeusScreen extends Screen {
             best = Math.max(best, scoreText(ix.settingNames[i], list.get(i).name, needle) - 90);
             best = Math.max(best, scoreText(ix.settingDescs[i], null, needle) - 170);
         }
-        scoreCache.put(m, best);
         return best;
     }
 
@@ -1099,8 +1126,18 @@ public final class ZeusScreen extends Screen {
         return prev[b.length()];
     }
 
+    private int enabledSignature;
+
     private List<Module> searchResults(String q, Category only) {
         syncSearchCache(q);
+        // State searches ("active") must follow modules being switched while the list is open.
+        int sig = 1;
+        for (Module m : Zeus.all()) if (m.enabled()) sig = sig * 31 + m.id.hashCode();
+        if (sig != enabledSignature) {
+            enabledSignature = sig;
+            scoreCache.clear();
+            resultCache.clear();
+        }
         Object key = only == null ? "*" : only;
         List<Module> hit = resultCache.get(key);
         if (hit != null) return hit;
