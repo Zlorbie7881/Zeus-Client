@@ -132,6 +132,7 @@ public final class KnifeMesh {
 
     public static boolean has(String name) {
         load();
+        if (KnifeUv.has(name)) return true;
         return !broken && models.containsKey(name) && Tex.sprite(TRI) != null;
     }
 
@@ -232,6 +233,11 @@ public final class KnifeMesh {
 
     private static boolean drawMesh(GuiGraphics g, String name, Rig.T k, float a, float b, float c, KnifeArt.Look look, float unit, float alpha, boolean cheap, String clipName, float clipT) {
         load();
+        // A knife that has a UV mapped model renders through the textured path instead.
+        if (KnifeUv.has(name)) {
+            float[] root = clipName == null ? null : clipRoot(name, clipName, clipT);
+            if (KnifeUv.draw(g, name, k, root, look, unit, alpha)) return true;
+        }
         Model m = models.get(name);
         if (m == null) return false;
         Clip clip = clipName == null ? null : m.clips.get(clipName);
@@ -359,6 +365,20 @@ public final class KnifeMesh {
     }
 
     private static final int[] BRASS = {0xFF3A2408, 0xFF5E3A0E, 0xFF9A6420, 0xFFC8933E, 0xFFEFC97A};
+
+    /** Root transform of a clip at time t: {rx, ry, rz, px, py, pz, pivotX, pivotY, pivotZ}. */
+    static float[] clipRoot(String name, String clipName, float t) {
+        load();
+        Model m = models == null ? null : models.get(name);
+        if (m == null) return null;
+        Clip c = m.clips.get(clipName);
+        if (c == null) return null;
+        float[] rot = new float[3], pos = new float[3];
+        sample3(c.rot, t, rot);
+        sample3(c.pos, t, pos);
+        return new float[] {rot[0], rot[1], rot[2], pos[0], pos[1], pos[2],
+                c.pivot[0], c.pivot[1], c.pivot[2]};
+    }
 
     private static int shade(String mat, KnifeArt.Look look, float lam, float nx, float ny,
                              float nz, float lx, float ly, int seed, float alpha) {

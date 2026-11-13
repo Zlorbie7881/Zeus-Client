@@ -1,0 +1,570 @@
+{
+  "texture_size": [
+    128,
+    128
+  ],
+  "name": "Kunai",
+  "textures": {
+    "steel": "zeus:knives/tactical_steel",
+    "trim": "zeus:knives/tactical_trim"
+  },
+  "elements": [
+    {
+      "name": "blade",
+      "from": [
+        -1.58,
+        5.6,
+        -0.16
+      ],
+      "to": [
+        1.58,
+        20.4,
+        0.16
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            0.0,
+            0.0,
+            3.0,
+            16.0
+          ],
+          "texture": "#steel"
+        },
+        "south": {
+          "uv": [
+            0.0,
+            0.0,
+            3.0,
+            16.0
+          ],
+          "texture": "#steel"
+        },
+        "east": {
+          "uv": [
+            3.0,
+            0.0,
+            4.0,
+            16.0
+          ],
+          "texture": "#steel"
+        },
+        "west": {
+          "uv": [
+            3.0,
+            0.0,
+            4.0,
+            16.0
+          ],
+          "texture": "#steel"
+        },
+        "up": {
+          "uv": [
+            3.0,
+            0.0,
+            4.0,
+            16.0
+          ],
+          "texture": "#steel"
+        },
+        "down": {
+          "uv": [
+            3.0,
+            0.0,
+            4.0,
+            16.0
+          ],
+          "texture": "#steel"
+        }
+      }
+    },
+    {
+      "name": "guard",
+      "from": [
+        -0.74,
+        4.72,
+        -0.48
+      ],
+      "to": [
+        0.74,
+        5.66,
+        0.48
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        },
+        "south": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        },
+        "east": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        },
+        "west": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        },
+        "up": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        },
+        "down": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        }
+      }
+    },
+    {
+      "name": "wing-1",
+      "from": [
+        -0.98,
+        4.5,
+        -0.4
+      ],
+      "to": [
+        0.16,
+        5.12,
+        0.4
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        },
+        "south": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        },
+        "east": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        },
+        "west": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        },
+        "up": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        },
+        "down": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        }
+      },
+      "rotation": {
+        "origin": [
+          -0.7,
+          4.8,
+          0.0
+        ],
+        "axis": "z",
+        "angle": 16,
+        "rescale": false
+      }
+    },
+    {
+      "name": "wing1",
+      "from": [
+        0.42,
+        4.5,
+        -0.4
+      ],
+      "to": [
+        1.56,
+        5.12,
+        0.4
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        },
+        "south": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        },
+        "east": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        },
+        "west": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        },
+        "up": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        },
+        "down": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        }
+      },
+      "rotation": {
+        "origin": [
+          0.7,
+          4.8,
+          0.0
+        ],
+        "axis": "z",
+        "angle": -16,
+        "rescale": false
+      }
+    },
+    {
+      "name": "bolster_hi",
+      "from": [
+        -1.14,
+        4.22,
+        -0.62
+      ],
+      "to": [
+        1.14,
+        4.74,
+        0.62
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        },
+        "south": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        },
+        "east": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        },
+        "west": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        },
+        "up": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        },
+        "down": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        }
+      }
+    },
+    {
+      "name": "bolster_lo",
+      "from": [
+        -1.14,
+        0.54,
+        -0.62
+      ],
+      "to": [
+        1.14,
+        1.06,
+        0.62
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        },
+        "south": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        },
+        "east": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        },
+        "west": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        },
+        "up": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        },
+        "down": {
+          "uv": [
+            4.0,
+            0.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#trim"
+        }
+      }
+    },
+    {
+      "name": "grip",
+      "from": [
+        -1.06,
+        1.06,
+        -0.58
+      ],
+      "to": [
+        1.06,
+        4.22,
+        0.58
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            4.0,
+            4.0,
+            8.0,
+            8.0
+          ],
+          "texture": "#trim"
+        },
+        "south": {
+          "uv": [
+            4.0,
+            4.0,
+            8.0,
+            8.0
+          ],
+          "texture": "#trim"
+        },
+        "east": {
+          "uv": [
+            4.0,
+            4.0,
+            8.0,
+            8.0
+          ],
+          "texture": "#trim"
+        },
+        "west": {
+          "uv": [
+            4.0,
+            4.0,
+            8.0,
+            8.0
+          ],
+          "texture": "#trim"
+        },
+        "up": {
+          "uv": [
+            4.0,
+            4.0,
+            8.0,
+            8.0
+          ],
+          "texture": "#trim"
+        },
+        "down": {
+          "uv": [
+            4.0,
+            4.0,
+            8.0,
+            8.0
+          ],
+          "texture": "#trim"
+        }
+      }
+    }
+  ],
+  "display": {
+    "gui": {
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "translation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "firstperson_righthand": {
+      "rotation": [
+        0,
+        -90,
+        20
+      ],
+      "translation": [
+        1.13,
+        3.2,
+        1.13
+      ],
+      "scale": [
+        0.62,
+        0.62,
+        0.62
+      ]
+    },
+    "thirdperson_righthand": {
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "translation": [
+        0,
+        3,
+        1
+      ],
+      "scale": [
+        0.52,
+        0.52,
+        0.52
+      ]
+    }
+  },
+  "ambientocclusion": false
+}
