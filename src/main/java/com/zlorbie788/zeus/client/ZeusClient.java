@@ -64,25 +64,69 @@ public class ZeusClient implements ClientModInitializer {
             if (!m.toggleable()) continue;
             m.key = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.zeus.module." + m.id, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, CATEGORY));
         }
-        Commands.init();
-        ZButton.register();
+        try {
+            Commands.init();
+        } catch (Throwable t) {
+            Zeus.LOG.error("Zeus commands could not be registered; /zeus will be missing", t);
+        }
+        try {
+            ZButton.register();
+        } catch (Throwable t) {
+            Zeus.LOG.error("The Zeus button could not be registered", t);
+        }
         HudElementRegistry.attachElementBefore(VanillaHudElements.MISC_OVERLAYS, Identifier.fromNamespaceAndPath(MOD_ID, "hud"), (g, tracker) -> {
-            Minecraft mc = Minecraft.getInstance();
-            com.zlorbie788.zeus.ui.ZeusLoading.worldFade(g, mc.getWindow().getGuiScaledWidth(), mc.getWindow().getGuiScaledHeight());
-            if (mc.options.hideGui) return;
-            if (mc.screen instanceof net.minecraft.client.gui.screens.PauseScreen) return;
-            Zeus.hud(g, mc, tracker.getGameTimeDeltaPartialTick(false), mc.getWindow().getGuiScaledWidth(), mc.getWindow().getGuiScaledHeight());
+            try {
+                Minecraft mc = Minecraft.getInstance();
+                com.zlorbie788.zeus.ui.ZeusLoading.worldFade(g, mc.getWindow().getGuiScaledWidth(), mc.getWindow().getGuiScaledHeight());
+                if (mc.options.hideGui) return;
+                if (mc.screen instanceof net.minecraft.client.gui.screens.PauseScreen) return;
+                Zeus.hud(g, mc, tracker.getGameTimeDeltaPartialTick(false), mc.getWindow().getGuiScaledWidth(), mc.getWindow().getGuiScaledHeight());
+            } catch (Throwable t) {
+                hudErrors++;
+                long now = System.currentTimeMillis();
+                if (now - lastHudError > 4000L) {
+                    lastHudError = now;
+                    Zeus.LOG.error("Zeus HUD drawing threw; the HUD was skipped", t);
+                }
+                if (hudErrors > 200 && !Zeus.destroyed()) Zeus.destroy();
+            }
         });
         ClientTickEvents.END_CLIENT_TICK.register(ZeusClient::onTick);
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
-            com.zlorbie788.zeus.client.web.LocalControlServer.stop();
-            Zeus.save();
-            com.zlorbie788.zeus.mods.AuctionMind.flush();
+            try {
+                com.zlorbie788.zeus.client.web.LocalControlServer.stop();
+                Zeus.save();
+                com.zlorbie788.zeus.mods.AuctionMind.flush();
+            } catch (Throwable t) {
+                Zeus.LOG.error("Zeus could not finish saving while the game closed", t);
+            }
         });
         Zeus.LOG.info("Zeus {} loaded. Press Z in a world (or type /zeus) to open the panel.", Zeus.VERSION);
     }
 
+    private static long lastTickError;
+    private static int tickErrors;
+    private static long lastHudError;
+    private static int hudErrors;
+
     private static void onTick(Minecraft mc) {
+        try {
+            onTickBody(mc);
+        } catch (Throwable t) {
+            tickErrors++;
+            long now = System.currentTimeMillis();
+            if (now - lastTickError > 4000L) {
+                lastTickError = now;
+                Zeus.LOG.error("Zeus threw during a client tick; that tick was skipped", t);
+            }
+            if (tickErrors > 40 && !Zeus.destroyed()) {
+                Zeus.destroy();
+                Zeus.LOG.error("Zeus kept failing and switched itself off for this session");
+            }
+        }
+    }
+
+    private static void onTickBody(Minecraft mc) {
         if (Zeus.destroyed()) {
             if (mc.screen instanceof ZeusScreen) mc.setScreen(null);
             return;
