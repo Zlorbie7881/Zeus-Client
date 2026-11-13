@@ -122,6 +122,7 @@ public final class AiPilot extends Module {
         boolean vertical;
         long verticalAt;
         BlockPos ore;
+        long lightAt;
 
         Job(JobKind kind, String target, int wanted, Vec3 to) {
             this.kind = kind;
@@ -1263,6 +1264,7 @@ public final class AiPilot extends Module {
             giveUp(mc, "stopped, health is low");
             return;
         }
+        if (defend(mc)) return;
         // Auto Eat owns the use key and the hotbar while it eats; fighting it would cancel the food.
         Gear.AutoEat eating = Zeus.get(Gear.AutoEat.class);
         if (eating != null && eating.enabled() && job.kind != JobKind.EAT && mc.player.isUsingItem()) {
@@ -2573,7 +2575,42 @@ public final class AiPilot extends Module {
         job.note = "mined " + pos.getX() + " " + pos.getY() + " " + pos.getZ();
         // Breaking the vein on the way down counts as finding it.
         if (job.kind == JobKind.MINE_UNTIL && matches(state, job.target)) job.ore = pos;
+        light(mc);
         return true;
+    }
+
+    // A job should not stop just because a zombie walked into the tunnel, and a dark tunnel is how
+    // you collect them in the first place, so jobs swing back and drop torches as they go.
+    private boolean defend(Minecraft mc) {
+        if (job == null) return false;
+        if (job.kind == JobKind.HUNT || job.kind == JobKind.FLEE || job.kind == JobKind.SHOOT) return false;
+        Player p = mc.player;
+        if (p.getAttackStrengthScale(0.5f) < 0.85f) return false;
+        net.minecraft.world.entity.Entity mob = nearestMonster(mc, 3.2);
+        if (mob == null) return false;
+        int weapon = bestWeapon(mc);
+        if (weapon >= 0 && weapon != Inv.selected()) Inv.select(weapon);
+        releaseAttack(mc);
+        lookAt(p, mob.position().add(0, mob.getBbHeight() * 0.6, 0));
+        mc.gameMode.attack(p, mob);
+        p.swing(InteractionHand.MAIN_HAND);
+        job.note = "fighting off a " + mob.getName().getString();
+        return true;
+    }
+
+    private void light(Minecraft mc) {
+        if (job == null) return;
+        long now = System.currentTimeMillis();
+        if (now < job.lightAt) return;
+        job.lightAt = now + 1200L;
+        BlockPos feet = mc.player.blockPosition();
+        if (mc.level.getBrightness(net.minecraft.world.level.LightLayer.BLOCK, feet) > 4) return;
+        java.util.function.Predicate<net.minecraft.world.item.ItemStack> torch =
+                s -> s.is(net.minecraft.world.item.Items.TORCH);
+        if (Inv.hotbar(torch) < 0) return;
+        if (!Build.replaceable(feet) || Build.against(feet, Build.REACH) == null) return;
+        lookAt(mc.player, centre(feet));
+        if (Build.place(feet, torch, true, Build.REACH) && job != null) job.note = "lighting the tunnel";
     }
 
     private static void lookAt(Player p, Vec3 c) {

@@ -107,7 +107,7 @@ public final class Combat {
             if (m == 0 && System.currentTimeMillis() < nextHit) return;
             if (legit && me.getAttackStrengthScale(0f) < 0.99f) return;
             if (m != 0 && full.on() && me.getAttackStrengthScale(0f) < 0.95f) return;
-            double reach = legit ? Math.min(range.get(), 3.1) : range.get();
+            double reach = legit ? Math.min(range.get(), 3.0) : range.get();
             double fovDeg = legit ? Math.min(fov.get(), 100.0) : fov.get();
             double r2 = reach * reach;
             Vec3 look = me.getLookAngle();
@@ -124,7 +124,9 @@ public final class Combat {
                     if (hostile ? !hostiles.on() : !animals.on()) continue;
                 }
                 double dist = mc.player.distanceToSqr(e);
-                if (dist > r2) continue;
+                if (dist > r2 + 4.0) continue;
+                // Measure the way the server measures: eyes to the nearest point of the hitbox.
+                if (Aim.reachTo(e) > reach) continue;
                 if (fovDeg < 359.0) {
                     Vec3 to = e.getBoundingBox().getCenter().subtract(me.getEyePosition());
                     if (to.lengthSqr() > 1e-6 && to.normalize().dot(look) < cone) continue;

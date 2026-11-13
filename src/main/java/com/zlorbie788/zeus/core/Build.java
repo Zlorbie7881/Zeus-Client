@@ -96,9 +96,18 @@ public final class Build {
         });
     }
 
+    // One placement per tick is what a real player can do; two in the same tick is a red flag for
+    // placement checks, so anything after the first is skipped and the caller tries again next tick.
+    private static int placedTick = -1;
+
     public static boolean place(BlockPos pos, Predicate<ItemStack> item, boolean swing, double reach) {
         if (!replaceable(pos) || blocked(pos)) return false;
+        Minecraft mc = mc();
+        if (mc.player == null) return false;
+        if (mc.player.tickCount == placedTick) return false;
         BlockHitResult hit = against(pos, reach);
-        return hit != null && useOn(hit, item, swing);
+        if (hit == null || !useOn(hit, item, swing)) return false;
+        placedTick = mc.player.tickCount;
+        return true;
     }
 }
