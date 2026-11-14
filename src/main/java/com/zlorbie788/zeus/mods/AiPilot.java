@@ -124,6 +124,9 @@ public final class AiPilot extends Module {
         long started = System.currentTimeMillis();
         long nextSearch;
         long healUntil;
+        int baseline = -1;
+        long dropUntil;
+        long lastFound;
         Direction stairDir;
         long nextScan;
         long quietSince;
@@ -174,7 +177,7 @@ public final class AiPilot extends Module {
                 case CHOP -> (wanted > 1 ? "chopping trees (" + Math.min(trees, wanted) + "/" + wanted + ")" : "chopping a tree")
                         + (mined > 0 ? " (" + mined + " logs)" : "");
                 case MINE_UNTIL -> "mining until it finds " + target;
-                case MINE_COUNT -> "mining " + target + " (" + Math.min(mined, wanted) + "/" + wanted + ")";
+                case MINE_COUNT -> "mining " + target.replace('_', ' ') + " (" + Math.min(crafts > 0 ? crafts : mined, wanted) + "/" + wanted + ")";
                 case GOTO -> "walking to " + Math.round(to.x) + " " + Math.round(to.y) + " " + Math.round(to.z);
                 case FOLLOW -> "following " + (target.isBlank() ? "the nearest player" : target);
                 case COLLECT -> "picking up drops" + (mined > 0 ? " (" + mined + ")" : "");
@@ -236,6 +239,7 @@ public final class AiPilot extends Module {
     private final Setting.Num perHour = add(new Setting.Num("Requests per hour", "A cap so a stuck loop cannot drain your credits.", 40, 5, 240, 5, ""));
     private final Setting.Num wait = add(new Setting.Num("Seconds between requests", "Keeps the client from hammering the provider.", 4, 1, 60, 1, " s"));
     private final Setting.Bool strictJson = add(new Setting.Bool("Strict JSON", "Asks the provider for a JSON object so the answer parses first time. It switches itself off if the provider rejects the option.", true));
+    private final Setting.Text prefix = add(new Setting.Text("Chat prefix", "Start a normal chat message with this and it goes to Zeus AI instead of the server, for example: @mine 10 iron. Leave empty to turn it off.", "@", 4));
     private final Setting.Bool chatHud = add(new Setting.Bool("Chat window", "A small chat window on screen for you and Zeus AI: your /zeus ai messages on the right, its answers on the left.", false));
     private final Setting.Choice chatCorner = add(new Setting.Choice("Chat window place", "Which corner the chat window sits in.", 0, "Bottom right", "Top right", "Top left", "Middle left")).showIf(() -> chatHud.on());
     private final Setting.Num chatSize = add(new Setting.Num("Chat window size", "How big the chat window is.", 1.0, 0.6, 1.6, 0.1, "x")).showIf(() -> chatHud.on());
@@ -249,6 +253,19 @@ public final class AiPilot extends Module {
         anywhere();
         alias("ai", "assistant", "pilot", "zeus ai", "functions", "jobs");
         try {
+            // "@mine 10 iron" in plain chat goes to Zeus AI and never reaches the server
+            net.fabricmc.fabric.api.client.message.v1.ClientSendMessageEvents.ALLOW_CHAT.register(message -> {
+                String pre = prefix.get() == null ? "" : prefix.get().trim();
+                if (pre.isEmpty() || !enabled() || message == null || !message.startsWith(pre)) return true;
+                String rest = message.substring(pre.length()).trim();
+                if (rest.isEmpty()) return true;
+                Minecraft.getInstance().execute(() -> {
+                    AiTutorial.echo(rest);
+                    String said = ask(rest);
+                    if (said != null && !said.startsWith("Thinking")) AiTutorial.chat(said, false);
+                });
+                return false;
+            });
             net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents.CHAT.register((message, signed, sender, params, time) -> hearChat(message.getString()));
             net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents.GAME.register((message, overlay) -> {
                 if (!overlay) hearChat(message.getString());
@@ -2756,10 +2773,21 @@ public final class AiPilot extends Module {
             }
         }
         if (job.block == null) return;
+        if (job.lastFound == 0 || !job.block.equals(job.ore)) {
+            job.ore = job.block;
+            job.lastFound = now;
+        } else if (now - job.lastFound > 12_000L) {
+            SKIP_LOGS.add(job.block);
+            job.note = "skipping a log it cannot reach";
+            job.block = null;
+            job.lastFound = 0;
+            return;
+        }
         if (!mineBlock(mc, job.block)) return;
         if (job == null) return;
         job.mined++;
         job.block = null;
+        job.lastFound = 0;
     }
 
     private void tillTick(Minecraft mc) {
@@ -3437,6 +3465,44 @@ public final class AiPilot extends Module {
         return out;
     }
 
+    /** How much raw material a crafted building part takes per item, roughly. */
+    private static float rawPer(String id) {
+        if (id.endsWith("_planks")) return 0.25f;            // logs per plank
+        if (id.endsWith("_slab")) return 0.5f;
+        if (id.endsWith("_stairs")) return 1.5f;
+        if (id.endsWith("_fence") || id.endsWith("_fence_gate")) return 1.7f;
+        if (id.endsWith("_trapdoor")) return 3f;
+        if (id.endsWith("_door")) return 2f;
+        if (id.endsWith("_wall")) return 1f;
+        if (id.equals("stone_bricks")) return 1f;
+        if (id.equals("chest") || id.equals("furnace")) return 8f;
+        if (id.equals("crafting_table")) return 4f;
+        if (id.equals("ladder") || id.equals("stick")) return 0.6f;
+        return 0f;
+    }
+
+    /** A gathering job for the raw material a crafted part needs, when the inventory is short of it. */
+    private String baseJob(Minecraft mc, net.minecraft.world.item.Item item, int count) {
+        String id = SchematicPlan.itemName(item);
+        float per = rawPer(id);
+        if (per <= 0f) return null;
+        boolean stone = id.startsWith("cobblestone") || id.startsWith("stone") || id.equals("furnace");
+        if (stone) {
+            int need = (int) Math.ceil(count * per) - countItems(mc, st -> st.is(Items.COBBLESTONE) || st.is(Items.STONE));
+            return need > 0 ? "mine " + need + " cobblestone" : null;
+        }
+        if (id.endsWith("_planks")) {
+            int logs = (int) Math.ceil(count * per) - countItems(mc, Craft.LOGS);
+            return logs > 0 ? "chop " + Math.max(1, (logs + 4) / 5) + " trees" : null;
+        }
+        // wooden parts: planks first (counted as logs worth)
+        int planks = (int) Math.ceil(count * per);
+        int have = countItems(mc, Craft.PLANKS) + countItems(mc, Craft.LOGS) * 4;
+        if (have >= planks) return null;
+        int logs = (planks - have + 3) / 4;
+        return "chop " + Math.max(1, (logs + 4) / 5) + " trees";
+    }
+
     private void schematicTick(Minecraft mc) {
         if (schem == null) {
             giveUp(mc, "lost the schematic");
@@ -3452,6 +3518,15 @@ public final class AiPilot extends Module {
                 schemTried.put(item, tries + 1);
                 String resume = "build schematic " + schem.name;
                 String name = SchematicPlan.itemName(item).replace('_', ' ');
+                // crafted parts need their raw material first: logs for wooden parts, cobblestone for stone ones
+                String base = baseJob(mc, item, e.getValue());
+                if (base != null) {
+                    AiTutorial.chat("Getting the raw material for " + e.getValue() + " " + name + " first: " + base, false);
+                    if (startOne(base)) {
+                        chain.addFirst(resume);
+                        return;
+                    }
+                }
                 job.note = "getting " + e.getValue() + " " + name;
                 AiTutorial.chat("Need " + e.getValue() + " more " + name + " for " + schem.name + ": " + how, false);
                 if (startOne(how)) {
@@ -4292,31 +4367,99 @@ public final class AiPilot extends Module {
         return !stack.isDamageableItem() || stack.getMaxDamage() - stack.getDamageValue() > 5;
     }
 
+    /** What a mining request is really after: "stone" means the cobblestone it drops, "iron" raw iron. */
+    private static net.minecraft.world.item.Item productOf(String target) {
+        String t = target == null ? "" : target.toLowerCase(Locale.ROOT).trim().replace(' ', '_');
+        if (t.endsWith("s") && !t.endsWith("ss") && t.length() > 3 && !t.equals("glass")) t = t.substring(0, t.length() - 1);
+        t = t.replace("_ore", "").replace("deepslate_", "");
+        return switch (t) {
+            case "stone", "cobble", "cobblestone", "rock" -> Items.COBBLESTONE;
+            case "deepslate", "cobbled_deepslate" -> Items.COBBLED_DEEPSLATE;
+            case "iron", "raw_iron" -> Items.RAW_IRON;
+            case "gold", "raw_gold" -> Items.RAW_GOLD;
+            case "copper", "raw_copper" -> Items.RAW_COPPER;
+            case "coal" -> Items.COAL;
+            case "diamond" -> Items.DIAMOND;
+            case "emerald" -> Items.EMERALD;
+            case "redstone" -> Items.REDSTONE;
+            case "lapi", "lapis", "lapis_lazuli" -> Items.LAPIS_LAZULI;
+            case "quartz", "nether_quartz" -> Items.QUARTZ;
+            case "clay", "clay_ball" -> Items.CLAY_BALL;
+            case "grass", "grass_block", "dirt" -> Items.DIRT;
+            default -> {
+                net.minecraft.world.item.Item item = Craft.exact(t);
+                yield item == null || item == Items.AIR ? null : item;
+            }
+        };
+    }
+
+    /** The blocks that drop it: stone for cobblestone, grass and dirt for dirt, gravel for flint. */
+    private static java.util.Set<net.minecraft.world.level.block.Block> sourcesOf(String target, net.minecraft.world.item.Item product) {
+        java.util.Set<net.minecraft.world.level.block.Block> set = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        if (product == Items.COBBLESTONE) set.addAll(java.util.List.of(Blocks.STONE, Blocks.COBBLESTONE));
+        else if (product == Items.COBBLED_DEEPSLATE) set.addAll(java.util.List.of(Blocks.DEEPSLATE, Blocks.COBBLED_DEEPSLATE));
+        else if (product == Items.DIRT) set.addAll(java.util.List.of(Blocks.DIRT, Blocks.GRASS_BLOCK, Blocks.COARSE_DIRT, Blocks.ROOTED_DIRT));
+        else if (product == Items.FLINT) set.add(Blocks.GRAVEL);
+        else if (product == Items.CLAY_BALL) set.add(Blocks.CLAY);
+        else if (product == Items.SAND) set.add(Blocks.SAND);
+        else if (product == Items.GRAVEL) set.add(Blocks.GRAVEL);
+        if (set.isEmpty()) set.addAll(blocksFor(target));
+        if (set.isEmpty() && product instanceof net.minecraft.world.item.BlockItem bi) set.add(bi.getBlock());
+        return set;
+    }
+
     private void mineCountTick(Minecraft mc) {
-        if (job.mined >= job.wanted) {
-            endJob(mc, job.mined + " block(s) mined");
-            return;
-        }
         if (job.target.equals("down") || job.target.equals("up")) {
+            if (job.mined >= job.wanted) {
+                endJob(mc, job.mined + " block(s) mined");
+                return;
+            }
             tunnel(mc);
             return;
         }
+        // Count what actually lands in the inventory, not blocks broken: dirt dug on the way to
+        // stone, or a block whose drop was never picked up, used to count as a success.
+        net.minecraft.world.item.Item product = productOf(job.target);
+        java.util.function.Predicate<ItemStack> counts = product == null ? null : st -> st.is(product);
+        if (counts != null) {
+            int now0 = countItems(mc, counts);
+            if (job.baseline < 0) job.baseline = now0;
+            job.crafts = Math.max(0, now0 - job.baseline);
+            if (job.crafts >= job.wanted) {
+                endJob(mc, "got " + job.crafts + " " + job.target.replace('_', ' '));
+                return;
+            }
+        } else if (job.mined >= job.wanted) {
+            endJob(mc, job.mined + " block(s) mined");
+            return;
+        }
+        int have = counts == null ? job.mined : job.crafts;
         long now = System.currentTimeMillis();
+        // pick up what we just broke before moving on
+        if (now < job.dropUntil) {
+            ItemEntity drop = nearestDrop(mc, 6);
+            if (drop != null) {
+                job.note = "picking up the drops (" + have + "/" + job.wanted + ")";
+                walkTo(mc, drop.position(), 0.4);
+                return;
+            }
+        }
         XRay ray = Zeus.get(XRay.class);
         boolean seeThrough = ray != null && ray.enabled();
+        java.util.Set<net.minecraft.world.level.block.Block> sources = sourcesOf(job.target, product);
         if (now >= job.nextSearch) {
-            job.nextSearch = now + 250L;
-            BlockPos found = nearestOre(mc, job.target, Math.max(12, jobRange.i()), 12);
-            // Only ore the player could actually walk up to: ore buried in stone is reached by
-            // tunnelling, not by walking at the wall it is behind.
+            job.nextSearch = now + 500L;
+            BlockPos found = sources.isEmpty() ? null
+                    : search(mc, mc.player.blockPosition(), Math.max(12, jobRange.i()), 10, st -> sources.contains(st.getBlock()));
+            // only blocks the player could walk up to; buried ones are reached by tunnelling
             job.block = found != null && (seeThrough || exposed(mc, found)) ? found : null;
+            if (job.block != null) job.lastFound = now;
         }
         if (job.block != null) {
             BlockState state = mc.level.getBlockState(job.block);
-            if (state.isAir()) {
+            if (!sources.contains(state.getBlock())) {
                 job.block = null;
             } else if (Build.distTo(job.block) > jobReach.get()) {
-                // Ore it can see but not touch: go to it instead of digging a fresh tunnel and hoping.
                 job.note = "heading for " + job.target + " at " + job.block.getX() + " " + job.block.getY() + " " + job.block.getZ();
                 navigate(mc, centre(job.block));
                 return;
@@ -4324,22 +4467,47 @@ public final class AiPilot extends Module {
                 if (job == null) return;
                 job.block = null;
                 job.mined++;
+                job.dropUntil = now + 2500L;
                 return;
             } else {
                 return;
             }
         }
+        boolean stoneLike = sources.contains(Blocks.STONE) || sources.contains(Blocks.DEEPSLATE) || isOre(job.target);
+        if (!stoneLike) {
+            // surface material with none in sight: wander to find some, then give up honestly
+            if (job.lastFound == 0) job.lastFound = now;
+            if (now - job.lastFound > 45_000L) {
+                giveUp(mc, "found no " + job.target.replace('_', ' ') + " nearby (" + have + "/" + job.wanted + ")");
+                return;
+            }
+            if (job.to == null || Math.hypot(job.to.x - mc.player.getX(), job.to.z - mc.player.getZ()) < 3) {
+                float yaw = mc.player.getYRot() + (float) (Math.random() * 120 - 60);
+                job.to = mc.player.position().add(-Math.sin(Math.toRadians(yaw)) * 24, 0, Math.cos(Math.toRadians(yaw)) * 24);
+            }
+            job.note = "looking for " + job.target.replace('_', ' ') + " (" + have + "/" + job.wanted + ")";
+            walkTo(mc, job.to, 2.0);
+            return;
+        }
         int wantY = isOre(job.target) ? bestY(oreKey(job.target)) : (int) Math.round(mc.player.getY());
+        BlockPos under = mc.player.blockPosition().below();
+        // stone sits under the soil: staircase a few blocks down until the floor is stone
+        if (!isOre(job.target) && !sources.contains(mc.level.getBlockState(under).getBlock())
+                && !sources.contains(mc.level.getBlockState(under.below()).getBlock()) && mc.player.getY() > mc.level.getMinY() + 10) {
+            wantY = (int) Math.round(mc.player.getY()) - 3;
+        }
         double drift = mc.player.getY() - wantY;
         if (Math.abs(drift) > 2.0) {
-            job.note = "heading to y " + wantY + " for " + job.target + " (" + Math.min(job.mined, job.wanted) + "/" + job.wanted + ")";
+            job.note = "heading down to " + job.target.replace('_', ' ') + " (" + have + "/" + job.wanted + ")";
             Vec3 column = new Vec3(mc.player.getX(), wantY, mc.player.getZ());
             if (drift > 0) stairDown(mc, column);
             else stairUp(mc, column);
             return;
         }
-        job.note = "tunnelling for " + job.target + " (" + Math.min(job.mined, job.wanted) + "/" + job.wanted + ")";
+        job.note = "tunnelling for " + job.target.replace('_', ' ') + " (" + have + "/" + job.wanted + ")";
+        int before = job.mined;
         tunnel(mc);
+        if (job != null && job.mined > before) job.dropUntil = now + 1500L;
     }
 
     private void followTick(Minecraft mc) {
@@ -4443,6 +4611,29 @@ public final class AiPilot extends Module {
         // block came back (the "breaks every block twice" bug).  So: crosshair on the block, let
         // vanilla mine it; crosshair somewhere else (air, an entity), drive the break ourselves.
         mc.options.keyAttack.setDown(true);
+        // Something between us and the block (leaves round a log, a stray dirt block, a torch): the
+        // crosshair lands on it first, so clear it.  Vanilla mines whatever the crosshair is on while
+        // attack is held, so all we have to do is hold the right tool for it and wait.
+        if (mc.hitResult instanceof BlockHitResult obstacleHit && mc.hitResult.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK
+                && !obstacleHit.getBlockPos().equals(pos)) {
+            BlockPos ob = obstacleHit.getBlockPos();
+            BlockState obState = mc.level.getBlockState(ob);
+            boolean breakable = !obState.isAir() && obState.getFluidState().isEmpty() && obState.getDestroySpeed(mc.level, ob) >= 0f
+                    && !obState.is(Blocks.CHEST) && !obState.is(Blocks.TRAPPED_CHEST) && !obState.is(BlockTags.BEDS);
+            if (breakable && (!obState.requiresCorrectToolForDrops() || canHarvest(mc, obState) || obState.getDestroySpeed(mc.level, ob) < 3f)) {
+                equipTool(mc, obState);
+                if (job != null) job.note = "clearing " + BuiltInRegistries.BLOCK.getKey(obState.getBlock()).getPath().replace('_', ' ') + " in the way";
+                mining = ob;
+                return false;
+            }
+            // unbreakable or not worth it: step to a different side of the block
+            if (job != null) {
+                job.blocked++;
+                if (job.blocked % 40 == 0) rotateSideways(mc);
+                walkTo(mc, c.add(p.getLookAngle().scale(-0.5)).add(job.detourSide ? 1.2 : -1.2, 0, job.detourSide ? -1.2 : 1.2), 0.8);
+            }
+            return false;
+        }
         boolean vanillaHas = mc.hitResult instanceof BlockHitResult bh
                 && mc.hitResult.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK && bh.getBlockPos().equals(pos);
         if (!vanillaHas) {
@@ -4609,7 +4800,17 @@ public final class AiPilot extends Module {
                     job.detourSide = !job.detourSide;
                     job.detourUntil = now + 1200L;
                     job.note = "working around something in the way";
-                } else if (job.blocked >= 14) {
+                } else if (job.blocked >= 10 && job.blocked < 20) {
+                    // still stuck after a detour and a new route: dig straight through whatever it is
+                    if (digThrough(mc, base)) {
+                        job.note = "stuck, digging through";
+                        return false;
+                    }
+                    // or hop up onto it with a block if it is a ledge
+                    if (p.onGround() && Build.solid(BlockPos.containing(p.position().add(-Math.sin(Math.toRadians(base)), 0, Math.cos(Math.toRadians(base)))))) {
+                        mc.options.keyJump.setDown(true);
+                    }
+                } else if (job.blocked >= 20) {
                     releaseKeys(mc);
                     giveUp(mc, "stuck, giving up");
                     return false;
@@ -4910,10 +5111,53 @@ public final class AiPilot extends Module {
         if (mc.gameMode != null && mc.player != null && mc.gameMode.isDestroying()) mc.gameMode.stopDestroyBlock();
     }
 
+    private static final java.util.Set<BlockPos> SKIP_LOGS = new java.util.HashSet<>();
+
+    /**
+     * The next log: on the current tree first, lowest first so the trunk comes down from the bottom,
+     * and never one that is too high to reach from the ground (those were what made it stand under a
+     * tree swinging at nothing).  Logs that are part of a building (planks or glass next to them) are
+     * left alone.
+     */
     private BlockPos nearestLog(Minecraft mc) {
         BlockPos centre = job.limit != null ? job.limit : mc.player.blockPosition();
         int radius = job.limit != null ? 6 : jobRange.i();
-        return search(mc, centre, radius, job.limit != null ? 12 : 16, state -> state.is(BlockTags.LOGS));
+        int height = job.limit != null ? 12 : 16;
+        BlockPos best = null;
+        double bestScore = Double.MAX_VALUE;
+        Vec3 eye = mc.player.getEyePosition();
+        for (BlockPos pos : BlockPos.betweenClosed(centre.offset(-radius, -height, -radius), centre.offset(radius, height, radius))) {
+            BlockState st = mc.level.getBlockState(pos);
+            if (!st.is(BlockTags.LOGS) || SKIP_LOGS.contains(pos)) continue;
+            // a log is reachable when some walkable spot near its trunk puts it within reach
+            int ground = pos.getY();
+            BlockPos probe = pos.below();
+            int steps = 0;
+            while (steps < 12 && !Build.solid(probe) && mc.level.getBlockState(probe).getFluidState().isEmpty()) {
+                probe = probe.below();
+                steps++;
+            }
+            ground = probe.getY() + 1;
+            if (pos.getY() - ground > 4) continue;
+            if (built(mc, pos)) continue;
+            double d = pos.distToCenterSqr(eye.x, eye.y, eye.z);
+            double score = d + (pos.getY() - ground) * 6.0;
+            if (score < bestScore) {
+                bestScore = score;
+                best = pos.immutable();
+            }
+        }
+        return best;
+    }
+
+    /** Planks, glass, doors or stairs touching a log: it is someone's house, not a tree. */
+    private static boolean built(Minecraft mc, BlockPos pos) {
+        for (Direction d : Direction.values()) {
+            BlockState n = mc.level.getBlockState(pos.relative(d));
+            if (n.is(BlockTags.PLANKS) || n.is(BlockTags.DOORS) || n.is(BlockTags.STAIRS) || n.is(Blocks.GLASS)
+                    || n.is(BlockTags.WOODEN_SLABS) || n.is(Blocks.GLASS_PANE)) return true;
+        }
+        return false;
     }
 
     private BlockPos nearestOre(Minecraft mc, String wanted, int radius, int height) {

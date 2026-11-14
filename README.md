@@ -74,7 +74,7 @@ All commands are handled by your game and are never sent to the server.
 
 ### Zeus AI
 
-Zeus AI runs on an AI provider with your own API key, or fully offline through Ollama or LM Studio. Groq and Google Gemini give free keys. Run `/zeus ai tutorial` in a world and it walks you through every step with clickable buttons. Press **J** to open chat with `/zeus ai ` already typed. Turn on **Chat window** in Zeus AI Functions for a small on-screen chat of your requests and its answers. The key is stored only in your local config and is shown masked in chat. Without a key, a built-in parser still handles simple commands like `on sprint` or `set killaura range to 4`.
+Zeus AI runs on an AI provider with your own API key, or fully offline through Ollama or LM Studio. Groq and Google Gemini give free keys. Run `/zeus ai tutorial` in a world and it walks you through every step with clickable buttons. Start a normal chat message with **@** (for example `@mine 10 iron`) and it goes straight to Zeus AI, never to the server; the prefix can be changed in the settings. Press **J** to open chat with `/zeus ai ` already typed. Turn on **Chat window** in Zeus AI Functions for a small on-screen chat of your requests and its answers. The key is stored only in your local config and is shown masked in chat. Without a key, a built-in parser still handles simple commands like `on sprint` or `set killaura range to 4`.
 
 ### Control page
 
