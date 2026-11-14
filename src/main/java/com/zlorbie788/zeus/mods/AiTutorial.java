@@ -193,7 +193,7 @@ public final class AiTutorial {
                 example("chop a tree", "Walks to the nearest tree and cuts it down");
                 example("mine 10 stone", "Mines and counts real drops");
                 example("come here", "Walks to you");
-                text("Shortcut: press J in game to open chat with /zeus ai already typed (change the key in Controls).");
+                text("Shortcuts: type @ at the start of a normal chat message (@mine 10 iron), or press J to open chat with /zeus ai typed.");
                 buttons(next(), back(), close());
             }
             case SAFETY -> {
@@ -408,6 +408,11 @@ public final class AiTutorial {
                     .append(Component.literal(" "))
                     .append(button("[Materials]", ChatFormatting.AQUA, "ask:materials for " + name, "List what it needs and what you have")));
         }
+    }
+
+    /** Shows the player's own prefixed request in chat, greyed, so the conversation reads naturally. */
+    static void echo(String text) {
+        say(Component.literal("> " + text).withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));
     }
 
     /** A persistent chat line from the AI (toasts fade too fast for real answers). */
