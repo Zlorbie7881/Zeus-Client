@@ -97,10 +97,20 @@ def profile_arrays(spine_fn, edge_fn, u0, u1, n=900):
 
 def blade(kn, u0, u1, spine_v, edge_v, tip_v, clip=0.70, belly=0.58, clip_pow=1.35,
           teeth=None, serr=None, fuller=None, choil=True, swedge=True, etch=None,
-          bevel_w=1.05, finish=None, notch=None, tang=0.6):
+          bevel_w=1.05, finish=None, notch=None, tang=0.6, bend=0.0, bend_pow=1.8):
     L = u1 - u0
 
+    def off(s):
+        # a curved blade (karambit claw): the whole blade sweeps towards the edge side
+        return bend * (s ** bend_pow) if bend else 0.0
+
     def spine(s):
+        return spine0(s) + off(s)
+
+    def edge(s):
+        return edge0(s) + off(s)
+
+    def spine0(s):
         v = spine_v
         if s > clip:
             k = (s - clip) / (1 - clip)
@@ -110,7 +120,7 @@ def blade(kn, u0, u1, spine_v, edge_v, tip_v, clip=0.70, belly=0.58, clip_pow=1.
             v += notch[2] * math.sin(math.pi * k) ** 0.6
         return v
 
-    def edge(s):
+    def edge0(s):
         v = edge_v
         if s > belly:
             k = (s - belly) / (1 - belly)
@@ -215,7 +225,7 @@ def blade(kn, u0, u1, spine_v, edge_v, tip_v, clip=0.70, belly=0.58, clip_pow=1.
     bevel = np.clip(bev * 0.85 + sw * 0.6 + tooth_bev * 0.7 + serr_bev * 0.8 + edge_line, 0, 1)
     side = np.ones_like(alb) * hexc("8e949c")[None, None, :] * 0.85
     kn.paint(mask, alb, height=h, metal=metal, gloss=gloss, bevel=bevel, side=side)
-    kn.tip = (u1, tip_v)
+    kn.tip = (u1, tip_v + off(1.0))
     return sp, ed
 
 
@@ -1002,7 +1012,7 @@ def to_rgba(rgb, alpha, f, light_mask=None):
     return (out * 255 + 0.5).astype(np.uint8)
 
 
-def write(kn):
+def write(kn, min_level=0):
     cells, mask = bake(kn)
     os.makedirs(OUT_TEX, exist_ok=True)
     prepared = []
@@ -1015,6 +1025,8 @@ def write(kn):
                 rgb = rgb[idx[0], idx[1]]
         prepared.append((rgb, alpha))
     for level, f in ((0, SS), (1, SS * 2), (2, SS * 4)):
+        if level < min_level:
+            continue
         rows = []
         for rgb, alpha in prepared:
             if alpha is not None:
@@ -1037,6 +1049,7 @@ def write(kn):
         line.append(round(float((cv[lo:hi] * w).sum() / w.sum()), 3) if w.sum() > 1e-3 else 0.0)
     return {
         "id": kn.id,
+        "min_level": min_level,
         "centre": line,
         "name": kn.name,
         "glow": kn.glow,

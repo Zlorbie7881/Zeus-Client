@@ -123,15 +123,14 @@ public final class KnifeSwing extends Module {
     private static final String[] SECTIONS = {"Knife & hand", "Position", "Tricks", "Effects"};
     private final Setting.Choice section = add(new Setting.Choice("Show settings for", "The knife settings are split into four pages so you only see what you are changing.", 0, SECTIONS));
     private final Setting.Action switchKnife = add(new Setting.Action("Switch knife", "Opens a window with every HD knife and a live 3D preview of each. Click one to hold it.", this::openGallery)
-            .primary(() -> "Holding " + shortKnife() + "  ·  click to see all " + KnifeArt.HD_COUNT + " knives"))
+            .primary(() -> "Holding " + shortKnife() + "  ·  click to browse " + KnifeArt.HD_COUNT + " knives"))
             .showIf(() -> section.index() == 0);
 
     private String shortKnife() {
         String n = type == null ? "" : type.value();
-        int dot = n.lastIndexOf('·');
-        return dot >= 0 ? n.substring(dot + 1).trim() : n;
+        return n.replace(" · ", " ");
     }
-    private final Setting.Choice type = add(new Setting.Choice("HD knife", "Which HD tactical knife you hold: lit high-resolution 3D models (Damascus, Slaughter, Case hardened, Fade, Crimson web, Tiger tooth, Sapphire, Urban masked, Emerald, Marble fade, Ruby, Ultraviolet).", 0, TYPES)).showIf(() -> false);
+    private final Setting.Choice type = add(new Setting.Choice("HD knife", "Which HD knife you hold: Tactical, Karambit, M9 Bayonet, Butterfly, Huntsman, Bowie, Skeleton, Ursus or Stiletto, each in several skins.", 0, TYPES)).showIf(() -> false);
 
     /** The renderer's knife kind for the chosen HD knife. */
     private int kind() {
@@ -276,7 +275,7 @@ public final class KnifeSwing extends Module {
         boolean loaded = KnifeMesh.has(mesh);
         String render = hd() >= 0 ? (KnifeHDGui.ready(hd()) ? "HD model: lit 3D, high resolution"
                 : KnifeHDGui.problem().isEmpty() ? "HD model missing, using pixels" : "HD model failed: " + KnifeHDGui.problem())
-                : !model3d.on() ? "pixel knife: pick an HD Tactical knife for the lit 3D look"
+                : !model3d.on() ? "pixel knife: pick an HD knife for the lit 3D look"
                 : loaded ? (safeDraw.on() ? "3D model ready (safe draw on)" : "3D model in use") : "3D mesh missing, using pixels";
         String state = playing() ? "playing a trick" : (isOpen ? "open in hand" : "closed in hand");
         return java.util.List.of(name, render, state, "Tricks: " + (karambit() ? KTRICKS.length : TRICKS.length) + " loaded");

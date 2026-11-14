@@ -57,6 +57,8 @@ public final class KnifeHD {
     }
 
     public static final class Model {
+        /** The sharpest detail level shipped for this knife (the newer knives start at 1). */
+        public int minLevel;
         public String id;
         public String name;
         public int glow;
@@ -125,6 +127,7 @@ public final class KnifeHD {
                     JsonObject k = ke.getAsJsonObject();
                     Model m = new Model();
                     m.id = k.get("id").getAsString();
+                    m.minLevel = k.has("min_level") ? k.get("min_level").getAsInt() : 0;
                     m.name = k.get("name").getAsString();
                     String g = k.get("glow").getAsString().replace("#", "");
                     m.glow = 0xFF000000 | Integer.parseInt(g, 16);
@@ -244,7 +247,7 @@ public final class KnifeHD {
         float sx1 = W[0] * proj(W[2], unit), sy1 = W[1] * proj(W[2], unit);
         float lenPx = (float) Math.hypot(sx1 - sx0, sy1 - sy0) * Math.max(1f, pixels);
         // the sheet has no mipmaps, so pick the level whose texels best match the screen pixels
-        f.level = lenPx > 600f ? 0 : lenPx > 300f ? 1 : 2;
+        f.level = Math.max(m.minLevel, lenPx > 600f ? 0 : lenPx > 300f ? 1 : 2);
 
         // paint parts far to near
         int np = m.parts.size();
