@@ -232,6 +232,7 @@ public final class AiPilot extends Module {
     private final Setting.Num perHour = add(new Setting.Num("Requests per hour", "A cap so a stuck loop cannot drain your credits.", 40, 5, 240, 5, ""));
     private final Setting.Num wait = add(new Setting.Num("Seconds between requests", "Keeps the client from hammering the provider.", 4, 1, 60, 1, " s"));
     private final Setting.Bool strictJson = add(new Setting.Bool("Strict JSON", "Asks the provider for a JSON object so the answer parses first time. It switches itself off if the provider rejects the option.", true));
+    private final Setting.Bool shareChat = add(new Setting.Bool("Share recent chat", "Sends the last few chat lines with each request, so you can say reply to him or what did they say. Off by default because it sends other players' messages to your AI provider.", false));
     private final Setting.Bool selfHeal = add(new Setting.Bool("Retry what failed", "When an action did not take effect, asks the model one more time with the results so it can correct itself.", true));
     private final Setting.Info status = add(new Setting.Info("Status", this::lines));
 
@@ -239,7 +240,27 @@ public final class AiPilot extends Module {
         super("aipilot", "Zeus AI Functions", "Type /zeus ai <what you want>. It switches modules and changes settings, and it works in the world too: chop trees, mine, quarry, tunnel, farm, fight mobs, shoot, shear, milk, eat, place blocks, light the area, drop items, sleep, explore, walk or follow, hunt animals for meat, and make the pickaxe it needs before mining. Say stop to end a job.", Category.UTILITY);
         anywhere();
         alias("ai", "assistant", "pilot", "zeus ai", "functions", "jobs");
+        try {
+            net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents.CHAT.register((message, signed, sender, params, time) -> hearChat(message.getString()));
+            net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents.GAME.register((message, overlay) -> {
+                if (!overlay) hearChat(message.getString());
+            });
+        } catch (Throwable ignored) {
+        }
     }
+
+    private static final java.util.Deque<String> CHAT = new ArrayDeque<>();
+
+    private static void hearChat(String line) {
+        if (line == null || line.isBlank() || line.startsWith("[Zeus")) return;
+        synchronized (CHAT) {
+            CHAT.addLast(line.length() > 140 ? line.substring(0, 140) : line);
+            while (CHAT.size() > 8) CHAT.removeFirst();
+        }
+    }
+
+    /** Pending reminders: due time and text. */
+    private static final List<Object[]> REMINDERS = new ArrayList<>();
 
     public static AiPilot find() {
         return Zeus.get(AiPilot.class);
@@ -728,6 +749,16 @@ public final class AiPilot extends Module {
 
     @Override
     protected void onTick(Minecraft mc) {
+        synchronized (REMINDERS) {
+            long now = System.currentTimeMillis();
+            for (java.util.Iterator<Object[]> it = REMINDERS.iterator(); it.hasNext(); ) {
+                Object[] r = it.next();
+                if (now < (Long) r[0]) continue;
+                it.remove();
+                AiTutorial.chat("Reminder: " + r[1], false);
+                Zeus.toast("Reminder: " + r[1], true);
+            }
+        }
         if (!waiting.isEmpty() && !busy && System.currentTimeMillis() - LAST.get() >= Math.round(wait.get() * 1000.0)) {
             String next = waiting;
             waiting = "";
@@ -876,6 +907,14 @@ public final class AiPilot extends Module {
             }
             case "theme" -> {
                 theme(step.value());
+                return;
+            }
+            case "look", "face", "look_at" -> {
+                lastAction = look(step.value());
+                return;
+            }
+            case "remind", "reminder", "timer" -> {
+                lastAction = remind(step.value());
                 return;
             }
             case "hold", "select", "equip" -> {
@@ -1208,7 +1247,8 @@ public final class AiPilot extends Module {
         StringBuilder builder = new StringBuilder();
         builder.append("You are Zeus AI, the assistant inside the Zeus Minecraft client. You turn what the player types into actions. Answer with one JSON object only, no prose outside it, no code fences.\n");
         builder.append("Schema: {\"say\":\"one short friendly sentence for the player\",\"actions\":[{\"do\":\"<verb>\",\"module\":\"<id>\",\"setting\":\"<exact setting name>\",\"value\":\"<new value>\"}]}\n");
-        builder.append("Verbs: on, off, toggle, set (need module); job, stop, hold, preset, theme, waypoint, explain, remember, forget, report, help, open, hud, keybinds, panic, undo (no module). hold puts an item in hand: value is the item (pickaxe, bread, diamond sword, nothing).\n");
+        builder.append("look turns the player toward value: coordinates (x y z), the nearest player or mob, a mob name or a block name. remind sets a chat reminder: value is minutes then the text, for example 10 check the furnace (use 30s or 2h for other units).\n");
+        builder.append("Verbs: on, off, toggle, set (need module); job, stop, hold, look, remind, preset, theme, waypoint, explain, remember, forget, report, help, open, hud, keybinds, panic, undo (no module). hold puts an item in hand: value is the item (pickaxe, bread, diamond sword, nothing).\n");
         builder.append("Examples:\n");
         builder.append("turn on sprint and fullbright -> {\"say\":\"Sprint and Fullbright are on.\",\"actions\":[{\"do\":\"on\",\"module\":\"sprint\"},{\"do\":\"on\",\"module\":\"fullbright\"}]}\n");
         builder.append("make killaura reach 4 -> {\"say\":\"Range set to 4.\",\"actions\":[{\"do\":\"set\",\"module\":\"killaura\",\"setting\":\"Range\",\"value\":\"4\"}]}\n");
@@ -4576,6 +4616,75 @@ public final class AiPilot extends Module {
         return Direction.EAST;
     }
 
+    /** Turn to face coordinates, the nearest player or mob, or the nearest block of a kind. */
+    private String look(String value) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || mc.level == null) return "not in a world";
+        String v = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+        java.util.regex.Matcher xyz = java.util.regex.Pattern.compile("(-?\\d+(?:\\.\\d+)?)\\s+(-?\\d+(?:\\.\\d+)?)\\s+(-?\\d+(?:\\.\\d+)?)").matcher(v);
+        if (xyz.find()) {
+            Vec3 at = new Vec3(Double.parseDouble(xyz.group(1)) + 0.5, Double.parseDouble(xyz.group(2)) + 0.5, Double.parseDouble(xyz.group(3)) + 0.5);
+            lookAt(mc.player, at);
+            return "looking at " + xyz.group(1) + " " + xyz.group(2) + " " + xyz.group(3);
+        }
+        String want = v.replaceAll("^(at |the |nearest |closest |a |an )+", "").trim();
+        net.minecraft.world.entity.Entity best = null;
+        double bestD = 48 * 48;
+        for (net.minecraft.world.entity.Entity e : mc.level.entitiesForRendering()) {
+            if (e == mc.player || !e.isAlive()) continue;
+            boolean fits = want.isEmpty() || want.equals("player") && e instanceof Player
+                    || (want.equals("mob") || want.equals("monster") || want.equals("enemy")) && e instanceof net.minecraft.world.entity.monster.Monster
+                    || e.getName().getString().toLowerCase(Locale.ROOT).contains(want)
+                    || BuiltInRegistries.ENTITY_TYPE.getKey(e.getType()).getPath().replace('_', ' ').contains(want);
+            if (!fits) continue;
+            double d = e.distanceToSqr(mc.player);
+            if (d < bestD) {
+                bestD = d;
+                best = e;
+            }
+        }
+        if (best != null) {
+            lookAt(mc.player, best.position().add(0, best.getBbHeight() * 0.8, 0));
+            return "looking at " + best.getName().getString();
+        }
+        BlockPos at = mc.player.blockPosition();
+        BlockPos found = null;
+        int foundD = Integer.MAX_VALUE;
+        String id = want.replace(' ', '_');
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        for (int dx = -16; dx <= 16; dx++) for (int dy = -8; dy <= 8; dy++) for (int dz = -16; dz <= 16; dz++) {
+            pos.set(at.getX() + dx, at.getY() + dy, at.getZ() + dz);
+            String path = BuiltInRegistries.BLOCK.getKey(mc.level.getBlockState(pos).getBlock()).getPath();
+            if (id.isEmpty() || !path.contains(id)) continue;
+            int d = dx * dx + dy * dy + dz * dz;
+            if (d < foundD) {
+                foundD = d;
+                found = pos.immutable();
+            }
+        }
+        if (found == null) return "did not see " + value + " nearby";
+        lookAt(mc.player, Vec3.atCenterOf(found));
+        return "looking at the " + want + " at " + found.getX() + " " + found.getY() + " " + found.getZ();
+    }
+
+    /** "10 check the furnace" or "10|check the furnace": a reminder in chat after that many minutes. */
+    private String remind(String value) {
+        String v = value == null ? "" : value.trim();
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("^(\\d+(?:\\.\\d+)?)\\s*(?:(seconds?|secs?|s|minutes?|mins?|m|hours?|h)\\b)?\\s*[|:,-]?\\s*(.*)$").matcher(v);
+        if (!m.find()) return "did not understand the reminder " + v;
+        double n = Double.parseDouble(m.group(1));
+        String unit = m.group(2) == null ? "m" : m.group(2);
+        long ms = unit.startsWith("s") ? (long) (n * 1000) : unit.startsWith("h") ? (long) (n * 3_600_000) : (long) (n * 60_000);
+        ms = Math.max(1000L, Math.min(24L * 3_600_000L, ms));
+        String text = m.group(3).isBlank() ? "time is up" : m.group(3).trim();
+        synchronized (REMINDERS) {
+            REMINDERS.add(new Object[] {System.currentTimeMillis() + ms, text});
+        }
+        String when = ms >= 60_000 ? Math.round(ms / 60_000.0) + " min" : ms / 1000 + " s";
+        Notify.good("Reminder set: " + text + " in " + when);
+        return "reminder in " + when + ": " + text;
+    }
+
     /** Put an item matching the words in hand, moving it to the hotbar when it is in the inventory. */
     private String hold(String value) {
         Minecraft mc = Minecraft.getInstance();
@@ -4780,6 +4889,9 @@ public final class AiPilot extends Module {
         Step work = jobStep(part);
         if (work != null) return work;
         if (part.startsWith("hold ") || part.startsWith("equip ")) return new Step("hold", "", "", part.substring(part.indexOf(' ') + 1).trim());
+        if (part.startsWith("look at ") || part.startsWith("face ")) return new Step("look", "", "", part.substring(part.startsWith("face ") ? 5 : 8).trim());
+        java.util.regex.Matcher rem = java.util.regex.Pattern.compile("^remind me in (\\d+(?:\\.\\d+)?) ?(?:(seconds?|secs?|s|minutes?|mins?|m|hours?|h)\\b)? ?(?:to |that |about )?(.+)$").matcher(part);
+        if (rem.find()) return new Step("remind", "", "", rem.group(1) + " " + (rem.group(2) == null ? "m" : rem.group(2)) + " " + rem.group(3));
         if (part.startsWith("explain ")) return new Step("explain", "", "", part.substring(8).trim());
         if (part.startsWith("what does ") && part.endsWith(" do")) return new Step("explain", "", "", part.substring(10, part.length() - 3).trim());
         if (part.startsWith("remember ")) return new Step("remember", "", "", part.substring(9).trim());
@@ -4930,6 +5042,11 @@ public final class AiPilot extends Module {
                 List<String> saved = points.forAi(8);
                 if (!saved.isEmpty()) builder.append(" Saved waypoints (use their coordinates with go to): ").append(String.join("; ", saved)).append('.');
             } catch (RuntimeException ignored) {
+            }
+        }
+        if (shareChat.on()) {
+            synchronized (CHAT) {
+                if (!CHAT.isEmpty()) builder.append(" Recent chat (oldest first): ").append(String.join(" | ", CHAT)).append('.');
             }
         }
         if (job != null) builder.append(" Job running: ").append(job.label()).append(job.note == null || job.note.isBlank() ? "" : " (" + job.note + ")").append('.');
