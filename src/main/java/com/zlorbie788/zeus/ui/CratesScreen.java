@@ -487,11 +487,11 @@ public final class CratesScreen extends Screen {
         String st;
         int sc;
         if (Crates.streakClaimedToday()) {
-            st = "Streak: day " + Crates.streak() + "  \u2714  tomorrow +" + Crates.streakReward(Crates.streakNextDay() + 1);
+            st = "Day " + Crates.streak() + " streak claimed. Tomorrow: +" + Crates.streakReward(Crates.streakNextDay() + 1) + " tokens";
             sc = GOLD;
         } else {
             int n = Crates.streakNextDay();
-            st = "Play " + clock(Crates.streakPlayLeft()) + " more today: day " + n + " streak +" + Crates.streakReward(n);
+            st = "Play " + clock(Crates.streakPlayLeft()) + " more today for streak day " + n + ": +" + Crates.streakReward(n) + " tokens";
             sc = SUB;
         }
         int left = bx + bw + 16, right = px + pw - 14 - Draw.width(d) - 16;
