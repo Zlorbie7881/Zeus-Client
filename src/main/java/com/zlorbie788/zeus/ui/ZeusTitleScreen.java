@@ -44,7 +44,7 @@ public final class ZeusTitleScreen extends Screen {
     private static final int[] ICON_FRAMES = {24, 24, 0, 12, 0};
     private static final float CLICK_LENGTH = 0.34f;
     private static final float CLICK_GO = 0.25f;
-    private static final String[] ICON_TIPS = {"Language", "Accessibility", "Zeus Settings", "Credits", "Join the Discord"};
+    private static final String[] ICON_TIPS = {"Language", "Accessibility", "Zeus Settings", "About Zeus", "Join the Discord"};
 
     private static final int PIC_W = 1920;
     private static final int PIC_H = 1080;
