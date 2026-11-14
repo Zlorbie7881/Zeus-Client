@@ -1,7 +1,6 @@
 package com.zlorbie788.zeus.ui;
 
 import com.mojang.blaze3d.platform.InputConstants;
-import com.zlorbie788.zeus.core.Category;
 import com.zlorbie788.zeus.core.Module;
 import com.zlorbie788.zeus.core.Zeus;
 import net.minecraft.client.KeyMapping;
@@ -19,9 +18,10 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * A full 100% keyboard you can click. Pick a key, then pick what it does from a searchable list of
- * every module, and the link is made. Keys that already do something show the module and light up,
- * so the whole layout is readable at a glance instead of a list of "None".
+ * A full 100% keyboard you can click, plus the mouse buttons, because plenty of modules live on
+ * right click. Pick a key, then pick what it does from a searchable list of every module, and the
+ * link is made. Keys that already do something show the module and light up, so the whole layout is
+ * readable at a glance instead of a list of "None".
  */
 public final class KeybindScreen extends Screen {
     private static final int BG = 0xF2101826;
@@ -36,7 +36,7 @@ public final class KeybindScreen extends Screen {
     private final List<Cap> caps = new ArrayList<>();
     private final List<Cap> hit = new ArrayList<>();
     private EditBox search;
-    private int picked = -1;
+    private InputConstants.Key picked;
     private float listScroll;
     private List<Module> shown = new ArrayList<>();
     private List<int[]> rows = new ArrayList<>();
@@ -46,8 +46,8 @@ public final class KeybindScreen extends Screen {
     private int px, py, pw, ph;
     private int listX, listY, listW, listH;
 
-    /** One keycap: GLFW code, label and its place on the 22.5 x 6 unit board. */
-    private record Cap(String label, int code, float x, float y, float w, float h) {}
+    /** One keycap: the bindable key itself, a label and its place on the 22.5 x 6 unit board. */
+    private record Cap(String label, InputConstants.Key key, float x, float y, float w, float h) {}
 
     private static final int ROW = 15;
 
@@ -60,90 +60,103 @@ public final class KeybindScreen extends Screen {
         layout();
     }
 
+    private static InputConstants.Key sym(int code) {
+        return InputConstants.Type.KEYSYM.getOrCreate(code);
+    }
+
+    private static InputConstants.Key mouse(int button) {
+        return InputConstants.Type.MOUSE.getOrCreate(button);
+    }
+
     // ------------------------------------------------------------------ the board
 
     private void layout() {
         caps.clear();
         // function row
-        caps.add(new Cap("Esc", GLFW.GLFW_KEY_ESCAPE, 0, 0, 1, 1));
-        for (int i = 0; i < 12; i++) caps.add(new Cap("F" + (i + 1), GLFW.GLFW_KEY_F1 + i, 1 + i, 0, 1, 1));
-        caps.add(new Cap("Prt", GLFW.GLFW_KEY_PRINT_SCREEN, 13, 0, 1, 1));
+        caps.add(new Cap("Esc", sym(GLFW.GLFW_KEY_ESCAPE), 0, 0, 1, 1));
+        for (int i = 0; i < 12; i++) caps.add(new Cap("F" + (i + 1), sym(GLFW.GLFW_KEY_F1 + i), 1 + i, 0, 1, 1));
+        caps.add(new Cap("Prt", sym(GLFW.GLFW_KEY_PRINT_SCREEN), 13, 0, 1, 1));
 
         // number row
         String[] top = {"`", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "="};
         int[] topCode = {GLFW.GLFW_KEY_GRAVE_ACCENT, GLFW.GLFW_KEY_1, GLFW.GLFW_KEY_2, GLFW.GLFW_KEY_3,
                 GLFW.GLFW_KEY_4, GLFW.GLFW_KEY_5, GLFW.GLFW_KEY_6, GLFW.GLFW_KEY_7, GLFW.GLFW_KEY_8,
                 GLFW.GLFW_KEY_9, GLFW.GLFW_KEY_0, GLFW.GLFW_KEY_MINUS, GLFW.GLFW_KEY_EQUAL};
-        for (int i = 0; i < top.length; i++) caps.add(new Cap(top[i], topCode[i], i, 1, 1, 1));
-        caps.add(new Cap("Bksp", GLFW.GLFW_KEY_BACKSPACE, 13, 1, 2, 1));
+        for (int i = 0; i < top.length; i++) caps.add(new Cap(top[i], sym(topCode[i]), i, 1, 1, 1));
+        caps.add(new Cap("Bksp", sym(GLFW.GLFW_KEY_BACKSPACE), 13, 1, 2, 1));
 
         // qwerty row
-        caps.add(new Cap("Tab", GLFW.GLFW_KEY_TAB, 0, 2, 1.5f, 1));
+        caps.add(new Cap("Tab", sym(GLFW.GLFW_KEY_TAB), 0, 2, 1.5f, 1));
         String[] qwerty = {"Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"};
         for (int i = 0; i < qwerty.length; i++) {
-            caps.add(new Cap(qwerty[i], codeOf(qwerty[i]), 1.5f + i, 2, 1, 1));
+            caps.add(new Cap(qwerty[i], sym(codeOf(qwerty[i])), 1.5f + i, 2, 1, 1));
         }
-        caps.add(new Cap("[", GLFW.GLFW_KEY_LEFT_BRACKET, 11.5f, 2, 1, 1));
-        caps.add(new Cap("]", GLFW.GLFW_KEY_RIGHT_BRACKET, 12.5f, 2, 1, 1));
-        caps.add(new Cap("\\", GLFW.GLFW_KEY_BACKSLASH, 13.5f, 2, 1.5f, 1));
+        caps.add(new Cap("[", sym(GLFW.GLFW_KEY_LEFT_BRACKET), 11.5f, 2, 1, 1));
+        caps.add(new Cap("]", sym(GLFW.GLFW_KEY_RIGHT_BRACKET), 12.5f, 2, 1, 1));
+        caps.add(new Cap("\\", sym(GLFW.GLFW_KEY_BACKSLASH), 13.5f, 2, 1.5f, 1));
 
         // home row
-        caps.add(new Cap("Caps", GLFW.GLFW_KEY_CAPS_LOCK, 0, 3, 1.75f, 1));
+        caps.add(new Cap("Caps", sym(GLFW.GLFW_KEY_CAPS_LOCK), 0, 3, 1.75f, 1));
         String[] home = {"A", "S", "D", "F", "G", "H", "J", "K", "L"};
-        for (int i = 0; i < home.length; i++) caps.add(new Cap(home[i], codeOf(home[i]), 1.75f + i, 3, 1, 1));
-        caps.add(new Cap(";", GLFW.GLFW_KEY_SEMICOLON, 10.75f, 3, 1, 1));
-        caps.add(new Cap("'", GLFW.GLFW_KEY_APOSTROPHE, 11.75f, 3, 1, 1));
-        caps.add(new Cap("Enter", GLFW.GLFW_KEY_ENTER, 12.75f, 3, 2.25f, 1));
+        for (int i = 0; i < home.length; i++) caps.add(new Cap(home[i], sym(codeOf(home[i])), 1.75f + i, 3, 1, 1));
+        caps.add(new Cap(";", sym(GLFW.GLFW_KEY_SEMICOLON), 10.75f, 3, 1, 1));
+        caps.add(new Cap("'", sym(GLFW.GLFW_KEY_APOSTROPHE), 11.75f, 3, 1, 1));
+        caps.add(new Cap("Enter", sym(GLFW.GLFW_KEY_ENTER), 12.75f, 3, 2.25f, 1));
 
         // bottom letters
-        caps.add(new Cap("Shift", GLFW.GLFW_KEY_LEFT_SHIFT, 0, 4, 2.25f, 1));
+        caps.add(new Cap("Shift", sym(GLFW.GLFW_KEY_LEFT_SHIFT), 0, 4, 2.25f, 1));
         String[] lower = {"Z", "X", "C", "V", "B", "N", "M"};
-        for (int i = 0; i < lower.length; i++) caps.add(new Cap(lower[i], codeOf(lower[i]), 2.25f + i, 4, 1, 1));
-        caps.add(new Cap(",", GLFW.GLFW_KEY_COMMA, 9.25f, 4, 1, 1));
-        caps.add(new Cap(".", GLFW.GLFW_KEY_PERIOD, 10.25f, 4, 1, 1));
-        caps.add(new Cap("/", GLFW.GLFW_KEY_SLASH, 11.25f, 4, 1, 1));
-        caps.add(new Cap("Shift", GLFW.GLFW_KEY_RIGHT_SHIFT, 12.25f, 4, 2.75f, 1));
+        for (int i = 0; i < lower.length; i++) caps.add(new Cap(lower[i], sym(codeOf(lower[i])), 2.25f + i, 4, 1, 1));
+        caps.add(new Cap(",", sym(GLFW.GLFW_KEY_COMMA), 9.25f, 4, 1, 1));
+        caps.add(new Cap(".", sym(GLFW.GLFW_KEY_PERIOD), 10.25f, 4, 1, 1));
+        caps.add(new Cap("/", sym(GLFW.GLFW_KEY_SLASH), 11.25f, 4, 1, 1));
+        caps.add(new Cap("Shift", sym(GLFW.GLFW_KEY_RIGHT_SHIFT), 12.25f, 4, 2.75f, 1));
 
         // modifiers
-        caps.add(new Cap("Ctrl", GLFW.GLFW_KEY_LEFT_CONTROL, 0, 5, 1.25f, 1));
-        caps.add(new Cap("Win", GLFW.GLFW_KEY_LEFT_SUPER, 1.25f, 5, 1.25f, 1));
-        caps.add(new Cap("Alt", GLFW.GLFW_KEY_LEFT_ALT, 2.5f, 5, 1.25f, 1));
-        caps.add(new Cap("Space", GLFW.GLFW_KEY_SPACE, 3.75f, 5, 6.25f, 1));
-        caps.add(new Cap("Alt", GLFW.GLFW_KEY_RIGHT_ALT, 10, 5, 1.25f, 1));
-        caps.add(new Cap("Win", GLFW.GLFW_KEY_RIGHT_SUPER, 11.25f, 5, 1.25f, 1));
-        caps.add(new Cap("Menu", GLFW.GLFW_KEY_MENU, 12.5f, 5, 1.25f, 1));
-        caps.add(new Cap("Ctrl", GLFW.GLFW_KEY_RIGHT_CONTROL, 13.75f, 5, 1.25f, 1));
+        caps.add(new Cap("Ctrl", sym(GLFW.GLFW_KEY_LEFT_CONTROL), 0, 5, 1.25f, 1));
+        caps.add(new Cap("Win", sym(GLFW.GLFW_KEY_LEFT_SUPER), 1.25f, 5, 1.25f, 1));
+        caps.add(new Cap("Alt", sym(GLFW.GLFW_KEY_LEFT_ALT), 2.5f, 5, 1.25f, 1));
+        caps.add(new Cap("Space", sym(GLFW.GLFW_KEY_SPACE), 3.75f, 5, 6.25f, 1));
+        caps.add(new Cap("Alt", sym(GLFW.GLFW_KEY_RIGHT_ALT), 10, 5, 1.25f, 1));
+        caps.add(new Cap("Win", sym(GLFW.GLFW_KEY_RIGHT_SUPER), 11.25f, 5, 1.25f, 1));
+        caps.add(new Cap("Menu", sym(GLFW.GLFW_KEY_MENU), 12.5f, 5, 1.25f, 1));
+        caps.add(new Cap("Ctrl", sym(GLFW.GLFW_KEY_RIGHT_CONTROL), 13.75f, 5, 1.25f, 1));
 
         // navigation cluster
-        caps.add(new Cap("Ins", GLFW.GLFW_KEY_INSERT, 15.5f, 1, 1, 1));
-        caps.add(new Cap("Home", GLFW.GLFW_KEY_HOME, 16.5f, 1, 1, 1));
-        caps.add(new Cap("PgUp", GLFW.GLFW_KEY_PAGE_UP, 17.5f, 1, 1, 1));
-        caps.add(new Cap("Del", GLFW.GLFW_KEY_DELETE, 15.5f, 2, 1, 1));
-        caps.add(new Cap("End", GLFW.GLFW_KEY_END, 16.5f, 2, 1, 1));
-        caps.add(new Cap("PgDn", GLFW.GLFW_KEY_PAGE_DOWN, 17.5f, 2, 1, 1));
-        caps.add(new Cap("Up", GLFW.GLFW_KEY_UP, 16.5f, 4, 1, 1));
-        caps.add(new Cap("Left", GLFW.GLFW_KEY_LEFT, 15.5f, 5, 1, 1));
-        caps.add(new Cap("Down", GLFW.GLFW_KEY_DOWN, 16.5f, 5, 1, 1));
-        caps.add(new Cap("Right", GLFW.GLFW_KEY_RIGHT, 17.5f, 5, 1, 1));
+        caps.add(new Cap("Ins", sym(GLFW.GLFW_KEY_INSERT), 15.5f, 1, 1, 1));
+        caps.add(new Cap("Home", sym(GLFW.GLFW_KEY_HOME), 16.5f, 1, 1, 1));
+        caps.add(new Cap("PgUp", sym(GLFW.GLFW_KEY_PAGE_UP), 17.5f, 1, 1, 1));
+        caps.add(new Cap("Del", sym(GLFW.GLFW_KEY_DELETE), 15.5f, 2, 1, 1));
+        caps.add(new Cap("End", sym(GLFW.GLFW_KEY_END), 16.5f, 2, 1, 1));
+        caps.add(new Cap("PgDn", sym(GLFW.GLFW_KEY_PAGE_DOWN), 17.5f, 2, 1, 1));
+        caps.add(new Cap("Up", sym(GLFW.GLFW_KEY_UP), 16.5f, 4, 1, 1));
+        caps.add(new Cap("Left", sym(GLFW.GLFW_KEY_LEFT), 15.5f, 5, 1, 1));
+        caps.add(new Cap("Down", sym(GLFW.GLFW_KEY_DOWN), 16.5f, 5, 1, 1));
+        caps.add(new Cap("Right", sym(GLFW.GLFW_KEY_RIGHT), 17.5f, 5, 1, 1));
 
-        // number pad
-        caps.add(new Cap("Num", GLFW.GLFW_KEY_NUM_LOCK, 18.5f, 0, 1, 1));
-        caps.add(new Cap("/", GLFW.GLFW_KEY_KP_DIVIDE, 19.5f, 0, 1, 1));
-        caps.add(new Cap("*", GLFW.GLFW_KEY_KP_MULTIPLY, 20.5f, 0, 1, 1));
-        caps.add(new Cap("-", GLFW.GLFW_KEY_KP_SUBTRACT, 21.5f, 0, 1, 1));
+        // mouse buttons, in the space the numpad leaves at the top right
+        caps.add(new Cap("M1", mouse(GLFW.GLFW_MOUSE_BUTTON_LEFT), 16.5f, 0, 1, 1));
+        caps.add(new Cap("M2", mouse(GLFW.GLFW_MOUSE_BUTTON_RIGHT), 17.5f, 0, 1, 1));
+        caps.add(new Cap("M3", mouse(GLFW.GLFW_MOUSE_BUTTON_MIDDLE), 18.5f, 0, 1, 1));
+        caps.add(new Cap("M4", mouse(GLFW.GLFW_MOUSE_BUTTON_4), 19.5f, 0, 1, 1));
+        caps.add(new Cap("M5", mouse(GLFW.GLFW_MOUSE_BUTTON_5), 20.5f, 0, 1, 1));
+
+        // number pad, a row lower than a full board so the mouse row has room
+        caps.add(new Cap("Num", sym(GLFW.GLFW_KEY_NUM_LOCK), 18.5f, 1, 1, 1));
+        caps.add(new Cap("/", sym(GLFW.GLFW_KEY_KP_DIVIDE), 19.5f, 1, 1, 1));
+        caps.add(new Cap("*", sym(GLFW.GLFW_KEY_KP_MULTIPLY), 20.5f, 1, 1, 1));
+        caps.add(new Cap("-", sym(GLFW.GLFW_KEY_KP_SUBTRACT), 21.5f, 1, 1, 1));
         int[] pad = {GLFW.GLFW_KEY_KP_7, GLFW.GLFW_KEY_KP_8, GLFW.GLFW_KEY_KP_9, GLFW.GLFW_KEY_KP_4,
                 GLFW.GLFW_KEY_KP_5, GLFW.GLFW_KEY_KP_6, GLFW.GLFW_KEY_KP_1, GLFW.GLFW_KEY_KP_2,
                 GLFW.GLFW_KEY_KP_3};
         String[] padName = {"7", "8", "9", "4", "5", "6", "1", "2", "3"};
         for (int i = 0; i < pad.length; i++) {
-            int col = i % 3;
-            int row = 1 + i / 3;
-            caps.add(new Cap(padName[i], pad[i], 18.5f + col, row, 1, 1));
+            caps.add(new Cap(padName[i], sym(pad[i]), 18.5f + i % 3, 2 + i / 3, 1, 1));
         }
-        caps.add(new Cap("+", GLFW.GLFW_KEY_KP_ADD, 21.5f, 1, 1, 2));
-        caps.add(new Cap("Enter", GLFW.GLFW_KEY_KP_ENTER, 21.5f, 3, 1, 2));
-        caps.add(new Cap("0", GLFW.GLFW_KEY_KP_0, 18.5f, 4, 2, 1));
-        caps.add(new Cap(".", GLFW.GLFW_KEY_KP_DECIMAL, 20.5f, 4, 1, 1));
+        caps.add(new Cap("+", sym(GLFW.GLFW_KEY_KP_ADD), 21.5f, 2, 1, 2));
+        caps.add(new Cap("Enter", sym(GLFW.GLFW_KEY_KP_ENTER), 21.5f, 4, 1, 2));
+        caps.add(new Cap("0", sym(GLFW.GLFW_KEY_KP_0), 18.5f, 5, 2, 1));
+        caps.add(new Cap(".", sym(GLFW.GLFW_KEY_KP_DECIMAL), 20.5f, 5, 1, 1));
     }
 
     private static int codeOf(String letter) {
@@ -193,7 +206,7 @@ public final class KeybindScreen extends Screen {
             });
         }
         addRenderableWidget(search);
-        search.setVisible(picked >= 0);
+        search.setVisible(picked != null);
         refilter();
     }
 
@@ -221,17 +234,17 @@ public final class KeybindScreen extends Screen {
         return m.key == null || m.key.isUnbound() ? "" : m.key.saveString();
     }
 
-    private static String keyId(int code) {
-        return code < 0 ? "" : InputConstants.Type.KEYSYM.getOrCreate(code).getName();
+    private static String idOf(InputConstants.Key key) {
+        return key == null ? "" : key.getName();
     }
 
     private String keyName(Module m) {
         return m.key == null || m.key.isUnbound() ? "None" : m.key.getTranslatedKeyMessage().getString();
     }
 
-    private List<Module> boundTo(int code) {
+    private List<Module> boundTo(InputConstants.Key key) {
         List<Module> out = new ArrayList<>();
-        String id = keyId(code);
+        String id = idOf(key);
         if (id.isEmpty()) return out;
         for (Module m : all) if (id.equals(keyId(m))) out.add(m);
         return out;
@@ -241,14 +254,14 @@ public final class KeybindScreen extends Screen {
         return Math.max(0, shown.size() * ROW - listH);
     }
 
-    private void bind(Module m, int code) {
-        if (m.key == null) return;
+    private void bind(Module m, InputConstants.Key key) {
+        if (m.key == null || key == null) return;
         // One key can only do one thing: whoever held it loses it.
-        String id = keyId(code);
+        String id = idOf(key);
         for (Module o : all) {
             if (o != m && id.equals(keyId(o)) && o.key != null) o.key.setKey(InputConstants.UNKNOWN);
         }
-        m.key.setKey(code < 0 ? InputConstants.UNKNOWN : InputConstants.Type.KEYSYM.getOrCreate(code));
+        m.key.setKey(key);
         KeyMapping.resetMapping();
         minecraft.options.save();
         Zeus.save();
@@ -262,8 +275,8 @@ public final class KeybindScreen extends Screen {
         Zeus.save();
     }
 
-    private void clearKey(int code) {
-        for (Module m : boundTo(code)) if (m.key != null) m.key.setKey(InputConstants.UNKNOWN);
+    private void clearKey(InputConstants.Key key) {
+        for (Module m : boundTo(key)) if (m.key != null) m.key.setKey(InputConstants.UNKNOWN);
         KeyMapping.resetMapping();
         minecraft.options.save();
         Zeus.save();
@@ -301,12 +314,12 @@ public final class KeybindScreen extends Screen {
         listH = py + ph - 26 - listY;
         drawPicker(g, mx, my, partialTick);
 
-        String hint = picked < 0
-                ? "Click a key to see every module that can use it. Click a linked module to take it off the key. Escape closes."
+        String hint = picked == null
+                ? "Click a key or a mouse button to see every module that can use it. Right click a key to clear it. Escape closes."
                 : "Pick a module to link it to this key. Click the same module again to unlink. Escape closes the list.";
         Draw.text(g, Draw.fit(hint, pw - 20), px + 10, py + ph - 14, DIM);
 
-        if (picked >= 0) search.render(g, mx, my, partialTick);
+        if (picked != null) search.render(g, mx, my, partialTick);
     }
 
     private void drawBoard(GuiGraphics g, int mx, int my, float partialTick) {
@@ -317,8 +330,8 @@ public final class KeybindScreen extends Screen {
             int w = Math.round(c.w * unit) - 2;
             int h = Math.round(c.h * unit) - 2;
             if (x + w > px + pw - 8) continue;
-            List<Module> linked = boundTo(c.code);
-            boolean selected = picked == c.code;
+            List<Module> linked = boundTo(c.key);
+            boolean selected = picked != null && idOf(picked).equals(idOf(c.key));
             boolean hover = mx >= x && mx < x + w && my >= y && my < y + h;
             int fill = selected ? 0xFF14356E : !linked.isEmpty() ? (hover ? 0xFF1B3F86 : 0xFF12294F) : hover ? 0xFF122039 : 0xFF0A1226;
             int line = selected ? 0xFF3C92FF : !linked.isEmpty() ? 0xFF4C7FDA : hover ? 0xFF2F4C82 : 0xFF263860;
@@ -330,28 +343,25 @@ public final class KeybindScreen extends Screen {
                     !linked.isEmpty() ? 0xFFFFFFFF : 0xFF9DAECB);
             if (!linked.isEmpty()) {
                 g.fill(x + 3, y + 3, x + 6, y + 6, Draw.rgba(ON, 0.95f));
-                String name = linked.get(0).name;
-                String fit = Draw.fit(name, w - 4);
+                String fit = Draw.fit(linked.get(0).name, w - 4);
                 if (!fit.isEmpty() && h > 12) {
                     Draw.text(g, fit, x + (w - Draw.width(fit)) / 2, y + h - 11, Draw.rgba(HOT, 0.95f));
                 }
             }
-            hit.add(new Cap(label, c.code, x, y, w, h));
+            hit.add(new Cap(label, c.key, x, y, w, h));
         }
     }
 
     private void drawPicker(GuiGraphics g, int mx, int my, float partialTick) {
         rows.clear();
-        if (picked < 0) {
-            String pick = "No key picked yet";
-            Draw.text(g, pick, listX, listY + 2, DIM);
+        if (picked == null) {
+            Draw.text(g, "No key picked yet", listX, listY + 2, DIM);
             return;
         }
-        String head = "Key " + nameOf(picked);
+        String head = "Key " + picked.getDisplayName().getString();
         Draw.text(g, head, listX, listY, 0xFFC3D2F2);
         String keys = "";
-        List<Module> linked = boundTo(picked);
-        for (Module m : linked) keys += (keys.isEmpty() ? "" : ", ") + m.name;
+        for (Module m : boundTo(picked)) keys += (keys.isEmpty() ? "" : ", ") + m.name;
         if (!keys.isEmpty()) Draw.text(g, Draw.fit("now: " + keys, Math.round(listW * 0.55f)),
                 listX + Math.round(listW * 0.45f), listY, ON);
 
@@ -373,7 +383,7 @@ public final class KeybindScreen extends Screen {
             int y = by + (i - first) * ROW - Math.round(off);
             if (y >= by + bh) break;
             Module m = shown.get(i);
-            boolean on = keyId(m).equals(keyId(picked));
+            boolean on = keyId(m).equals(idOf(picked));
             boolean has = !keyId(m).isEmpty();
             boolean hover = mx >= listX && mx < listX + listW && my >= y && my < y + ROW - 1
                     && my >= by && my < by + bh;
@@ -381,8 +391,7 @@ public final class KeybindScreen extends Screen {
             g.fill(listX, y + 2, listX + 2, y + ROW - 3, Draw.rgba(m.category.color(), 0.9f));
             Draw.text(g, Draw.fit(m.name, Math.round(listW * 0.5f)), listX + 7, y + 4,
                     on ? 0xFFFFFFFF : m.enabled() ? 0xFFDCE7FA : TEXT);
-            String cat = m.category.label;
-            Draw.text(g, cat, listX + Math.round(listW * 0.52f), y + 4, 0xFF5E7094);
+            Draw.text(g, m.category.label, listX + Math.round(listW * 0.52f), y + 4, 0xFF5E7094);
             String right = on ? "linked" : has ? keyName(m) : "free";
             int col = on ? ON : has ? HOT : 0xFF7F93BD;
             Draw.text(g, right, listX + listW - Draw.width(right), y + 4, col);
@@ -394,15 +403,6 @@ public final class KeybindScreen extends Screen {
             int sbH = Math.max(12, Math.round(bh * (bh / (float) (shown.size() * ROW))));
             int sy = by + Math.round((bh - sbH) * (listScroll / maxScroll()));
             g.fill(listX + listW - 3, sy, listX + listW - 1, sy + sbH, 0x66FFFFFF);
-        }
-    }
-
-    private String nameOf(int code) {
-        if (code < 0) return "None";
-        try {
-            return InputConstants.Type.KEYSYM.getOrCreate(code).getDisplayName().getString();
-        } catch (RuntimeException e) {
-            return "Key " + code;
         }
     }
 
@@ -419,26 +419,26 @@ public final class KeybindScreen extends Screen {
                 int y = Math.round(c.y);
                 if (mx >= x && mx < x + Math.round(c.w) && my >= y && my < y + Math.round(c.h)) {
                     if (button == 1) {
-                        clearKey(c.code);
-                        if (picked == c.code) picked = -1;
-                    } else if (picked == c.code) {
-                        picked = -1;
+                        clearKey(c.key);
+                        if (picked != null && idOf(picked).equals(idOf(c.key))) picked = null;
+                    } else if (picked != null && idOf(picked).equals(idOf(c.key))) {
+                        picked = null;
                     } else {
-                        picked = c.code;
+                        picked = c.key;
                         listScroll = 0;
                         refilter();
                     }
-                    search.setFocused(picked >= 0);
-                    search.setVisible(picked >= 0);
+                    search.setFocused(picked != null);
+                    search.setVisible(picked != null);
                     return true;
                 }
             }
         }
-        if (picked >= 0 && button == 0) {
+        if (picked != null && button == 0) {
             for (int[] r : rows) {
                 if (mx >= r[0] && mx < r[0] + r[2] && my >= r[1] && my < r[1] + r[3]) {
                     Module m = shown.get(r[4]);
-                    if (keyId(m).equals(keyId(picked))) unbind(m);
+                    if (keyId(m).equals(idOf(picked))) unbind(m);
                     else bind(m, picked);
                     return true;
                 }
@@ -449,20 +449,19 @@ public final class KeybindScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
-        if (scrollY == 0) return super.mouseScrolled(x, y, scrollX, scrollY);
-        if (picked >= 0 && y >= listY && y <= listY + listH) {
+        if (picked != null && scrollY != 0 && y >= listY && y <= listY + listH) {
             listScroll = Math.max(0, Math.min(maxScroll(), listScroll - (float) scrollY * ROW * 2));
             return true;
         }
-        return true;
+        return super.mouseScrolled(x, y, scrollX, scrollY);
     }
 
     @Override
     public boolean keyPressed(KeyEvent event) {
         int key = event.key();
         if (key == GLFW.GLFW_KEY_ESCAPE) {
-            if (picked >= 0) {
-                picked = -1;
+            if (picked != null) {
+                picked = null;
                 search.setVisible(false);
                 search.setFocused(false);
                 return true;
@@ -474,11 +473,11 @@ public final class KeybindScreen extends Screen {
             onClose();
             return true;
         }
-        if (key == GLFW.GLFW_KEY_PAGE_DOWN && picked >= 0) {
+        if (picked != null && key == GLFW.GLFW_KEY_PAGE_DOWN) {
             listScroll = Math.min(maxScroll(), listScroll + listH);
             return true;
         }
-        if (key == GLFW.GLFW_KEY_PAGE_UP && picked >= 0) {
+        if (picked != null && key == GLFW.GLFW_KEY_PAGE_UP) {
             listScroll = Math.max(0, listScroll - listH);
             return true;
         }

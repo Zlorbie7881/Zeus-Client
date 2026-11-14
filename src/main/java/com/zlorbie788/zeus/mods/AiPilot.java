@@ -5327,6 +5327,10 @@ public final class AiPilot extends Module {
         p.setYHeadRot(yaw);
         mc.options.keyUp.setDown(true);
         mc.options.keyJump.setDown((blockedAhead || bump) && p.onGround());
+        // Sprint on the long clear stretches, walk near trouble: sprinting into a ledge or a wall
+        // costs the reaction the detour needs, and hunger is a real resource on a long trip.
+        mc.options.keySprint.setDown(flat > 6.0 && !detour && !blockedAhead && !bump
+                && p.onGround() && !p.isInWater() && p.getFoodData().getFoodLevel() > 6);
         return false;
     }
 
