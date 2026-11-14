@@ -412,6 +412,34 @@ public final class Extras {
             Zeus.toast("Waypoints cleared", true);
         }
 
+        /** A saved place in this dimension by name (case and spaces ignored), as {x, y, z}, or null. */
+        public double[] findNamed(String name) {
+            Minecraft mc = Minecraft.getInstance();
+            load();
+            String want = name.toLowerCase(java.util.Locale.ROOT).replace(" ", "");
+            for (Wp w : points) {
+                if (!w.dim().equals(dim(mc))) continue;
+                if (w.name().toLowerCase(java.util.Locale.ROOT).replace(" ", "").equals(want)) return new double[] {w.x(), w.y(), w.z()};
+            }
+            return null;
+        }
+
+        /** Saved places in this dimension, nearest first, for the AI's context: "name at x y z, N blocks". */
+        public List<String> forAi(int max) {
+            Minecraft mc = Minecraft.getInstance();
+            load();
+            List<Wp> here = new ArrayList<>();
+            for (Wp w : points) if (w.dim().equals(dim(mc))) here.add(w);
+            if (mc.player != null) here.sort(java.util.Comparator.comparingDouble(w -> mc.player.distanceToSqr(w.x(), w.y(), w.z())));
+            List<String> out = new ArrayList<>();
+            for (Wp w : here) {
+                if (out.size() >= max) break;
+                String d = mc.player == null ? "" : ", " + Math.round(Math.sqrt(mc.player.distanceToSqr(w.x(), w.y(), w.z()))) + " blocks";
+                out.add(w.name() + " at " + Math.round(w.x()) + " " + Math.round(w.y()) + " " + Math.round(w.z()) + d);
+            }
+            return out;
+        }
+
         private List<String> lines() {
             Minecraft mc = Minecraft.getInstance();
             load();

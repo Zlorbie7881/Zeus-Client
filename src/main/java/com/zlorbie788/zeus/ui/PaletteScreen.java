@@ -112,6 +112,18 @@ public final class PaletteScreen extends Screen {
             results = list;
             return;
         }
+        boolean active = raw.equals("active") || raw.equals("enabled") || raw.equals("on") || raw.equals("running");
+        boolean inactive = raw.equals("inactive") || raw.equals("disabled") || raw.equals("off");
+        if (active || inactive) {
+            List<Entry> list = new ArrayList<>();
+            for (Module m : Zeus.all()) {
+                if (m.toggleable() && m.enabled() == active) {
+                    list.add(new Entry(m, null, m.name, active ? "on" : m.category.label, (m.name + " " + m.id).toLowerCase(Locale.ROOT)));
+                }
+            }
+            results = list;
+            return;
+        }
         List<Entry> found = new ArrayList<>();
         for (Entry e : index()) {
             int s = score(e.hay, raw);

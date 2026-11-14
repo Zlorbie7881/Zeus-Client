@@ -68,10 +68,13 @@ All commands are handled by your game and are never sent to the server.
 | `/zeus ai test`, `/zeus ai status` | Check the AI connection, see key, model and limits |
 | `/zeus ai provider\|model\|endpoint <value>` | Switch AI provider (groq, gemini, openrouter, openai, deepseek, mistral, ollama, lmstudio) or model |
 | `/zeus ai stop\|undo\|plan` | End a job, undo the last AI change, show the last plan |
+| `/zeus ai models`, `/zeus ai again` | List the provider's models (click to pick), repeat the last request |
+| `/zeus ai schematics` | List the schematics in the instance's `schematics` folder (Litematica's) with Build and Materials buttons |
+| `/zeus ai build schematic <name>` | Gather the materials (chop, mine, craft, smelt) and build it 3 blocks in front of you; add `here` to restart at your spot |
 
 ### Zeus AI
 
-Zeus AI runs on an AI provider with your own API key, or fully offline through Ollama or LM Studio. Groq and Google Gemini give free keys. Run `/zeus ai tutorial` in a world and it walks you through every step with clickable buttons. The key is stored only in your local config and is shown masked in chat. Without a key, a built-in parser still handles simple commands like `on sprint` or `set killaura range to 4`.
+Zeus AI runs on an AI provider with your own API key, or fully offline through Ollama or LM Studio. Groq and Google Gemini give free keys. Run `/zeus ai tutorial` in a world and it walks you through every step with clickable buttons. Start a normal chat message with **@** (for example `@mine 10 iron`) and it goes straight to Zeus AI, never to the server; the prefix can be changed in the settings. Press **J** to open chat with `/zeus ai ` already typed. Turn on **Chat window** in Zeus AI Functions for a small on-screen chat of your requests and its answers. The key is stored only in your local config and is shown masked in chat. Without a key, a built-in parser still handles simple commands like `on sprint` or `set killaura range to 4`.
 
 ### Control page
 

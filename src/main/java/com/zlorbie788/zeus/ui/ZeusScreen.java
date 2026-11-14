@@ -203,7 +203,7 @@ public final class ZeusScreen extends Screen {
             search = new EditBox(minecraft.font, 0, 0, 100, 12, Component.empty());
             search.setMaxLength(32);
             search.setBordered(false);
-            search.setHint(Component.literal("Search modules"));
+            search.setHint(Component.literal("Search modules, or type active"));
             search.setResponder(s -> scroll = 0);
         }
         addRenderableWidget(search);
@@ -1028,6 +1028,34 @@ public final class ZeusScreen extends Screen {
         syncSearchCache(q);
         Integer cached = scoreCache.get(m);
         if (cached != null) return cached;
+        // "active" (or on / enabled) lists the modules that are switched on, "inactive" (off / disabled)
+        // the ones that are off; "active esp" narrows that down by name.
+        String lower = q.trim().toLowerCase(java.util.Locale.ROOT);
+        Boolean wantOn = null;
+        String rest = lower;
+        for (String[] group : STATE_WORDS) {
+            for (String word : group) {
+                if (lower.equals(word) || lower.startsWith(word + " ")) {
+                    wantOn = group == STATE_WORDS[0];
+                    rest = lower.substring(word.length()).trim();
+                    break;
+                }
+            }
+            if (wantOn != null) break;
+        }
+        if (wantOn != null) {
+            int score = !m.toggleable() || m.enabled() != wantOn ? -1 : rest.isEmpty() ? 1500 - Math.min(400, m.name.length()) : textScore(m, rest);
+            scoreCache.put(m, score);
+            return score;
+        }
+        int best = textScore(m, q);
+        scoreCache.put(m, best);
+        return best;
+    }
+
+    private static final String[][] STATE_WORDS = {{"active", "enabled", "on", "running"}, {"inactive", "disabled", "off"}};
+
+    private int textScore(Module m, String q) {
         Index ix = INDEX.computeIfAbsent(m, Index::new);
         String needle = normalizeSearch(q);
         int best = Math.max(scoreText(ix.name, m.name, needle), scoreText(ix.id, m.id, needle));
@@ -1039,7 +1067,6 @@ public final class ZeusScreen extends Screen {
             best = Math.max(best, scoreText(ix.settingNames[i], list.get(i).name, needle) - 90);
             best = Math.max(best, scoreText(ix.settingDescs[i], null, needle) - 170);
         }
-        scoreCache.put(m, best);
         return best;
     }
 
@@ -1099,8 +1126,18 @@ public final class ZeusScreen extends Screen {
         return prev[b.length()];
     }
 
+    private int enabledSignature;
+
     private List<Module> searchResults(String q, Category only) {
         syncSearchCache(q);
+        // State searches ("active") must follow modules being switched while the list is open.
+        int sig = 1;
+        for (Module m : Zeus.all()) if (m.enabled()) sig = sig * 31 + m.id.hashCode();
+        if (sig != enabledSignature) {
+            enabledSignature = sig;
+            scoreCache.clear();
+            resultCache.clear();
+        }
         Object key = only == null ? "*" : only;
         List<Module> hit = resultCache.get(key);
         if (hit != null) return hit;
@@ -1728,7 +1765,7 @@ public final class ZeusScreen extends Screen {
         if (s instanceof Setting.Choice c) return chipsFit(c, cw) ? K(68) : K(44);
         if (s instanceof Setting.Pick p) return K(32) + pickRows(p, cw) * K(36);
         if (s instanceof Setting.Text) return K(48);
-        if (s instanceof Setting.Action) return K(48);
+        if (s instanceof Setting.Action a) return a.primary ? K(78) : K(48);
         if (s instanceof Setting.Info info) {
             int n = Math.min(info.lines().size(), 10);
             return K(34) + Math.max(1, n) * K(19) + (info.lines().size() > 10 ? K(19) : 0) + K(8);
@@ -1911,6 +1948,22 @@ public final class ZeusScreen extends Screen {
                 field.setValue(t.get());
                 focusField();
             }, null);
+        } else if (s instanceof Setting.Action a && a.primary) {
+            // A wide, bright call-to-action with a gently breathing glow so it cannot be missed.
+            int ch = K(62);
+            int cy = y + h / 2;
+            int top = cy - ch / 2;
+            boolean hb = hov(x, top, w, ch) && inViewD();
+            float pulse = 0.5f + 0.5f * (float) Math.sin(System.nanoTime() / 1e9 * 2.4);
+            Ty.glow(g, x, top, w, ch, K(14), K(10), Draw.rgba(bl, (hb ? 0.55f : 0.30f) + 0.15f * pulse));
+            Ty.fill(g, x, top, w, ch, K(14), hb ? Draw.rgba(bl, 0.95f) : Draw.rgba(bl, 0.78f));
+            Ty.fill(g, x + K(2), top + K(2), w - K(4), ch / 2 - K(2), K(12), 0x22FFFFFF);
+            Ty.ring(g, x, top, w, ch, K(14), K(2), Draw.rgba(0xFFFFFFFF, hb ? 0.95f : 0.55f + 0.3f * pulse));
+            String title = a.name.toUpperCase(Locale.ROOT) + "  >";
+            String sub = a.detail == null ? a.desc : a.detail.get();
+            txC(g, title, x + w / 2, cy - (sub == null || sub.isEmpty() ? 0 : K(9)), 17, Ty.XBOLD, 0xFFFFFFFF);
+            if (sub != null && !sub.isEmpty()) txC(g, Ty.fit(sub, w - K(24), tp(12), Ty.MED), x + w / 2, cy + K(14), 12, Ty.MED, 0xE6FFFFFF);
+            hit(x, top, w, ch, k2 -> a.fire(), a.desc);
         } else if (s instanceof Setting.Action a) {
             int ch = K(34);
             int cy = y + h / 2;
@@ -2038,7 +2091,7 @@ public final class ZeusScreen extends Screen {
 
     private int rowH(Setting s) {
         if (s instanceof Setting.Num) return 26;
-        if (s instanceof Setting.Action) return 24;
+        if (s instanceof Setting.Action a) return a.primary ? 36 : 24;
         if (s instanceof Setting.Pick p) return 20 + Math.max(1, p.rows) * 17 + 2;
         if (s instanceof Setting.Info info) {
             int n = Math.min(info.lines().size(), 10);
@@ -2127,6 +2180,16 @@ public final class ZeusScreen extends Screen {
                 field.setValue(t.get());
                 focusField();
             }, null);
+        } else if (s instanceof Setting.Action a && a.primary) {
+            boolean hb = hov(x, y + 2, w, 32) && inView(top, viewH);
+            float pulse = 0.5f + 0.5f * (float) Math.sin(System.nanoTime() / 1e9 * 2.4);
+            Draw.glow(g, x, y + 2, w, 32, 8, Draw.rgba(col, 0.35f + 0.2f * pulse), 6, 0.6f);
+            Draw.rrect(g, x, y + 2, w, 32, 8, Draw.rgba(col, hb ? 0.95f : 0.75f));
+            Draw.rrectLine(g, x, y + 2, w, 32, 8, Draw.rgba(0xFFFFFFFF, hb ? 0.95f : 0.5f + 0.3f * pulse));
+            Draw.boldCenter(g, a.name.toUpperCase(Locale.ROOT) + "  >", x + w / 2, y + 7, 0xFFFFFFFF);
+            String sub = a.detail == null ? "" : a.detail.get();
+            if (!sub.isEmpty()) Draw.textCenter(g, Draw.fit(sub, w - 10), x + w / 2, y + 20, 0xE6FFFFFF);
+            hit(x, y + 2, w, 32, k -> a.fire(), a.desc);
         } else if (s instanceof Setting.Action a) {
             int bw = Draw.width(a.name) + 20;
             boolean hb = hov(x, y + 2, bw, 18) && inView(top, viewH);

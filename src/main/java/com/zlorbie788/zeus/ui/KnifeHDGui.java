@@ -25,17 +25,28 @@ public final class KnifeHDGui {
     }
 
     private static final KnifeHD.Frame FRAME = new KnifeHD.Frame();
-    private static boolean broken;
+    private static volatile long brokenUntil;
+    private static int failures;
+    private static String lastError = "";
+
+    /** One failure (a texture still uploading, a resource reload) should not cost the HD knife for the whole session. */
+    private static boolean broken() {
+        return failures >= 5 || System.currentTimeMillis() < brokenUntil;
+    }
+
+    public static String problem() {
+        return failures == 0 ? "" : lastError;
+    }
 
     public static boolean ready(int knife) {
-        if (broken) return false;
+        if (broken()) return false;
         KnifeHD.Model m = KnifeHD.model(knife);
         return m != null && Tex.sprite(KnifeHD.sheet(m, 1)) != null;
     }
 
     /** Draws a knife at the rig transform k.  Returns false if it could not be drawn. */
     public static boolean draw(GuiGraphics g, int knife, Rig.T k, float unit, float alpha, boolean light) {
-        if (broken) return false;
+        if (broken()) return false;
         try {
             KnifeHD.Model m = KnifeHD.model(knife);
             if (m == null) return false;
@@ -63,8 +74,10 @@ public final class KnifeHDGui {
             }
             return true;
         } catch (RuntimeException | Error e) {
-            broken = true;
-            com.zlorbie788.zeus.core.Zeus.LOG.warn("HD knife could not be drawn; using the pixel knife", e);
+            failures++;
+            brokenUntil = System.currentTimeMillis() + 5_000L;
+            lastError = e.getClass().getSimpleName() + (e.getMessage() == null ? "" : ": " + e.getMessage());
+            com.zlorbie788.zeus.core.Zeus.LOG.warn("HD knife could not be drawn (attempt {}); using the pixel knife", failures, e);
             return false;
         }
     }
@@ -76,7 +89,7 @@ public final class KnifeHDGui {
      * to keep the face towards the viewer and shows the highlights running along the blade.
      */
     public static boolean showcase(GuiGraphics g, int knife, int bx, int by, int bw, int bh, float time, boolean big) {
-        if (broken) return false;
+        if (broken()) return false;
         KnifeHD.Model m = KnifeHD.model(knife);
         if (m == null) return false;
         float sway = (float) Math.sin(time * (big ? 0.9 : 0.7) + knife * 0.8);
@@ -120,7 +133,10 @@ public final class KnifeHDGui {
             this.setup = setup;
             this.pose = pose;
             this.scissor = scissor;
-            int n = (to - from) * 4;
+            // Every quad is sent twice, once in each winding.  GUI pipelines cull back faces, and which
+            // winding survives depends on how the 3D knife is turned; with both copies exactly one passes
+            // the cull test, so no face of the knife can disappear and none is drawn twice.
+            int n = (to - from) * 8;
             xy = new float[n * 2];
             uv = new float[n * 2];
             col = new int[n];
@@ -128,22 +144,25 @@ public final class KnifeHDGui {
             int o = 0;
             for (int i = from; i < to; i++) {
                 KnifeHD.Quad q = qs.get(i);
-                for (int c = 0; c < 4; c++) {
-                    float x = q.x[c], y = q.y[c];
-                    if (!Float.isFinite(x) || !Float.isFinite(y)) {
-                        x = 0f;
-                        y = 0f;
+                for (int pass = 0; pass < 2; pass++) {
+                    for (int k = 0; k < 4; k++) {
+                        int c = pass == 0 ? k : (4 - k) & 3;
+                        float x = q.x[c], y = q.y[c];
+                        if (!Float.isFinite(x) || !Float.isFinite(y)) {
+                            x = 0f;
+                            y = 0f;
+                        }
+                        xy[o * 2] = x;
+                        xy[o * 2 + 1] = y;
+                        uv[o * 2] = q.u[c];
+                        uv[o * 2 + 1] = q.v[c];
+                        col[o] = q.c[c];
+                        minX = Math.min(minX, x);
+                        minY = Math.min(minY, y);
+                        maxX = Math.max(maxX, x);
+                        maxY = Math.max(maxY, y);
+                        o++;
                     }
-                    xy[o * 2] = x;
-                    xy[o * 2 + 1] = y;
-                    uv[o * 2] = q.u[c];
-                    uv[o * 2 + 1] = q.v[c];
-                    col[o] = q.c[c];
-                    minX = Math.min(minX, x);
-                    minY = Math.min(minY, y);
-                    maxX = Math.max(maxX, x);
-                    maxY = Math.max(maxY, y);
-                    o++;
                 }
             }
             ScreenRectangle b = null;
