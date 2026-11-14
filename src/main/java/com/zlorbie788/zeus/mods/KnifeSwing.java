@@ -122,8 +122,15 @@ public final class KnifeSwing extends Module {
     private static final int FIRST_HD = 2 + KnifeArt.SMODELS.length - KnifeArt.HD_COUNT;
     private static final String[] SECTIONS = {"Knife & hand", "Position", "Tricks", "Effects"};
     private final Setting.Choice section = add(new Setting.Choice("Show settings for", "The knife settings are split into four pages so you only see what you are changing.", 0, SECTIONS));
-    private final Setting.Action switchKnife = add(new Setting.Action("Switch knife", "Opens a window with every HD knife and a live 3D preview of each. Click one to hold it.", this::openGallery))
+    private final Setting.Action switchKnife = add(new Setting.Action("Switch knife", "Opens a window with every HD knife and a live 3D preview of each. Click one to hold it.", this::openGallery)
+            .primary(() -> "Holding " + shortKnife() + "  ·  click to see all " + KnifeArt.HD_COUNT + " knives"))
             .showIf(() -> section.index() == 0);
+
+    private String shortKnife() {
+        String n = type == null ? "" : type.value();
+        int dot = n.lastIndexOf('·');
+        return dot >= 0 ? n.substring(dot + 1).trim() : n;
+    }
     private final Setting.Choice type = add(new Setting.Choice("HD knife", "Which HD tactical knife you hold: lit high-resolution 3D models (Damascus, Slaughter, Case hardened, Fade, Crimson web, Tiger tooth, Sapphire, Urban masked, Emerald, Marble fade, Ruby, Ultraviolet).", 0, TYPES)).showIf(() -> false);
 
     /** The renderer's knife kind for the chosen HD knife. */
@@ -132,7 +139,10 @@ public final class KnifeSwing extends Module {
     }
 
     private void setKind(int kind) {
-        if (kind >= FIRST_HD) type.set(kind - FIRST_HD);
+        if (kind >= FIRST_HD && kind - FIRST_HD != type.index()) {
+            type.set(kind - FIRST_HD);
+            drawRise = 1f;          // the new knife rises into the hand
+        }
     }
     private final Setting.Choice sfinish = add(new Setting.Choice("Knife finish", "The paint of the straight knives: steel, Fade, Slaughter, Doppler, Case hardened and so on.", 0, KnifeArt.SFINISHES)).showIf(() -> false);
     private final Setting.Choice when = add(new Setting.Choice("When it shows", "Choose when the knife overlay replaces the first-person hand: empty hand, both hands empty, always, or whenever you hold any sword.", 0, "Empty hand", "Both hands empty", "Always", "Replace any sword")).showIf(() -> section.index() == 0);
@@ -1272,6 +1282,8 @@ public final class KnifeSwing extends Module {
         float y0 = targetY - grip[1];
 
         Pose p = shown(secs(), playing());
+        float[] moveOff = motion(mc, partial, unit, dt);
+        p.flickZ += moveOff[2];
         Frame f = frame(p);
         KnifeArt.Look look = lookFor();
         look.fine = !Perf.gameFast();
@@ -1282,7 +1294,7 @@ public final class KnifeSwing extends Module {
         int colour = Draw.rgba(look.glow, 0.85f * fade);
 
         g.pose().pushMatrix();
-        g.pose().translate(x0 + swayX, y0 + swayY);
+        g.pose().translate(x0 + swayX + moveOff[0], y0 + swayY + moveOff[1]);
 
         float[] tip = tipOf(f, p);
         float[] tp = onScreen(tip, u);
@@ -1342,7 +1354,7 @@ public final class KnifeSwing extends Module {
             rig.alpha(fade);
             rig.box(f.arm, 0f, ARM_L * 0.03f - ARM_L * len / 2f, 0f, aw, ARM_L * len, 8f, armPaint, false, 40f);
             float[] e = rig.extent();
-            float bottom = y0 + swayY + Math.max(e[3] * u, e[1] * u);
+            float bottom = y0 + swayY + moveOff[1] + Math.max(e[3] * u, e[1] * u);
             if (bottom >= h + 2f) break;
         }
         if (showFingers.on()) {
@@ -1391,6 +1403,67 @@ public final class KnifeSwing extends Module {
         }
 
         g.pose().popMatrix();
+    }
+
+    // ------------------------------------------------------------------ body motion
+    private float landKick;
+    private float landVel;
+    private float sprintMix;
+    private float airLift;
+    private boolean wasGround = true;
+    private double lastVy;
+    private float drawRise = 1f;
+
+    /**
+     * How the hand moves with the body, on top of the trick pose: a walking bob in a figure of eight
+     * like the game's own hand, a forward lean and faster bob when sprinting, a lift while airborne, a
+     * springy dip on landing, a crouch drop and a rise into view when the knife is drawn.
+     * Returns screen offsets {dx, dy} and an extra roll.
+     */
+    private float[] motion(Minecraft mc, float partial, float unit, float dt) {
+        float dx = 0f, dy = 0f, roll = 0f;
+        var pl = mc.player;
+        if (pl == null || !sway.on()) return new float[] {0f, 0f, 0f};
+        try {
+            var st = pl.avatarState();
+            float walk = st.getInterpolatedWalkDistance(partial);
+            float bob = st.getInterpolatedBob(partial);
+            float ph = walk * (float) Math.PI;
+            dx += (float) Math.sin(ph) * bob * 18f * unit;
+            dy += -Math.abs((float) Math.cos(ph)) * bob * 24f * unit;
+            roll += (float) Math.sin(ph) * bob * 0.6f;
+        } catch (Throwable ignored) {
+        }
+        sprintMix += ((pl.isSprinting() ? 1f : 0f) - sprintMix) * Math.min(1f, dt * 6f);
+        dx += 1.6f * unit * sprintMix;
+        dy += 2.2f * unit * sprintMix;
+        roll += -0.07f * sprintMix;
+
+        boolean ground = pl.onGround();
+        double vy = pl.getDeltaMovement().y;
+        if (ground && !wasGround) {
+            // landing: a kick proportional to the fall speed, then a damped spring settles it
+            landVel += (float) Math.min(1.6, Math.max(0.25, -lastVy * 2.2));
+        }
+        wasGround = ground;
+        lastVy = vy;
+        float k = 90f, damp = 11f;
+        float acc = -k * landKick - damp * landVel;
+        landVel += acc * Math.min(dt, 0.05f);
+        landKick += landVel * Math.min(dt, 0.05f) * 6f;
+        landKick = Math.max(-1.5f, Math.min(1.5f, landKick));
+        dy += landKick * 9f * unit;
+
+        airLift += ((ground ? 0f : 1f) - airLift) * Math.min(1f, dt * 5f);
+        dy += -1.4f * unit * airLift * (float) Math.max(-1, Math.min(1, vy * 3));
+
+        dy += (pl.isCrouching() ? 2.5f : 0f) * unit;
+
+        // rise into view when the knife appears
+        drawRise += ((vis > 0.05f ? 0f : 1f) - drawRise) * Math.min(1f, dt * 7f);
+        dy += drawRise * drawRise * 14f * unit;
+        roll += drawRise * 0.35f;
+        return new float[] {dx, dy, roll};
     }
 
     /** Where the knife's grip sits on screen, relative to the hand anchor, with the knife at rest. */

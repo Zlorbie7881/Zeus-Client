@@ -206,11 +206,45 @@ def blade(kn, u0, u1, spine_v, edge_v, tip_v, clip=0.70, belly=0.58, clip_pow=1.
     # grind line: a fine dark seam where the flat meets the bevel
     seam = np.exp(-((d_edge - bw) / 0.035) ** 2) * (bw > 0.2)
     alb = alb * (1 - 0.25 * seam[..., None])
+    # use and wear: hairline scratches that catch the light, a little grime at the guard and spine
+    scr = scratches(kn.id, u0, u1, min(spine_v, edge_v), max(spine_v, edge_v)) * mask
+    alb = lerp(alb, np.minimum(1, alb * 1.35 + 0.07), scr[..., None] * 0.45)
+    grime = np.clip(1 - (U - u0) / 1.6, 0, 1) * 0.5 + np.clip(1 - d_spine / 0.10, 0, 1) * 0.25
+    grime *= 0.6 + 0.4 * fbm(0.5, len(kn.id) * 7 + 3, 3)
+    alb = alb * (1 - 0.18 * np.clip(grime, 0, 1)[..., None] * mask[..., None])
     bevel = np.clip(bev * 0.85 + sw * 0.6 + tooth_bev * 0.7 + serr_bev * 0.8 + edge_line, 0, 1)
     side = np.ones_like(alb) * hexc("8e949c")[None, None, :] * 0.85
     kn.paint(mask, alb, height=h, metal=metal, gloss=gloss, bevel=bevel, side=side)
     kn.tip = (u1, tip_v)
     return sp, ed
+
+
+def scratches(seed_text, u0, u1, v0, v1, count=170):
+    """Thin straight hairlines, mostly along the blade, rasterised only inside their own box."""
+    seed = sum(ord(c) * (i + 1) for i, c in enumerate(seed_text))
+    rng = np.random.default_rng(seed)
+    out = np.zeros((GH, GW), np.float32)
+    for _ in range(count):
+        cu, cv = rng.uniform(u0 + 0.4, u1 - 0.8), rng.uniform(v0, v1)
+        ln = rng.uniform(0.25, 1.6)
+        ang = rng.normal(0.0, 0.22) + (math.pi / 2 if rng.random() < 0.12 else 0.0)
+        du, dv = math.cos(ang) * ln / 2, math.sin(ang) * ln / 2
+        a_u, a_v, b_u, b_v = cu - du, cv - dv, cu + du, cv + dv
+        x0, y0 = to_px(min(a_u, b_u) - 0.05, min(a_v, b_v) - 0.05)
+        x1, y1 = to_px(max(a_u, b_u) + 0.05, max(a_v, b_v) + 0.05)
+        xa, xb = max(0, int(min(x0, x1))), min(GW, int(max(x0, x1)) + 1)
+        ya, yb = max(0, int(min(y0, y1))), min(GH, int(max(y0, y1)) + 1)
+        if xb <= xa or yb <= ya:
+            continue
+        uu, vv = U[ya:yb, xa:xb], V[ya:yb, xa:xb]
+        pu, pv = uu - a_u, vv - a_v
+        eu, ev = b_u - a_u, b_v - a_v
+        t = np.clip((pu * eu + pv * ev) / (eu * eu + ev * ev + 1e-9), 0, 1)
+        d = np.hypot(pu - t * eu, pv - t * ev)
+        w = rng.uniform(0.008, 0.018)
+        fade = np.clip(np.sin(t * math.pi), 0, 1) ** 0.5
+        out[ya:yb, xa:xb] = np.maximum(out[ya:yb, xa:xb], np.clip(1 - d / w, 0, 1) * fade * rng.uniform(0.4, 1.0))
+    return out
 
 
 # ------------------------------------------------------------------ finishes
@@ -770,7 +804,7 @@ def k9():
                           (9.5, 1.50, 1.70), (12.0, 1.55, 1.80), (12.9, 1.45, 1.62)])
     st = finger_grooves(st, 6.4, 12.3, 3, 0.22)
     m, inside = handle_body(kn, st)
-    alb = g10(hexc("0f1712"), 901)
+    alb = g10(hexc("1a2c20"), 901)
     kn.paint(m, alb, height=np.zeros((GH, GW), np.float32), metal=0.0, gloss=0.55, rnd=0.58, side=hexc("070b08"))
     inlay = np.clip(1 - np.abs(inside - 0.20) / 0.045, 0, 1) * ((U > 2.0) & (U < 12.0)) * m
     kn.alb = lerp(kn.alb, hexc("18b05a"), inlay * 0.85)
@@ -818,7 +852,7 @@ def k11():
                           (9.0, 1.30, 1.45), (11.6, 1.40, 1.55), (12.9, 1.35, 1.45)])
     st = finger_grooves(st, 6.8, 12.4, 3, 0.14)
     m, inside = handle_body(kn, st)
-    alb = g10(hexc("1a0a0e"), 1101)
+    alb = g10(hexc("40101a"), 1101)
     kn.paint(m, alb, height=np.zeros((GH, GW), np.float32), metal=0.0, gloss=0.6, rnd=0.55, side=hexc("0c0406"))
     for cu in (3.0, 7.0, 11.0):
         screw(kn, cu, 0.05, 0.20, colour="3a1018")

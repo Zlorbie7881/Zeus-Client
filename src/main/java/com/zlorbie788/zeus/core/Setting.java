@@ -328,6 +328,16 @@ public abstract class Setting {
 
     public static final class Action extends Setting {
         private final Runnable run;
+        /** A big, highlighted button: the main thing to click in its module. */
+        public boolean primary;
+        /** A second line under a primary button, such as what is chosen now. */
+        public java.util.function.Supplier<String> detail;
+
+        public Action primary(java.util.function.Supplier<String> detail) {
+            this.primary = true;
+            this.detail = detail;
+            return this;
+        }
 
         public Action(String name, String desc, Runnable run) {
             super(name, desc);
