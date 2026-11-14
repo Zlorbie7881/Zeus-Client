@@ -5124,7 +5124,7 @@ public final class AiPilot extends Module {
         if (job.kind == JobKind.HUNT || job.kind == JobKind.FLEE || job.kind == JobKind.SHOOT) return false;
         Player p = mc.player;
         if (p.getAttackStrengthScale(0.5f) < 0.85f) return false;
-        net.minecraft.world.entity.Entity mob = nearestMonster(mc, 3.2);
+        net.minecraft.world.entity.Entity mob = nearestMonster(mc, Math.max(3.2, Combat.Reach.entityRange()));
         if (mob == null) return false;
         int weapon = bestWeapon(mc);
         if (weapon >= 0 && weapon != Inv.selected()) Inv.select(weapon);
