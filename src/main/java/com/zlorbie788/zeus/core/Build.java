@@ -19,6 +19,15 @@ public final class Build {
 
     public static final double REACH = 4.6;
 
+    /** The block range the game currently allows: the Reach module widens it, so placement uses all of it. */
+    public static double reach() {
+        try {
+            return Math.max(REACH, com.zlorbie788.zeus.mods.Combat.Reach.blockRange());
+        } catch (Throwable t) {
+            return REACH;
+        }
+    }
+
     private static Minecraft mc() {
         return Minecraft.getInstance();
     }
@@ -77,7 +86,8 @@ public final class Build {
     }
 
     public static boolean canPlace(BlockPos pos, double reach) {
-        return replaceable(pos) && !blocked(pos) && against(pos, reach) != null;
+        double r = Math.max(reach, reach());
+        return replaceable(pos) && !blocked(pos) && against(pos, r) != null;
     }
 
     public static boolean useOn(BlockHitResult hit, Predicate<ItemStack> item, boolean swing) {
@@ -105,7 +115,7 @@ public final class Build {
         Minecraft mc = mc();
         if (mc.player == null) return false;
         if (mc.player.tickCount == placedTick) return false;
-        BlockHitResult hit = against(pos, reach);
+        BlockHitResult hit = against(pos, Math.max(reach, reach()));
         if (hit == null || !useOn(hit, item, swing)) return false;
         placedTick = mc.player.tickCount;
         return true;

@@ -33,18 +33,18 @@ public final class ZeusTitleScreen extends Screen {
     private static final float MEDAL_CY = 145f;
     private static final float MEDAL_R = 123f;
 
-    private static final float[][] ICON = {{74.5f, 714f}, {165.5f, 714f}, {256.5f, 714f}, {347.5f, 714f}, {438.5f, 714f}};
+    private static final float[][] ICON = {{120f, 714f}, {211f, 714f}, {302f, 714f}, {393f, 714f}};
 
     private static final String DISCORD = "https://discord.gg/znrj2TfCP8";
     private static final float ICON_R = 34f;
     private static final float ICON_PIC = 37f;
     private static final String[] NAMES = {"singleplayer", "multiplayer", "customs", "settings", "realms", "exit"};
-    private static final String[] ICON_NAMES = {"language", "accessibility", "settings", "credits", "discord"};
+    private static final String[] ICON_NAMES = {"language", "accessibility", "settings", "discord"};
 
-    private static final int[] ICON_FRAMES = {24, 24, 0, 12, 0};
+    private static final int[] ICON_FRAMES = {24, 24, 0, 0};
     private static final float CLICK_LENGTH = 0.34f;
     private static final float CLICK_GO = 0.25f;
-    private static final String[] ICON_TIPS = {"Language", "Accessibility", "Zeus Settings", "About Zeus", "Join the Discord"};
+    private static final String[] ICON_TIPS = {"Language", "Accessibility", "Zeus Settings", "Join the Discord"};
 
     private static final int PIC_W = 1920;
     private static final int PIC_H = 1080;
@@ -732,12 +732,9 @@ public final class ZeusTitleScreen extends Screen {
             news.draw(g, mouseX, mouseY, dt, 1f - (1f - na) * (1f - na), t);
         }
 
-        String name = minecraft.getUser().getName().toUpperCase(java.util.Locale.ROOT);
-        String line = "VERSION " + ZeusMenu.MENU_VERSION + " - " + name + " ONLINE";
-        Draw.textCenter(g, line, width / 2, height - 11, 0x99B4C0D8);
         String back = "Classic menu";
         boolean hotB = inClassic(mouseX, mouseY);
-        Draw.textCenter(g, back, width / 2, height - 23, hotB ? 0xFFFFFFFF : 0x99B4C0D8);
+        Draw.textCenter(g, back, width / 2, height - 11, hotB ? 0xFFFFFFFF : 0x99B4C0D8);
 
         MenuClock.draw(g, width, height, u, Math.max(0f, Math.min(1f, (t - 0.6f) / 0.6f)));
 
@@ -939,11 +936,12 @@ public final class ZeusTitleScreen extends Screen {
                 case 0 -> minecraft.setScreen(new LanguageSelectScreen(this, minecraft.options, minecraft.getLanguageManager()));
                 case 1 -> minecraft.setScreen(new AccessibilityOptionsScreen(this, minecraft.options));
                 case 2 -> minecraft.setScreen(new ZeusScreen(this));
-                case 4 -> {
+                case 3 -> {
                     net.minecraft.util.Util.getPlatform().openUri(DISCORD);
                     Zeus.toast("Opening Discord", true);
                 }
-                default -> minecraft.setScreen(new ZeusCreditsScreen(this));
+                default -> {
+                }
             }
         } catch (RuntimeException e) {
             Zeus.LOG.warn("Round button {} failed", ICON_NAMES[i], e);

@@ -74,7 +74,10 @@ public final class Combat {
             if (m == 0 && System.currentTimeMillis() < nextHit) return;
             if (legit && me.getAttackStrengthScale(0f) < 0.99f) return;
             if (m != 0 && full.on() && me.getAttackStrengthScale(0f) < 0.95f) return;
-            double reach = legit ? Math.min(range.get(), 3.0) : range.get();
+            // The Reach module widens what the game allows; the aura should use it, not sit at the
+            // slider value while the server would accept a hit from further out.
+            double allowed = Math.max(range.get(), Reach.entityRange());
+            double reach = legit ? Math.min(allowed, 3.35) : allowed;
             double fovDeg = legit ? Math.min(fov.get(), 100.0) : fov.get();
             double r2 = reach * reach;
             Vec3 look = me.getLookAngle();
@@ -308,7 +311,7 @@ public final class Combat {
             Vec3 eye = me.getEyePosition();
             Vec3 look = me.getLookAngle();
             double cone = Math.cos(Math.toRadians(fov.get() / 2.0));
-            double r = range.get();
+            double r = Math.max(range.get(), Reach.entityRange());
             if (locked != null && sticky.on()) {
                 if (stillGood(mc, locked, eye, look, cone, r)) return locked;
             }
