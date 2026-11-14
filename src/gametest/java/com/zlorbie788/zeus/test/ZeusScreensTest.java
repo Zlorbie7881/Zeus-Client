@@ -30,6 +30,19 @@ public class ZeusScreensTest implements FabricClientGameTest {
         ctx.runOnClient(c -> grant());
         run(ctx, 3.0f);
         ctx.takeScreenshot("title_1080");
+        // unroll the news scroll and photograph it
+        ctx.runOnClient(c -> {
+            try {
+                Field nf = c.screen.getClass().getDeclaredField("news");
+                nf.setAccessible(true);
+                Object news = nf.get(c.screen);
+                set(news, "rolled", false);
+            } catch (ReflectiveOperationException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        run(ctx, 2.0f);
+        ctx.takeScreenshot("title_news_1080");
         ctx.getInput().resizeWindow(854, 480);
         run(ctx, 0.6f);
         ctx.takeScreenshot("title_854");
@@ -144,6 +157,14 @@ public class ZeusScreensTest implements FabricClientGameTest {
             owned.add("m9_frost");
             owned.add("butterfly_fade");
             owned.add("bowie_olympus");
+            // a remembered world, so the menu shows its Continue card
+            Class<?> lp = Class.forName("com.zlorbie788.zeus.ui.LastPlayed");
+            Class<?> en = Class.forName("com.zlorbie788.zeus.ui.LastPlayed$Entry");
+            var ctor = en.getDeclaredConstructor(boolean.class, String.class, String.class, long.class);
+            ctor.setAccessible(true);
+            Object entry = ctor.newInstance(false, "New World", "Survival with friends", System.currentTimeMillis() - 2 * 3600_000L);
+            set(null, lp, "last", entry);
+            set(null, lp, "loaded", true);
         } catch (ReflectiveOperationException e) {
             throw new RuntimeException(e);
         }

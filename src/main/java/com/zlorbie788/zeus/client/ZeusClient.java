@@ -135,6 +135,7 @@ public class ZeusClient implements ClientModInitializer {
         }
         com.zlorbie788.zeus.ui.MenuAudio.tick();
         com.zlorbie788.zeus.core.Crates.tick(mc);
+        com.zlorbie788.zeus.ui.LastPlayed.tick(mc);
         if (com.zlorbie788.zeus.ui.UiSettings.WINDOW_ICON.on()) WindowIcon.tick(mc);
         ZeusMenu.tick(mc);
         if (pendingOpen) {

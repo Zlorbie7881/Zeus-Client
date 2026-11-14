@@ -82,6 +82,8 @@ public final class ZeusTitleScreen extends Screen {
     private final float[] clickBox = new float[7];
     private final MenuNews news = new MenuNews();
 
+    private int[] contBox;
+    private int[] updBox;
     private int selected = -1;
     private boolean selectedByMouse;
 
@@ -105,6 +107,7 @@ public final class ZeusTitleScreen extends Screen {
 
     @Override
     protected void init() {
+        MenuOnline.start();
         warm();
     }
 
@@ -365,6 +368,7 @@ public final class ZeusTitleScreen extends Screen {
                 int iy = Math.round(back[2] + sy * cs);
                 g.fill(ix, iy, ix + 1, iy + 1, Draw.rgba(0xFFC8DCFF, (0.10f + 0.55f * tw * tw) * (1f - Math.min(1f, lv * 1.15f))));
             }
+            if (menu) MenuExtras.shootingStars(g, back, t, lv);
         }
         if (moonCover > 0.02f) {
             float c = moonCover * moonCover * (3f - 2f * moonCover);
@@ -713,6 +717,7 @@ public final class ZeusTitleScreen extends Screen {
                     Draw.boldCenter(g, n, bx + bw / 2, by + (bh - 8) / 2, Draw.rgba(0xFF1A1206, ease));
                 }
             }
+            if (fx) MenuExtras.chevrons(g, x, y, w, h, gl * ease, u, i == CRATES ? 0xFFF5D08A : 0xFFA8BEEA);
             if (gl > 0.02f) Draw.rrectLine(g, x, y, w, h, 3, Draw.rgba(i == CRATES ? 0xFFF5D08A : 0xFFA8BEEA, (0.68f + 0.10f * (float) Math.sin(t * 4f)) * gl * ease));
             if (gl > 0.02f && fx) {
                 PlateFx.hover(g, x, y, w, h, t, gl * ease, u);
@@ -771,6 +776,9 @@ public final class ZeusTitleScreen extends Screen {
         Draw.textCenter(g, back, width / 2, height - 23, hotB ? 0xFFFFFFFF : 0x99B4C0D8);
 
         MenuClock.draw(g, width, height, u, Math.max(0f, Math.min(1f, (t - 0.6f) / 0.6f)));
+        if (!UiSettings.CALM.on()) MenuExtras.splash(g, ux(LOGO_X + LOGO_W * 0.97f), uy(LOGO_Y + LOGO_H * 0.86f), u, t);
+        contBox = MenuExtras.continueCard(g, plateX() - Math.round(12 * u), plateY(0), plateY(1) + plateH() - plateY(0), u, mouseX, mouseY, t, dt);
+        updBox = MenuExtras.updatePill(g, mouseX, mouseY, t, dt);
 
         if (clickIdx >= 0) {
             float cp = (System.nanoTime() - clickAt) / 1e9f / CLICK_LENGTH;
@@ -985,6 +993,17 @@ public final class ZeusTitleScreen extends Screen {
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         if (event.button() == 0) {
+            int ex = (int) event.x(), ey = (int) event.y();
+            if (contBox != null && ex >= contBox[0] && ex < contBox[0] + contBox[2] && ey >= contBox[1] && ey < contBox[1] + contBox[3]) {
+                play();
+                LastPlayed.resume(minecraft, this);
+                return true;
+            }
+            if (updBox != null && ex >= updBox[0] && ex < updBox[0] + updBox[2] && ey >= updBox[1] && ey < updBox[1] + updBox[3]) {
+                play();
+                net.minecraft.util.Util.getPlatform().openUri(MenuOnline.RELEASES_PAGE);
+                return true;
+            }
             if (news.click(event.x(), event.y())) {
                 play();
                 return true;

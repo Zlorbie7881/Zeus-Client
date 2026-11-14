@@ -19,9 +19,15 @@ dependencies {
 
 processResources {
     def modVersion = project.version
+    // the GitHub build number, so the client can tell when a newer build is out (0 = local build)
+    def buildNumber = project.findProperty("zeus_build") ?: "0"
     inputs.property "version", modVersion
+    inputs.property "build", buildNumber
     filesMatching("fabric.mod.json") {
         expand "version": modVersion
+    }
+    filesMatching("assets/zeus/build.properties") {
+        expand "build": buildNumber
     }
 }
 

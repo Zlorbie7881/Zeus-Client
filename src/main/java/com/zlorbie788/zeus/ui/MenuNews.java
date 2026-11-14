@@ -212,6 +212,8 @@ final class MenuNews {
             }
         }
 
+        if (bodyH > 8 && openA > 0.05f) drawNews(g, px, bodyTopI, w, bodyH, openA, t);
+
         float footA = smooth(0.0f, 0.03f, e + (open > 1f ? 1f : 0f)) * appear;
         if (footA > 0.01f) {
             int tintF = Draw.rgba(0xFFFFFFFF, footA);
@@ -293,5 +295,85 @@ final class MenuNews {
             Draw.rrectLine(g, tipX, tipY, tipW, 13, 4, 0xFF8A7A62);
             Draw.text(g, tip, tipX + 5, tipY + 3, 0xFFE6DCC8);
         }
+    }
+
+    // ------------------------------------------------------------------ the news itself
+    private static final float TEXT_X0 = 96f;
+    private static final float TEXT_X1 = 484f;
+    private static final float TEXT_Y0 = 46f;
+
+    /** Writes the news onto the parchment in dark ink, scrolling with the paper. */
+    private void drawNews(GuiGraphics g, int px, int top, int w, int h, float alpha, float t) {
+        java.util.List<MenuOnline.Line> lines = MenuOnline.news();
+        float sc = Math.max(0.55f, Math.min(1.0f, s * 2.1f));
+        int ink = Draw.rgba(0xFF3A2614, alpha);
+        int soft = Draw.rgba(0xFF6A5236, alpha);
+        int head = Draw.rgba(0xFF2A1A0C, alpha);
+        int left = px + Math.round(TEXT_X0 * s);
+        int maxW = Math.round((TEXT_X1 - TEXT_X0) * s);
+        float y = top + (TEXT_Y0 - scroll) * s;
+        g.enableScissor(px, top, px + w, top + h);
+        int lineH = Math.max(6, Math.round(10 * sc));
+        if (lines.isEmpty()) {
+            Draw.boldCenterS(g, "Zeus News", px + w / 2, Math.round(y + 40 * s), head, sc * 1.25f);
+            Draw.textCenterS(g, "connecting...", px + w / 2, Math.round(y + 40 * s + lineH * 1.6f), soft, sc);
+            g.disableScissor();
+            return;
+        }
+        for (MenuOnline.Line l : lines) {
+            if (y > top + h) break;
+            switch (l.kind()) {
+                case 0 -> {
+                    float hs = sc * 1.2f;
+                    for (String part : wrap(l.text(), maxW, hs, true)) {
+                        if (y + lineH > top) Draw.boldCenterS(g, part, px + w / 2, Math.round(y), head, hs);
+                        y += lineH * 1.2f;
+                    }
+                    int lw = Math.round(maxW * 0.35f);
+                    g.fill(px + w / 2 - lw / 2, Math.round(y), px + w / 2 + lw / 2, Math.round(y) + 1, soft);
+                    y += lineH * 0.6f;
+                }
+                case 2 -> {
+                    boolean first = true;
+                    for (String part : wrap(l.text(), maxW - Math.round(8 * sc), sc, false)) {
+                        if (first) Draw.textS(g, "\u2022", left, Math.round(y), ink, sc);
+                        Draw.textS(g, part, left + Math.round(8 * sc), Math.round(y), ink, sc);
+                        y += lineH;
+                        first = false;
+                    }
+                }
+                case 3 -> {
+                    for (String part : wrap(l.text(), maxW, sc * 0.85f, false)) {
+                        Draw.textCenterS(g, part, px + w / 2, Math.round(y), soft, sc * 0.85f);
+                        y += lineH * 0.9f;
+                    }
+                }
+                case 4 -> y += lineH * 0.6f;
+                default -> {
+                    for (String part : wrap(l.text(), maxW, sc, false)) {
+                        Draw.textS(g, part, left, Math.round(y), ink, sc);
+                        y += lineH;
+                    }
+                }
+            }
+        }
+        g.disableScissor();
+    }
+
+    private static java.util.List<String> wrap(String text, int width, float sc, boolean bold) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        StringBuilder line = new StringBuilder();
+        for (String word : text.split(" ")) {
+            String next = line.length() == 0 ? word : line + " " + word;
+            int wd = bold ? Draw.widthBoldS(next, sc) : Draw.widthS(next, sc);
+            if (wd > width && line.length() > 0) {
+                out.add(line.toString());
+                line = new StringBuilder(word);
+            } else {
+                line = new StringBuilder(next);
+            }
+        }
+        if (line.length() > 0) out.add(line.toString());
+        return out;
     }
 }

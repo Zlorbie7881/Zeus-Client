@@ -19,7 +19,7 @@ public final class ZeusMenu {
             if (!UiSettings.MENU.on()) return s;
             boolean first = !launched;
             launched = true;
-            if (first && UiSettings.STARTUP_VIDEO.on() && VideoIntroScreen.available()) {
+            if (first && UiSettings.STARTUP_VIDEO.on() && VideoIntroScreen.available() && firstToday()) {
                 return new VideoIntroScreen(ZeusTitleScreen::new, true);
             }
             return new ZeusTitleScreen();
@@ -28,6 +28,19 @@ public final class ZeusMenu {
             warned = true;
             return s;
         }
+    }
+
+    /** The intro plays on the first launch of each day, not every time the game starts. */
+    private static boolean firstToday() {
+        try {
+            java.nio.file.Path f = net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("zeus").resolve("intro_day.txt");
+            String today = java.time.LocalDate.now().toString();
+            if (java.nio.file.Files.exists(f) && java.nio.file.Files.readString(f).trim().equals(today)) return false;
+            java.nio.file.Files.createDirectories(f.getParent());
+            java.nio.file.Files.writeString(f, today);
+        } catch (Exception ignored) {
+        }
+        return true;
     }
 
     public static void tick(Minecraft mc) {

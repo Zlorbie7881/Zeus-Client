@@ -48,7 +48,7 @@ public final class UiSettings {
 
     public static final Setting.Bool INTRO_SOUND = Zeus.UI.add(new Setting.Bool("Intro film sound", "Plays the sound of the intro films. Switch it off to watch them in silence.", true));
 
-    public static final Setting.Bool STARTUP_VIDEO = Zeus.UI.add(new Setting.Bool("Intro film at start-up", "Plays the Zeus intro film once when the game has finished loading.", true));
+    public static final Setting.Bool STARTUP_VIDEO = Zeus.UI.add(new Setting.Bool("Intro film at start-up", "Plays the Zeus intro film when the game has finished loading, on the first launch of each day.", true));
 
     public static final Setting.Choice INTRO_FIT = Zeus.UI.add(new Setting.Choice("Intro film shape", "Stretch (the default): fills the window exactly, whatever its size. Fit: the whole picture, nothing cut, with the lightning carried on across the rest of the screen. Fill: crops the top and bottom to cover the window. ", 2,
 
