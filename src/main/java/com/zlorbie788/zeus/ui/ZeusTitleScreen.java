@@ -22,16 +22,17 @@ public final class ZeusTitleScreen extends Screen {
     private static final float MH = 768f;
     private static final float PLATE_X = 490f;
     private static final float PLATE_W = 382f;
-    private static final float PLATE_H = 50f;
-    private static final float[] PLATE_Y = {351f, 408.5f, 466f, 523.5f, 581f, 638.5f, 696f};
+    private static final float PLATE_H = 48f;
+    private static final float[] PLATE_Y = {300f, 356f, 412f, 468f, 524f, 580f, 636f};
 
-    private static final float LOGO_X = 500f;
-    private static final float LOGO_Y = 14f;
-    private static final float LOGO_W = 368f;
-    private static final float LOGO_H = 332f;
-    private static final float MEDAL_CX = 678f;
-    private static final float MEDAL_CY = 145f;
-    private static final float MEDAL_R = 123f;
+    // the logo is 85% of its old size so seven buttons fit above the version line
+    private static final float LOGO_X = 527.6f;
+    private static final float LOGO_Y = 12f;
+    private static final float LOGO_W = 312.8f;
+    private static final float LOGO_H = 282.2f;
+    private static final float MEDAL_CX = 678.9f;
+    private static final float MEDAL_CY = 123.4f;
+    private static final float MEDAL_R = 104.6f;
 
     private static final float[][] ICON = {{74.5f, 714f}, {165.5f, 714f}, {256.5f, 714f}, {347.5f, 714f}, {438.5f, 714f}};
 

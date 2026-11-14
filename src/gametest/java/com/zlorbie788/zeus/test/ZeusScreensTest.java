@@ -29,6 +29,10 @@ public class ZeusScreensTest implements FabricClientGameTest {
         ctx.waitFor(c -> c.screen instanceof ZeusTitleScreen, 20 * 60);
         run(ctx, 3.0f);
         ctx.takeScreenshot("title_1080");
+        ctx.getInput().resizeWindow(854, 480);
+        run(ctx, 0.6f);
+        ctx.takeScreenshot("title_854");
+        ctx.getInput().resizeWindow(1920, 1080);
 
         ctx.runOnClient(c -> grant());
 
