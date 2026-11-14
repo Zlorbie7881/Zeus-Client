@@ -253,7 +253,7 @@ public final class KnifePickerScreen extends Screen {
         String desc = find(SKIN_ABOUT, skinOf(all[show])) + " " + find(TYPE_ABOUT, typeOf(all[show]));
         int ty = ry + pvh + 30;
         for (String line : wrap(desc.trim(), rw)) {
-            if (ty > py + ph - 30) break;
+            if (ty > py + ph - 42) break;
             Draw.text(g, line, rx + 2, ty, 0xFF9FB2D8);
             ty += 10;
         }

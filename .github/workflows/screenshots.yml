@@ -1,10 +1,9 @@
 name: In-game screenshots
 
 # Launches the real client on a virtual display and photographs the menus, so UI work can be
-# checked without a local game. Runs on the feature branch only.
+# checked without a local game. Start it by hand from the Actions tab.
 on:
-  push:
-    branches: [knife-types]
+  workflow_dispatch:
 
 permissions:
   contents: write
