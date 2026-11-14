@@ -3434,10 +3434,42 @@ public final class AiPilot extends Module {
         return best;
     }
 
+    /**
+     * Creative mode can pull any block out of thin air, so a build job never needs a stock of it.
+     * The item is requested through the same packet the creative inventory uses, which puts it in
+     * the slot on the server too instead of only in the local copy.
+     */
+    private static boolean creativeGive(Minecraft mc, String name) {
+        if (!creative(mc) || mc.gameMode == null) return false;
+        String wanted = name.trim().toLowerCase(java.util.Locale.ROOT).replace(' ', '_');
+        if (wanted.isEmpty()) return false;
+        var id = net.minecraft.resources.Identifier.tryParse(
+                wanted.contains(":") ? wanted : "minecraft:" + wanted);
+        if (id == null) return false;
+        var item = net.minecraft.core.registries.BuiltInRegistries.ITEM.getValue(id);
+        if (item == null || item == Items.AIR) return false;
+        int slot = -1;
+        for (int i = 0; i < 9; i++) {
+            if (Inv.get(i).isEmpty()) {
+                slot = i;
+                break;
+            }
+        }
+        if (slot < 0) slot = Inv.selected();
+        mc.gameMode.handleCreativeModeItemAdd(new ItemStack(item, Math.max(1, item.getDefaultMaxStackSize())),
+                Inv.menuSlot(slot));
+        if (slot != Inv.selected()) Inv.select(slot);
+        return true;
+    }
+
     private void placeTick(Minecraft mc) {
         String name = job.target;
         java.util.function.Predicate<net.minecraft.world.item.ItemStack> item = s -> named(s, name);
         if (ensureHotbar(mc, item) < 0 && !Inv.offhand(item)) {
+            if (creativeGive(mc, name)) {
+                job.note = "took " + name + " from the creative menu";
+                return;
+            }
             giveUp(mc, "no " + name + " in the inventory");
             return;
         }
