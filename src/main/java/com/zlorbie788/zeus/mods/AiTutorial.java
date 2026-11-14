@@ -193,6 +193,7 @@ public final class AiTutorial {
                 example("chop a tree", "Walks to the nearest tree and cuts it down");
                 example("mine 10 stone", "Mines and counts real drops");
                 example("come here", "Walks to you");
+                text("Shortcuts: type @ at the start of a normal chat message (@mine 10 iron), or press J to open chat with /zeus ai typed.");
                 buttons(next(), back(), close());
             }
             case SAFETY -> {
@@ -240,7 +241,10 @@ public final class AiTutorial {
         String why = AiPilot.testResult().toLowerCase(Locale.ROOT);
         text("How to fix it:");
         if (why.contains("key")) tip("Key", "Copy the key again (the whole thing) and save it with /zeus ai key <key>.");
-        if (why.contains("not found") || why.contains("model")) tip("Model", "Check the model name: /zeus ai model <name>, or pick the provider again in step 3.");
+        if (why.contains("not found") || why.contains("model")) {
+            tip("Model", "That model name is not available here. Pick one from the list:");
+            AiPilot.models();
+        }
         if (why.contains("nothing is answering") || why.contains("local ai")) tip("Server", "Start Ollama or LM Studio and keep it open.");
         if (why.contains("connect")) tip("Network", "Check your internet, VPN or firewall.");
         if (why.contains("rate") || why.contains("quota") || why.contains("credit")) tip("Limits", "Wait a minute, or add credit at your provider.");
@@ -364,9 +368,57 @@ public final class AiTutorial {
                 .withHoverEvent(new HoverEvent.ShowText(Component.literal(url))));
     }
 
+    /** Clickable list of models: click one to put /zeus ai model <id> in the chat box. */
+    static void models(java.util.List<String> ids, String current) {
+        if (ids.isEmpty()) {
+            chat("The provider did not list any chat models.", true);
+            return;
+        }
+        say(Component.literal("[Zeus AI] ").withStyle(ChatFormatting.AQUA)
+                .append(Component.literal(ids.size() + " model(s). Click one, then press Enter to use it:").withStyle(ChatFormatting.WHITE)));
+        int shown = 0;
+        MutableComponent line = Component.literal("  ");
+        int width = 0;
+        for (String id : ids) {
+            if (shown >= 60) break;
+            boolean now = id.equalsIgnoreCase(current);
+            MutableComponent b = button(now ? "[" + id + " ✔]" : "[" + id + "]", now ? ChatFormatting.GREEN : ChatFormatting.AQUA, null,
+                    "/zeus ai model " + id, now ? "The model in use" : "Use " + id);
+            if (width > 0 && width + id.length() > 70) {
+                say(line);
+                line = Component.literal("  ");
+                width = 0;
+            }
+            line.append(b).append(Component.literal(" "));
+            width += id.length() + 3;
+            shown++;
+        }
+        if (width > 0) say(line);
+        if (ids.size() > shown) say(Component.literal("  … and " + (ids.size() - shown) + " more").withStyle(ChatFormatting.GRAY));
+    }
+
+    /** The schematic files as chat lines with build and materials buttons. */
+    static void schematics(java.util.List<java.nio.file.Path> files) {
+        say(Component.literal("[Zeus AI] ").withStyle(ChatFormatting.AQUA)
+                .append(Component.literal(files.size() + " schematic(s), newest first:").withStyle(ChatFormatting.WHITE)));
+        for (int i = 0; i < Math.min(12, files.size()); i++) {
+            String name = SchematicPlan.display(files.get(i));
+            say(Component.literal("  " + name + "  ").withStyle(ChatFormatting.WHITE)
+                    .append(button("[Build]", ChatFormatting.GREEN, "ask:build schematic " + name, "Gather the materials and build it in front of you"))
+                    .append(Component.literal(" "))
+                    .append(button("[Materials]", ChatFormatting.AQUA, "ask:materials for " + name, "List what it needs and what you have")));
+        }
+    }
+
+    /** Shows the player's own prefixed request in chat, greyed, so the conversation reads naturally. */
+    static void echo(String text) {
+        say(Component.literal("> " + text).withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));
+    }
+
     /** A persistent chat line from the AI (toasts fade too fast for real answers). */
     public static void chat(String text, boolean problem) {
         if (text == null || text.isBlank()) return;
+        AiPilot.talk(false, text);
         MutableComponent line = Component.literal("[Zeus AI] ").withStyle(ChatFormatting.AQUA)
                 .append(Component.literal(text).withStyle(problem ? ChatFormatting.GOLD : ChatFormatting.WHITE));
         if (problem && !active()) {

@@ -11,3 +11,7 @@ recover/
 *.bin
 *.recovered
 *.restored
+
+# Python caches from the knife generator
+__pycache__/
+*.pyc

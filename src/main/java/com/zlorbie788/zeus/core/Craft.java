@@ -34,6 +34,22 @@ public final class Craft {
     public static final Predicate<ItemStack> COAL = s -> s.is(Items.COAL) || s.is(Items.CHARCOAL);
     public static final Predicate<ItemStack> IRON = s -> s.is(Items.IRON_INGOT);
     public static final Predicate<ItemStack> WOOL = s -> s.is(ItemTags.WOOL);
+    public static final Predicate<ItemStack> DIAMOND = s -> s.is(Items.DIAMOND);
+    public static final Predicate<ItemStack> GOLD = s -> s.is(Items.GOLD_INGOT);
+    public static final Predicate<ItemStack> WHEAT = s -> s.is(Items.WHEAT);
+    public static final Predicate<ItemStack> STRING = s -> s.is(Items.STRING);
+    public static final Predicate<ItemStack> LEATHER = s -> s.is(Items.LEATHER);
+    public static final Predicate<ItemStack> STONE = s -> s.is(Items.STONE);
+    public static final Predicate<ItemStack> SAND = s -> s.is(Items.SAND);
+    public static final Predicate<ItemStack> GUNPOWDER = s -> s.is(Items.GUNPOWDER);
+    public static final Predicate<ItemStack> PAPER = s -> s.is(Items.PAPER);
+    public static final Predicate<ItemStack> FEATHER = s -> s.is(Items.FEATHER);
+    public static final Predicate<ItemStack> FLINT = s -> s.is(Items.FLINT);
+    public static final Predicate<ItemStack> SUGAR_CANE = s -> s.is(Items.SUGAR_CANE);
+    public static final Predicate<ItemStack> REDSTONE = s -> s.is(Items.REDSTONE);
+    public static final Predicate<ItemStack> WOOD_SLAB = s -> s.is(ItemTags.WOODEN_SLABS);
+    public static final Predicate<ItemStack> FURNACE_ITEM = s -> s.is(Items.FURNACE);
+    public static final Predicate<ItemStack> SMOOTH_STONE = s -> s.is(Items.SMOOTH_STONE);
 
     public record Recipe(String name, List<Predicate<ItemStack>> cells, Item result, int yield, String... aliases) {
         public boolean small() {
@@ -87,7 +103,52 @@ public final class Craft {
                     Items.IRON_SWORD, 1, "iron blade"),
             new Recipe("bucket", cells(IRON, null, IRON, null, IRON, null), Items.BUCKET, 1, "water bucket"),
             new Recipe("bed", cells(WOOL, WOOL, WOOL, PLANKS, PLANKS, PLANKS), Items.WHITE_BED, 1,
-                    "white bed", "bed item")
+                    "white bed", "bed item"),
+            // more tools
+            new Recipe("wooden_shovel", cells(PLANKS, null, null, STICKS, null, null, STICKS, null, null), Items.WOODEN_SHOVEL, 1, "wood shovel"),
+            new Recipe("iron_axe", cells(IRON, IRON, null, IRON, STICKS, null, null, STICKS, null), Items.IRON_AXE, 1),
+            new Recipe("iron_shovel", cells(IRON, null, null, STICKS, null, null, STICKS, null, null), Items.IRON_SHOVEL, 1),
+            new Recipe("iron_hoe", cells(IRON, IRON, null, null, STICKS, null, null, STICKS, null), Items.IRON_HOE, 1),
+            new Recipe("diamond_pickaxe", cells(DIAMOND, DIAMOND, DIAMOND, null, STICKS, null, null, STICKS, null), Items.DIAMOND_PICKAXE, 1, "diamond pick"),
+            new Recipe("diamond_sword", cells(DIAMOND, null, null, DIAMOND, null, null, STICKS, null, null), Items.DIAMOND_SWORD, 1),
+            new Recipe("diamond_axe", cells(DIAMOND, DIAMOND, null, DIAMOND, STICKS, null, null, STICKS, null), Items.DIAMOND_AXE, 1),
+            new Recipe("diamond_shovel", cells(DIAMOND, null, null, STICKS, null, null, STICKS, null, null), Items.DIAMOND_SHOVEL, 1),
+            new Recipe("shears", cells(null, IRON, null, IRON, null, null), Items.SHEARS, 1),
+            new Recipe("flint_and_steel", cells(IRON, null, null, null, FLINT, null), Items.FLINT_AND_STEEL, 1, "lighter"),
+            new Recipe("fishing_rod", cells(null, null, STICKS, null, STICKS, STRING, STICKS, null, STRING), Items.FISHING_ROD, 1, "rod"),
+            new Recipe("bow", cells(null, STICKS, STRING, STICKS, null, STRING, null, STICKS, STRING), Items.BOW, 1),
+            new Recipe("arrow", cells(FLINT, null, null, STICKS, null, null, FEATHER, null, null), Items.ARROW, 4, "arrows"),
+            new Recipe("shield", cells(PLANKS, IRON, PLANKS, PLANKS, PLANKS, PLANKS, null, PLANKS, null), Items.SHIELD, 1),
+            // armour
+            new Recipe("iron_helmet", cells(IRON, IRON, IRON, IRON, null, IRON), Items.IRON_HELMET, 1),
+            new Recipe("iron_chestplate", cells(IRON, null, IRON, IRON, IRON, IRON, IRON, IRON, IRON), Items.IRON_CHESTPLATE, 1, "iron chest plate"),
+            new Recipe("iron_leggings", cells(IRON, IRON, IRON, IRON, null, IRON, IRON, null, IRON), Items.IRON_LEGGINGS, 1, "iron pants"),
+            new Recipe("iron_boots", cells(IRON, null, IRON, IRON, null, IRON), Items.IRON_BOOTS, 1),
+            new Recipe("diamond_helmet", cells(DIAMOND, DIAMOND, DIAMOND, DIAMOND, null, DIAMOND), Items.DIAMOND_HELMET, 1),
+            new Recipe("diamond_chestplate", cells(DIAMOND, null, DIAMOND, DIAMOND, DIAMOND, DIAMOND, DIAMOND, DIAMOND, DIAMOND), Items.DIAMOND_CHESTPLATE, 1),
+            new Recipe("diamond_leggings", cells(DIAMOND, DIAMOND, DIAMOND, DIAMOND, null, DIAMOND, DIAMOND, null, DIAMOND), Items.DIAMOND_LEGGINGS, 1),
+            new Recipe("diamond_boots", cells(DIAMOND, null, DIAMOND, DIAMOND, null, DIAMOND), Items.DIAMOND_BOOTS, 1),
+            // building and utility
+            new Recipe("ladder", cells(STICKS, null, STICKS, STICKS, STICKS, STICKS, STICKS, null, STICKS), Items.LADDER, 3, "ladders"),
+            new Recipe("oak_door", cells(PLANKS, PLANKS, null, PLANKS, PLANKS, null, PLANKS, PLANKS, null), Items.OAK_DOOR, 3, "door"),
+            new Recipe("oak_slab", cells(PLANKS, PLANKS, PLANKS), Items.OAK_SLAB, 6, "slab", "wood slab"),
+            new Recipe("oak_stairs", cells(PLANKS, null, null, PLANKS, PLANKS, null, PLANKS, PLANKS, PLANKS), Items.OAK_STAIRS, 4, "stairs", "wood stairs"),
+            new Recipe("oak_fence", cells(PLANKS, STICKS, PLANKS, PLANKS, STICKS, PLANKS), Items.OAK_FENCE, 3, "fence"),
+            new Recipe("oak_trapdoor", cells(PLANKS, PLANKS, PLANKS, PLANKS, PLANKS, PLANKS), Items.OAK_TRAPDOOR, 2, "trapdoor"),
+            new Recipe("stone_bricks", cells(STONE, STONE, null, STONE, STONE), Items.STONE_BRICKS, 4, "stone brick"),
+            new Recipe("cobblestone_slab", cells(COBBLE, COBBLE, COBBLE), Items.COBBLESTONE_SLAB, 6, "cobble slab"),
+            new Recipe("cobblestone_stairs", cells(COBBLE, null, null, COBBLE, COBBLE, null, COBBLE, COBBLE, COBBLE), Items.COBBLESTONE_STAIRS, 4, "cobble stairs"),
+            new Recipe("cobblestone_wall", cells(COBBLE, COBBLE, COBBLE, COBBLE, COBBLE, COBBLE), Items.COBBLESTONE_WALL, 6, "cobble wall"),
+            new Recipe("bread", cells(WHEAT, WHEAT, WHEAT), Items.BREAD, 1),
+            new Recipe("paper", cells(SUGAR_CANE, SUGAR_CANE, SUGAR_CANE), Items.PAPER, 3),
+            new Recipe("book", cells(PAPER, PAPER, null, PAPER, LEATHER), Items.BOOK, 1),
+            new Recipe("tnt", cells(GUNPOWDER, SAND, GUNPOWDER, SAND, GUNPOWDER, SAND, GUNPOWDER, SAND, GUNPOWDER), Items.TNT, 1),
+            new Recipe("barrel", cells(PLANKS, WOOD_SLAB, PLANKS, PLANKS, null, PLANKS, PLANKS, WOOD_SLAB, PLANKS), Items.BARREL, 1),
+            new Recipe("oak_boat", cells(PLANKS, null, PLANKS, PLANKS, PLANKS, PLANKS), Items.OAK_BOAT, 1, "boat"),
+            new Recipe("compass", cells(null, IRON, null, IRON, REDSTONE, IRON, null, IRON, null), Items.COMPASS, 1),
+            new Recipe("bowl", cells(PLANKS, null, PLANKS, null, PLANKS, null), Items.BOWL, 4),
+            new Recipe("smoker", cells(null, LOGS, null, LOGS, FURNACE_ITEM, LOGS, null, LOGS, null), Items.SMOKER, 1),
+            new Recipe("blast_furnace", cells(IRON, IRON, IRON, IRON, FURNACE_ITEM, IRON, SMOOTH_STONE, SMOOTH_STONE, SMOOTH_STONE), Items.BLAST_FURNACE, 1)
     );
 
     public static List<Recipe> all() {
@@ -316,6 +377,10 @@ public final class Craft {
                     || s.is(Items.DEEPSLATE_GOLD_ORE) || s.is(Items.NETHER_GOLD_ORE);
             case "copper", "copper_ingot" -> s -> s.is(Items.RAW_COPPER) || s.is(Items.COPPER_ORE)
                     || s.is(Items.DEEPSLATE_COPPER_ORE);
+            case "stone" -> s -> s.is(Items.COBBLESTONE);
+            case "smooth_stone" -> s -> s.is(Items.STONE);
+            case "glass" -> s -> s.is(Items.SAND) || s.is(Items.RED_SAND);
+            case "deepslate" -> s -> s.is(Items.COBBLED_DEEPSLATE);
             default -> only(wanted);
         };
     }

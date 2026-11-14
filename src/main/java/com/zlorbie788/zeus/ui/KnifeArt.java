@@ -815,18 +815,22 @@ public final class KnifeArt {
         new Straight("Dagger", 5.8f, 1f, 10.8f, w(1.1f, 1.25f, 1.3f, 1.28f, 1.2f, 1.1f, 0.95f, 0.8f, 0.6f, 0.4f, 0.12f), w(1.1f, 1.25f, 1.3f, 1.28f, 1.2f, 1.1f, 0.95f, 0.8f, 0.6f, 0.42f, 0.12f), 0f, 0f, H_SCALES, "gp"),
 
         // the HD tactical knives (KnifeHD); these entries are their pixel fallback
-        new Straight("Tactical · Damascus", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
-        new Straight("Tactical · Slaughter", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
-        new Straight("Tactical · Case hardened", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
-        new Straight("Tactical · Fade", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
-        new Straight("Tactical · Crimson web", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
-        new Straight("Tactical · Tiger tooth", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
-        new Straight("Tactical · Sapphire", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
-        new Straight("Tactical · Urban masked", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
+        new Straight("HD Tactical · Damascus", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
+        new Straight("HD Tactical · Slaughter", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
+        new Straight("HD Tactical · Case hardened", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
+        new Straight("HD Tactical · Fade", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
+        new Straight("HD Tactical · Crimson web", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
+        new Straight("HD Tactical · Tiger tooth", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
+        new Straight("HD Tactical · Sapphire", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
+        new Straight("HD Tactical · Urban masked", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
+        new Straight("HD Tactical · Emerald", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
+        new Straight("HD Tactical · Marble fade", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
+        new Straight("HD Tactical · Ruby", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
+        new Straight("HD Tactical · Ultraviolet", 9.6f, 1.6f, 14.5f, w(1.6f, 1.9f, 1.9f, 1.9f, 1.9f, 1.9f, 1.8f, 1.5f, 1.0f, 0.5f, 0f), w(1.7f, 2.1f, 2.3f, 2.3f, 2.3f, 2.3f, 2.1f, 1.6f, 1.0f, 0.5f, 0f), 0f, 0f, H_RIBBED, "gps"),
     };
 
     /** How many of the last straight models are HD tactical knives drawn by KnifeHD. */
-    public static final int HD_COUNT = 8;
+    public static final int HD_COUNT = 12;
 
     /** HD knife index for a knife key (KR.length + straight index), or -1. */
     public static int hdOf(int key) {

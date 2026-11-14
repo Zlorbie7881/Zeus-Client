@@ -12,7 +12,7 @@ public final class ZeusCreditsScreen extends Screen {
     private final long[] strike = new long[2];
 
     public ZeusCreditsScreen(Screen parent) {
-        super(Component.literal("Credits"));
+        super(Component.literal("About Zeus"));
         this.parent = parent;
     }
 
@@ -48,23 +48,24 @@ public final class ZeusCreditsScreen extends Screen {
         Draw.rrect(g, px, py, pw, ph, Math.max(4, Math.round(8 * k)), 0xD0070C1A, 0xD0050914);
         Draw.rrectLine(g, px, py, pw, ph, Math.max(4, Math.round(8 * k)), 0xFF234A8A);
         float s = Math.max(1f, k * 2.2f);
-        Draw.textCenterS(g, "ZEUS CLIENT", width / 2, py + Math.round(16 * k), 0xFFFFFFFF, s);
-        String[][] lines = {
-            {"Client, code, website, images", "Zlorbie788"},
-            {"Modules and feature ideas", "mitko_pandata"},
-            {"Animations", "NikiTheFacter"},
-            {"Base mod style reference", "Meteor Client"},
-            {"Built for", "Fabric, Minecraft 1.21.11"},
-            {"Version", Zeus.VERSION},
-            {"Everything runs", "on your side only"}
-        };
-        float ls = Math.max(1f, k * 1.2f);
-        int y = py + Math.round(58 * k);
-        for (String[] l : lines) {
-            Draw.textCenterS(g, l[0], width / 2, y, 0xFF8EA2CC, ls);
-            Draw.textCenterS(g, l[1], width / 2, y + Math.round(11 * k * 1.2f), 0xFFFFFFFF, ls);
-            y += Math.round(34 * k);
+        Draw.textCenterS(g, "ABOUT ZEUS", width / 2, py + Math.round(16 * k), 0xFFFFFFFF, s);
+        float ls = Math.max(1f, k * 1.05f);
+        int textW = pw - Math.round(36 * k);
+        int y = py + Math.round(50 * k);
+        int lineH = Math.round(10.5f * ls);
+        for (String para : about()) {
+            for (String line : wrap(para, textW, ls)) {
+                Draw.textCenterS(g, line, width / 2, y, 0xFFDDE6F7, ls);
+                y += lineH;
+            }
+            y += Math.round(lineH * 0.7f);
         }
+        y += Math.round(2 * k);
+        Draw.textCenterS(g, "Made by Zlorbie788", width / 2, y, 0xFFFFFFFF, ls);
+        y += lineH;
+        Draw.textCenterS(g, "ideas from mitko_pandata, animations by NikiTheFacter", width / 2, y, 0xFF8EA2CC, Math.max(1f, ls * 0.9f));
+        y += lineH;
+        Draw.textCenterS(g, "Version " + Zeus.VERSION + " for Fabric 1.21.11", width / 2, y, 0xFF8EA2CC, Math.max(1f, ls * 0.9f));
         int bw = Math.round(120 * k);
         int bh = Math.round(24 * k);
         int bx = (width - bw) / 2;
@@ -75,6 +76,32 @@ public final class ZeusCreditsScreen extends Screen {
         Draw.textCenterS(g, "Back", width / 2, by + (bh - Math.round(8 * ls)) / 2, 0xFFFFFFFF, ls);
         float in = Math.max(0f, 1f - t / 0.4f);
         if (in > 0.01f) g.fill(0, 0, width, height, Draw.rgba(0xFF000000, in));
+    }
+
+    private static String[] about() {
+        int modules = Zeus.all().size();
+        return new String[] {
+            "Zeus started because we were tired of stacking ten different mods just to get the stuff we actually use every day. So we put it all in one place, made it look nice, and kept going.",
+            "Right now there are " + modules + " modules: HUD and visuals, combat, building, movement, a bunch of automation, and Zeus AI, which you can just talk to and it does the work for you.",
+            "Everything runs on your own game. Zeus doesn't send your data anywhere and doesn't change anything on the server.",
+            "We update it a lot. If something breaks or you have an idea, tell us in the Discord. Honestly, most of the good features came from people asking for them.",
+        };
+    }
+
+    private static java.util.List<String> wrap(String text, int width, float sc) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        StringBuilder line = new StringBuilder();
+        for (String word : text.split(" ")) {
+            String next = line.length() == 0 ? word : line + " " + word;
+            if (Draw.widthS(next, sc) > width && line.length() > 0) {
+                out.add(line.toString());
+                line = new StringBuilder(word);
+            } else {
+                line = new StringBuilder(next);
+            }
+        }
+        if (line.length() > 0) out.add(line.toString());
+        return out;
     }
 
     @Override
