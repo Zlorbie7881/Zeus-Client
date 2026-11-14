@@ -27,6 +27,7 @@ import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.CraftingMenu;
 import net.minecraft.world.inventory.FurnaceMenu;
 import net.minecraft.world.inventory.InventoryMenu;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
@@ -1469,6 +1470,7 @@ public final class AiPilot extends Module {
         builder.append("Ore jobs staircase to the depth the ore lives at first (iron y16, diamond y-59) and then tunnel, so ask for mine 16 iron without naming a height.\n");
         builder.append("do can also be job, where value is a phrase like: chop tree, chop 3 trees, mine until iron, mine 20 stone, quarry 10, tunnel 30, strip mine, farm, replant, till 9, collect, hunt, flee, shoot, shear 3, milk, eat, sleep, torch 8, place cobblestone here, place torch at 120 64 -300, drop 32 dirt, explore 60, return, build a house, swim to 120 62 -300, climb 8, bridge 12, go to 120 64 -300, come here, follow me, follow Steve, dig down, stop. Chain them in one value with then: chop 2 trees then mine until iron.\n");
         builder.append("Survival and food: prepare (or gear up) makes a wooden pickaxe, a stone pickaxe, a stone sword and hunts for food in one go. fish 5 casts a rod it must already have, reels on the bobber dip and counts the catch. food 3 kills animals for meat.\n");
+        builder.append("Fetch items: fetch 64 dirt, stock 32 oak planks, give me 16 end crystal. In creative the AI takes them straight out of the creative menu, in survival it crafts them when it knows the recipe and mines them otherwise. Crafting and smelting jobs also skip the work and take the result in creative.\n");
         builder.append("Creative mode: every block breaks on the first swing without a tool, nothing is used up when you place it, flying is allowed and hunger never drops. Do not queue crafting or food jobs there, just mine, build and go where you are told.\n");
         builder.append("Chests: store 20 cobblestone, put away 32 dirt, deposit 5 diamond, take 32 iron, loot 16 bread, grab 4 torch. The job finds a chest, barrel or trapped chest within five blocks, opens it and shift-clicks one stack at a time, counts real items against the number asked for, and only matches the exact item: iron means ingots, never ore or a sword, so say iron_ore for ore.\n");
         builder.append("Crafting and furnaces: craft 4 planks, craft a crafting table, craft sticks, craft a furnace, craft a stone pickaxe, craft iron sword, craft torch, craft chest, craft bucket, craft bed, smelt 8 iron, cook 4 porkchop. The job places and opens its own crafting table or furnace, crafts planks or sticks from logs first when it has to, and furnishes fuel itself. Known recipes: planks, stick, crafting_table, furnace, chest, torch, stone_pickaxe, stone_axe, stone_shovel, stone_sword, stone_hoe, iron_pickaxe, iron_sword, bucket, bed.\n");
@@ -2041,6 +2043,21 @@ public final class AiPilot extends Module {
         }
         cancelJob(mc);
         chain.clear();
+        java.util.regex.Matcher fetch = java.util.regex.Pattern
+                .compile("^(?:fetch|stock|refill|give me) (\\d+) ([a-z_ ]+)$").matcher(text.trim());
+        if (fetch.find()) {
+            int n = Math.max(1, Math.min(2304, Integer.parseInt(fetch.group(1))));
+            String what = fetch.group(2).trim().replace('_', ' ');
+            if (creative(mc) && creativeGive(mc, what, n)) {
+                Notify.info("Zeus AI: took " + n + " x " + what + " out of the creative menu");
+                return;
+            }
+            if (!creative(mc)) {
+                String id = what.replace(' ', '_');
+                text = (Craft.find(id) != null ? "craft " : "mine ") + n + " " + what;
+                Notify.info("Zeus AI: no creative menu, so " + text);
+            }
+        }
         List<String> steps = new ArrayList<>();
         for (String part : text.split("\\s*(?:,|;|->|\\band then\\b|\\bthen\\b|\\bafter that\\b)\\s*")) {
             String step = part.trim().replaceFirst("^(and|then|please|also)\\s+", "").trim();
@@ -2537,6 +2554,13 @@ public final class AiPilot extends Module {
     }
 
     private void craftTick(Minecraft mc) {
+        if (creative(mc)) {
+            int n = Math.max(1, job.wanted);
+            if (creativeGive(mc, job.target, n)) {
+                endJob(mc, "took " + n + " x " + job.target.replace('_', ' ') + " from the creative menu");
+                return;
+            }
+        }
         Craft.Recipe recipe = Craft.find(job.target);
         Craft.Book book = recipe == null ? Craft.book(mc, job.target) : null;
         if (recipe == null && book == null) {
@@ -2749,6 +2773,13 @@ public final class AiPilot extends Module {
 
     private void smeltTick(Minecraft mc) {
         String shown = job.target.replace('_', ' ');
+        if (creative(mc)) {
+            int n = Math.max(1, job.wanted);
+            if (creativeGive(mc, job.target, n)) {
+                endJob(mc, "took " + n + " x " + shown + " from the creative menu");
+                return;
+            }
+        }
         java.util.function.Predicate<ItemStack> input = Craft.smeltInput(job.target);
         if (input == null) {
             giveUp(mc, "I do not know the item " + shown);
@@ -3439,26 +3470,50 @@ public final class AiPilot extends Module {
      * The item is requested through the same packet the creative inventory uses, which puts it in
      * the slot on the server too instead of only in the local copy.
      */
-    private static boolean creativeGive(Minecraft mc, String name) {
-        if (!creative(mc) || mc.gameMode == null) return false;
-        String wanted = name.trim().toLowerCase(java.util.Locale.ROOT).replace(' ', '_');
-        if (wanted.isEmpty()) return false;
+    /** Resolves a spoken item name ("stone pickaxe") or an id ("stone_pickaxe") to an item. */
+    private static Item creativeItem(String name) {
+        String clean = name.trim().toLowerCase(java.util.Locale.ROOT);
+        if (clean.isEmpty()) return null;
+        Craft.Recipe recipe = Craft.find(clean.replace(' ', '_'));
+        if (recipe == null) recipe = Craft.find(clean);
+        if (recipe != null) return recipe.result();
         var id = net.minecraft.resources.Identifier.tryParse(
-                wanted.contains(":") ? wanted : "minecraft:" + wanted);
-        if (id == null) return false;
-        var item = net.minecraft.core.registries.BuiltInRegistries.ITEM.getValue(id);
-        if (item == null || item == Items.AIR) return false;
-        int slot = -1;
-        for (int i = 0; i < 9; i++) {
-            if (Inv.get(i).isEmpty()) {
-                slot = i;
-                break;
-            }
+                clean.replace(' ', '_').contains(":") ? clean.replace(' ', '_') : "minecraft:" + clean.replace(' ', '_'));
+        if (id == null) return null;
+        Item item = net.minecraft.core.registries.BuiltInRegistries.ITEM.getValue(id);
+        return item == Items.AIR ? null : item;
+    }
+
+    private static boolean creativeGive(Minecraft mc, String name) {
+        return creativeGive(mc, name, 64);
+    }
+
+    /** Creative only: puts count of an item straight into the hotbar with the creative inventory packet. */
+    private static boolean creativeGive(Minecraft mc, String name, int count) {
+        Item item = creativeItem(name);
+        return item != null && creativeGive(mc, item, count);
+    }
+
+    private static boolean creativeGive(Minecraft mc, Item item, int count) {
+        if (!creative(mc) || mc.gameMode == null || item == null || item == Items.AIR) return false;
+        int max = Math.max(1, item.getDefaultMaxStackSize());
+        int left = Math.max(1, count);
+        int firstSlot = -1;
+        for (int i = 0; i < 9 && left > 0; i++) {
+            ItemStack have = Inv.get(i);
+            if (!have.isEmpty() && !(have.is(item) && have.getCount() < max)) continue;
+            int stack = Math.min(max, left);
+            mc.gameMode.handleCreativeModeItemAdd(new ItemStack(item, stack), Inv.menuSlot(i));
+            left -= stack;
+            if (firstSlot < 0) firstSlot = i;
         }
-        if (slot < 0) slot = Inv.selected();
-        mc.gameMode.handleCreativeModeItemAdd(new ItemStack(item, Math.max(1, item.getDefaultMaxStackSize())),
-                Inv.menuSlot(slot));
-        if (slot != Inv.selected()) Inv.select(slot);
+        if (firstSlot < 0) {
+            // Every hotbar slot holds something else: put it in the hand instead of giving up.
+            firstSlot = Inv.selected();
+            mc.gameMode.handleCreativeModeItemAdd(new ItemStack(item, Math.min(max, Math.max(1, count))),
+                    Inv.menuSlot(firstSlot));
+        }
+        if (firstSlot != Inv.selected()) Inv.select(firstSlot);
         return true;
     }
 
@@ -3510,6 +3565,10 @@ public final class AiPilot extends Module {
 
     private void torchTick(Minecraft mc) {
         if (Inv.hotbar(s -> s.is(net.minecraft.world.item.Items.TORCH)) < 0) {
+            if (creativeGive(mc, Items.TORCH, 64)) {
+                job.note = "took torches from the creative menu";
+                return;
+            }
             giveUp(mc, "no torches in the hotbar");
             return;
         }

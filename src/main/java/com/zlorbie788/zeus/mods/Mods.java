@@ -13,6 +13,7 @@ public final class Mods {
         m.add(new Combat.KillAura());
         m.add(new AdvancedFeatures.MultiAura());
         m.add(new CrystalAnchor.CrystalAura());
+        m.add(new DamagePreview());
         m.add(new CrystalAnchor.AnchorAura());
         m.add(new Combat.AimAssist());
         m.add(new Combat.AutoCombo());
