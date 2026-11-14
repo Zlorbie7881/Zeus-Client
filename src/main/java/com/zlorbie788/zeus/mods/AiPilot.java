@@ -63,7 +63,7 @@ public final class AiPilot extends Module {
     private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private static final ConcurrentLinkedQueue<Step> QUEUE = new ConcurrentLinkedQueue<>();
     private static final Deque<JsonObject> HISTORY = new ArrayDeque<>();
-    private static final int HISTORY_MAX = 6;
+    private static final int HISTORY_MAX = 10;
     private static final AtomicLong LAST = new AtomicLong();
     private static final AtomicLong WINDOW = new AtomicLong();
     private static final java.util.concurrent.atomic.AtomicInteger USED = new java.util.concurrent.atomic.AtomicInteger();
@@ -392,6 +392,18 @@ public final class AiPilot extends Module {
         }
         if (line.length() > 0 && out.size() < 7) out.add(line.toString());
         return out;
+    }
+
+    /** What happened in the game lately (jobs finished or failed, things found), newest last. */
+    private static final java.util.Deque<String> EVENTS = new ArrayDeque<>();
+
+    static void event(String text) {
+        if (text == null || text.isBlank()) return;
+        synchronized (EVENTS) {
+            String at = new java.text.SimpleDateFormat("HH:mm").format(new java.util.Date());
+            EVENTS.addLast(at + " " + text);
+            while (EVENTS.size() > 8) EVENTS.removeFirst();
+        }
     }
 
     /** Pending reminders: due time and text. */
@@ -1841,6 +1853,17 @@ public final class AiPilot extends Module {
             return new Step("job", "", "", text.replaceFirst("^make", "build"));
         }
         if (text.matches("^(list|show)( the| my)? schematics?$") || text.equals("schematics")) return new Step("schematics", "", "", "");
+        java.util.regex.Matcher need = java.util.regex.Pattern
+                .compile("^(?:get me|get|i need|bring me|gather|farm|collect|go get|make me|find me|find)\\s+(?:(\\d+)\\s+)?(?:some |a |an )?([a-z_ ]+?)s?$").matcher(text);
+        if (need.find() && !need.group(2).equals("drop") && !need.group(2).contains("tree")) {
+            net.minecraft.world.item.Item item = Craft.exact(need.group(2).trim());
+            if (item == null) item = productOf(need.group(2).trim());
+            if (item != null && item != Items.AIR) {
+                int n = need.group(1) == null ? (item.getDefaultMaxStackSize() > 1 ? 16 : 1) : Integer.parseInt(need.group(1));
+                String how = SchematicPlan.jobFor(item, n);
+                if (how != null) return new Step("job", "", "", how);
+            }
+        }
         if (text.matches("^(breed|feed)\\b.*") || text.matches("^plant .*(sapling|tree).*") || text.matches("^(guard|protect|bodyguard)\\b.*")
                 || text.contains("defend me") || text.matches(".*\\b(armor|armour)\\b.*") && !text.startsWith("craft") && !text.startsWith("make")
                 || text.matches("^(set home|sethome|mark home|this is home|go home|home|return home|back home)$")) {
@@ -2334,6 +2357,7 @@ public final class AiPilot extends Module {
         String label = job == null ? "job" : job.label();
         job = null;
         lastAction = label + ": " + reason;
+        event((done ? "finished " : "stopped ") + label + ": " + reason);
         Notify.good("Zeus AI: " + label + " — " + reason);
         if (speak.on()) AiTutorial.chat((done ? "Done: " : "Stopped: ") + label + " — " + reason, !done);
         if (!done) {
@@ -6018,6 +6042,9 @@ public final class AiPilot extends Module {
                 if (!saved.isEmpty()) builder.append(" Saved waypoints (use their coordinates with go to): ").append(String.join("; ", saved)).append('.');
             } catch (RuntimeException ignored) {
             }
+        }
+        synchronized (EVENTS) {
+            if (!EVENTS.isEmpty()) builder.append(" Recent events (oldest first): ").append(String.join(" | ", EVENTS)).append('.');
         }
         if (shareChat.on()) {
             synchronized (CHAT) {
