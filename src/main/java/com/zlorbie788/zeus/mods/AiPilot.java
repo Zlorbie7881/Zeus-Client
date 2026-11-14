@@ -112,7 +112,8 @@ public final class AiPilot extends Module {
 
     private enum JobKind { CHOP, MINE_UNTIL, MINE_COUNT, GOTO, FOLLOW, COLLECT, TUNNEL, FARM, SLEEP,
                            REPLANT, EAT, FOOD, FISH, HUNT, FLEE, SHOOT, SHEAR, MILK, QUARRY, PLACE, TORCH, DROP, RETURN, EXPLORE,
-                           HOUSE, SWIM, CLIMB, BRIDGE, TILL, CRAFT, SMELT, STORE, TAKE, SCHEMATIC }
+                           HOUSE, SWIM, CLIMB, BRIDGE, TILL, CRAFT, SMELT, STORE, TAKE, SCHEMATIC,
+                           BREED, PLANT, GUARD, ARMOR }
 
     private static final class Job {
         final JobKind kind;
@@ -125,6 +126,7 @@ public final class AiPilot extends Module {
         long nextSearch;
         long healUntil;
         int baseline = -1;
+        boolean toolChecked;
         long dropUntil;
         long lastFound;
         Direction stairDir;
@@ -199,6 +201,10 @@ public final class AiPilot extends Module {
                 case DROP -> "dropping " + target;
                 case RETURN -> "walking back";
                 case EXPLORE -> "exploring";
+                case BREED -> "breeding animals (" + mined + " fed)";
+                case PLANT -> "planting saplings (" + mined + "/" + Math.max(1, wanted) + ")";
+                case GUARD -> "guarding " + (target.isBlank() ? "you" : target) + (mined > 0 ? " (" + mined + " hits)" : "");
+                case ARMOR -> "putting on the best armour";
                 case SCHEMATIC -> (phase ? "building " + target + " (" + mined + "/" + Math.max(1, wanted) + ")"
                         : "getting materials for " + target);
                 case HOUSE -> (phase ? "building a house (" + mined + " blocks)"
@@ -239,6 +245,7 @@ public final class AiPilot extends Module {
     private final Setting.Num perHour = add(new Setting.Num("Requests per hour", "A cap so a stuck loop cannot drain your credits.", 40, 5, 240, 5, ""));
     private final Setting.Num wait = add(new Setting.Num("Seconds between requests", "Keeps the client from hammering the provider.", 4, 1, 60, 1, " s"));
     private final Setting.Bool strictJson = add(new Setting.Bool("Strict JSON", "Asks the provider for a JSON object so the answer parses first time. It switches itself off if the provider rejects the option.", true));
+    private final Setting.Bool autoTool = add(new Setting.Bool("Auto tool", "Jobs always hold the best tool or weapon for what they hit, swap out tools that are about to break, and make an axe, pickaxe or shovel first when a long job needs one and the materials are there.", true));
     private final Setting.Text prefix = add(new Setting.Text("Chat prefix", "Start a normal chat message with this and it goes to Zeus AI instead of the server, for example: @mine 10 iron. Leave empty to turn it off.", "@", 4));
     private final Setting.Bool chatHud = add(new Setting.Bool("Chat window", "A small chat window on screen for you and Zeus AI: your /zeus ai messages on the right, its answers on the left.", false));
     private final Setting.Choice chatCorner = add(new Setting.Choice("Chat window place", "Which corner the chat window sits in.", 0, "Bottom right", "Top right", "Top left", "Middle left")).showIf(() -> chatHud.on());
@@ -301,6 +308,13 @@ public final class AiPilot extends Module {
 
     @Override
     protected void onHud(net.minecraft.client.gui.GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+        try {
+            drawChat(g, mc, w, h);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private void drawChat(net.minecraft.client.gui.GuiGraphics g, Minecraft mc, int w, int h) {
         if (!chatHud.on() || mc.options.hideGui) return;
         java.util.List<Line> lines;
         synchronized (TALK) {
@@ -730,6 +744,7 @@ public final class AiPilot extends Module {
                 return was ? "Stopped the job." : "No job was running.";
             }
             startJob(work.value());
+            if (job == null && "home set here".equals(lastAction)) return "Home set here. Say go home to come back.";
             return job == null ? "Could not start that job. Check the Zeus AI Functions settings." : "Zeus AI: " + job.label();
         }
         loadMemory();
@@ -750,7 +765,11 @@ public final class AiPilot extends Module {
         busy = true;
         LAST.set(now);
         failure = "";
-        context = readContext();
+        try {
+            context = readContext();
+        } catch (Throwable t) {
+            context = "";
+        }
         WORKER.submit(() -> {
             try {
                 String answer = exchange(prompt, secret, false);
@@ -892,7 +911,20 @@ public final class AiPilot extends Module {
             if (said != null && !said.startsWith("Thinking")) AiTutorial.chat(said, false);
         }
         if (job != null) {
-            tickJob(mc);
+            try {
+                tickJob(mc);
+            } catch (Throwable t) {
+                // A bug in one job must never take the game down: stop the job, say why, keep going.
+                com.zlorbie788.zeus.core.Zeus.LOG.warn("Zeus AI job failed", t);
+                try {
+                    releaseKeys(mc);
+                } catch (Throwable ignored) {
+                }
+                String what = job == null ? "job" : job.label();
+                job = null;
+                chain.clear();
+                AiTutorial.chat("The " + what + " hit an error and was stopped (" + t.getClass().getSimpleName() + "). Nothing else is affected.", true);
+            }
             return;
         }
         int limit = perRequest.i();
@@ -959,6 +991,15 @@ public final class AiPilot extends Module {
 
     private void apply(Step step) {
         if (step == null) return;
+        try {
+            applyUnsafe(step);
+        } catch (Throwable t) {
+            com.zlorbie788.zeus.core.Zeus.LOG.warn("Zeus AI action failed: {}", step, t);
+            lastAction = "did not work: " + t.getClass().getSimpleName();
+        }
+    }
+
+    private void applyUnsafe(Step step) {
         String verb = step.action() == null ? "" : step.action().toLowerCase(Locale.ROOT).trim();
         verb = switch (verb) {
             case "activate", "start", "turn_on", "turn on", "switch_on" -> "on";
@@ -1389,6 +1430,7 @@ public final class AiPilot extends Module {
         StringBuilder builder = new StringBuilder();
         builder.append("You are Zeus AI, the assistant inside the Zeus Minecraft client. You turn what the player types into actions. Answer with one JSON object only, no prose outside it, no code fences.\n");
         builder.append("Schema: {\"say\":\"one short friendly sentence for the player\",\"actions\":[{\"do\":\"<verb>\",\"module\":\"<id>\",\"setting\":\"<exact setting name>\",\"value\":\"<new value>\"}]}\n");
+        builder.append("More jobs: breed (or breed cows), plant 6 saplings, guard me (fights mobs near the player until stop), put on armor (wears the best pieces it has), set home, go home.\n");
         builder.append("Schematics: job value build schematic <name> gathers the materials (chops, mines, crafts, smelts what it can) and then builds it 3 blocks in front of the player; add here to restart it at the current spot. do=materials with value <name> lists what it needs; do=schematics lists the files.\n");
         builder.append("Plan like a player: for a goal that needs several jobs, chain them with then in one job value, checking the inventory in the context first. Example, diamonds with no iron pickaxe: prepare then mine until iron then smelt 3 iron then craft iron pickaxe then mine until diamond. Do not repeat steps the inventory shows are already done.\n");
         builder.append("Finding ores: always use the job mine until <ore> (it digs a safe staircase to the right depth). Never use dig down to look for ores; digging straight down is dangerous.\n");
@@ -1799,6 +1841,11 @@ public final class AiPilot extends Module {
             return new Step("job", "", "", text.replaceFirst("^make", "build"));
         }
         if (text.matches("^(list|show)( the| my)? schematics?$") || text.equals("schematics")) return new Step("schematics", "", "", "");
+        if (text.matches("^(breed|feed)\\b.*") || text.matches("^plant .*(sapling|tree).*") || text.matches("^(guard|protect|bodyguard)\\b.*")
+                || text.contains("defend me") || text.matches(".*\\b(armor|armour)\\b.*") && !text.startsWith("craft") && !text.startsWith("make")
+                || text.matches("^(set home|sethome|mark home|this is home|go home|home|return home|back home)$")) {
+            return new Step("job", "", "", text);
+        }
         java.util.regex.Matcher mats = java.util.regex.Pattern.compile("^(?:materials|material list|what do i need) (?:for )?(.+)$").matcher(text);
         if (mats.find() && SchematicPlan.find(mats.group(1)) != null) return new Step("materials", "", "", mats.group(1));
         java.util.regex.Matcher forest = java.util.regex.Pattern
@@ -2101,6 +2148,30 @@ public final class AiPilot extends Module {
                 }
             }
             started = new Job(JobKind.SCHEMATIC, shown, schem.order.size(), null);
+        } else if (text.startsWith("breed") || text.contains("feed the animals") || text.contains("feed animals")) {
+            started = new Job(JobKind.BREED, text.replaceFirst("^breed( the)?", "").replaceFirst("^ *(animals?|all)", "").trim(), 0, null);
+        } else if (text.startsWith("plant") && (text.contains("sapling") || text.contains("tree"))) {
+            java.util.regex.Matcher n = java.util.regex.Pattern.compile("(\\d+)").matcher(text);
+            started = new Job(JobKind.PLANT, "", n.find() ? Math.max(1, Math.min(64, Integer.parseInt(n.group(1)))) : 4, null);
+        } else if (text.startsWith("guard") || text.startsWith("protect") || text.startsWith("bodyguard") || text.contains("defend me")) {
+            String who = text.replaceFirst("^(guard|protect|bodyguard|defend)( me)?", "").trim();
+            started = new Job(JobKind.GUARD, who, 0, null);
+        } else if (text.contains("armor") || text.contains("armour")) {
+            started = new Job(JobKind.ARMOR, "", 0, null);
+        } else if (text.equals("set home") || text.equals("sethome") || text.equals("this is home") || text.equals("mark home")) {
+            Extras.Waypoints points = Zeus.get(Extras.Waypoints.class);
+            if (points == null) return false;
+            points.addAt("Home", mc.player.getX(), mc.player.getY(), mc.player.getZ());
+            lastAction = "home set here";
+            return true;
+        } else if (text.equals("home") || text.equals("go home") || text.equals("return home") || text.equals("back home")) {
+            Extras.Waypoints points = Zeus.get(Extras.Waypoints.class);
+            double[] home = points == null ? null : points.findNamed("home");
+            if (home == null) {
+                Notify.warn("No Home waypoint yet. Say set home where you live.");
+                return false;
+            }
+            started = new Job(JobKind.GOTO, "home", 0, new Vec3(home[0], home[1], home[2]));
         } else if (text.startsWith("house") || text.contains("build a house") || text.contains("make a house")) {
             started = new Job(JobKind.HOUSE, "", 0, null);
         } else if (text.startsWith("swim")) {
@@ -2295,6 +2366,10 @@ public final class AiPilot extends Module {
             job = null;
             return;
         }
+        if (!job.toolChecked) {
+            job.toolChecked = true;
+            if (autoTool.on() && toolUp(mc)) return;
+        }
         if (mc.screen != null && job.kind != JobKind.CRAFT && job.kind != JobKind.SMELT) {
             releaseKeys(mc);
             return;
@@ -2405,6 +2480,10 @@ public final class AiPilot extends Module {
             case EXPLORE -> exploreTick(mc);
             case HOUSE -> houseTick(mc);
             case SCHEMATIC -> schematicTick(mc);
+            case BREED -> breedTick(mc);
+            case PLANT -> plantTick(mc);
+            case GUARD -> guardTick(mc);
+            case ARMOR -> armorTick(mc);
             case SWIM -> swimTick(mc);
             case CLIMB -> climbTick(mc);
             case BRIDGE -> bridgeTick(mc);
@@ -3041,7 +3120,27 @@ public final class AiPilot extends Module {
         return best;
     }
 
+    private static int weaponRank(ItemStack s) {
+        if (s.isEmpty()) return 0;
+        String id = BuiltInRegistries.ITEM.getKey(s.getItem()).getPath();
+        int tier = id.startsWith("netherite") ? 6 : id.startsWith("diamond") ? 5 : id.startsWith("iron") ? 4
+                : id.startsWith("stone") ? 3 : id.startsWith("golden") ? 2 : id.startsWith("wooden") ? 1 : 0;
+        if (id.endsWith("_sword")) return 20 + tier * 2;
+        if (id.endsWith("_axe")) return 10 + tier * 2;
+        if (id.equals("mace") || id.equals("trident")) return 30;
+        return 0;
+    }
+
     private static int bestWeapon(Minecraft mc) {
+        int bestSlot = -1, bestRank = 0;
+        for (int i = 0; i < 9; i++) {
+            int r = usable(Inv.get(i)) ? weaponRank(Inv.get(i)) : 0;
+            if (r > bestRank) {
+                bestRank = r;
+                bestSlot = i;
+            }
+        }
+        if (bestSlot >= 0) return bestSlot;
         int slot = Inv.hotbar(s -> s.is(net.minecraft.world.item.Items.NETHERITE_SWORD)
                 || s.is(net.minecraft.world.item.Items.DIAMOND_SWORD)
                 || s.is(net.minecraft.world.item.Items.IRON_SWORD)
@@ -3465,6 +3564,47 @@ public final class AiPilot extends Module {
         return out;
     }
 
+    /**
+     * Before a long job starts: if it needs a kind of tool the player has none of (axe for trees,
+     * pickaxe for stone and ore, shovel for dirt, sand and gravel) and the best one we can make is
+     * affordable, make it first and come back to the job.  Returns true when a craft was started.
+     */
+    private boolean toolUp(Minecraft mc) {
+        String kind = switch (job.kind) {
+            case CHOP -> "axe";
+            case MINE_UNTIL, QUARRY, TUNNEL -> "pickaxe";
+            case MINE_COUNT -> {
+                String t = job.target == null ? "" : job.target;
+                yield t.contains("dirt") || t.contains("sand") || t.contains("gravel") || t.contains("clay") ? "shovel"
+                        : t.equals("down") || t.equals("up") || productOf(t) != null ? "pickaxe" : "";
+            }
+            default -> "";
+        };
+        if (kind.isEmpty() || job.wanted < 3 && job.kind != JobKind.MINE_UNTIL && job.kind != JobKind.CHOP) return false;
+        String suffix = "_" + kind;
+        if (countItems(mc, st -> usable(st) && BuiltInRegistries.ITEM.getKey(st.getItem()).getPath().endsWith(suffix)) > 0) return false;
+        for (String tier : new String[] {"iron", "stone", "wooden"}) {
+            Craft.Recipe r = Craft.find(tier + suffix);
+            if (r == null || !Craft.hasAll(mc.player.inventoryMenu, r) && !hasAllAnywhere(mc, r)) continue;
+            String resume = resumeCommand(job);
+            Notify.info("Zeus AI: making a " + tier + " " + kind + " first");
+            AiTutorial.chat("No " + kind + " on me, making a " + tier + " " + kind + " first, then " + resume + ".", false);
+            if (startOne("craft 1 " + tier + " " + kind)) {
+                chain.addFirst(resume);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Crafting-table recipes are checked against the whole inventory, not the 2x2 grid's view. */
+    private static boolean hasAllAnywhere(Minecraft mc, Craft.Recipe r) {
+        java.util.Map<java.util.function.Predicate<ItemStack>, Integer> need = new java.util.IdentityHashMap<>();
+        for (java.util.function.Predicate<ItemStack> cell : r.cells()) if (cell != null) need.merge(cell, 1, Integer::sum);
+        for (var e : need.entrySet()) if (countItems(mc, e.getKey()) < e.getValue()) return false;
+        return true;
+    }
+
     /** How much raw material a crafted building part takes per item, roughly. */
     private static float rawPer(String id) {
         if (id.endsWith("_planks")) return 0.25f;            // logs per plank
@@ -3622,6 +3762,175 @@ public final class AiPilot extends Module {
             schemCellSince = now;
             job.note = "building " + schem.name + " (" + job.mined + "/" + job.wanted + ")";
         }
+    }
+
+    // ------------------------------------------------------------------ animals, saplings, guard, armour
+    private void breedTick(Minecraft mc) {
+        long now = System.currentTimeMillis();
+        if (now - job.started > 90_000L) {
+            endJob(mc, "fed " + job.mined + " animal(s)");
+            return;
+        }
+        String only = job.target == null ? "" : job.target.replaceAll("s$", "");
+        net.minecraft.world.entity.animal.Animal best = null;
+        double bestD = 20 * 20;
+        for (net.minecraft.world.entity.Entity e : mc.level.entitiesForRendering()) {
+            if (!(e instanceof net.minecraft.world.entity.animal.Animal a) || !a.isAlive() || a.isBaby() || a.isInLove()) continue;
+            if (!only.isEmpty() && !BuiltInRegistries.ENTITY_TYPE.getKey(a.getType()).getPath().contains(only)) continue;
+            if (countItems(mc, a::isFood) <= 0) continue;
+            double d = a.distanceToSqr(mc.player);
+            if (d < bestD) {
+                bestD = d;
+                best = a;
+            }
+        }
+        if (best == null) {
+            if (job.quietSince == 0) job.quietSince = now;
+            else if (now - job.quietSince > 3000L) endJob(mc, job.mined == 0 ? "no animals to feed (or no food they eat)" : "fed " + job.mined + " animal(s)");
+            return;
+        }
+        job.quietSince = 0;
+        net.minecraft.world.entity.animal.Animal target = best;
+        job.note = "feeding a " + BuiltInRegistries.ENTITY_TYPE.getKey(target.getType()).getPath().replace('_', ' ');
+        if (target.distanceTo(mc.player) > 2.8) {
+            walkTo(mc, target.position(), 1.8);
+            return;
+        }
+        releaseKeys(mc);
+        if (now < job.actionAt) return;
+        job.actionAt = now + 350L;
+        java.util.function.Predicate<ItemStack> food = target::isFood;
+        int slot = ensureHotbar(mc, food);
+        if (slot < 0) return;
+        if (!Inv.holding(food)) Inv.select(slot);
+        lookAt(mc.player, target.position().add(0, target.getBbHeight() * 0.6, 0));
+        mc.gameMode.interact(mc.player, target, InteractionHand.MAIN_HAND);
+        mc.player.swing(InteractionHand.MAIN_HAND);
+        job.mined++;
+    }
+
+    private void plantTick(Minecraft mc) {
+        if (job.mined >= Math.max(1, job.wanted)) {
+            endJob(mc, "planted " + job.mined + " sapling(s)");
+            return;
+        }
+        java.util.function.Predicate<ItemStack> sapling = st -> st.is(net.minecraft.tags.ItemTags.SAPLINGS);
+        if (countItems(mc, sapling) <= 0) {
+            endJob(mc, job.mined == 0 ? "no saplings in the inventory" : "planted " + job.mined + ", out of saplings");
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (job.block == null || now >= job.nextSearch) {
+            job.nextSearch = now + 1500L;
+            job.block = find(mc, 10, 3, pos -> {
+                BlockState soil = mc.level.getBlockState(pos);
+                if (!(soil.is(Blocks.GRASS_BLOCK) || soil.is(Blocks.DIRT) || soil.is(Blocks.PODZOL) || soil.is(Blocks.COARSE_DIRT))) return false;
+                if (!mc.level.getBlockState(pos.above()).isAir() || !mc.level.getBlockState(pos.above(2)).isAir()) return false;
+                // room to grow: nothing woody within three blocks
+                for (BlockPos q : BlockPos.betweenClosed(pos.offset(-3, 0, -3), pos.offset(3, 4, 3))) {
+                    BlockState st = mc.level.getBlockState(q);
+                    if (st.is(BlockTags.LOGS) || st.is(BlockTags.SAPLINGS)) return false;
+                }
+                return mc.level.canSeeSky(pos.above());
+            });
+        }
+        if (job.block == null) {
+            endJob(mc, job.mined == 0 ? "no open ground for saplings nearby" : "planted " + job.mined + " sapling(s)");
+            return;
+        }
+        BlockPos at = job.block.above();
+        if (Build.distTo(at) > Build.REACH - 0.6) {
+            walkTo(mc, centre(at), 2.5);
+            return;
+        }
+        releaseKeys(mc);
+        if (ensureHotbar(mc, sapling) < 0) return;
+        lookAt(mc.player, centre(job.block).add(0, 0.5, 0));
+        if (Build.place(at, sapling, true, Build.REACH)) {
+            job.mined++;
+            job.block = null;
+            job.note = "planted " + job.mined;
+        }
+    }
+
+    private void guardTick(Minecraft mc) {
+        Player owner = job.target.isBlank() ? null : byName(mc, job.target);
+        if (owner == null && !job.target.isBlank()) owner = nearestPlayer(mc, 48);
+        Vec3 home = owner != null ? owner.position() : mc.player.position();
+        // fight anything hostile near whoever is being guarded
+        net.minecraft.world.entity.Entity threat = null;
+        double bestD = 8 * 8;
+        for (net.minecraft.world.entity.Entity e : mc.level.entitiesForRendering()) {
+            if (!(e instanceof net.minecraft.world.entity.monster.Monster) || !e.isAlive()) continue;
+            double d = e.position().distanceToSqr(home);
+            if (d < bestD) {
+                bestD = d;
+                threat = e;
+            }
+        }
+        if (threat != null) {
+            job.note = "fighting a " + BuiltInRegistries.ENTITY_TYPE.getKey(threat.getType()).getPath().replace('_', ' ');
+            if (threat.distanceTo(mc.player) > 3.0) {
+                walkTo(mc, threat.position(), 2.2);
+                return;
+            }
+            releaseKeys(mc);
+            int weapon = bestWeapon(mc);
+            if (weapon >= 0 && weapon != Inv.selected()) Inv.select(weapon);
+            lookAt(mc.player, threat.position().add(0, threat.getBbHeight() * 0.6, 0));
+            if (mc.player.getAttackStrengthScale(0.5f) >= 0.92f) {
+                mc.gameMode.attack(mc.player, threat);
+                mc.player.swing(InteractionHand.MAIN_HAND);
+                job.mined++;
+            }
+            return;
+        }
+        job.note = owner == null ? "on guard here" : "staying close to " + owner.getName().getString();
+        if (owner != null && owner.distanceTo(mc.player) > 4.0) walkTo(mc, owner.position(), 3.0);
+        else releaseKeys(mc);
+        job.started = System.currentTimeMillis();       // guarding has no time limit; say stop to end it
+    }
+
+    private static int armorRank(ItemStack s) {
+        if (s.isEmpty()) return 0;
+        String id = BuiltInRegistries.ITEM.getKey(s.getItem()).getPath();
+        int base = id.startsWith("netherite") ? 7 : id.startsWith("diamond") ? 6 : id.startsWith("iron") ? 5
+                : id.startsWith("chainmail") ? 4 : id.startsWith("turtle") ? 4 : id.startsWith("golden") ? 3 : id.startsWith("leather") ? 2 : 1;
+        return base * 10 + (s.isEnchanted() ? 3 : 0);
+    }
+
+    private void armorTick(Minecraft mc) {
+        long now = System.currentTimeMillis();
+        if (now < job.actionAt) return;
+        job.actionAt = now + 250L;
+        if (mc.screen != null) return;
+        for (net.minecraft.world.entity.EquipmentSlot slot : new net.minecraft.world.entity.EquipmentSlot[] {
+                net.minecraft.world.entity.EquipmentSlot.HEAD, net.minecraft.world.entity.EquipmentSlot.CHEST,
+                net.minecraft.world.entity.EquipmentSlot.LEGS, net.minecraft.world.entity.EquipmentSlot.FEET}) {
+            ItemStack worn = mc.player.getItemBySlot(slot);
+            int wornRank = armorRank(worn);
+            int bestInv = -1, bestRank = wornRank;
+            for (int i = 0; i < 36; i++) {
+                ItemStack st = Inv.get(i);
+                var eq = st.get(net.minecraft.core.component.DataComponents.EQUIPPABLE);
+                if (eq == null || eq.slot() != slot || st.is(Items.ELYTRA) && slot == net.minecraft.world.entity.EquipmentSlot.CHEST) continue;
+                int r = armorRank(st);
+                if (r > bestRank) {
+                    bestRank = r;
+                    bestInv = i;
+                }
+            }
+            if (bestInv < 0) continue;
+            int from = Inv.menuSlot(bestInv), to = Inv.armorMenuSlot(slot);
+            // pick the better piece up, drop it on the armour slot, put the old one where it came from
+            Inv.click(from, 0, ClickType.PICKUP);
+            Inv.click(to, 0, ClickType.PICKUP);
+            Inv.click(from, 0, ClickType.PICKUP);
+            job.mined++;
+            job.note = "put on " + BuiltInRegistries.ITEM.getKey(Inv.get(bestInv).getItem()).getPath().replace('_', ' ');
+            return;
+        }
+        endJob(mc, job.mined == 0 ? "already wearing the best armour it has" : "put on " + job.mined + " better piece(s)");
     }
 
     private void houseTick(Minecraft mc) {
