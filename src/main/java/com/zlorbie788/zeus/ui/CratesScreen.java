@@ -483,6 +483,19 @@ public final class CratesScreen extends Screen {
         if (Crates.activeNow()) Draw.sheen(g, bx, y + 3, fill, 5, 0x70FFFFFF, (t * 0.35f) % 1.6f);
         String d = "Free crate drop in " + clock(Crates.nextDropIn());
         Draw.textRight(g, d, px + pw - 14, y + 2, FAINT);
+        // daily streak, in the middle when there is room
+        String st;
+        int sc;
+        if (Crates.streakClaimedToday()) {
+            st = "Streak: day " + Crates.streak() + "  \u2714  tomorrow +" + Crates.streakReward(Crates.streakNextDay() + 1);
+            sc = GOLD;
+        } else {
+            int n = Crates.streakNextDay();
+            st = "Play " + clock(Crates.streakPlayLeft()) + " more today: day " + n + " streak +" + Crates.streakReward(n);
+            sc = SUB;
+        }
+        int left = bx + bw + 16, right = px + pw - 14 - Draw.width(d) - 16;
+        if (Draw.width(st) <= right - left) Draw.textCenter(g, st, (left + right) / 2, y + 2, sc);
     }
 
     private static String clock(long ms) {

@@ -95,6 +95,10 @@ public final class Crates {
     public static final long TOKEN_MS = 5 * 60_000L;
     public static final long DROP_MS = 90 * 60_000L;
     private static final long IDLE_MS = 90_000L;
+    /** Active play needed each day before the daily streak reward is paid (so just launching does not count). */
+    public static final long STREAK_PLAY_MS = 3 * 60_000L;
+    /** Tokens for day 1, 2, 3 ... of a streak; day 7 and on pay the last value. */
+    private static final int[] STREAK_REWARD = {2, 3, 4, 5, 6, 8, 10};
 
     public static final List<Crate> CRATES = List.of(
             new Crate("olympus", "Olympus Crate", "Marble, gold and the forge of the gods", 0xFFF5C04A, 0xFF3A2A08)
@@ -299,6 +303,11 @@ public final class Crates {
     private static long earned;
     private static int opened;
     private static boolean quick;
+    private static int streak;
+    private static int bestStreak;
+    private static long lastDay = -1;     // local epoch day the streak was last paid
+    private static long countDay = -1;    // the day dayActiveMs is counting for
+    private static long dayActiveMs;
     /** Most recent drops first: knife id, crate id, time, duplicate. */
     private static final List<Drop> history = new ArrayList<>();
     private static final int HISTORY_MAX = 50;
@@ -402,6 +411,61 @@ public final class Crates {
 
     public static boolean activeNow() {
         return System.currentTimeMillis() - lastActive < IDLE_MS;
+    }
+
+    // ------------------------------------------------------------------ daily streak
+    private static long today() {
+        return java.time.LocalDate.now().toEpochDay();
+    }
+
+    public static int streakReward(int day) {
+        return STREAK_REWARD[Math.max(0, Math.min(STREAK_REWARD.length, day) - 1)];
+    }
+
+    /** The streak as it stands now: 0 once a whole day was missed. */
+    public static int streak() {
+        load();
+        return lastDay >= today() - 1 ? streak : 0;
+    }
+
+    public static int bestStreak() {
+        load();
+        return bestStreak;
+    }
+
+    public static boolean streakClaimedToday() {
+        load();
+        return lastDay == today();
+    }
+
+    /** The day number today's reward will be for. */
+    public static int streakNextDay() {
+        int s = streak();
+        return streakClaimedToday() ? s : s + 1;
+    }
+
+    public static long streakPlayLeft() {
+        load();
+        return countDay == today() ? Math.max(0, STREAK_PLAY_MS - dayActiveMs) : STREAK_PLAY_MS;
+    }
+
+    private static void streakTick(long dt) {
+        long d = today();
+        if (countDay != d) {
+            countDay = d;
+            dayActiveMs = 0;
+        }
+        dayActiveMs += dt;
+        if (lastDay >= d || dayActiveMs < STREAK_PLAY_MS) return;   // paid already, or the clock went backwards
+        streak = lastDay == d - 1 ? streak + 1 : 1;
+        bestStreak = Math.max(bestStreak, streak);
+        lastDay = d;
+        int add = streakReward(streak);
+        tokens += add;
+        earned += add;
+        dirty = true;
+        save(true);
+        Zeus.toast("Zeus Crates: day " + streak + " streak! +" + add + " tokens" + (streak < STREAK_REWARD.length ? " (tomorrow +" + streakReward(streak + 1) + ")" : ""), true);
     }
 
     // ------------------------------------------------------------------ actions
@@ -566,6 +630,7 @@ public final class Crates {
         if (!activeNow()) return;          // standing AFK earns nothing
         activeMs += dt;
         dropMs += dt;
+        streakTick(dt);
         if (activeMs >= TOKEN_MS) {
             activeMs -= TOKEN_MS;
             tokens++;
@@ -638,6 +703,11 @@ public final class Crates {
         earned = 0;
         opened = 0;
         quick = false;
+        streak = 0;
+        bestStreak = 0;
+        lastDay = -1;
+        countDay = -1;
+        dayActiveMs = 0;
         history.clear();
     }
 
@@ -670,6 +740,13 @@ public final class Crates {
             for (var e : d.getAsJsonArray("owned")) owned.add(e.getAsString());
             for (var e : d.getAsJsonArray("redeemed")) redeemed.add(e.getAsString());
             quick = d.has("quick") && d.get("quick").getAsBoolean();
+            if (d.has("streak")) {
+                streak = d.get("streak").getAsInt();
+                bestStreak = d.get("best").getAsInt();
+                lastDay = d.get("day").getAsLong();
+                countDay = d.get("cday").getAsLong();
+                dayActiveMs = d.get("dms").getAsLong();
+            }
             if (d.has("history")) {
                 for (var e : d.getAsJsonArray("history")) {
                     JsonObject h = e.getAsJsonObject();
@@ -709,6 +786,11 @@ public final class Crates {
         redeemed.forEach(r::add);
         d.add("redeemed", r);
         d.addProperty("quick", quick);
+        d.addProperty("streak", streak);
+        d.addProperty("best", bestStreak);
+        d.addProperty("day", lastDay);
+        d.addProperty("cday", countDay);
+        d.addProperty("dms", dayActiveMs);
         JsonArray hs = new JsonArray();
         for (Drop dr : history) {
             JsonObject h = new JsonObject();
