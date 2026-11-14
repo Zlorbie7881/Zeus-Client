@@ -1765,7 +1765,7 @@ public final class ZeusScreen extends Screen {
         if (s instanceof Setting.Choice c) return chipsFit(c, cw) ? K(68) : K(44);
         if (s instanceof Setting.Pick p) return K(32) + pickRows(p, cw) * K(36);
         if (s instanceof Setting.Text) return K(48);
-        if (s instanceof Setting.Action) return K(48);
+        if (s instanceof Setting.Action a) return a.primary ? K(78) : K(48);
         if (s instanceof Setting.Info info) {
             int n = Math.min(info.lines().size(), 10);
             return K(34) + Math.max(1, n) * K(19) + (info.lines().size() > 10 ? K(19) : 0) + K(8);
@@ -1948,6 +1948,22 @@ public final class ZeusScreen extends Screen {
                 field.setValue(t.get());
                 focusField();
             }, null);
+        } else if (s instanceof Setting.Action a && a.primary) {
+            // A wide, bright call-to-action with a gently breathing glow so it cannot be missed.
+            int ch = K(62);
+            int cy = y + h / 2;
+            int top = cy - ch / 2;
+            boolean hb = hov(x, top, w, ch) && inViewD();
+            float pulse = 0.5f + 0.5f * (float) Math.sin(System.nanoTime() / 1e9 * 2.4);
+            Ty.glow(g, x, top, w, ch, K(14), K(10), Draw.rgba(bl, (hb ? 0.55f : 0.30f) + 0.15f * pulse));
+            Ty.fill(g, x, top, w, ch, K(14), hb ? Draw.rgba(bl, 0.95f) : Draw.rgba(bl, 0.78f));
+            Ty.fill(g, x + K(2), top + K(2), w - K(4), ch / 2 - K(2), K(12), 0x22FFFFFF);
+            Ty.ring(g, x, top, w, ch, K(14), K(2), Draw.rgba(0xFFFFFFFF, hb ? 0.95f : 0.55f + 0.3f * pulse));
+            String title = a.name.toUpperCase(Locale.ROOT) + "  >";
+            String sub = a.detail == null ? a.desc : a.detail.get();
+            txC(g, title, x + w / 2, cy - (sub == null || sub.isEmpty() ? 0 : K(9)), 17, Ty.XBOLD, 0xFFFFFFFF);
+            if (sub != null && !sub.isEmpty()) txC(g, Ty.fit(sub, w - K(24), tp(12), Ty.MED), x + w / 2, cy + K(14), 12, Ty.MED, 0xE6FFFFFF);
+            hit(x, top, w, ch, k2 -> a.fire(), a.desc);
         } else if (s instanceof Setting.Action a) {
             int ch = K(34);
             int cy = y + h / 2;
@@ -2075,7 +2091,7 @@ public final class ZeusScreen extends Screen {
 
     private int rowH(Setting s) {
         if (s instanceof Setting.Num) return 26;
-        if (s instanceof Setting.Action) return 24;
+        if (s instanceof Setting.Action a) return a.primary ? 36 : 24;
         if (s instanceof Setting.Pick p) return 20 + Math.max(1, p.rows) * 17 + 2;
         if (s instanceof Setting.Info info) {
             int n = Math.min(info.lines().size(), 10);
@@ -2164,6 +2180,16 @@ public final class ZeusScreen extends Screen {
                 field.setValue(t.get());
                 focusField();
             }, null);
+        } else if (s instanceof Setting.Action a && a.primary) {
+            boolean hb = hov(x, y + 2, w, 32) && inView(top, viewH);
+            float pulse = 0.5f + 0.5f * (float) Math.sin(System.nanoTime() / 1e9 * 2.4);
+            Draw.glow(g, x, y + 2, w, 32, 8, Draw.rgba(col, 0.35f + 0.2f * pulse), 6, 0.6f);
+            Draw.rrect(g, x, y + 2, w, 32, 8, Draw.rgba(col, hb ? 0.95f : 0.75f));
+            Draw.rrectLine(g, x, y + 2, w, 32, 8, Draw.rgba(0xFFFFFFFF, hb ? 0.95f : 0.5f + 0.3f * pulse));
+            Draw.boldCenter(g, a.name.toUpperCase(Locale.ROOT) + "  >", x + w / 2, y + 7, 0xFFFFFFFF);
+            String sub = a.detail == null ? "" : a.detail.get();
+            if (!sub.isEmpty()) Draw.textCenter(g, Draw.fit(sub, w - 10), x + w / 2, y + 20, 0xE6FFFFFF);
+            hit(x, y + 2, w, 32, k -> a.fire(), a.desc);
         } else if (s instanceof Setting.Action a) {
             int bw = Draw.width(a.name) + 20;
             boolean hb = hov(x, y + 2, bw, 18) && inView(top, viewH);
