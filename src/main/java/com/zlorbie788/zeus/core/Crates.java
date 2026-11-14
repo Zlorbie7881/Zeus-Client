@@ -290,6 +290,10 @@ public final class Crates {
     private static long dropMs;
     private static long earned;
     private static int opened;
+    private static boolean quick;
+    /** Most recent drops first: knife id, crate id, time, duplicate. */
+    private static final List<Drop> history = new ArrayList<>();
+    private static final int HISTORY_MAX = 50;
     private static boolean loaded;
     private static boolean dirty;
     private static long lastSave;
@@ -405,6 +409,40 @@ public final class Crates {
     public record Result(Item item, Crate crate, boolean duplicate, int refund) {
     }
 
+    public record Drop(String knife, String crate, long at, boolean duplicate) {
+    }
+
+    public static List<Drop> history() {
+        load();
+        return java.util.Collections.unmodifiableList(history);
+    }
+
+    public static boolean quick() {
+        load();
+        return quick;
+    }
+
+    public static void setQuick(boolean on) {
+        load();
+        quick = on;
+        save(true);
+    }
+
+    /** How many of a crate's knives are owned. */
+    public static int collected(Crate c) {
+        int n = 0;
+        for (Item it : c.items) if (owns(it.id)) n++;
+        return n;
+    }
+
+    /** Count of drops per rarity, for the history stats. */
+    public static int[] dropsByRarity() {
+        load();
+        int[] n = new int[Rarity.values().length];
+        for (Drop d : history) n[rarityOf(d.knife).ordinal()]++;
+        return n;
+    }
+
     /** Rolls a knife from a crate without spending anything: the reel is built from these. */
     public static Item roll(Crate c) {
         int total = 0;
@@ -434,6 +472,8 @@ public final class Crates {
         int refund = dup ? it.rarity.refund : 0;
         if (dup) tokens += refund;
         else owned.add(it.id);
+        history.add(0, new Drop(it.id, c.id, System.currentTimeMillis(), dup));
+        while (history.size() > HISTORY_MAX) history.remove(history.size() - 1);
         save(true);
         return new Result(it, c, dup, refund);
     }
@@ -567,6 +607,8 @@ public final class Crates {
         dropMs = 0;
         earned = 0;
         opened = 0;
+        quick = false;
+        history.clear();
     }
 
     public static synchronized void load() {
@@ -597,6 +639,13 @@ public final class Crates {
             for (var e : d.getAsJsonObject("crates").entrySet()) held.put(e.getKey(), e.getValue().getAsInt());
             for (var e : d.getAsJsonArray("owned")) owned.add(e.getAsString());
             for (var e : d.getAsJsonArray("redeemed")) redeemed.add(e.getAsString());
+            quick = d.has("quick") && d.get("quick").getAsBoolean();
+            if (d.has("history")) {
+                for (var e : d.getAsJsonArray("history")) {
+                    JsonObject h = e.getAsJsonObject();
+                    history.add(new Drop(h.get("k").getAsString(), h.get("c").getAsString(), h.get("t").getAsLong(), h.get("d").getAsBoolean()));
+                }
+            }
             owned.add(STARTER);
         } catch (Exception e) {
             Zeus.LOG.warn("Zeus Crates: could not read crates.dat", e);
@@ -624,6 +673,17 @@ public final class Crates {
         JsonArray r = new JsonArray();
         redeemed.forEach(r::add);
         d.add("redeemed", r);
+        d.addProperty("quick", quick);
+        JsonArray hs = new JsonArray();
+        for (Drop dr : history) {
+            JsonObject h = new JsonObject();
+            h.addProperty("k", dr.knife());
+            h.addProperty("c", dr.crate());
+            h.addProperty("t", dr.at());
+            h.addProperty("d", dr.duplicate());
+            hs.add(h);
+        }
+        d.add("history", hs);
         String body = new Gson().toJson(d);
         JsonObject root = new JsonObject();
         root.addProperty("data", body);

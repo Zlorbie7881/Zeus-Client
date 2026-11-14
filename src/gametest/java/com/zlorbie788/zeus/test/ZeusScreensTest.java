@@ -47,11 +47,15 @@ public class ZeusScreensTest implements FabricClientGameTest {
             ctx.setScreen(() -> new CratesScreen(null));
             run(ctx, 0.8f);
             ctx.takeScreenshot("crates_" + tag);
-            for (int tab = 1; tab <= 2; tab++) {
+            String[] tabNames = {"crates", "collection", "history", "redeem"};
+            for (int tab = 1; tab <= 3; tab++) {
                 int t = tab;
-                ctx.runOnClient(c -> set(c.screen, "tab", t));
-                run(ctx, 0.5f);
-                ctx.takeScreenshot((t == 1 ? "collection_" : "redeem_") + tag);
+                ctx.runOnClient(c -> {
+                    set(c.screen, "tab", t);
+                    set(c.screen, "tabAt", -10f);
+                });
+                run(ctx, 0.6f);
+                ctx.takeScreenshot(tabNames[t] + "_" + tag);
             }
             ctx.runOnClient(c -> set(c.screen, "tab", 0));
             ctx.runOnClient(c -> open(c, "hades"));
@@ -62,6 +66,18 @@ public class ZeusScreensTest implements FabricClientGameTest {
                 done = a;
                 ctx.takeScreenshot("open_" + tag + "_" + Math.round(a * 100));
             }
+            ctx.runOnClient(c -> set(c.screen, "opening", null));
+            ctx.runOnClient(c -> {
+                try {
+                    Method m = CratesScreen.class.getDeclaredMethod("openInspect", Crates.Item.class);
+                    m.setAccessible(true);
+                    m.invoke(c.screen, new Crates.Item("karambit_bloodstone", Crates.Rarity.OLYMPIAN));
+                } catch (ReflectiveOperationException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            run(ctx, 0.9f);
+            ctx.takeScreenshot("inspect_" + tag);
             ctx.setScreen(() -> null);
             ctx.waitTicks(4);
         }

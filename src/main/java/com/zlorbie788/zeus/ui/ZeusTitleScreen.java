@@ -699,6 +699,20 @@ public final class ZeusTitleScreen extends Screen {
                     g.disableScissor();
                 }
             }
+            if (i == CRATES) {
+                // a gold count of crates waiting to be opened, with a soft pulse
+                int waiting = com.zlorbie788.zeus.core.Crates.heldTotal();
+                if (waiting > 0) {
+                    String n = waiting > 99 ? "99+" : String.valueOf(waiting);
+                    int bh = Math.max(10, Math.round(h * 0.42f));
+                    int bw = Math.max(bh, Draw.widthBold(n) + 8);
+                    int bx = x + w - bw - Math.round(6 * u), by = y + (h - bh) / 2;
+                    float pulse = 0.5f + 0.5f * (float) Math.sin(t * 3.0f);
+                    Draw.glow(g, bx, by, bw, bh, bh / 2, 0xFFF5C04A, 6, (0.15f + 0.15f * pulse) * ease);
+                    Draw.rrect(g, bx, by, bw, bh, bh / 2, Draw.rgba(0xFFFFD27A, ease), Draw.rgba(0xFFC8901E, ease));
+                    Draw.boldCenter(g, n, bx + bw / 2, by + (bh - 8) / 2, Draw.rgba(0xFF1A1206, ease));
+                }
+            }
             if (gl > 0.02f) Draw.rrectLine(g, x, y, w, h, 3, Draw.rgba(i == CRATES ? 0xFFF5D08A : 0xFFA8BEEA, (0.68f + 0.10f * (float) Math.sin(t * 4f)) * gl * ease));
             if (gl > 0.02f && fx) {
                 PlateFx.hover(g, x, y, w, h, t, gl * ease, u);
