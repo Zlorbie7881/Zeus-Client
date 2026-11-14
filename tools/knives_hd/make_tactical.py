@@ -969,8 +969,12 @@ ZMAX = 1.4   # the profile cell covers z = -ZMAX .. ZMAX top to bottom
 
 def profile_cell(kn, mask, side):
     """The knife seen from its spine: per column, the part's thickness, in its side colour."""
-    cover = mask.max(0)                                   # does this column hold material
     wsum = mask.sum(0) + 1e-6
+    # does this column hold material where the strip runs (its centre line)? A ring or a finger
+    # hole has material above and below but none in the middle, and must not get a bar across it
+    cvc = (V * mask).sum(0) / wsum
+    near = np.abs(V - cvc[None, :]) < 0.22
+    cover = (mask * near).max(0)
     col = (side * mask[..., None]).sum(0) / wsum[:, None]  # mean side colour of the column
     t = np.zeros(GW, np.float32)
     r = np.zeros(GW, np.float32)
@@ -1046,7 +1050,15 @@ def write(kn, min_level=0):
         col = min(GW - 1, int(u * GP))
         lo, hi = max(0, col - 3), min(GW, col + 4)
         w = wsum[lo:hi]
-        line.append(round(float((cv[lo:hi] * w).sum() / w.sum()), 3) if w.sum() > 1e-3 else 0.0)
+        line.append(round(float((cv[lo:hi] * w).sum() / w.sum()), 3) if w.sum() > 1e-3 else None)
+    # past the ends of the knife carry the nearest real value, so a curved tip never pulls the
+    # side wall back to the middle in a thin diagonal sliver
+    last = next((x for x in line if x is not None), 0.0)
+    for i, x in enumerate(line):
+        if x is None:
+            line[i] = last
+        else:
+            last = x
     return {
         "id": kn.id,
         "min_level": min_level,

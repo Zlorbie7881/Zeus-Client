@@ -106,21 +106,46 @@ def finish_knife(kn, skin):
 
 # ------------------------------------------------------------------ the types
 def karambit(skin):
+    """A crescent: ring, curved handle and hooked claw blade all bend round the same side, with the
+    edge on the inside of the curve."""
     kn = T.Knife("karambit_" + skin, "Karambit · " + F[skin][1])
-    st = T.interp_stations([(1.6, 1.25, 1.25), (2.6, 1.10, 1.05), (4.0, 1.05, 1.20), (7.0, 1.00, 1.25), (10.0, 0.95, 1.10), (11.3, 0.95, 1.00)])
-    st = T.finger_grooves(st, 3.6, 10.2, 3, 0.32)
-    m, inside = T.handle_body(kn, st)
-    T.rubber(kn, m, hexc("141416"), 1901, rnd=0.5)
-    rb, zone, ph = T.ribs(4.0, 10.5, 0.55, 0.06)
-    kn.height += rb * m
-    T.ring(kn, 1.35, 0.0, 1.35, 0.78)
-    for cu in (6.0, 9.2):
-        T.screw(kn, cu, -0.05, 0.18, colour="3a3c42")
-    T.blade(kn, 11.3, 24.6, -0.95, 1.05, -0.15, clip=0.35, belly=0.25, clip_pow=1.4, teeth=None, fuller=None,
-            choil=False, swedge=False, bevel_w=0.75, finish=F[skin][0], tang=0, bend=2.6, bend_pow=1.9)
-    kn.part("ring", 0.0, 2.7, 0.40, 0.30)
-    kn.part("handle", 2.7, 11.3, 0.95, 0.55)
-    kn.part("blade", 11.3, 24.8, 0.24, 0.0)
+    u_b = 10.8                                          # where the handle meets the blade
+
+    def c(u):                                           # centre line of the handle
+        return -0.80 + 1.75 * max(0.0, (u_b - u) / 8.2) ** 1.7
+
+    # handle: (u, spine-side half, edge-side half); a finger guard bump where it meets the blade
+    raw = [(2.5, 0.95, 0.95), (3.4, 1.02, 1.00), (6.0, 1.00, 1.02), (9.0, 1.00, 1.02), (10.0, 1.02, 1.30),
+           (10.45, 1.04, 1.55), (10.8, 1.02, 1.20)]
+    st = T.interp_stations(raw)
+    st = T.finger_grooves(st, 3.6, 9.7, 3, 0.30)
+    pts = [(u, c(u) - a) for u, a, b in st] + [(u, c(u) + b) for u, a, b in st[::-1]]
+    m = poly_mask(pts)
+    inside = sdf_inside(m)
+    T.rubber(kn, m, hexc("121214"), 1901, rnd=0.55)
+    # a raised rim round the grip panel and fine grip grooves across it
+    rim = np.clip(1 - np.abs(inside - 0.14) / 0.05, 0, 1) * m
+    kn.alb = lerp(kn.alb, hexc("2c2e33"), rim * 0.7)
+    for cu in (4.6, 8.4):
+        T.screw(kn, cu, c(cu) - 0.05, 0.2, colour="4a4d55", metal=1.0)
+    # the ring: steel, wide, with a polished inner lip
+    rc_u, rc_v = 1.45, c(1.45) + 0.05
+    d = np.hypot(U - rc_u, V - rc_v)
+    rm = ((d <= 1.42) & (d >= 0.90)).astype(np.float32)
+    mid, half = 1.16, 0.26
+    rh = np.sqrt(np.clip(1 - ((d - mid) / half) ** 2, 0, 1)) * half
+    steel = T.steel_base(1903, 0.55)
+    lip = np.clip(1 - (d - 0.90) / 0.10, 0, 1)
+    steel = lerp(steel, np.minimum(1, steel * 1.6 + 0.15), lip * 0.8)
+    kn.paint(rm, steel, height=rh, metal=1.0, gloss=0.85, rnd=0.2, side=hexc("3a3e46"))
+    kn.cut((d < 0.90).astype(np.float32))
+    # the claw: wide at the base, sweeping round to a needle point
+    T.blade(kn, u_b, 22.6, -1.85, 0.22, -0.35, clip=0.0, belly=0.0, clip_pow=1.25,
+            teeth=(0.04, 0.17, 0.10, 0.22), fuller=None, choil=False, swedge=False, bevel_w=0.70,
+            finish=F[skin][0], tang=0.35, bend=3.35, bend_pow=2.15)
+    kn.part("ring", 0.0, 2.9, 0.40, 0.30)
+    kn.part("handle", 2.9, u_b, 0.95, 0.55)
+    kn.part("blade", u_b, 22.8, 0.24, 0.0)
     return finish_knife(kn, skin)
 
 
