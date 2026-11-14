@@ -397,9 +397,23 @@ public final class AiTutorial {
         if (ids.size() > shown) say(Component.literal("  … and " + (ids.size() - shown) + " more").withStyle(ChatFormatting.GRAY));
     }
 
+    /** The schematic files as chat lines with build and materials buttons. */
+    static void schematics(java.util.List<java.nio.file.Path> files) {
+        say(Component.literal("[Zeus AI] ").withStyle(ChatFormatting.AQUA)
+                .append(Component.literal(files.size() + " schematic(s), newest first:").withStyle(ChatFormatting.WHITE)));
+        for (int i = 0; i < Math.min(12, files.size()); i++) {
+            String name = SchematicPlan.display(files.get(i));
+            say(Component.literal("  " + name + "  ").withStyle(ChatFormatting.WHITE)
+                    .append(button("[Build]", ChatFormatting.GREEN, "ask:build schematic " + name, "Gather the materials and build it in front of you"))
+                    .append(Component.literal(" "))
+                    .append(button("[Materials]", ChatFormatting.AQUA, "ask:materials for " + name, "List what it needs and what you have")));
+        }
+    }
+
     /** A persistent chat line from the AI (toasts fade too fast for real answers). */
     public static void chat(String text, boolean problem) {
         if (text == null || text.isBlank()) return;
+        AiPilot.talk(false, text);
         MutableComponent line = Component.literal("[Zeus AI] ").withStyle(ChatFormatting.AQUA)
                 .append(Component.literal(text).withStyle(problem ? ChatFormatting.GOLD : ChatFormatting.WHITE));
         if (problem && !active()) {
