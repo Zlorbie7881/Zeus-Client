@@ -53,26 +53,8 @@ public final class KnifeHDGui {
             float pixels = (float) Minecraft.getInstance().getWindow().getGuiScale();
             KnifeHD.Frame f = KnifeHD.build(FRAME, m, k, unit, pixels, alpha, light);
             if (f.quads.isEmpty()) return false;
-            Tex.Img img = Tex.sprite(KnifeHD.sheet(m, f.level));
-            if (img == null && f.level != 1) img = Tex.sprite(KnifeHD.sheet(m, 1));
-            if (img == null) return false;
-            AbstractTexture tex = Minecraft.getInstance().getTextureManager().getTexture(img.id);
-            TextureSetup setup = TextureSetup.singleTexture(tex.getTextureView(), tex.getSampler());
-            Matrix3x2f pose = new Matrix3x2f(g.pose());
-            ScreenRectangle scissor = g.scissorStack.peek();
-            List<KnifeHD.Quad> qs = f.quads;
-            int start = 0;
-            while (start < qs.size()) {
-                int grp = qs.get(start).group;
-                int end = start;
-                while (end < qs.size() && qs.get(end).group == grp) end++;
-                boolean light2 = qs.get(start).light;
-                RenderPipeline pipe = light2 ? RenderPipelines.GUI_TEXTURED_PREMULTIPLIED_ALPHA : RenderPipelines.GUI_TEXTURED;
-                Element e = new Element(pipe, setup, pose, scissor, qs, start, end);
-                if (e.bounds != null) g.guiRenderState.submitGuiElement(e);
-                start = end;
-            }
-            return true;
+            Geo geo = geo(m, f);
+            return geo != null && submit(g, geo);
         } catch (RuntimeException | Error e) {
             failures++;
             brokenUntil = System.currentTimeMillis() + 5_000L;
@@ -84,6 +66,116 @@ public final class KnifeHDGui {
 
     private static final KnifeHD.Frame FIT = new KnifeHD.Frame();
 
+    // ------------------------------------------------------------------ cached still knives
+    /** One knife's ready-to-send vertices, split by pipeline, plus which sheet it samples. */
+    private static final class Geo {
+        final String sheet;
+        final String fallback;
+        final List<Batch> batches = new java.util.ArrayList<>();
+
+        Geo(String sheet, String fallback) {
+            this.sheet = sheet;
+            this.fallback = fallback;
+        }
+    }
+
+    private static Geo geo(KnifeHD.Model m, KnifeHD.Frame f) {
+        Geo geo = new Geo(KnifeHD.sheet(m, f.level), f.level != 1 ? KnifeHD.sheet(m, 1) : null);
+        List<KnifeHD.Quad> qs = f.quads;
+        int start = 0;
+        while (start < qs.size()) {
+            int grp = qs.get(start).group;
+            int end = start;
+            while (end < qs.size() && qs.get(end).group == grp) end++;
+            boolean light2 = qs.get(start).light;
+            RenderPipeline pipe = light2 ? RenderPipelines.GUI_TEXTURED_PREMULTIPLIED_ALPHA : RenderPipelines.GUI_TEXTURED;
+            Batch b = new Batch(pipe, qs, start, end);
+            if (b.n > 0) geo.batches.add(b);
+            start = end;
+        }
+        return geo;
+    }
+
+    private static boolean submit(GuiGraphics g, Geo geo) {
+        Tex.Img img = Tex.sprite(geo.sheet);
+        if (img == null && geo.fallback != null) img = Tex.sprite(geo.fallback);
+        if (img == null) return false;
+        AbstractTexture tex = Minecraft.getInstance().getTextureManager().getTexture(img.id);
+        TextureSetup setup = TextureSetup.singleTexture(tex.getTextureView(), tex.getSampler());
+        Matrix3x2f pose = new Matrix3x2f(g.pose());
+        ScreenRectangle scissor = g.scissorStack.peek();
+        for (Batch b : geo.batches) {
+            Element e = new Element(b, setup, pose, scissor);
+            if (e.bounds != null) g.guiRenderState.submitGuiElement(e);
+        }
+        return true;
+    }
+
+    /** Least recently used still knives, keyed by knife, box size and detail. Small: each is a few hundred quads. */
+    private static final java.util.LinkedHashMap<Long, Geo> STILL = new java.util.LinkedHashMap<>(64, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(java.util.Map.Entry<Long, Geo> e) {
+            return size() > 220;
+        }
+    };
+    private static final java.util.HashMap<Integer, float[]> REST_FIT = new java.util.HashMap<>();
+
+    /** The knife's on-screen box at unit 1 in the gallery's resting pose (measured once). */
+    private static float[] restFit(int knife, KnifeHD.Model m, Rig.T rest) {
+        float[] b = REST_FIT.get(knife);
+        if (b != null) return b;
+        KnifeHD.build(FIT, m, rest, 1f, 1f, 1f, false);
+        if (FIT.quads.isEmpty()) return null;
+        float x0 = Float.MAX_VALUE, y0 = Float.MAX_VALUE, x1 = -Float.MAX_VALUE, y1 = -Float.MAX_VALUE;
+        for (KnifeHD.Quad q : FIT.quads) {
+            for (int i = 0; i < 4; i++) {
+                x0 = Math.min(x0, q.x[i]);
+                y0 = Math.min(y0, q.y[i]);
+                x1 = Math.max(x1, q.x[i]);
+                y1 = Math.max(y1, q.y[i]);
+            }
+        }
+        b = new float[] {x0, y0, x1, y1};
+        REST_FIT.put(knife, b);
+        return b;
+    }
+
+    /**
+     * A knife fitted into a box in the gallery's resting pose, not moving. Built once per knife and
+     * box size, then only re-sent each frame: tiles, reel cards and locked previews use this.
+     */
+    public static boolean still(GuiGraphics g, int knife, int bx, int by, int bw, int bh, boolean big) {
+        if (broken() || bw <= 2 || bh <= 2) return false;
+        KnifeHD.Model m = KnifeHD.model(knife);
+        if (m == null) return false;
+        Rig.T k = Rig.T.rz((float) Math.PI - 1.10f).rotY(-0.35f).rotX(0.12f);
+        float[] b = restFit(knife, m, k);
+        if (b == null) return false;
+        float ew = Math.max(1e-3f, (b[2] - b[0]) * 0.80f), eh = Math.max(1e-3f, (b[3] - b[1]) * 0.80f);
+        float unit = Math.min(bw / ew, bh / eh) * 0.86f;
+        float pixels = (float) Minecraft.getInstance().getWindow().getGuiScale();
+        long key = ((long) knife << 40) ^ ((long) Math.round(unit * 32f) << 8) ^ ((long) Math.round(pixels) << 2) ^ (big ? 1 : 0);
+        try {
+            Geo geo = STILL.get(key);
+            if (geo == null) {
+                KnifeHD.Frame f = KnifeHD.build(FRAME, m, k, unit, pixels, 1f, true);
+                if (f.quads.isEmpty()) return false;
+                geo = geo(m, f);
+                STILL.put(key, geo);
+            }
+            g.pose().pushMatrix();
+            g.pose().translate(bx + bw / 2f - (b[0] + b[2]) / 2f * unit, by + bh / 2f - (b[1] + b[3]) / 2f * unit);
+            boolean ok = submit(g, geo);
+            g.pose().popMatrix();
+            return ok;
+        } catch (RuntimeException | Error e) {
+            failures++;
+            brokenUntil = System.currentTimeMillis() + 5_000L;
+            lastError = e.getClass().getSimpleName() + (e.getMessage() == null ? "" : ": " + e.getMessage());
+            return false;
+        }
+    }
+
     /**
      * The gallery view: the knife on a slow turn, fitted to the box.  The turn is gentle enough
      * to keep the face towards the viewer and shows the highlights running along the blade.
@@ -94,18 +186,10 @@ public final class KnifeHDGui {
         if (m == null) return false;
         float sway = (float) Math.sin(time * (big ? 0.9 : 0.7) + knife * 0.8);
         Rig.T k = Rig.T.rz((float) Math.PI - 1.10f).rotY(-0.35f + 0.32f * sway).rotX(0.12f + 0.06f * sway);
-        // measure at unit 1, then scale to the box (projection is linear in unit)
-        KnifeHD.build(FIT, m, k, 1f, 1f, 1f, false);
-        if (FIT.quads.isEmpty()) return false;
-        float x0 = Float.MAX_VALUE, y0 = Float.MAX_VALUE, x1 = -Float.MAX_VALUE, y1 = -Float.MAX_VALUE;
-        for (KnifeHD.Quad q : FIT.quads) {
-            for (int i = 0; i < 4; i++) {
-                x0 = Math.min(x0, q.x[i]);
-                y0 = Math.min(y0, q.y[i]);
-                x1 = Math.max(x1, q.x[i]);
-                y1 = Math.max(y1, q.y[i]);
-            }
-        }
+        // fitted from the resting pose, measured once per knife, so the turning knife keeps one size
+        float[] fb = restFit(knife, m, Rig.T.rz((float) Math.PI - 1.10f).rotY(-0.35f).rotX(0.12f));
+        if (fb == null) return false;
+        float x0 = fb[0], y0 = fb[1], x1 = fb[2], y1 = fb[3];
         // the sheet has empty margins around the knife; 0.80 of the quads' box is the knife
         float ew = Math.max(1e-3f, (x1 - x0) * 0.80f), eh = Math.max(1e-3f, (y1 - y0) * 0.80f);
         float unit = Math.min(bw / ew, bh / eh) * 0.86f;
@@ -126,17 +210,9 @@ public final class KnifeHDGui {
         KnifeHD.Model m = KnifeHD.model(knife);
         if (m == null) return false;
         Rig.T rest = Rig.T.rz((float) Math.PI - 1.10f).rotY(-0.35f).rotX(0.12f);
-        KnifeHD.build(FIT, m, rest, 1f, 1f, 1f, false);
-        if (FIT.quads.isEmpty()) return false;
-        float x0 = Float.MAX_VALUE, y0 = Float.MAX_VALUE, x1 = -Float.MAX_VALUE, y1 = -Float.MAX_VALUE;
-        for (KnifeHD.Quad q : FIT.quads) {
-            for (int i = 0; i < 4; i++) {
-                x0 = Math.min(x0, q.x[i]);
-                y0 = Math.min(y0, q.y[i]);
-                x1 = Math.max(x1, q.x[i]);
-                y1 = Math.max(y1, q.y[i]);
-            }
-        }
+        float[] fb = restFit(knife, m, rest);
+        if (fb == null) return false;
+        float x0 = fb[0], y0 = fb[1], x1 = fb[2], y1 = fb[3];
         float ew = Math.max(1e-3f, (x1 - x0) * 0.80f), eh = Math.max(1e-3f, (y1 - y0) * 0.80f);
         float unit = Math.min(bw / ew, bh / eh) * 0.86f;
         Rig.T k = Rig.T.rz((float) Math.PI - 1.10f + tilt).rotY(yaw).rotX(0.12f);
@@ -147,31 +223,25 @@ public final class KnifeHDGui {
         return ok;
     }
 
-    /** A batch of quads with their own vertices; a copy, because the frame is reused. */
-    private static final class Element implements GuiElementRenderState {
-        private final RenderPipeline pipeline;
-        private final TextureSetup setup;
-        private final Matrix3x2f pose;
-        private final ScreenRectangle scissor;
-        private final ScreenRectangle bounds;
-        private final float[] xy;
-        private final float[] uv;
-        private final int[] col;
+    /** Vertices for one pipeline's quads, copied out of the reused frame so they can be kept. */
+    private static final class Batch {
+        final RenderPipeline pipeline;
+        final float[] xy;
+        final float[] uv;
+        final int[] col;
+        final int n;
+        final float minX, minY, maxX, maxY;
 
-        Element(RenderPipeline pipeline, TextureSetup setup, Matrix3x2f pose, ScreenRectangle scissor,
-                List<KnifeHD.Quad> qs, int from, int to) {
+        Batch(RenderPipeline pipeline, List<KnifeHD.Quad> qs, int from, int to) {
             this.pipeline = pipeline;
-            this.setup = setup;
-            this.pose = pose;
-            this.scissor = scissor;
             // Every quad is sent twice, once in each winding.  GUI pipelines cull back faces, and which
             // winding survives depends on how the 3D knife is turned; with both copies exactly one passes
             // the cull test, so no face of the knife can disappear and none is drawn twice.
-            int n = (to - from) * 8;
-            xy = new float[n * 2];
-            uv = new float[n * 2];
-            col = new int[n];
-            float minX = Float.MAX_VALUE, minY = Float.MAX_VALUE, maxX = -Float.MAX_VALUE, maxY = -Float.MAX_VALUE;
+            int count = (to - from) * 8;
+            xy = new float[count * 2];
+            uv = new float[count * 2];
+            col = new int[count];
+            float x0 = Float.MAX_VALUE, y0 = Float.MAX_VALUE, x1 = -Float.MAX_VALUE, y1 = -Float.MAX_VALUE;
             int o = 0;
             for (int i = from; i < to; i++) {
                 KnifeHD.Quad q = qs.get(i);
@@ -188,22 +258,49 @@ public final class KnifeHDGui {
                         uv[o * 2] = q.u[c];
                         uv[o * 2 + 1] = q.v[c];
                         col[o] = q.c[c];
-                        minX = Math.min(minX, x);
-                        minY = Math.min(minY, y);
-                        maxX = Math.max(maxX, x);
-                        maxY = Math.max(maxY, y);
+                        x0 = Math.min(x0, x);
+                        y0 = Math.min(y0, y);
+                        x1 = Math.max(x1, x);
+                        y1 = Math.max(y1, y);
                         o++;
                     }
                 }
             }
-            ScreenRectangle b = null;
-            if (n > 0 && maxX >= minX) {
-                int x0 = (int) Math.floor(minX), y0 = (int) Math.floor(minY);
-                int w = Math.max(1, (int) Math.ceil(maxX) - x0), h = Math.max(1, (int) Math.ceil(maxY) - y0);
-                b = new ScreenRectangle(x0, y0, w, h).transformMaxBounds(pose);
-                if (scissor != null) b = scissor.intersection(b);
+            n = count;
+            minX = x0;
+            minY = y0;
+            maxX = x1;
+            maxY = y1;
+        }
+    }
+
+    /** One batch sent with this frame's pose and clip. */
+    private static final class Element implements GuiElementRenderState {
+        private final RenderPipeline pipeline;
+        private final TextureSetup setup;
+        private final Matrix3x2f pose;
+        private final ScreenRectangle scissor;
+        private final ScreenRectangle bounds;
+        private final float[] xy;
+        private final float[] uv;
+        private final int[] col;
+
+        Element(Batch b, TextureSetup setup, Matrix3x2f pose, ScreenRectangle scissor) {
+            this.pipeline = b.pipeline;
+            this.setup = setup;
+            this.pose = pose;
+            this.scissor = scissor;
+            this.xy = b.xy;
+            this.uv = b.uv;
+            this.col = b.col;
+            ScreenRectangle r = null;
+            if (b.n > 0 && b.maxX >= b.minX) {
+                int x0 = (int) Math.floor(b.minX), y0 = (int) Math.floor(b.minY);
+                int w = Math.max(1, (int) Math.ceil(b.maxX) - x0), h = Math.max(1, (int) Math.ceil(b.maxY) - y0);
+                r = new ScreenRectangle(x0, y0, w, h).transformMaxBounds(pose);
+                if (scissor != null) r = scissor.intersection(r);
             }
-            bounds = b;
+            bounds = r;
         }
 
         @Override

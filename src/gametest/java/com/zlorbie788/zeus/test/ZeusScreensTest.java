@@ -55,7 +55,7 @@ public class ZeusScreensTest implements FabricClientGameTest {
             }
             ctx.runOnClient(c -> set(c.screen, "tab", 0));
             ctx.runOnClient(c -> open(c, "hades"));
-            float[] at = {0.35f, 1.6f, 4.5f, 7.45f, 8.4f, 10.2f};
+            float[] at = {0.25f, 0.7f, 1.0f, 2.2f, 4.8f, 6.75f, 7.25f, 7.75f, 8.6f, 10.0f};
             float done = 0f;
             for (float a : at) {
                 run(ctx, a - done);

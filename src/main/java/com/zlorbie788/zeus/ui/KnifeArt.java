@@ -407,6 +407,13 @@ public final class KnifeArt {
 
     private static final Rig SHOW_RIG = new Rig();
 
+    /** A knife standing still in a box: built once and reused, so grids of knives cost almost nothing. */
+    public static void still(GuiGraphics g, int type, int bx, int by, int bw, int bh) {
+        int hd = hdType(type);
+        if (hd >= 0 && KnifeHDGui.still(g, hd, bx, by, bw, bh, false)) return;
+        showcase(g, type, 0, bx, by, bw, bh, 0f, false);
+    }
+
     public static void showcase(GuiGraphics g, int type, int finish, int bx, int by, int bw, int bh, float time, boolean fine) {
         int hd = hdType(type);
         if (hd >= 0 && KnifeHDGui.showcase(g, hd, bx, by, bw, bh, time, fine)) return;

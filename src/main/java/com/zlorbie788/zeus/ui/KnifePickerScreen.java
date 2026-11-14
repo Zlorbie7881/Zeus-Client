@@ -227,7 +227,9 @@ public final class KnifePickerScreen extends Screen {
             boolean own = com.zlorbie788.zeus.core.Crates.ownsHd(skins[t]);
             int rc = com.zlorbie788.zeus.core.Crates.rarityOf(com.zlorbie788.zeus.core.Crates.idOf(skins[t])).colour;
             g.fill(x + 4, y + th - 3, x + tw - 4, y + th - 1, own ? rc : Draw.darken(rc, 0.6f));
-            KnifeArt.showcase(g, kind, 0, x + 3, y + 2, tw - 6, th - 14, own ? time + t * 0.7f : 0f, false);
+            // only the tile under the mouse turns; the rest are cached stills, which keeps the window light
+            if (own && (hot || on)) KnifeArt.showcase(g, kind, 0, x + 3, y + 2, tw - 6, th - 14, time + t * 0.7f, false);
+            else KnifeArt.still(g, kind, x + 3, y + 2, tw - 6, th - 14);
             if (!own) {
                 Draw.rrect(g, x, y, tw, th, 5, 0xB8060810);
                 drawLock(g, x + tw / 2, y + (th - 14) / 2 - 2);

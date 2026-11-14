@@ -128,12 +128,59 @@ public final class Draw {
         }
     }
 
+    /**
+     * A soft light round a box. Drawn as nine pieces of one small falloff texture (corners from its
+     * quarters, edges stretched from its middle row and column) instead of one rounded rectangle per
+     * pixel of spread, which cost thousands of fills a frame for a wide glow. The brightness matches
+     * the old layered glow: a stack of k*k layers adds up to about spread/3 of the strength at the
+     * edge and falls off as the cube of the distance.
+     */
     public static void glow(GuiGraphics g, int x, int y, int w, int h, int r, int color, int spread, float strength) {
-        if (cheap) return;
-        for (int i = spread; i >= 1; i--) {
-            float k = (1f - i / (float) (spread + 1));
-            rrect(g, x - i, y - i, w + 2 * i, h + 2 * i, r + i, rgba(color, strength * k * k));
+        if (cheap || spread <= 0 || strength <= 0f || w <= 0 || h <= 0) return;
+        float peak = Math.min(1f, strength * spread / 3f);
+        int tint = rgba(color, peak * ((color >>> 24) / 255f));
+        Tex.Img t = glowTex();
+        if (t == null) {
+            for (int i = Math.min(spread, 6); i >= 1; i--) {
+                float k = (1f - i / 7f);
+                rrect(g, x - i, y - i, w + 2 * i, h + 2 * i, r + i, rgba(color, strength * k * k));
+            }
+            return;
         }
+        int s = spread, q = GLOW_Q;
+        g.fill(x, y, x + w, y + h, tint);
+        t.drawPart(g, x - s, y - s, s, s, 0, 0, q, q, tint);
+        t.drawPart(g, x + w, y - s, s, s, q, 0, q, q, tint);
+        t.drawPart(g, x - s, y + h, s, s, 0, q, q, q, tint);
+        t.drawPart(g, x + w, y + h, s, s, q, q, q, q, tint);
+        t.drawPart(g, x, y - s, w, s, q - 1, 0, 1, q, tint);
+        t.drawPart(g, x, y + h, w, s, q - 1, q, 1, q, tint);
+        t.drawPart(g, x - s, y, s, h, 0, q - 1, q, 1, tint);
+        t.drawPart(g, x + w, y, s, h, q, q - 1, q, 1, tint);
+    }
+
+    private static final int GLOW_Q = 48;
+    private static Tex.Img glowImg;
+    private static boolean glowFailed;
+
+    private static Tex.Img glowTex() {
+        if (glowImg != null || glowFailed) return glowImg;
+        try {
+            int n = GLOW_Q * 2;
+            int[] px = new int[n * n];
+            for (int yy = 0; yy < n; yy++) {
+                for (int xx = 0; xx < n; xx++) {
+                    float dx = Math.abs(xx + 0.5f - GLOW_Q) - 0.5f, dy = Math.abs(yy + 0.5f - GLOW_Q) - 0.5f;
+                    float d = (float) Math.sqrt(Math.max(0f, dx) * Math.max(0f, dx) + Math.max(0f, dy) * Math.max(0f, dy)) / GLOW_Q;
+                    float a = d >= 1f ? 0f : (1f - d) * (1f - d) * (1f - d);
+                    px[yy * n + xx] = (Math.round(a * 255f) << 24) | 0xFFFFFF;
+                }
+            }
+            glowImg = Tex.made("zeus_soft_glow", px, n, n);
+        } catch (RuntimeException | LinkageError e) {
+            glowFailed = true;
+        }
+        return glowImg;
     }
 
     public static void sheen(GuiGraphics g, int x, int y, int w, int h, int color, float phase) {

@@ -4,6 +4,8 @@ name: In-game screenshots
 # checked without a local game. Start it by hand from the Actions tab.
 on:
   workflow_dispatch:
+  push:
+    branches: [knife-types]
 
 permissions:
   contents: write
