@@ -15,7 +15,6 @@ public final class Mods {
         m.add(new CrystalAnchor.CrystalAura());
         m.add(new CrystalAnchor.AnchorAura());
         m.add(new Combat.AimAssist());
-        m.add(new Combat.AttributeSwap());
         m.add(new Combat.AutoCombo());
         m.add(new AutomationPlus.SwordPvpCoach());
         m.add(new Macros.CrystalMacro());

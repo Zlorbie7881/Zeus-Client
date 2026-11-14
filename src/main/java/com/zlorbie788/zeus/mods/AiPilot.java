@@ -1469,6 +1469,7 @@ public final class AiPilot extends Module {
         builder.append("Ore jobs staircase to the depth the ore lives at first (iron y16, diamond y-59) and then tunnel, so ask for mine 16 iron without naming a height.\n");
         builder.append("do can also be job, where value is a phrase like: chop tree, chop 3 trees, mine until iron, mine 20 stone, quarry 10, tunnel 30, strip mine, farm, replant, till 9, collect, hunt, flee, shoot, shear 3, milk, eat, sleep, torch 8, place cobblestone here, place torch at 120 64 -300, drop 32 dirt, explore 60, return, build a house, swim to 120 62 -300, climb 8, bridge 12, go to 120 64 -300, come here, follow me, follow Steve, dig down, stop. Chain them in one value with then: chop 2 trees then mine until iron.\n");
         builder.append("Survival and food: prepare (or gear up) makes a wooden pickaxe, a stone pickaxe, a stone sword and hunts for food in one go. fish 5 casts a rod it must already have, reels on the bobber dip and counts the catch. food 3 kills animals for meat.\n");
+        builder.append("Creative mode: every block breaks on the first swing without a tool, nothing is used up when you place it, flying is allowed and hunger never drops. Do not queue crafting or food jobs there, just mine, build and go where you are told.\n");
         builder.append("Chests: store 20 cobblestone, put away 32 dirt, deposit 5 diamond, take 32 iron, loot 16 bread, grab 4 torch. The job finds a chest, barrel or trapped chest within five blocks, opens it and shift-clicks one stack at a time, counts real items against the number asked for, and only matches the exact item: iron means ingots, never ore or a sword, so say iron_ore for ore.\n");
         builder.append("Crafting and furnaces: craft 4 planks, craft a crafting table, craft sticks, craft a furnace, craft a stone pickaxe, craft iron sword, craft torch, craft chest, craft bucket, craft bed, smelt 8 iron, cook 4 porkchop. The job places and opens its own crafting table or furnace, crafts planks or sticks from logs first when it has to, and furnishes fuel itself. Known recipes: planks, stick, crafting_table, furnace, chest, torch, stone_pickaxe, stone_axe, stone_shovel, stone_sword, stone_hoe, iron_pickaxe, iron_sword, bucket, bed.\n");
         if (!context.isBlank()) builder.append("Context: ").append(context).append('\n');
@@ -2031,6 +2032,10 @@ public final class AiPilot extends Module {
         // the chain has to fail because the player had bare hands.
         if (text.equals("prepare") || text.equals("gear up") || text.equals("get geared")
                 || text.equals("get tools") || text.equals("prepare to mine") || text.equals("bootstrap")) {
+            if (creative(mc)) {
+                Notify.info("Zeus AI: creative mode, there is nothing to gear up");
+                return;
+            }
             text = "craft 1 wooden pickaxe then craft 1 stone pickaxe then craft 1 stone sword then food 2";
             Notify.info("Zeus AI: tools and food first");
         }
@@ -4609,6 +4614,7 @@ public final class AiPilot extends Module {
     }
 
     private static void equipTool(Minecraft mc, BlockState state) {
+        if (creative(mc)) return;
         int best = -1;
         float speed = 1.0f;
         for (int i = 0; i < 9; i++) {
@@ -4650,8 +4656,18 @@ public final class AiPilot extends Module {
         };
     }
 
+    /**
+     * Creative mode has no harvest rules, no tool tiers and no block cost, so every gate that exists
+     * to protect a survival job is skipped there instead of sending the AI off to craft a pickaxe it
+     * does not need.
+     */
+    private static boolean creative(Minecraft mc) {
+        return mc.player != null && mc.player.isCreative();
+    }
+
     /** True when something in the inventory can actually harvest this block and not just break it. */
     private static boolean canHarvest(Minecraft mc, BlockState state) {
+        if (creative(mc)) return true;
         if (!state.requiresCorrectToolForDrops()) return true;
         for (int i = 0; i < 36; i++) {
             ItemStack stack = Inv.get(i);
@@ -4901,6 +4917,23 @@ public final class AiPilot extends Module {
             if (job != null) job.note = "bedrock in the way";
             return false;
         }
+        if (creative(mc)) {
+            Player cp = mc.player;
+            Vec3 mid = centre(pos);
+            if (cp.getEyePosition().distanceTo(mid) > 5.5) {
+                walkTo(mc, mid, 1.2);
+                return false;
+            }
+            releaseAttack(mc);
+            lookAt(cp, mid);
+            if (job != null) job.note = "breaking " + pos.getX() + " " + pos.getY() + " " + pos.getZ();
+            if (mc.gameMode.destroyBlock(pos) && mc.level.getBlockState(pos).isAir()) {
+                if (job != null && job.kind == JobKind.MINE_UNTIL && matches(state, job.target)) job.ore = pos;
+                light(mc);
+                return true;
+            }
+            return mc.level.getBlockState(pos).isAir();
+        }
         // Breaking a block that needs a tool without one drops nothing and never finishes the
         // job, so make the tool first and come back instead of grinding at it forever.
         if (state.requiresCorrectToolForDrops() && !canHarvest(mc, state)) {
@@ -5014,7 +5047,7 @@ public final class AiPilot extends Module {
 
     // Jobs run for minutes; a human eats before mining the next vein instead of starving at 3 hunger.
     private void snack(Minecraft mc) {
-        if (job == null) return;
+        if (job == null || creative(mc)) return;
         Player p = mc.player;
         if (p.getFoodData().getFoodLevel() > 18) {
             if (p.isUsingItem()) return;
@@ -5072,6 +5105,21 @@ public final class AiPilot extends Module {
                 job.path = null;
             }
             return true;
+        }
+        if (p.isCreative() && p.getAbilities().flying) {
+            // Walking logic is meaningless in creative flight: no gravity, no jump, no ledges.
+            double dy = target.y - p.getY();
+            if (flat <= stop && Math.abs(dy) < 1.0) {
+                releaseKeys(mc);
+                return true;
+            }
+            double step = Math.min(0.42, flat);
+            releaseKeys(mc);
+            p.setDeltaMovement(flat > 0.01 ? dx / flat * step : 0,
+                    Math.max(-0.42, Math.min(0.42, dy * 0.35)),
+                    flat > 0.01 ? dz / flat * step : 0);
+            if (job != null) job.note = "flying to " + Math.round(target.x) + " " + Math.round(target.y) + " " + Math.round(target.z);
+            return flat <= stop && Math.abs(dy) < 1.0;
         }
         if (job == null) return false;
         long now = System.currentTimeMillis();

@@ -146,10 +146,27 @@ public final class MaceMods {
         private boolean looked;
         private float aimYaw = Float.NaN;
         private float aimPitch;
+        private static volatile MaceAura live;
+        private static int swungTick = -1;
 
         public MaceAura() {
             super("maceaura", "Mace Aura", "In the air near a target: takes out the mace, smashes it, and keeps going.", Category.COMBAT);
             alias("mace bot", "macebot", "mace killaura");
+            live = this;
+        }
+
+        /** True while the aura has a target lined up, so the other combat modules leave the slot alone. */
+        public static boolean armed() {
+            MaceAura m = live;
+            return m != null && m.enabled() && m.shown != null;
+        }
+
+        /** True on the tick the mace hit lands, so the shield breaker never doubles up on it. */
+        public static boolean busy() {
+            MaceAura m = live;
+            var mc = Minecraft.getInstance();
+            if (mc.player == null) return false;
+            return m != null && m.enabled() && swungTick == mc.player.tickCount;
         }
 
         @Override
@@ -198,7 +215,10 @@ public final class MaceMods {
 
             AABB box = best.getBoundingBox();
             double eyeDist = box.distanceToSqr(me.getEyePosition());
-            if (eyeDist > reach.get() * reach.get()) return;
+            // The Reach module moves the game's own hit range, so the aura has to follow it or it
+            // stops swinging at exactly the distance reach was turned on for.
+            double hit = Math.max(reach.get(), Combat.Reach.entityRange() - 0.02);
+            if (eyeDist > hit * hit) return;
             if (full.on() && me.getAttackStrengthScale(0f) < 0.97f) return;
             if (best.invulnerableTime > 10) return;
 
@@ -221,6 +241,7 @@ public final class MaceMods {
             Hits.attempt(best);
             mc.gameMode.attack(me, best);
             me.swing(InteractionHand.MAIN_HAND);
+            swungTick = me.tickCount;
             lastHit.put(best.getId(), now);
         }
 

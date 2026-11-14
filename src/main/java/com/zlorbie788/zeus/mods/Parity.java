@@ -1,7 +1,9 @@
 package com.zlorbie788.zeus.mods;
 
 import com.zlorbie788.zeus.ui.Accent;
+import com.zlorbie788.zeus.core.Aim;
 import com.zlorbie788.zeus.core.Category;
+import com.zlorbie788.zeus.core.Hits;
 import com.zlorbie788.zeus.core.Env;
 import com.zlorbie788.zeus.core.Inv;
 import com.zlorbie788.zeus.core.Module;
@@ -103,13 +105,42 @@ public final class Parity {
     }
 
     public static final class WTap extends Module {
-        private final Setting.Num ticks = add(new Setting.Num("Release time", "How many ticks the sprint stays off.", 1, 1, 4, 1, " ticks"));
+        private final Setting.Num ticks = add(new Setting.Num("Release time", "How many ticks the sprint stays off after a hit.", 1, 1, 5, 1, " ticks"));
         private final Setting.Num chance = add(new Setting.Num("Chance", "How often it taps.", 100, 10, 100, 5, " %"));
+        private static volatile WTap live;
         private boolean attackWas;
+        private boolean sprintWas;
         private int off;
 
         public WTap() {
-            super("wtap", "W Tap", "Resets your sprint right after a sprinting hit so the next hit knocks back too.", Category.COMBAT);
+            super("wtap", "W Tap", "Lets go of sprint right after a sprinting hit, so the next hit gets the sprint knockback again.", Category.COMBAT);
+            live = this;
+        }
+
+        /**
+         * Called from the attack hook before the hit leaves: the sprint flag has to be off in the
+         * same tick as the swing, because a tick later the knockback has already been decided. The
+         * old version only watched the mouse button, which never fires for aura or bot hits.
+         */
+        public static boolean beforeSwing(Player attacker) {
+            WTap w = live;
+            if (w == null || !w.enabled() || attacker == null) return false;
+            if (!attacker.isSprinting()) return false;
+            if (RNG.nextFloat() * 100f >= w.chance.f()) return false;
+            w.tap();
+            return true;
+        }
+
+        private void tap() {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.player != null) mc.player.setSprinting(false);
+            if (mc.options != null) {
+                sprintWas = mc.options.keySprint.isDown();
+                // Vanilla starts sprinting again the moment the sprint key is held and you move,
+                // so the key has to come off too or the tap lasts one tick at most.
+                mc.options.keySprint.setDown(false);
+            }
+            off = Math.max(off, ticks.i());
         }
 
         @Override
@@ -120,18 +151,28 @@ public final class Parity {
                 return;
             }
             var me = mc.player;
+            boolean attack = mc.options.keyAttack.isDown();
+            if (attack && !attackWas && me.isSprinting() && mc.hitResult instanceof EntityHitResult ehr
+                    && ehr.getEntity() instanceof LivingEntity && RNG.nextInt(100) < chance.i()) {
+                tap();
+            }
+            attackWas = attack;
             if (off > 0) {
                 off--;
                 me.setSprinting(false);
-                if (off == 0 && mc.options.keyUp.isDown()) me.setSprinting(true);
-                return;
+                mc.options.keySprint.setDown(false);
+                if (off == 0) {
+                    boolean want = sprintWas || mc.options.keyUp.isDown();
+                    mc.options.keySprint.setDown(want);
+                    if (want) me.setSprinting(true);
+                }
             }
-            boolean attack = mc.options.keyAttack.isDown();
-            if (attack && !attackWas && me.isSprinting() && mc.hitResult instanceof EntityHitResult ehr && ehr.getEntity() instanceof LivingEntity && RNG.nextInt(100) < chance.i()) {
-                off = ticks.i();
-                me.setSprinting(false);
-            }
-            attackWas = attack;
+        }
+
+        @Override
+        protected void onDisable() {
+            off = 0;
+            attackWas = false;
         }
     }
 
@@ -158,40 +199,99 @@ public final class Parity {
     }
 
     public static final class ShieldBreaker extends Module {
-        private final Setting.Bool autoHit = add(new Setting.Bool("Hit for me", "Also make the hit after the swap.", false));
+        private final Setting.Bool autoHit = add(new Setting.Bool("Hit for me", "Break the shield and swing even without a click.", false));
+        private final Setting.Bool mace = add(new Setting.Bool("Follow with the mace", "The axe knocks the shield down and the mace lands on the open target in the same tick.", true));
         private final Setting.Bool back = add(new Setting.Bool("Switch back", "Go back to the slot you had afterwards.", true));
+        private final Setting.Num range = add(new Setting.Num("Hit from", "How far the shielded target can be. The Reach module raises this by itself.", 3.0, 2.5, 6.0, 0.1, " blocks"));
         private int previous = -1;
         private int hold;
+        private boolean attackWas;
+        private long didAt;
+        private String note;
 
         public ShieldBreaker() {
-            super("shieldbreaker", "Shield Breaker", "Swaps to an axe for any hit into a raised shield.", Category.COMBAT);
+            super("shieldbreaker", "Shield Breaker", "Left click into a raised shield: an axe hit takes the shield down and a mace swing follows it in the same moment.", Category.COMBAT);
+            alias("shieldbreak", "shieldbreak combo");
+        }
+
+        @Override
+        public String info() {
+            return note;
+        }
+
+        private LivingEntity shielded(Minecraft mc) {
+            if (!(mc.hitResult instanceof EntityHitResult ehr)) return null;
+            if (!(ehr.getEntity() instanceof LivingEntity le) || le == mc.player || !le.isAlive()) return null;
+            if (Friends.protects(le)) return null;
+            return le.isBlocking() || le.isUsingItem() && le.getUseItem().is(Items.SHIELD) ? le : null;
         }
 
         @Override
         protected void onTick(Minecraft mc) {
             if (!ready(mc)) return;
-            boolean target = mc.hitResult instanceof EntityHitResult ehr && ehr.getEntity() instanceof LivingEntity le && le.isBlocking() && le != mc.player && !Friends.protects(le);
-            if (target) {
-                int axe = Inv.hotbar(s -> Names.item(s).endsWith("_axe"));
-                if (axe >= 0 && axe != Inv.selected()) {
-                    if (previous < 0) previous = Inv.selected();
-                    Inv.select(axe);
+            var me = mc.player;
+            boolean clicked = mc.options.keyAttack.isDown() && !attackWas;
+            attackWas = mc.options.keyAttack.isDown();
+            LivingEntity shield = shielded(mc);
+            if (shield == null) {
+                if (hold > 0 && --hold == 0 && previous >= 0) {
+                    if (back.on()) Inv.select(previous);
+                    previous = -1;
                 }
-                hold = 4;
-                if (autoHit.on() && mc.hitResult instanceof EntityHitResult ehr2 && mc.player.getAttackStrengthScale(0f) >= 0.95f && Inv.holding(s -> Names.item(s).endsWith("_axe"))) {
-                    mc.gameMode.attack(mc.player, ehr2.getEntity());
-                    mc.player.swing(InteractionHand.MAIN_HAND);
-                }
-            } else if (hold > 0 && --hold == 0 && previous >= 0) {
-                if (back.on()) Inv.select(previous);
-                previous = -1;
+                note = null;
+                return;
             }
+            hold = 6;
+            double reach = Math.max(range.get(), Combat.Reach.entityRange() - 0.02);
+            if (Aim.reachTo(shield) > reach + 0.4) {
+                note = "too far for the combo";
+                return;
+            }
+            note = shield.getName().getString() + " is blocking";
+            int axe = Inv.hotbar(s -> Names.item(s).endsWith("_axe"));
+            if (axe < 0) {
+                note = "no axe in your hotbar";
+                return;
+            }
+            if (previous < 0) previous = Inv.selected();
+            boolean go = clicked || (autoHit.on() && me.getAttackStrengthScale(0f) >= 0.95f
+                    && System.currentTimeMillis() - didAt > 140);
+            if (!go) {
+                if (axe != Inv.selected()) Inv.select(axe);
+                return;
+            }
+            if (MaceMods.MaceAura.busy()) return;
+            breakCombo(mc, shield, axe);
+        }
+
+        /** Axe first, mace second, both before the server answers: the shield is down for the mace. */
+        private void breakCombo(Minecraft mc, LivingEntity target, int axe) {
+            var me = mc.player;
+            Aim.look(target.getBoundingBox().getCenter());
+            Inv.select(axe);
+            Hits.attempt(target);
+            mc.gameMode.attack(me, target);
+            me.swing(InteractionHand.MAIN_HAND);
+            didAt = System.currentTimeMillis();
+            if (!mace.on()) return;
+            int slot = Inv.hotbar(s -> s.is(Items.MACE));
+            if (slot < 0) {
+                note = "shield broken, no mace to follow";
+                return;
+            }
+            Inv.select(slot);
+            MaceMods.MaceDamage.beforeAttack(me, target);
+            Hits.attempt(target);
+            mc.gameMode.attack(me, target);
+            me.swing(InteractionHand.MAIN_HAND);
+            note = "shield broken and maced";
         }
 
         @Override
         protected void onDisable() {
             previous = -1;
             hold = 0;
+            note = null;
         }
     }
 

@@ -29,7 +29,6 @@ public class ZeusClient implements ClientModInitializer {
 
     public static KeyMapping TRICK_NEXT;
 
-    public static KeyMapping ATTRIBUTE_SWAP;
     public static KeyMapping SPEAR_LUNGE;
 
     public static KeyMapping PALETTE;
@@ -57,7 +56,6 @@ public class ZeusClient implements ClientModInitializer {
         OPEN = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.zeus.open", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_Z, CATEGORY));
         TRICK = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.zeus.trick", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_R, CATEGORY));
         TRICK_NEXT = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.zeus.trick_next", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, CATEGORY));
-        ATTRIBUTE_SWAP = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.zeus.attribute_swap", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, CATEGORY));
         SPEAR_LUNGE = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.zeus.spear_lunge", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, CATEGORY));
         PALETTE = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.zeus.palette", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_K, CATEGORY));
         ASK_AI = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.zeus.ask_ai", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_J, CATEGORY));
@@ -153,10 +151,6 @@ public class ZeusClient implements ClientModInitializer {
             while (OPEN.consumeClick()) mc.setScreen(ZeusScreen.make(null));
             while (TRICK.consumeClick()) com.zlorbie788.zeus.mods.KnifeSwing.pressTrick();
             while (TRICK_NEXT.consumeClick()) com.zlorbie788.zeus.mods.KnifeSwing.nextTrick();
-            while (ATTRIBUTE_SWAP.consumeClick()) {
-                Module swap = Zeus.get("attributeswap");
-                if (swap instanceof com.zlorbie788.zeus.mods.Combat.AttributeSwap a) a.swap(mc);
-            }
             while (SPEAR_LUNGE.consumeClick()) {
                 Module spear = Zeus.get("spearswap");
                 if (spear instanceof com.zlorbie788.zeus.mods.QuickMods.SpearSwap sp) sp.lunge(mc);
@@ -181,7 +175,6 @@ public class ZeusClient implements ClientModInitializer {
             }
             while (TRICK_NEXT.consumeClick()) {
             }
-            while (ATTRIBUTE_SWAP.consumeClick()) {  }
             while (SPEAR_LUNGE.consumeClick()) {  }
             while (PALETTE.consumeClick()) {  }
             while (ASK_AI.consumeClick()) {  }

@@ -29,39 +29,6 @@ import java.util.concurrent.ThreadLocalRandom;
 public final class Combat {
     private Combat() {}
 
-    public static final class AttributeSwap extends Module {
-        private final Setting.Choice mode = add(new Setting.Choice("Mode", "Smart finds a sword and mace in your hotbar. Simple alternates two selected slots.", 0, "Smart sword / mace", "Simple slots"));
-        private final Setting.Num first = add(new Setting.Num("First hotbar slot", "First slot for Simple mode (1-9).", 1, 1, 9, 1, "" )).showIf(() -> mode.index() == 1);
-        private final Setting.Num second = add(new Setting.Num("Second hotbar slot", "Second slot for Simple mode (1-9).", 2, 1, 9, 1, "" )).showIf(() -> mode.index() == 1);
-        private int lastSmart = -1;
-        public AttributeSwap() { super("attributeswap", "Attribute Swap", "Quickly alternates your hotbar between a sword and mace, or two chosen slots. Bind a key in Controls.", Category.COMBAT); }
-        public void swap(Minecraft mc) {
-            if (!enabled() || mc.player == null || mc.level == null || mc.screen != null) return;
-            var inv = mc.player.getInventory();
-            int a, b;
-            if (mode.index() == 0) {
-                a = -1; b = -1;
-                for (int i = 0; i < 9; i++) {
-                    var st = inv.getItem(i);
-                    if (st.is(net.minecraft.world.item.Items.MACE)) b = i;
-                    else if (Names.item(st).endsWith("_sword")) a = i;
-                }
-                if (a < 0 || b < 0) { com.zlorbie788.zeus.core.Zeus.toast("Need a sword and mace in your hotbar", false); return; }
-                int current = inv.getSelectedSlot();
-                inv.setSelectedSlot(current == a ? b : current == b ? a : (lastSmart == a ? b : a));
-                lastSmart = inv.getSelectedSlot();
-            } else {
-                a = (int) first.get() - 1; b = (int) second.get() - 1;
-                if (a == b) { com.zlorbie788.zeus.core.Zeus.toast("Choose two different hotbar slots", false); return; }
-                if (inv.getItem(a).isEmpty() || inv.getItem(b).isEmpty()) {
-                    com.zlorbie788.zeus.core.Zeus.toast("Both Simple slots need an item", false);
-                    return;
-                }
-                inv.setSelectedSlot(inv.getSelectedSlot() == a ? b : a);
-            }
-        }
-    }
-
     public static final class KillAura extends Module {
         private final Setting.Num range = add(new Setting.Num("Range", "How far away a target can be.", 4.2, 2.5, 6.0, 0.1, " blocks"));
         private final Setting.Bool hostiles = add(new Setting.Bool("Monsters", "Attack hostile mobs.", true));
@@ -607,8 +574,11 @@ public final class Combat {
         private final Setting.Num entity = add(new Setting.Num("Attack reach", "How far you can hit mobs. Normal is 3. Servers usually refuse anything past about 4.", 4, 3, 12, 0.5, " blocks"));
         private final Setting.Bool safe = add(new Setting.Bool("Server-safe", "Cap the bonus at what ordinary server reach checks accept, so the module does not stand out. Off: use the full sliders, which most servers refuse.", true));
 
+        private static volatile Reach instance;
+
         public Reach() {
             super("reach", "Reach", "Break, place and hit from further away.", Category.COMBAT);
+            instance = this;
             block.onChange(this::apply);
             entity.onChange(this::apply);
             safe.onChange(this::apply);
@@ -620,6 +590,17 @@ public final class Combat {
 
         private double entityValue() {
             return safe.on() ? Math.min(entity.get(), 3.35) : entity.get();
+        }
+
+        /** What the game will actually let a hit reach right now, so bots never stop short of it. */
+        public static double entityRange() {
+            Reach r = instance;
+            return r != null && r.enabled() ? r.entityValue() : 3.0;
+        }
+
+        public static double blockRange() {
+            Reach r = instance;
+            return r != null && r.enabled() ? r.blockValue() : 4.5;
         }
 
         private void apply() {
