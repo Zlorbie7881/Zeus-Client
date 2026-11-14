@@ -416,16 +416,7 @@ public final class CratesScreen extends Screen {
         String ks = Math.round(shownKeys) + "";
         Draw.bold(g, ks, kx + 24, py + 14, TEXT);
         Draw.text(g, "KEYS", kx + 30 + Draw.widthBold(ks), py + 14, SUB);
-        // quick open switch, left of the close button
-        boolean q = Crates.quick();
-        String ql = "QUICK OPEN";
-        int qw = Draw.width(ql) + 30, qx = px + pw - 36 - qw, qy = py + 35;
-        boolean qhot = in(mx, my, qx, qy, qw, 13);
-        float qv = hover(6000, q, dt);
-        Draw.rrect(g, qx, qy + 2, 20, 10, 5, Draw.mix(0xFF1A2236, GOLD, qv));
-        Draw.rrect(g, qx + 1 + Math.round(qv * 10f), qy + 3, 8, 8, 4, Draw.mix(0xFF8EA2CC, 0xFF1A1206, qv));
-        Draw.text(g, ql, qx + 25, qy + 3, qhot ? TEXT : q ? 0xFFF5D08A : FAINT);
-        hit(H_QUICK, 0, qx, qy, qw, 13);
+
         // tabs, with an underline that glides to the chosen one
         int x = px + 14;
         float wantX = 0, wantW = 0;
@@ -441,6 +432,25 @@ public final class CratesScreen extends Screen {
             hit(H_TAB, i, x, py + 34, w, 16);
             x += w + 6;
         }
+        int tabsEnd = x;
+        // quick open switch, left of the close button
+        boolean q = Crates.quick();
+        String ql = "QUICK OPEN";
+        if (px + pw - 36 - (Draw.width(ql) + 30) < tabsEnd + 6) ql = "QUICK";
+        if (px + pw - 36 - (Draw.width(ql) + 30) < tabsEnd + 6) ql = "";
+        int qw = ql.isEmpty() ? 22 : Draw.width(ql) + 30, qx = px + pw - 36 - qw, qy = py + 35;
+        boolean qhot = in(mx, my, qx, qy, qw, 13);
+        float qv = hover(6000, q, dt);
+        Draw.rrect(g, qx, qy + 2, 20, 10, 5, Draw.mix(0xFF1A2236, GOLD, qv));
+        Draw.rrect(g, qx + 1 + Math.round(qv * 10f), qy + 3, 8, 8, 4, Draw.mix(0xFF8EA2CC, 0xFF1A1206, qv));
+        if (!ql.isEmpty()) Draw.text(g, ql, qx + 25, qy + 3, qhot ? TEXT : q ? 0xFFF5D08A : FAINT);
+        if (qhot) {
+            String tip = q ? "Quick open is on: shorter animation" : "Quick open: shorter opening animation";
+            int tw = Draw.width(tip) + 10;
+            Draw.rrect(g, Math.min(qx, px + pw - tw - 8), qy + 15, tw, 12, 4, 0xF00A0E1C);
+            Draw.text(g, tip, Math.min(qx, px + pw - tw - 8) + 5, qy + 17, SUB);
+        }
+        hit(H_QUICK, 0, qx, qy, qw, 13);
         if (underX < 0) {
             underX = wantX;
             underW = wantW;

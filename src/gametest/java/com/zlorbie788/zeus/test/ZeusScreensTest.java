@@ -27,6 +27,7 @@ public class ZeusScreensTest implements FabricClientGameTest {
         ctx.getInput().resizeWindow(1920, 1080);
         // the intro video plays first; wait for the Zeus menu itself, then let its buttons slide in
         ctx.waitFor(c -> c.screen instanceof ZeusTitleScreen, 20 * 60);
+        ctx.runOnClient(c -> grant());
         run(ctx, 3.0f);
         ctx.takeScreenshot("title_1080");
         ctx.getInput().resizeWindow(854, 480);
