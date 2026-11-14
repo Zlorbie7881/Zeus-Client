@@ -49,7 +49,10 @@ final class MenuExtras {
         float appear = clamp01((t - 0.75f) / 0.5f);
         if (appear <= 0f) return null;
         float ease = 1f - (1f - appear) * (1f - appear) * (1f - appear);
-        int w = Math.max(120, Math.round(300 * u));
+        // wide enough for the world name, within reason, and never off the left edge
+        int want = Math.max(Draw.width(e.name), Draw.width((e.server ? "Server" : "World") + "  \u00b7  " + LastPlayed.ago(e.at))) + 28;
+        int w = Math.max(Math.max(120, Math.round(300 * u)), Math.min(want, Math.max(120, Math.round(420 * u))));
+        w = Math.min(w, right - 10);
         int x = right - w - Math.round((1f - ease) * 14f);
         boolean hot = mx >= x && mx < x + w && my >= y && my < y + h;
         if (hot && !contWasHot) contEnter = t;
