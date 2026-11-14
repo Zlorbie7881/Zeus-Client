@@ -116,6 +116,37 @@ public final class KnifeHDGui {
         return ok;
     }
 
+    /**
+     * Draws an HD knife fitted into a box with an explicit turn (yaw round its length) and tilt,
+     * for the crate reveal. The fit is measured once at rest so the knife does not pump in size
+     * as it turns.
+     */
+    public static boolean spin(GuiGraphics g, int knife, int bx, int by, int bw, int bh, float yaw, float tilt) {
+        if (broken()) return false;
+        KnifeHD.Model m = KnifeHD.model(knife);
+        if (m == null) return false;
+        Rig.T rest = Rig.T.rz((float) Math.PI - 1.10f).rotY(-0.35f).rotX(0.12f);
+        KnifeHD.build(FIT, m, rest, 1f, 1f, 1f, false);
+        if (FIT.quads.isEmpty()) return false;
+        float x0 = Float.MAX_VALUE, y0 = Float.MAX_VALUE, x1 = -Float.MAX_VALUE, y1 = -Float.MAX_VALUE;
+        for (KnifeHD.Quad q : FIT.quads) {
+            for (int i = 0; i < 4; i++) {
+                x0 = Math.min(x0, q.x[i]);
+                y0 = Math.min(y0, q.y[i]);
+                x1 = Math.max(x1, q.x[i]);
+                y1 = Math.max(y1, q.y[i]);
+            }
+        }
+        float ew = Math.max(1e-3f, (x1 - x0) * 0.80f), eh = Math.max(1e-3f, (y1 - y0) * 0.80f);
+        float unit = Math.min(bw / ew, bh / eh) * 0.86f;
+        Rig.T k = Rig.T.rz((float) Math.PI - 1.10f + tilt).rotY(yaw).rotX(0.12f);
+        g.pose().pushMatrix();
+        g.pose().translate(bx + bw / 2f - (x0 + x1) / 2f * unit, by + bh / 2f - (y0 + y1) / 2f * unit);
+        boolean ok = draw(g, knife, k, unit, 1f, true);
+        g.pose().popMatrix();
+        return ok;
+    }
+
     /** A batch of quads with their own vertices; a copy, because the frame is reused. */
     private static final class Element implements GuiElementRenderState {
         private final RenderPipeline pipeline;

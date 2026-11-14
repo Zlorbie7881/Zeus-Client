@@ -35,3 +35,14 @@ java {
     sourceCompatibility = JavaVersion.VERSION_21
     targetCompatibility = JavaVersion.VERSION_21
 }
+
+// In-game screenshot test: launches the real client on a virtual display and photographs the
+// menus (run by .github/workflows/screenshots.yml). Not part of the mod jar.
+fabricApi {
+    configureTests {
+        createSourceSet = true
+        modId = "zeus-screens"
+        enableGameTests = false
+        enableClientGameTests = true
+    }
+}

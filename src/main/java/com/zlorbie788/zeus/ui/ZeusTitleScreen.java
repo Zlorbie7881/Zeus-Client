@@ -22,8 +22,8 @@ public final class ZeusTitleScreen extends Screen {
     private static final float MH = 768f;
     private static final float PLATE_X = 490f;
     private static final float PLATE_W = 382f;
-    private static final float PLATE_H = 54f;
-    private static final float[] PLATE_Y = {351f, 414f, 476f, 539f, 602f, 665f};
+    private static final float PLATE_H = 50f;
+    private static final float[] PLATE_Y = {351f, 408.5f, 466f, 523.5f, 581f, 638.5f, 696f};
 
     private static final float LOGO_X = 500f;
     private static final float LOGO_Y = 14f;
@@ -38,7 +38,9 @@ public final class ZeusTitleScreen extends Screen {
     private static final String DISCORD = "https://discord.gg/znrj2TfCP8";
     private static final float ICON_R = 34f;
     private static final float ICON_PIC = 37f;
-    private static final String[] NAMES = {"singleplayer", "multiplayer", "customs", "settings", "realms", "exit"};
+    private static final String[] NAMES = {"singleplayer", "multiplayer", "customs", "crates", "settings", "realms", "exit"};
+    /** The Zeus Crates plate glows gold even when idle, so it is found. */
+    private static final int CRATES = 3;
     private static final String[] ICON_NAMES = {"language", "accessibility", "settings", "credits", "discord"};
 
     private static final int[] ICON_FRAMES = {24, 24, 0, 12, 0};
@@ -56,14 +58,14 @@ public final class ZeusTitleScreen extends Screen {
     private static final int MIST_H = 420;
 
     private final long born = System.nanoTime();
-    private final float[] glow = new float[6];
+    private final float[] glow = new float[7];
     private final float[] iconGlow = new float[5];
-    private final float[] plateSpring = new float[6];
-    private final float[] plateVel = new float[6];
-    private final float[] plateMag = new float[6];
-    private final float[] enterAt = new float[6];
-    private final float[] enterX = new float[6];
-    private final boolean[] platePrev = new boolean[6];
+    private final float[] plateSpring = new float[7];
+    private final float[] plateVel = new float[7];
+    private final float[] plateMag = new float[7];
+    private final float[] enterAt = new float[7];
+    private final float[] enterX = new float[7];
+    private final boolean[] platePrev = new boolean[7];
     private final float[] iconSpring = new float[5];
     private final float[] iconVel = new float[5];
     private final float[] iconEnter = new float[5];
@@ -76,7 +78,7 @@ public final class ZeusTitleScreen extends Screen {
     private int clickKind = -1;
     private int clickIdx = -1;
     private long clickAt;
-    private final float[] clickBox = new float[6];
+    private final float[] clickBox = new float[7];
     private final MenuNews news = new MenuNews();
 
     private int selected = -1;
@@ -195,7 +197,7 @@ public final class ZeusTitleScreen extends Screen {
     }
 
     private int plateAt(int mx, int my) {
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < NAMES.length; i++) {
             if (mx >= plateX() && mx < plateX() + plateW() && my >= plateY(i) && my < plateY(i) + plateH()) return i;
         }
         return -1;
@@ -638,7 +640,7 @@ public final class ZeusTitleScreen extends Screen {
         int w = plateW();
         int h = plateH();
         Tex.Img plate = Tex.fitted("menu_plate", "textures/gui/menu/plate.png", w * gs, h * gs, false, 0, 0);
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < NAMES.length; i++) {
             float want = i == selected ? 1f : 0f;
             float hoverBlend = 1f - (float) Math.exp(-dt * 12.5f);
             glow[i] += (want - glow[i]) * hoverBlend;
@@ -663,13 +665,19 @@ public final class ZeusTitleScreen extends Screen {
             if (fx && sp > 0.02f) Draw.shadow(g, x, y, w, h, 3, Math.max(3, Math.round(5 * u * sp)), 0.40f * sp * ease);
             x += Math.round(plateMag[i]);
             y -= lift;
-            if (gl > 0.01f) Draw.glow(g, x, y, w, h, 3, 0xFF7C9CE0, Math.max(3, Math.round(6 * u)), 0.34f * gl * ease);
+            if (gl > 0.01f) Draw.glow(g, x, y, w, h, 3, i == CRATES ? 0xFFF5C04A : 0xFF7C9CE0, Math.max(3, Math.round(6 * u)), 0.34f * gl * ease);
+            if (i == CRATES && gl < 0.99f) {
+                // idle: a slow gold breath round the plate and a sweep of light every few seconds
+                float breath = 0.5f + 0.5f * (float) Math.sin(t * 2.2f);
+                Draw.glow(g, x, y, w, h, 3, 0xFFF5C04A, Math.max(3, Math.round(7 * u)), (0.16f + 0.14f * breath) * (1f - gl) * ease);
+            }
             if (plate != null) plate.draw(g, x, y, w, h, Draw.rgba(0xFFFFFFFF, ease));
             else Draw.rrect(g, x, y, w, h, 3, Draw.rgba(0xFF05070C, ease));
             Tex.Img ink = Tex.fitted("menu_ink_" + NAMES[i], "textures/gui/menu/ink_" + NAMES[i] + ".png", w * gs, h * gs, false, 0, 0);
             if (ink != null) {
                 ink.draw(g, x, y, w, h, Draw.rgba(0xFFFFFFFF, ease));
-                if (gl > 0.02f) ink.draw(g, x, y, w, h, Draw.rgba(0xFFDCE8FF, 0.55f * gl * ease));
+                if (i == CRATES) ink.draw(g, x, y, w, h, Draw.rgba(0xFFFFD27A, (0.35f + 0.25f * (float) Math.sin(t * 2.2f)) * ease));
+                if (gl > 0.02f) ink.draw(g, x, y, w, h, Draw.rgba(i == CRATES ? 0xFFFFE6A8 : 0xFFDCE8FF, 0.55f * gl * ease));
             } else {
                 Draw.boldCenter(g, NAMES[i].toUpperCase(), x + w / 2, y + h / 2 - 4, Draw.rgba(0xFFC8C0B4, ease));
             }
@@ -682,7 +690,15 @@ public final class ZeusTitleScreen extends Screen {
                 }
                 HoverFx.ripple(g, x, y, w, h, enterX[i], since / 0.7f, u, ease);
             }
-            if (gl > 0.02f) Draw.rrectLine(g, x, y, w, h, 3, Draw.rgba(0xFFA8BEEA, (0.68f + 0.10f * (float) Math.sin(t * 4f)) * gl * ease));
+            if (i == CRATES && fx) {
+                float cyc = (t % 4.5f) / 0.9f;
+                if (cyc < 1f && HoverFx.shine(g, x, y, w, h, cyc, u, ease * 0.7f, shineBand) && ink != null) {
+                    g.enableScissor(Math.max(x, shineBand[0]), y, Math.min(x + w, shineBand[1]), y + h);
+                    ink.draw(g, x, y, w, h, Draw.rgba(0xFFFFF1C8, 0.85f * ease));
+                    g.disableScissor();
+                }
+            }
+            if (gl > 0.02f) Draw.rrectLine(g, x, y, w, h, 3, Draw.rgba(i == CRATES ? 0xFFF5D08A : 0xFFA8BEEA, (0.68f + 0.10f * (float) Math.sin(t * 4f)) * gl * ease));
             if (gl > 0.02f && fx) {
                 PlateFx.hover(g, x, y, w, h, t, gl * ease, u);
                 HoverFx.underline(g, x, y, w, h, gl * ease, t);
@@ -924,8 +940,9 @@ public final class ZeusTitleScreen extends Screen {
                 case 0 -> minecraft.setScreen(new SelectWorldScreen(this));
                 case 1 -> minecraft.setScreen(new JoinMultiplayerScreen(this));
                 case 2 -> minecraft.setScreen(new ZeusScreen(this));
-                case 3 -> minecraft.setScreen(new OptionsScreen(this, minecraft.options));
-                case 4 -> minecraft.setScreen(new RealmsMainScreen(this));
+                case 3 -> minecraft.setScreen(new CratesScreen(this));
+                case 4 -> minecraft.setScreen(new OptionsScreen(this, minecraft.options));
+                case 5 -> minecraft.setScreen(new RealmsMainScreen(this));
                 default -> minecraft.stop();
             }
         } catch (RuntimeException e) {
@@ -992,12 +1009,12 @@ public final class ZeusTitleScreen extends Screen {
         int key = event.key();
         if (key == GLFW.GLFW_KEY_DOWN || key == GLFW.GLFW_KEY_TAB) {
             selectedByMouse = false;
-            selected = (selected + 1) % 6;
+            selected = (selected + 1) % NAMES.length;
             return true;
         }
         if (key == GLFW.GLFW_KEY_UP) {
             selectedByMouse = false;
-            selected = selected < 0 ? 5 : (selected + 5) % 6;
+            selected = selected < 0 ? NAMES.length - 1 : (selected + NAMES.length - 1) % NAMES.length;
             return true;
         }
         if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER || key == GLFW.GLFW_KEY_SPACE) {

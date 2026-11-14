@@ -76,6 +76,142 @@ def fin_bloodstone(kn, mask, sfrac, d_edge, d_spine, bev):
     return alb, 0.9, 0.85
 
 
+def ridged(scale, seed, octaves=5):
+    """Sharp branching ridges: 1 on the ridge lines, falling off either side."""
+    return 1 - np.abs(2 * fbm(scale, seed, octaves) - 1)
+
+
+def hsv(h, s_, v):
+    h = (h % 1.0) * 6
+    i = np.floor(h).astype(int) % 6
+    f = h - np.floor(h)
+    p, q, t = v * (1 - s_), v * (1 - s_ * f), v * (1 - s_ * (1 - f))
+    r = np.choose(i, [v, q, p, p, t, v])
+    g = np.choose(i, [t, v, v, q, p, p])
+    b = np.choose(i, [p, p, t, v, v, q])
+    return np.stack([r, g, b], -1).astype(np.float32)
+
+
+def fin_stock(kn, mask, sfrac, d_edge, d_spine, bev):
+    """Factory satin steel: the starter finish."""
+    alb = T.steel_base(2001, 0.82)
+    alb *= (0.95 + 0.07 * brushed(2002))[..., None]
+    return alb, 1.0, 0.7
+
+
+def fin_lightning(kn, mask, sfrac, d_edge, d_spine, bev):
+    """Zeus' own: blued black steel with forked electric bolts that glow."""
+    base = ramp(fbm(1.2, 2101, 4), [(0, hexc("05070d")), (0.5, hexc("0c1424")), (1, hexc("1a2a48"))])
+    r = ridged(3.0, 2103, 6)
+    keep = smoothstep(0.45, 0.6, fbm(2.2, 2109, 3))
+    core = smoothstep(0.955, 0.985, r) * keep
+    halo = smoothstep(0.82, 0.96, r) * keep
+    fork = smoothstep(0.965, 0.99, ridged(1.1, 2105, 5)) * smoothstep(0.6, 0.75, fbm(1.0, 2107, 3)) * keep
+    alb = base + halo[..., None] * hexc("2a6cff") * 0.55
+    alb = lerp(alb, hexc("bfe6ff"), np.clip(core + fork, 0, 1))
+    return np.clip(alb, 0, 1), 0.85, 0.9
+
+
+def fin_olympus(kn, mask, sfrac, d_edge, d_spine, bev):
+    """White Olympian marble with grey veins and veins of gold."""
+    n = fbm(1.4, 2201, 5)
+    alb = ramp(n, [(0, hexc("d8d4cc")), (0.5, hexc("efece6")), (1, hexc("ffffff"))])
+    grey = smoothstep(0.93, 0.98, ridged(2.2, 2203, 6)) * 0.8
+    gold = smoothstep(0.965, 0.99, ridged(3.2, 2205, 5))
+    alb = lerp(alb, hexc("8a8680"), grey * 0.7)
+    alb = lerp(alb, ramp(fbm(0.4, 2207, 3), [(0, hexc("b07a18")), (1, hexc("ffd86a"))]), gold)
+    return alb, 0.35, 0.95
+
+
+def fin_inferno(kn, mask, sfrac, d_edge, d_spine, bev):
+    """Charred black steel split by glowing lava cracks, hottest towards the tip."""
+    base = ramp(fbm(0.9, 2301, 4), [(0, hexc("070505")), (1, hexc("2a1a14"))])
+    r = ridged(2.0, 2303, 6)
+    heat = np.clip(0.35 + 0.65 * sfrac, 0, 1)
+    crack = smoothstep(0.86, 0.96, r) * (0.6 + 0.4 * heat)
+    glow_ = smoothstep(0.70, 0.90, r) * heat
+    lava = ramp(r, [(0.8, hexc("7a1404")), (0.9, hexc("ff5a0a")), (1.0, hexc("ffe27a"))])
+    alb = base + glow_[..., None] * hexc("ff3a00") * 0.35
+    alb = lerp(alb, lava, crack)
+    return np.clip(alb, 0, 1), 0.6, 0.6
+
+
+def fin_nebula(kn, mask, sfrac, d_edge, d_spine, bev):
+    """Deep space: violet and teal gas clouds over black, scattered with stars."""
+    a = fbm(1.8, 2401, 6)
+    b = fbm(1.2, 2403, 5)
+    alb = hexc("04030a") + smoothstep(0.45, 0.85, a)[..., None] * hexc("7a2ad8") * 0.9
+    alb = alb + smoothstep(0.5, 0.9, b)[..., None] * hexc("1aa6c8") * 0.6
+    alb = alb + smoothstep(0.7, 0.95, a * b * 1.6)[..., None] * hexc("ff4ab0") * 0.5
+    stars = (np.random.default_rng(2405).random((GH, GW)) > 0.9985).astype(np.float32)
+    from scipy import ndimage
+    stars = np.clip(ndimage.gaussian_filter(stars, 0.8) * 7, 0, 1)
+    alb = lerp(alb, np.ones_like(alb), stars)
+    return np.clip(alb, 0, 1), 0.8, 0.9
+
+
+def fin_frost(kn, mask, sfrac, d_edge, d_spine, bev):
+    """Ice: pale blue steel grown over with feathered frost crystals."""
+    base = ramp(fbm(1.0, 2501, 4) * 0.6 + 0.4 * sfrac, [(0, hexc("5f8fb8")), (0.5, hexc("a8d4f0")), (1, hexc("e8f8ff"))])
+    feath = 0
+    for k, ang in enumerate((0.5, 1.6, 2.6)):
+        d = U * math.cos(ang) + V * math.sin(ang)
+        feath = feath + smoothstep(0.82, 0.98, np.abs(np.sin(d * 11 + 6 * fbm(0.8, 2503 + k, 3))))
+    feath = np.clip(feath, 0, 1) * smoothstep(0.35, 0.6, fbm(1.3, 2507, 4))
+    alb = lerp(base, hexc("ffffff"), feath * 0.75)
+    return alb, 0.55, 0.95
+
+
+def fin_phantom(kn, mask, sfrac, d_edge, d_spine, bev):
+    """Holographic: iridescent foil that shifts through every colour."""
+    n = fbm(1.5, 2601, 5)
+    hue = 0.62 + 0.30 * (n - 0.5) * 2 + 0.012 * U
+    alb = hsv(hue, 0.38 + 0.12 * fbm(0.6, 2603, 3), 0.93)
+    sheen = fbm(2.5, 2605, 3, aniso=(3.0, 0.5))
+    alb = lerp(alb, hexc("ffffff"), smoothstep(0.6, 0.85, sheen) * 0.35)
+    alb = lerp(alb, alb * 0.75, smoothstep(0.45, 0.25, sheen) * 0.5)
+    return alb, 1.0, 1.0
+
+
+def fin_toxic(kn, mask, sfrac, d_edge, d_spine, bev):
+    """Black steel splashed with glowing acid green that has eaten into the surface."""
+    base = ramp(fbm(1.0, 2701, 4), [(0, hexc("060806")), (1, hexc("1a201a"))])
+    n = fbm(1.1, 2703, 6)
+    goo = smoothstep(0.56, 0.60, n)
+    rim = smoothstep(0.50, 0.56, n) * (1 - goo)
+    acid = ramp(fbm(0.4, 2705, 3), [(0, hexc("3ad80a")), (1, hexc("c8ff3a"))])
+    alb = lerp(base, hexc("1e4a08"), rim)
+    alb = lerp(alb, acid, goo)
+    return alb, 0.5, 0.75
+
+
+def fin_sunset(kn, mask, sfrac, d_edge, d_spine, bev):
+    """A sunset fade: violet at the guard through pink and orange to gold at the tip."""
+    t = np.clip(sfrac * 0.9 + 0.08 * (fbm(0.9, 2801, 3) - 0.5) + 0.05 * V / 3, 0, 1)
+    alb = ramp(t, [(0, hexc("2a0f5a")), (0.3, hexc("a0207a")), (0.55, hexc("ff4a5a")), (0.78, hexc("ff9a2a")), (1, hexc("ffe07a"))])
+    alb *= (0.95 + 0.07 * brushed(2802))[..., None]
+    return alb, 1.0, 1.0
+
+
+def fin_storm(kn, mask, sfrac, d_edge, d_spine, bev):
+    """Thunderhead: rolling slate storm clouds with a single bright fork."""
+    n = fbm(1.6, 2901, 6)
+    alb = ramp(n, [(0, hexc("1a1e26")), (0.45, hexc("3a4250")), (0.7, hexc("6a7486")), (1, hexc("b8c2d0"))])
+    bolt = smoothstep(0.965, 0.99, ridged(2.4, 2903, 6)) * smoothstep(0.5, 0.7, fbm(2.0, 2905, 2))
+    alb = alb + smoothstep(0.85, 0.97, ridged(2.4, 2903, 6))[..., None] * hexc("6aa0ff") * 0.25 * smoothstep(0.5, 0.7, fbm(2.0, 2905, 2))[..., None]
+    alb = lerp(alb, hexc("e8f2ff"), bolt)
+    return np.clip(alb, 0, 1), 0.6, 0.75
+
+
+def fin_abyss(kn, mask, sfrac, d_edge, d_spine, bev):
+    """The deep sea: teal fading to black, lit by rippling caustics."""
+    base = ramp(np.clip(1 - sfrac * 0.8 + 0.2 * (fbm(1.0, 3001, 4) - 0.5), 0, 1), [(0, hexc("01060a")), (0.5, hexc("06323e")), (1, hexc("0c6a78"))])
+    c = np.abs(np.sin(fbm(2.4, 3003, 5) * 14.0))
+    caus = smoothstep(0.955, 0.995, c) * smoothstep(0.2, 0.7, 1 - sfrac + 0.3)
+    alb = lerp(base, hexc("7af0ff"), caus * 0.7)
+    return alb, 0.8, 0.9
+
+
 F = {
     "damascus": (T.fin_damascus, "Damascus", "#dfe6ef"),
     "slaughter": (T.fin_slaughter, "Slaughter", "#ff4a3a"),
@@ -94,6 +230,17 @@ F = {
     "rust": (fin_rust, "Rust coat", "#d07030"),
     "gold": (fin_gold, "Gold leaf", "#ffcf4a"),
     "bloodstone": (fin_bloodstone, "Bloodstone", "#e0283c"),
+    "stock": (fin_stock, "Stock", "#c8ccd4"),
+    "lightning": (fin_lightning, "Lightning", "#6ab8ff"),
+    "olympus": (fin_olympus, "Olympus", "#ffd86a"),
+    "inferno": (fin_inferno, "Inferno", "#ff6a1a"),
+    "nebula": (fin_nebula, "Nebula", "#b05aff"),
+    "frost": (fin_frost, "Frost", "#a8e0ff"),
+    "phantom": (fin_phantom, "Phantom", "#f0a8ff"),
+    "toxic": (fin_toxic, "Toxic", "#8aff2a"),
+    "sunset": (fin_sunset, "Sunset", "#ff7a4a"),
+    "storm": (fin_storm, "Thunderhead", "#9ab0d0"),
+    "abyss": (fin_abyss, "Abyss", "#2ad0e0"),
 }
 
 
@@ -404,15 +551,49 @@ TYPES = [
 ]
 
 
+# New skins, appended after everything above so the index of every older knife stays the same.
+EXTRA = [("karambit", "stock"),
+         ("tactical", "lightning"), ("tactical", "olympus"),
+         ("karambit", "inferno"), ("karambit", "nebula"),
+         ("m9", "frost"), ("m9", "phantom"),
+         ("butterfly", "toxic"), ("butterfly", "sunset"),
+         ("huntsman", "storm"), ("huntsman", "toxic"),
+         ("bowie", "inferno"), ("bowie", "olympus"),
+         ("skeleton", "abyss"), ("skeleton", "phantom"),
+         ("ursus", "frost"), ("ursus", "nebula"),
+         ("stiletto", "sunset"), ("stiletto", "abyss")]
+
+
+def tactical(skin):
+    """New Tactical skins reuse a Tactical body (handle, guard, etching) with the new finish."""
+    body, fin = {"lightning": ("k7", "fin_doppler"), "olympus": ("k3", "fin_case")}[skin]
+    old = getattr(T, fin)
+    setattr(T, fin, F[skin][0])
+    try:
+        kn = getattr(T, body)()
+    finally:
+        setattr(T, fin, old)
+    kn.id = "tac_" + skin
+    kn.name = "Tactical · " + F[skin][1]
+    return finish_knife(kn, skin)
+
+
+BUILDERS = {kind: build for kind, build, _ in TYPES}
+BUILDERS["tactical"] = tactical
+
+
 def main():
     only = sys.argv[1:]
     meta = json.load(open(T.OUT_JSON))
     have = {k["id"]: k for k in meta["knives"]}
-    tactical = [k for k in meta["knives"] if k["id"].startswith("tac_")]
+    tactical_old = [k["id"] for k in meta["knives"] if k["id"].startswith("tac_") and k["id"] not in
+                    ["tac_" + sk for kd, sk in EXTRA if kd == "tactical"]]
     tall = {"karambit": KARAMBIT_CELL_H}
-    for kind, build, skins in TYPES:
+    kinds = [kind for kind, _, _ in TYPES] + ["tactical"]
+    for kind in kinds:
         if only and kind not in only:
             continue
+        skins = [sk for kd, b, sks in TYPES if kd == kind for sk in sks] + [sk for kd, sk in EXTRA if kd == kind]
         if kind in tall and os.environ.get("KNIFE_CELL_H") != str(tall[kind]):
             import subprocess
             env = dict(os.environ, KNIFE_CELL_H=str(tall[kind]))
@@ -421,15 +602,19 @@ def main():
             have = {k["id"]: k for k in meta["knives"]}
             continue
         for skin in skins:
-            kn = build(skin)
+            kid = ("tac_" if kind == "tactical" else kind + "_") + skin
+            if os.environ.get("NEW_ONLY") and kid in have:
+                continue
+            kn = BUILDERS[kind](skin)
             print("baking", kn.id, flush=True)
             entry = T.write(kn, min_level=1)
             if T.HALF != 3.55:
                 entry["half"] = round(T.HALF, 4)
             have[kn.id] = entry
-    order = [k["id"] for k in tactical]
+    order = list(tactical_old)
     for kind, build, skins in TYPES:
         order += [kind + "_" + s for s in skins]
+    order += [("tac_" if kd == "tactical" else kd + "_") + sk for kd, sk in EXTRA]
     meta["knives"] = [have[i] for i in order if i in have]
     with open(T.OUT_JSON, "w") as f:
         json.dump(meta, f, indent=1)

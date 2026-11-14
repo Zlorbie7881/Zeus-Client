@@ -51,6 +51,17 @@ public final class KnifePickerScreen extends Screen {
             {"Rust coat", "Orange-brown rust flaking over dark steel."},
             {"Gold leaf", "Polished gold with a faint engraved scroll."},
             {"Bloodstone", "Dark red marble: crimson clouds over near-black steel."},
+            {"Stock", "Factory satin steel. Every collection starts here."},
+            {"Lightning", "Blued black steel split by forked, glowing bolts."},
+            {"Olympus", "White marble veined with grey and gold."},
+            {"Inferno", "Charred steel cracked open by glowing lava."},
+            {"Nebula", "Violet and teal gas clouds scattered with stars."},
+            {"Frost", "Pale ice-blue steel grown over with frost crystals."},
+            {"Phantom", "Holographic foil that shifts colour as it turns."},
+            {"Toxic", "Black steel eaten through by glowing acid."},
+            {"Sunset", "Violet at the guard through pink and orange to a gold tip."},
+            {"Thunderhead", "Rolling slate storm clouds with a single bright fork."},
+            {"Abyss", "Teal fading to black, lit by rippling caustics."},
     };
 
     /** Knife types in order, each with the HD indices of its skins. */
@@ -181,7 +192,7 @@ public final class KnifePickerScreen extends Screen {
         Draw.rrect(g, px, py, pw, ph, 8, 0xF2070C1A, 0xF2050914);
         Draw.rrectLine(g, px, py, pw, ph, 8, 0xFF234A8A);
         Draw.bold(g, "ZEUS / SWITCH KNIFE", px + 12, py + 11, 0xFFE9F1FF);
-        Draw.textRight(g, TYPES.size() + " knives  \u00b7  " + KnifeArt.HD_COUNT + " skins", px + pw - 12, py + 11, 0xFF8EA2CC);
+        Draw.textRight(g, com.zlorbie788.zeus.core.Crates.ownedCount() + " / " + KnifeArt.HD_COUNT + " unlocked", px + pw - 12, py + 11, 0xFF8EA2CC);
 
         // knife types
         hoverGroup = -1;
@@ -194,7 +205,9 @@ public final class KnifePickerScreen extends Screen {
             if (on) g.fill(x, y + 3, x + 2, y + rh - 5, 0xFF5CA8FF);
             int tc = on ? 0xFFFFFFFF : hot ? 0xFFDCE6FA : 0xFFB0C0E0;
             Draw.text(g, Draw.fit(TYPES.get(gi), lw - 34), x + 8, y + (rh - 2) / 2 - 4, tc);
-            String count = String.valueOf(SKINS.get(gi).length);
+            int ownedN = 0;
+            for (int sk : SKINS.get(gi)) if (com.zlorbie788.zeus.core.Crates.ownsHd(sk)) ownedN++;
+            String count = ownedN + "/" + SKINS.get(gi).length;
             Draw.textRight(g, count, x + lw - 6, y + (rh - 2) / 2 - 4, gi == held ? 0xFF6FE3A0 : 0xFF5E73A0);
         }
 
@@ -211,8 +224,15 @@ public final class KnifePickerScreen extends Screen {
             if (hot) hover = kind;
             Draw.rrect(g, x, y, tw, th, 5, on ? 0xFF14306A : hot ? 0xFF10224A : 0xFF0A1530);
             Draw.rrectLine(g, x, y, tw, th, 5, on ? 0xFF5CA8FF : hot ? 0xFF3A6ACA : 0xFF1E3A70);
-            KnifeArt.showcase(g, kind, 0, x + 3, y + 2, tw - 6, th - 14, time + t * 0.7f, false);
-            Draw.textCenter(g, Draw.fit(skinOf(all[kind]), tw - 4), x + tw / 2, y + th - 11, on ? 0xFFFFFFFF : 0xFFB8C8E8);
+            boolean own = com.zlorbie788.zeus.core.Crates.ownsHd(skins[t]);
+            int rc = com.zlorbie788.zeus.core.Crates.rarityOf(com.zlorbie788.zeus.core.Crates.idOf(skins[t])).colour;
+            g.fill(x + 4, y + th - 3, x + tw - 4, y + th - 1, own ? rc : Draw.darken(rc, 0.6f));
+            KnifeArt.showcase(g, kind, 0, x + 3, y + 2, tw - 6, th - 14, own ? time + t * 0.7f : 0f, false);
+            if (!own) {
+                Draw.rrect(g, x, y, tw, th, 5, 0xB8060810);
+                drawLock(g, x + tw / 2, y + (th - 14) / 2 - 2);
+            }
+            Draw.textCenter(g, Draw.fit(skinOf(all[kind]), tw - 4), x + tw / 2, y + th - 11, !own ? 0xFF5E6A88 : on ? 0xFFFFFFFF : 0xFFB8C8E8);
         }
 
         // big preview: the skin under the mouse, else the one in hand, else the type's first skin
@@ -224,6 +244,11 @@ public final class KnifePickerScreen extends Screen {
         KnifeArt.showcase(g, show, 0, rx + 6, ry + 6, rw - 12, pvh - 12, time, true);
         Draw.bold(g, Draw.fit(skinOf(all[show]).toUpperCase(Locale.ROOT), rw - 50), rx + 2, ry + pvh + 6, 0xFFE9F1FF);
         if (show == knife) Draw.textRight(g, "in hand", rx + rw, ry + pvh + 6, 0xFF6FE3A0);
+        else if (!com.zlorbie788.zeus.core.Crates.ownsHd(show - FIRST)) {
+            var from = com.zlorbie788.zeus.core.Crates.crateOf(com.zlorbie788.zeus.core.Crates.idOf(show - FIRST));
+            Draw.textRight(g, "locked", rx + rw, ry + pvh + 6, 0xFFFF8A7A);
+            if (from != null) Draw.textRight(g, "from the " + from.name, rx + rw, ry + pvh + 17, from.colour);
+        }
         Draw.text(g, typeOf(all[show]), rx + 2, ry + pvh + 17, 0xFF6F86B8);
         String desc = find(SKIN_ABOUT, skinOf(all[show])) + " " + find(TYPE_ABOUT, typeOf(all[show]));
         int ty = ry + pvh + 30;
@@ -233,11 +258,22 @@ public final class KnifePickerScreen extends Screen {
             ty += 10;
         }
 
-        Draw.text(g, "Click a skin to hold it  \u00b7  \u2191\u2193 knife  \u2190\u2192 skin  \u00b7  Esc closes", px + 12, py + ph - 18, 0xFF8EA2CC);
+        Draw.text(g, "Unlock knives in Zeus Crates  \u00b7  \u2191\u2193 knife  \u2190\u2192 skin", px + 12, py + ph - 18, 0xFF8EA2CC);
+        int cbx = px + pw - 12 - 56 - 8 - 96, cby = py + ph - 20;
+        boolean hotC = mouseX >= cbx && mouseX < cbx + 96 && mouseY >= cby - 2 && mouseY < cby + 16;
+        Draw.rrect(g, cbx, cby - 2, 96, 18, 5, hotC ? 0xFFFFD27A : 0xFFF5C04A, 0xFFB07A18);
+        Draw.boldCenter(g, "ZEUS CRATES", cbx + 48, cby + 2, 0xFF1A1206);
         int bx = px + pw - 12 - 56, by = py + ph - 20;
         boolean hotDone = mouseX >= bx && mouseX < bx + 56 && mouseY >= by - 2 && mouseY < by + 16;
         Draw.rrect(g, bx, by - 2, 56, 18, 5, hotDone ? 0xFF1E4C9A : 0xFF14306A);
         Draw.boldCenter(g, "Done", bx + 28, by + 2, 0xFFE9F1FF);
+    }
+
+    private static void drawLock(GuiGraphics g, int cx, int cy) {
+        int c = 0xFFB8C4DC;
+        Draw.rrectLine(g, cx - 4, cy - 8, 8, 9, 4, c);
+        Draw.rrect(g, cx - 6, cy - 2, 12, 9, 2, c);
+        g.fill(cx - 1, cy + 1, cx + 1, cy + 4, 0xFF0A0E18);
     }
 
     private static int firstOf(int gi) {
@@ -271,12 +307,17 @@ public final class KnifePickerScreen extends Screen {
                 onClose();
                 return true;
             }
+            int cbx = px + pw - 12 - 56 - 8 - 96, cby = py + ph - 20;
+            if (x >= cbx && x < cbx + 96 && y >= cby - 2 && y < cby + 16) {
+                minecraft.setScreen(new CratesScreen(this));
+                return true;
+            }
             int lw = listW(), rh = rowH();
             for (int gi = 0; gi < TYPES.size(); gi++) {
                 int ry = rowY(gi);
                 if (x >= px + 12 && x < px + 12 + lw && y >= ry && y < ry + rh - 2) {
                     group = gi;
-                    if (doubleClick) pick(firstOf(gi));
+                    if (doubleClick && com.zlorbie788.zeus.core.Crates.ownsHd(firstOf(gi) - FIRST)) pick(firstOf(gi));
                     return true;
                 }
             }
@@ -285,6 +326,7 @@ public final class KnifePickerScreen extends Screen {
             for (int t = 0; t < skins.length; t++) {
                 int tx = tileX(t), ty = tileY(t);
                 if (x >= tx && x < tx + tw && y >= ty && y < ty + th) {
+                    if (!com.zlorbie788.zeus.core.Crates.ownsHd(skins[t])) return true;
                     pick(FIRST + skins[t]);
                     if (doubleClick) onClose();
                     return true;
@@ -295,6 +337,7 @@ public final class KnifePickerScreen extends Screen {
     }
 
     private void pick(int kind) {
+        if (!com.zlorbie788.zeus.core.Crates.ownsHd(kind - FIRST)) return;
         knife = kind;
         group = groupOf(kind);
         chosen.pick(knife, finishOf[knife]);
@@ -310,14 +353,22 @@ public final class KnifePickerScreen extends Screen {
         if (key == 264 || key == 265) {          // down / up: next or previous knife type
             int gi = Math.floorMod(group + (key == 264 ? 1 : -1), TYPES.size());
             group = gi;
-            pick(firstOf(gi));
+            for (int sk : SKINS.get(gi)) {
+                if (com.zlorbie788.zeus.core.Crates.ownsHd(sk)) {
+                    pick(FIRST + sk);
+                    break;
+                }
+            }
             return true;
         }
         if (key == 262 || key == 263) {          // right / left: next or previous skin
             int[] skins = SKINS.get(group);
             int at = 0;
             for (int t = 0; t < skins.length; t++) if (FIRST + skins[t] == knife) at = t;
-            at = Math.floorMod(at + (key == 262 ? 1 : -1), skins.length);
+            for (int n = 0; n < skins.length; n++) {
+                at = Math.floorMod(at + (key == 262 ? 1 : -1), skins.length);
+                if (com.zlorbie788.zeus.core.Crates.ownsHd(skins[at])) break;
+            }
             pick(FIRST + skins[at]);
             return true;
         }

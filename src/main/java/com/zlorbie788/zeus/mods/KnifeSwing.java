@@ -123,21 +123,40 @@ public final class KnifeSwing extends Module {
     private static final String[] SECTIONS = {"Knife & hand", "Position", "Tricks", "Effects"};
     private final Setting.Choice section = add(new Setting.Choice("Show settings for", "The knife settings are split into four pages so you only see what you are changing.", 0, SECTIONS));
     private final Setting.Action switchKnife = add(new Setting.Action("Switch knife", "Opens a window with every HD knife and a live 3D preview of each. Click one to hold it.", this::openGallery)
-            .primary(() -> "Holding " + shortKnife() + "  ·  click to browse " + KnifeArt.HD_COUNT + " knives"))
+            .primary(() -> "Holding " + shortKnife() + "  ·  " + com.zlorbie788.zeus.core.Crates.ownedCount() + "/" + KnifeArt.HD_COUNT + " knives unlocked"))
             .showIf(() -> section.index() == 0);
 
     private String shortKnife() {
-        String n = type == null ? "" : type.value();
+        String n = type == null ? "" : TYPES[ownedHd()];
         return n.replace(" · ", " ");
     }
     private final Setting.Choice type = add(new Setting.Choice("HD knife", "Which HD knife you hold: Tactical, Karambit, M9 Bayonet, Butterfly, Huntsman, Bowie, Skeleton, Ursus or Stiletto, each in several skins.", 0, TYPES)).showIf(() -> false);
 
     /** The renderer's knife kind for the chosen HD knife. */
     private int kind() {
-        return FIRST_HD + type.index();
+        return FIRST_HD + ownedHd();
+    }
+
+    /** The chosen knife if it has been unlocked from a crate, otherwise the starter karambit. */
+    private int ownedHd() {
+        int i = type.index();
+        return com.zlorbie788.zeus.core.Crates.ownsHd(i) ? i : com.zlorbie788.zeus.core.Crates.starterHd();
+    }
+
+    /** The HD knife currently in hand, for the crates screen. */
+    public static int heldHd() {
+        return self == null ? com.zlorbie788.zeus.core.Crates.starterHd() : self.ownedHd();
+    }
+
+    /** Holds an owned HD knife (from the crates screen) and turns the knife module on. */
+    public static void equipHd(int hd) {
+        if (self == null || !com.zlorbie788.zeus.core.Crates.ownsHd(hd)) return;
+        self.setKind(FIRST_HD + hd);
+        if (!self.enabled()) self.setEnabled(true);
     }
 
     private void setKind(int kind) {
+        if (kind >= FIRST_HD && !com.zlorbie788.zeus.core.Crates.ownsHd(kind - FIRST_HD)) return;
         if (kind >= FIRST_HD && kind - FIRST_HD != type.index()) {
             type.set(kind - FIRST_HD);
             drawRise = 1f;          // the new knife rises into the hand
@@ -270,7 +289,7 @@ public final class KnifeSwing extends Module {
     }
 
     private java.util.List<String> lines() {
-        String name = type.value();
+        String name = TYPES[ownedHd()];
         String mesh = karambit() ? KnifeArt.nameOf(key()) : "Butterfly knife";
         boolean loaded = KnifeMesh.has(mesh);
         String render = hd() >= 0 ? (KnifeHDGui.ready(hd()) ? "HD model: lit 3D, high resolution"
