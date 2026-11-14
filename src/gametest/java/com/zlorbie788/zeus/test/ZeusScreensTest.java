@@ -6,7 +6,10 @@ import com.zlorbie788.zeus.ui.CratesScreen;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
+import com.zlorbie788.zeus.ui.UiSettings;
+import com.zlorbie788.zeus.ui.ZeusTitleScreen;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.TitleScreen;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -22,7 +25,9 @@ public class ZeusScreensTest implements FabricClientGameTest {
     @Override
     public void runTest(ClientGameTestContext ctx) {
         ctx.getInput().resizeWindow(1920, 1080);
-        ctx.waitTicks(60);
+        // the intro video plays first; wait for the Zeus menu itself, then let its buttons slide in
+        ctx.waitFor(c -> c.screen instanceof ZeusTitleScreen, 20 * 60);
+        run(ctx, 3.0f);
         ctx.takeScreenshot("title_1080");
 
         ctx.runOnClient(c -> grant());
@@ -36,14 +41,12 @@ public class ZeusScreensTest implements FabricClientGameTest {
             });
             String tag = s[0] + "_" + (s[2] == 0 ? "auto" : "gui" + s[2]);
             ctx.setScreen(() -> new CratesScreen(null));
-            ctx.waitTicks(10);
-            sleep(600);
+            run(ctx, 0.8f);
             ctx.takeScreenshot("crates_" + tag);
             for (int tab = 1; tab <= 2; tab++) {
                 int t = tab;
                 ctx.runOnClient(c -> set(c.screen, "tab", t));
-                ctx.waitTicks(4);
-                sleep(400);
+                run(ctx, 0.5f);
                 ctx.takeScreenshot((t == 1 ? "collection_" : "redeem_") + tag);
             }
             ctx.runOnClient(c -> set(c.screen, "tab", 0));
@@ -51,7 +54,7 @@ public class ZeusScreensTest implements FabricClientGameTest {
             float[] at = {0.35f, 1.6f, 4.5f, 7.45f, 8.4f, 10.2f};
             float done = 0f;
             for (float a : at) {
-                sleep(Math.round((a - done) * 1000));
+                run(ctx, a - done);
                 done = a;
                 ctx.takeScreenshot("open_" + tag + "_" + Math.round(a * 100));
             }
@@ -72,6 +75,19 @@ public class ZeusScreensTest implements FabricClientGameTest {
             ctx.runOnClient(c -> KnifeSwing.equipHd(Crates.starterHd()));
             ctx.waitTicks(30);
             ctx.takeScreenshot("hand_starter");
+        }
+        // the test framework wants to finish on the vanilla title screen
+        ctx.runOnClient(c -> UiSettings.MENU.set(false));
+        ctx.setScreen(TitleScreen::new);
+        ctx.waitTicks(5);
+    }
+
+    /** Keeps the game ticking and drawing for this many real seconds. */
+    private static void run(ClientGameTestContext ctx, float seconds) {
+        long end = System.nanoTime() + (long) (seconds * 1e9);
+        while (System.nanoTime() < end) {
+            ctx.waitTick();
+            sleep(15);
         }
     }
 

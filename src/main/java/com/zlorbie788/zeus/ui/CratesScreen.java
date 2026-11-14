@@ -85,8 +85,8 @@ public final class CratesScreen extends Screen {
     }
 
     private void layout() {
-        pw = Math.min(width - 16, 660);
-        ph = Math.min(height - 16, 370);
+        pw = Math.min(width - 16, 720);
+        ph = Math.min(height - 16, 400);
         px = (width - pw) / 2;
         py = (height - ph) / 2;
     }
@@ -347,13 +347,15 @@ public final class CratesScreen extends Screen {
                 g.fill(x, y + 4, x + 2, y + h - 4, c.colour);
             }
             drawCrate(g, c, x + 18, y + h / 2 + 1, Math.min(26, h), t + i, 0f, 0f);
-            if (h >= 22) {
-                Draw.bold(g, Draw.fit(c.name.replace(" Crate", ""), w - 60), x + 36, y + h / 2 - 8, on ? TEXT : 0xFFB8C6E4);
-                Draw.text(g, c.items.size() + " knives", x + 36, y + h / 2 + 2, FAINT);
-            } else {
-                Draw.bold(g, Draw.fit(c.name.replace(" Crate", ""), w - 60), x + 36, y + h / 2 - 4, on ? TEXT : 0xFFB8C6E4);
-            }
             int n = Crates.held(c.id);
+            int badgeW = n > 0 ? Draw.widthBold("x" + n) + 14 : 0;
+            int nameW = w - 40 - badgeW;
+            if (h >= 26 && !small) {
+                Draw.bold(g, Draw.fit(c.name.replace(" Crate", ""), nameW), x + 36, y + h / 2 - 8, on ? TEXT : 0xFFB8C6E4);
+                Draw.text(g, Draw.fit(c.items.size() + " knives", nameW), x + 36, y + h / 2 + 2, FAINT);
+            } else {
+                Draw.bold(g, Draw.fit(c.name.replace(" Crate", ""), nameW), x + 34, y + h / 2 - 4, on ? TEXT : 0xFFB8C6E4);
+            }
             if (n > 0) {
                 String s = "x" + n;
                 int bw = Draw.widthBold(s) + 8;
@@ -371,7 +373,8 @@ public final class CratesScreen extends Screen {
         boolean compact = avail < 175;
         int cs = Math.max(compact ? 36 : 44, Math.min(Math.min(cw - 30, 130), Math.round((avail - (compact ? 72 : 100)) / 1.07f)));
         float bob = (float) Math.sin(t * 1.6f) * Math.max(1.5f, cs / 40f);
-        int yC = top + 6 + Math.round(cs * 0.62f);
+        int need = Math.round(6 + cs * 1.07f + (compact ? 64 : 100));
+        int yC = top + Math.max(6, (avail - need) / 2 + 6) + Math.round(cs * 0.62f);
         Draw.glow(g, ccx - cw / 3, yC - cs / 3, cw * 2 / 3, cs * 2 / 3, 30, c.colour, 24, 0.07f);
         drawCrate(g, c, ccx, yC + Math.round(bob), cs, t, 0f, 0f);
         int ny = yC + Math.round(cs * 0.45f) + 4;
@@ -403,7 +406,20 @@ public final class CratesScreen extends Screen {
         }
         int oy = top + 12 + rows * (th + gap) + 4;
         Rarity[] rs = Rarity.values();
-        int per = rw >= 230 ? 3 : 2;
+        if (rw < 260) {
+            // one line of coloured dots with the odds; names are in each knife's tooltip
+            int x = rx;
+            for (int i = rs.length - 1; i >= 0; i--) {
+                String o = rs[i].odds();
+                Draw.rrect(g, x, oy + 1, 6, 6, 3, rs[i].colour);
+                Draw.text(g, o, x + 8, oy, 0xFFB0BEDC);
+                x += 8 + Draw.width(o) + 7;
+            }
+            Draw.text(g, Draw.fit("Olympian \u2192 Mortal", rw), rx, oy + 11, FAINT);
+            if (hover != null) tooltip(g, mx, my, hover);
+            return;
+        }
+        int per = 3;
         for (int i = rs.length - 1, k = 0; i >= 0; i--, k++) {
             if (oy + (k / per) * 11 > bottom - 8) break;
             int x = rx + (k % per) * (rw / per), y = oy + (k / per) * 11;
@@ -846,13 +862,13 @@ public final class CratesScreen extends Screen {
             // white pop as it appears
             if (u < 0.3f) g.fill(0, 0, width, height, Draw.rgba(0xFFFFFFFF, 0.55f * (1f - u / 0.3f)));
             // rarity light, rotating rays
-            Draw.glow(g, cx - 120, cy - 80, 240, 160, 80, col, 60, 0.09f * e);
+            Draw.glow(g, cx - 90, cy - 50, 180, 100, 50, col, 70, 0.012f * e);
             int rays = 28;
             float rot = clock * 0.25f;
             int len = Math.round(Math.max(width, height) * 0.75f);
             for (int i = 0; i < rays; i++) {
                 double a = rot + i * Math.PI * 2 / rays;
-                float alpha = (i % 2 == 0 ? 0.10f : 0.05f) * e;
+                float alpha = (i % 2 == 0 ? 0.13f : 0.06f) * e;
                 for (int k = -2; k <= 2; k++) {
                     double aa = a + k * 0.018;
                     Draw.line(g, cx, cy, cx + (float) Math.cos(aa) * len, cy + (float) Math.sin(aa) * len, 3f, Draw.rgba(col, alpha * (1f - Math.abs(k) * 0.25f)));
