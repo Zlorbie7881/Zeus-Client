@@ -76,6 +76,14 @@ All commands are handled by your game and are never sent to the server.
 
 Zeus AI runs on an AI provider with your own API key, or fully offline through Ollama or LM Studio. Groq and Google Gemini give free keys. Run `/zeus ai tutorial` in a world and it walks you through every step with clickable buttons. Start a normal chat message with **@** (for example `@mine 10 iron`) and it goes straight to Zeus AI, never to the server; the prefix can be changed in the settings. Press **J** to open chat with `/zeus ai ` already typed. Turn on **Chat window** in Zeus AI Functions for a small on-screen chat of your requests and its answers. The key is stored only in your local config and is shown masked in chat. Without a key, a built-in parser still handles simple commands like `on sprint` or `set killaura range to 4`.
 
+### Zeus Crates
+**Zeus Crates** on the title screen is where knives are unlocked. Everyone starts with the Stock karambit; every other knife (72 in all, nine types) comes out of one of six crates: Olympus, Tempest, Hades, Nyx, Poseidon and Titan. Each knife has a rarity: Mortal 60%, Heroic 25%, Divine 10%, Titan 4%, Olympian 1%.
+
+- Opening a crate needs a key. Keys cost 30 Zeus tokens; you earn 1 token for every 5 minutes of active play (standing still earns nothing).
+- A free random crate drops every 90 minutes of play.
+- A knife you already own gives tokens back instead, more for rarer drops.
+- Promo codes (Redeem tab) unlock free crates with their keys. Each code works once per player.
+
 ### Control page
 
 `/zeus website` serves a page at `http://127.0.0.1:8765`, reachable only from your own computer. Paste the access token it prints in chat to connect. From there you can toggle modules, edit every setting, save presets, schedule changes and use an emergency disable-all.

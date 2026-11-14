@@ -71,6 +71,12 @@ public class ZeusScreensTest implements FabricClientGameTest {
             c.options.guiScale().set(0);
             c.resizeDisplay();
         });
+        int first = com.zlorbie788.zeus.ui.KnifeArt.allKnives().length - com.zlorbie788.zeus.ui.KnifeArt.HD_COUNT;
+        ctx.setScreen(() -> new com.zlorbie788.zeus.ui.KnifePickerScreen(null, first + Crates.starterHd(),
+                new int[com.zlorbie788.zeus.ui.KnifeArt.allKnives().length], (k, f) -> { }));
+        run(ctx, 0.8f);
+        ctx.takeScreenshot("picker_karambit");
+        ctx.setScreen(() -> null);
         try (TestSingleplayerContext sp = ctx.worldBuilder().create()) {
             sp.getClientWorld().waitForChunksRender();
             ctx.runOnClient(c -> KnifeSwing.equipHd(Crates.hdOf("karambit_bloodstone")));

@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(Gui.class)
 public abstract class TabListPrivacyMixin {
     @Inject(method = "renderTabList", at = @At("HEAD"), cancellable = true, require = 0)
-    private void zeus$hideTabList(GuiGraphics graphics, CallbackInfo ci) {
+    private void zeus$hideTabList(GuiGraphics graphics, net.minecraft.client.DeltaTracker delta, CallbackInfo ci) {
         if (StreamerPrivacy.hideTabList()) ci.cancel();
     }
 }
