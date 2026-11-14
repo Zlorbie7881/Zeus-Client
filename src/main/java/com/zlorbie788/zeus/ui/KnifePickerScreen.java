@@ -23,7 +23,7 @@ public final class KnifePickerScreen extends Screen {
 
     private static final String[][] TYPE_ABOUT = {
             {"Tactical", "A straight drop-point fighter with a ribbed grip. The all-rounder."},
-            {"Karambit", "A hooked claw blade with a finger ring at the pommel, made for spinning."},
+            {"Karambit", "A hooked claw on a grooved grip, with the tang coming through as a steel finger ring."},
             {"M9 Bayonet", "Military bayonet with a sawback spine, a fuller and a muzzle ring guard."},
             {"Butterfly", "Two slotted handle halves that swing around the blade. Flip it open."},
             {"Huntsman", "A heavy tanto-point survival knife with a sawback and a black rubber grip."},
@@ -50,6 +50,7 @@ public final class KnifePickerScreen extends Screen {
             {"Night", "Blackened satin steel with a bright ground edge."},
             {"Rust coat", "Orange-brown rust flaking over dark steel."},
             {"Gold leaf", "Polished gold with a faint engraved scroll."},
+            {"Bloodstone", "Dark red marble: crimson clouds over near-black steel."},
     };
 
     /** Knife types in order, each with the HD indices of its skins. */
