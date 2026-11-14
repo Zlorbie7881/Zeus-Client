@@ -776,7 +776,7 @@ public final class ZeusTitleScreen extends Screen {
         Draw.textCenter(g, back, width / 2, height - 23, hotB ? 0xFFFFFFFF : 0x99B4C0D8);
 
         MenuClock.draw(g, width, height, u, Math.max(0f, Math.min(1f, (t - 0.6f) / 0.6f)));
-        if (!UiSettings.CALM.on()) MenuExtras.splash(g, ux(LOGO_X + LOGO_W * 1.06f), uy(LOGO_Y + LOGO_H * 0.80f), u, t);
+        if (!UiSettings.CALM.on()) MenuExtras.splash(g, ux(LOGO_X + LOGO_W * 1.06f) + Draw.widthBold(MenuExtras.splashRaw()) * Math.max(0.7f, Math.min(1.6f, u * 2.4f)) * 0.42f, uy(LOGO_Y + LOGO_H * 0.74f), u, t);
         contBox = MenuExtras.continueCard(g, plateX() - Math.round(12 * u), plateY(0), plateY(1) + plateH() - plateY(0), u, mouseX, mouseY, t, dt);
         updBox = MenuExtras.updatePill(g, mouseX, mouseY, t, dt);
 

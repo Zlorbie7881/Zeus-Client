@@ -142,6 +142,10 @@ final class MenuExtras {
         }
     }
 
+    static String splashRaw() {
+        return SPLASH;
+    }
+
     static String splashText() {
         return SPLASH.toLowerCase(Locale.ROOT);
     }
