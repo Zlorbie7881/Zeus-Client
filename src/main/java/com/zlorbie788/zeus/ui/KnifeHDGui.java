@@ -79,6 +79,12 @@ public final class KnifeHDGui {
         }
     }
 
+    /**
+     * VulkanMod cannot build the premultiplied-alpha GUI shader and crashes on it, so with VulkanMod the knife's
+     * highlight layer is drawn with the plain textured shader instead (it looks nearly the same).
+     */
+    private static final boolean VULKAN = net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("vulkanmod");
+
     private static Geo geo(KnifeHD.Model m, KnifeHD.Frame f) {
         Geo geo = new Geo(KnifeHD.sheet(m, f.level), f.level != 1 ? KnifeHD.sheet(m, 1) : null);
         List<KnifeHD.Quad> qs = f.quads;
@@ -88,7 +94,7 @@ public final class KnifeHDGui {
             int end = start;
             while (end < qs.size() && qs.get(end).group == grp) end++;
             boolean light2 = qs.get(start).light;
-            RenderPipeline pipe = light2 ? RenderPipelines.GUI_TEXTURED_PREMULTIPLIED_ALPHA : RenderPipelines.GUI_TEXTURED;
+            RenderPipeline pipe = light2 && !VULKAN ? RenderPipelines.GUI_TEXTURED_PREMULTIPLIED_ALPHA : RenderPipelines.GUI_TEXTURED;
             Batch b = new Batch(pipe, qs, start, end);
             if (b.n > 0) geo.batches.add(b);
             start = end;
