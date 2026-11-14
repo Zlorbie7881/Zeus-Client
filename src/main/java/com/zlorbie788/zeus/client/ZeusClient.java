@@ -99,6 +99,7 @@ public class ZeusClient implements ClientModInitializer {
                 com.zlorbie788.zeus.client.web.LocalControlServer.stop();
                 Zeus.save();
                 com.zlorbie788.zeus.mods.AuctionMind.flush();
+                com.zlorbie788.zeus.core.Crates.flush();
             } catch (Throwable t) {
                 Zeus.LOG.error("Zeus could not finish saving while the game closed", t);
             }

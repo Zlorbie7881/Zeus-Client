@@ -51,57 +51,6 @@ public final class Parity {
         return mc.player != null && mc.level != null && mc.gameMode != null && mc.screen == null;
     }
 
-    public static final class Triggerbot extends Module {
-        private final Targets.Pick who = Targets.pick(this::add, true, true, false);
-        private final Setting.Num delay = add(new Setting.Num("Reaction delay", "How long the target must stay under the crosshair before the hit, like a human reaction.", 90, 0, 400, 10, " ms"));
-        private final Setting.Num charge = add(new Setting.Num("Swing charge", "How charged the swing must be (1 is full).", 0.92, 0.1, 1.0, 0.02, ""));
-        private final Setting.Bool weaponOnly = add(new Setting.Bool("Only with a weapon", "Only hit while holding a sword, axe, mace or trident.", true));
-        private final Setting.Bool pauseUse = add(new Setting.Bool("Pause while eating / blocking", "Do nothing while you are using an item.", true));
-        private Entity watching;
-        private long since;
-        private String shown;
-
-        public Triggerbot() {
-            super("triggerbot", "Triggerbot", "Hits the entity under your crosshair once the swing is charged, after a reaction delay.", Category.COMBAT);
-        }
-
-        @Override
-        protected void onTick(Minecraft mc) {
-            shown = null;
-            if (!ready(mc)) {
-                watching = null;
-                return;
-            }
-            var me = mc.player;
-            if (pauseUse.on() && me.isUsingItem()) return;
-            if (weaponOnly.on() && !Inv.holding(s -> {
-                String n = Names.item(s);
-                return n.endsWith("_sword") || n.endsWith("_axe") || n.equals("mace") || n.equals("trident");
-            })) return;
-            if (!(mc.hitResult instanceof EntityHitResult ehr) || !Targets.accepts(mc, who, ehr.getEntity())) {
-                watching = null;
-                return;
-            }
-            Entity e = ehr.getEntity();
-            long now = System.currentTimeMillis();
-            if (e != watching) {
-                watching = e;
-                since = now;
-            }
-            shown = e.getName().getString();
-            if (now - since < delay.get() || me.getAttackStrengthScale(0f) < charge.get()) return;
-            if (Phantom.miss()) return;
-            mc.gameMode.attack(me, e);
-            me.swing(InteractionHand.MAIN_HAND);
-            since = now + 60;
-        }
-
-        @Override
-        public String info() {
-            return shown;
-        }
-    }
-
     public static final class WTap extends Module {
         private final Setting.Num ticks = add(new Setting.Num("Release time", "How many ticks the sprint stays off.", 1, 1, 4, 1, " ticks"));
         private final Setting.Num chance = add(new Setting.Num("Chance", "How often it taps.", 100, 10, 100, 5, " %"));
@@ -132,28 +81,6 @@ public final class Parity {
                 me.setSprinting(false);
             }
             attackWas = attack;
-        }
-    }
-
-    public static final class JumpReset extends Module {
-        private final Setting.Num chance = add(new Setting.Num("Chance", "How often it jumps when you are hit.", 100, 10, 100, 5, " %"));
-        private int lastHurt;
-
-        public JumpReset() {
-            super("jumpreset", "Jump Reset", "Jumps the tick a hit lands, to take less of the knockback.", Category.COMBAT);
-        }
-
-        @Override
-        protected void onTick(Minecraft mc) {
-            if (mc.player == null || mc.level == null) return;
-            var me = mc.player;
-            int hurt = me.hurtTime;
-            boolean fresh = hurt > 0 && hurt >= lastHurt && hurt >= 8;
-            lastHurt = hurt;
-            if (!fresh || !me.onGround() || me.isInWater() || me.onClimbable() || me.isPassenger()) return;
-            if (RNG.nextInt(100) >= chance.i()) return;
-            Vec3 v = me.getDeltaMovement();
-            me.setDeltaMovement(v.x, Math.max(v.y, 0.42), v.z);
         }
     }
 
@@ -742,9 +669,7 @@ public final class Parity {
 
     public static List<Module> all() {
         List<Module> m = new ArrayList<>();
-        m.add(new Triggerbot());
         m.add(new WTap());
-        m.add(new JumpReset());
         m.add(new ShieldBreaker());
         m.add(new MaceSwap());
         m.add(new KeyThrow());

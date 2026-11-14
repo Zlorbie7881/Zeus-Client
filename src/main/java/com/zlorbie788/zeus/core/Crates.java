@@ -277,8 +277,16 @@ public final class Crates {
             {"1817626fe56470c32b02fc51caab3996b6a8915c1b6cc5349d5a55af178a731b", "random:1"},
             {"6dea54b17c2ad5be3ea52bad89f0d7accb1311c257393758c443f5d347fa684e", "all:1"},
             {"067d5ff5449328b3aa1828c58d970b9ada777f89bcb6272e4a51f4b510836203", "random:1"},
-            {"0be4d3a13396c9656696819dcd4ed24e0ef43113aae508b6ca0debe6c733e495", "random:2"}
+            {"0be4d3a13396c9656696819dcd4ed24e0ef43113aae508b6ca0debe6c733e495", "random:2"},
+            // admin: keys only, works any number of times ("*" = reusable)
+            {"3aa6ba0b339531d4dd7de2311eda45c3631d697b062999f7bec01af6c27b4e18", "keys:99:*"}
     };
+    /** Keys are capped so a reusable code can never overflow the count. */
+    public static final int MAX_KEYS = 9999;
+    private static final int MAX_FAILS = 5;
+    private static final long LOCK_MS = 30_000L;
+    private static int fails;
+    private static long lockedUntil;
 
     // ------------------------------------------------------------------ state
     private static int tokens;
@@ -399,7 +407,7 @@ public final class Crates {
     // ------------------------------------------------------------------ actions
     public static boolean buyKey() {
         load();
-        if (tokens < KEY_PRICE) return false;
+        if (tokens < KEY_PRICE || keys >= MAX_KEYS) return false;
         tokens -= KEY_PRICE;
         keys++;
         save(true);
@@ -483,16 +491,28 @@ public final class Crates {
 
     public static Redeem redeem(String raw) {
         load();
-        String code = raw == null ? "" : raw.trim().toUpperCase(Locale.ROOT).replace(' ', '-');
+        long now = System.currentTimeMillis();
+        if (now < lockedUntil) return new Redeem(false, "Too many wrong codes. Try again in " + ((lockedUntil - now + 999) / 1000) + "s.");
+        String code = raw == null ? "" : raw.trim().toUpperCase(Locale.ROOT).replaceAll("\\s+", "-");
         if (code.isEmpty()) return new Redeem(false, "Type a code first.");
         if (!code.startsWith("ZEUS-") && code.length() == 8) code = "ZEUS-" + code.substring(0, 4) + "-" + code.substring(4);
         String h = sha(SALT + code);
         for (String[] c : CODES) {
             if (!c[0].equals(h)) continue;
-            if (redeemed.contains(h)) return new Redeem(false, "That code has already been used on this account.");
-            redeemed.add(h);
+            fails = 0;
             String[] parts = c[1].split(":");
             int n = Integer.parseInt(parts[1]);
+            boolean reusable = parts.length > 2 && parts[2].equals("*");
+            if (!reusable && redeemed.contains(h)) return new Redeem(false, "That code has already been used on this account.");
+            if (parts[0].equals("keys")) {
+                int add = Math.min(n, MAX_KEYS - keys);
+                if (add <= 0) return new Redeem(false, "You already hold the most keys you can (" + MAX_KEYS + ").");
+                keys += add;
+                if (!reusable) redeemed.add(h);
+                save(true);
+                return new Redeem(true, "Added " + add + (add == 1 ? " key" : " keys") + ". You now hold " + keys + ".");
+            }
+            if (!reusable) redeemed.add(h);
             List<String> got = new ArrayList<>();
             List<String> which = new ArrayList<>();
             if (parts[0].equals("all")) for (Crate cr : CRATES) which.add(cr.id);
@@ -500,11 +520,16 @@ public final class Crates {
             else for (String s : parts[0].split("\\+")) for (int i = 0; i < n; i++) which.add(s);
             for (String id : which) {
                 held.merge(id, 1, Integer::sum);
-                keys++;
+                if (keys < MAX_KEYS) keys++;
                 got.add(crate(id).name);
             }
             save(true);
             return new Redeem(true, "Unlocked " + summary(got) + (which.size() == 1 ? " and a key" : " and " + which.size() + " keys") + ".");
+        }
+        if (++fails >= MAX_FAILS) {
+            fails = 0;
+            lockedUntil = now + LOCK_MS;
+            return new Redeem(false, "That code is not valid. Too many tries, wait 30s.");
         }
         return new Redeem(false, "That code is not valid.");
     }
@@ -590,10 +615,15 @@ public final class Crates {
         }
     }
 
+    private static final char[] HEX = "0123456789abcdef".toCharArray();
+
     private static String hex(byte[] d) {
-        StringBuilder b = new StringBuilder();
-        for (byte x : d) b.append(String.format("%02x", x));
-        return b.toString();
+        char[] out = new char[d.length * 2];
+        for (int i = 0; i < d.length; i++) {
+            out[i * 2] = HEX[(d[i] >> 4) & 15];
+            out[i * 2 + 1] = HEX[d[i] & 15];
+        }
+        return new String(out);
     }
 
     private static void starter() {
@@ -631,7 +661,7 @@ public final class Crates {
             }
             JsonObject d = JsonParser.parseString(body).getAsJsonObject();
             tokens = d.get("tokens").getAsInt();
-            keys = d.get("keys").getAsInt();
+            keys = Math.max(0, Math.min(MAX_KEYS, d.get("keys").getAsInt()));
             activeMs = d.get("active").getAsLong();
             dropMs = d.get("drop").getAsLong();
             earned = d.has("earned") ? d.get("earned").getAsLong() : 0;
@@ -651,6 +681,11 @@ public final class Crates {
             Zeus.LOG.warn("Zeus Crates: could not read crates.dat", e);
             starter();
         }
+    }
+
+    /** Saves on exit, but only if the crate data was ever read (never creates the file just to close). */
+    public static synchronized void flush() {
+        if (loaded) save(true);
     }
 
     public static synchronized void save(boolean now) {
@@ -692,8 +727,13 @@ public final class Crates {
             Files.createDirectories(file().getParent());
             Path tmp = file().resolveSibling("crates.dat.tmp");
             Files.writeString(tmp, new Gson().toJson(root));
-            Files.move(tmp, file(), java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            try {
+                Files.move(tmp, file(), java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+                Files.move(tmp, file(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
         } catch (Exception e) {
+            dirty = true;
             Zeus.LOG.warn("Zeus Crates: could not save crates.dat", e);
         }
     }
