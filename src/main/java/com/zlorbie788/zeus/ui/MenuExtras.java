@@ -34,7 +34,7 @@ final class MenuExtras {
         float appear = clamp01((t - 0.75f) / 0.5f);
         if (appear <= 0f) return null;
         float ease = 1f - (1f - appear) * (1f - appear) * (1f - appear);
-        int w = Math.max(96, Math.round(250 * u));
+        int w = Math.max(112, Math.round(280 * u));
         int x = right - w - Math.round((1f - ease) * 18f);
         boolean hot = mx >= x && mx < x + w && my >= y && my < y + h;
         hotContinue += ((hot ? 1f : 0f) - hotContinue) * (1f - (float) Math.exp(-dt * 12f));
@@ -65,7 +65,7 @@ final class MenuExtras {
         if (build <= 0) return null;
         float appear = clamp01((t - 1.2f) / 0.5f);
         if (appear <= 0) return null;
-        String s = "UPDATE AVAILABLE  ·  BUILD " + build;
+        String s = "NEW UPDATE";
         int w = Draw.widthBold(s) + 28, h = 16;
         int x = 8, y = 8 - Math.round((1f - appear) * 10f);
         boolean hot = mx >= x && mx < x + w && my >= y && my < y + h;
@@ -79,7 +79,7 @@ final class MenuExtras {
         g.fill(ax + 2, ay + 4, ax + 5, ay + 8, Draw.rgba(0xFF1A1206, appear));
         Draw.bold(g, s, x + 18, y + 4, Draw.rgba(0xFF1A1206, appear));
         if (hot) {
-            String tip = "Click to download the newest Zeus";
+            String tip = "Build " + build + " is out. Click to download it.";
             Draw.rrect(g, x, y + h + 3, Draw.width(tip) + 10, 13, 4, 0xF0050914);
             Draw.text(g, tip, x + 5, y + h + 6, 0xFFE9F1FF);
         }
