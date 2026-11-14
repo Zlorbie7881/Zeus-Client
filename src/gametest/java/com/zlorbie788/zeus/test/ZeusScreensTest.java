@@ -107,6 +107,55 @@ public class ZeusScreensTest implements FabricClientGameTest {
         run(ctx, 0.8f);
         ctx.takeScreenshot("picker_karambit");
         ctx.setScreen(() -> null);
+        // keybinds keyboard: link a few modules (two share G), then photograph it at a few sizes
+        ctx.runOnClient(c -> {
+            int[] keys = {org.lwjgl.glfw.GLFW.GLFW_KEY_R, org.lwjgl.glfw.GLFW.GLFW_KEY_G, org.lwjgl.glfw.GLFW.GLFW_KEY_G, org.lwjgl.glfw.GLFW.GLFW_KEY_V, org.lwjgl.glfw.GLFW.GLFW_KEY_KP_5};
+            int i = 0;
+            for (com.zlorbie788.zeus.core.Module m : com.zlorbie788.zeus.core.Zeus.all()) {
+                if (i >= keys.length) break;
+                if (!m.toggleable() || m.key == null) continue;
+                m.key.setKey(com.mojang.blaze3d.platform.InputConstants.Type.KEYSYM.getOrCreate(keys[i++]));
+            }
+            m4: for (com.zlorbie788.zeus.core.Module m : com.zlorbie788.zeus.core.Zeus.all()) {
+                if (m.toggleable() && m.key != null && m.key.isUnbound()) {
+                    m.key.setKey(com.mojang.blaze3d.platform.InputConstants.Type.MOUSE.getOrCreate(3));
+                    break m4;
+                }
+            }
+            net.minecraft.client.KeyMapping.resetMapping();
+        });
+        int[][] ksizes = {{1920, 1080, 0}, {1920, 1080, 2}, {854, 480, 0}};
+        for (int[] s : ksizes) {
+            ctx.getInput().resizeWindow(s[0], s[1]);
+            ctx.runOnClient(c -> {
+                c.options.guiScale().set(s[2]);
+                c.resizeDisplay();
+            });
+            String tag = s[0] + "_" + (s[2] == 0 ? "auto" : "gui" + s[2]);
+            ctx.setScreen(() -> new com.zlorbie788.zeus.ui.KeybindScreen(null));
+            run(ctx, 0.5f);
+            ctx.takeScreenshot("keys_" + tag);
+            ctx.runOnClient(c -> {
+                try {
+                    Method sel = c.screen.getClass().getDeclaredMethod("select", Class.forName("com.zlorbie788.zeus.ui.KeybindScreen$Cap"));
+                    Method cap = c.screen.getClass().getDeclaredMethod("capFor", com.mojang.blaze3d.platform.InputConstants.Key.class);
+                    sel.setAccessible(true);
+                    cap.setAccessible(true);
+                    sel.invoke(c.screen, cap.invoke(c.screen, com.mojang.blaze3d.platform.InputConstants.Type.KEYSYM.getOrCreate(org.lwjgl.glfw.GLFW.GLFW_KEY_G)));
+                } catch (ReflectiveOperationException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            run(ctx, 0.5f);
+            ctx.takeScreenshot("keys_g_" + tag);
+            ctx.setScreen(() -> null);
+            ctx.waitTicks(2);
+        }
+        ctx.getInput().resizeWindow(1920, 1080);
+        ctx.runOnClient(c -> {
+            c.options.guiScale().set(0);
+            c.resizeDisplay();
+        });
         try (TestSingleplayerContext sp = ctx.worldBuilder().create()) {
             sp.getClientWorld().waitForChunksRender();
             ctx.runOnClient(c -> KnifeSwing.equipHd(Crates.hdOf("karambit_bloodstone")));
