@@ -450,6 +450,7 @@ public final class AiPilot extends Module {
         String id = secret.startsWith("gsk_") ? "groq"
                 : secret.startsWith("sk-or-") ? "openrouter"
                 : secret.startsWith("AIza") ? "gemini"
+                : secret.startsWith("sk-ant-") ? "claude"
                 : secret.startsWith("sk-proj-") || secret.startsWith("sk-svcacct-") ? "openai"
                 : null;
         if (id == null) return null;
@@ -511,10 +512,12 @@ public final class AiPilot extends Module {
     public record Provider(String id, String label, String url, String model, String keys, boolean free, boolean keyless) {}
 
     public static final List<Provider> PROVIDERS = List.of(
-            new Provider("groq", "Groq", "https://api.groq.com/openai/v1/chat/completions", "llama-3.3-70b-versatile",
+            new Provider("groq", "Groq", "https://api.groq.com/openai/v1/chat/completions", "openai/gpt-oss-120b",
                     "https://console.groq.com/keys", true, false),
             new Provider("gemini", "Google Gemini", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-                    "gemini-2.0-flash", "https://aistudio.google.com/app/apikey", true, false),
+                    "gemini-3.5-flash", "https://aistudio.google.com/app/apikey", true, false),
+            new Provider("claude", "Anthropic Claude", "https://api.anthropic.com/v1/chat/completions", "claude-haiku-5-5",
+                    "https://platform.claude.com/settings/keys", false, false),
             new Provider("openrouter", "OpenRouter", "https://openrouter.ai/api/v1/chat/completions", "openai/gpt-4o-mini",
                     "https://openrouter.ai/keys", false, false),
             new Provider("openai", "OpenAI", "https://api.openai.com/v1/chat/completions", "gpt-4o-mini",
@@ -533,6 +536,7 @@ public final class AiPilot extends Module {
         String key = id.trim().toLowerCase(Locale.ROOT).replace(" ", "").replace("-", "");
         for (Provider p : PROVIDERS) if (p.id().equals(key) || p.label().toLowerCase(Locale.ROOT).replace(" ", "").startsWith(key)) return p;
         if (key.equals("google")) return providerById("gemini");
+        if (key.equals("anthropic")) return providerById("claude");
         if (key.equals("chatgpt") || key.equals("gpt")) return providerById("openai");
         return null;
     }
@@ -636,6 +640,7 @@ public final class AiPilot extends Module {
         String base = chat.endsWith("/chat/completions") ? chat.substring(0, chat.length() - "/chat/completions".length()) : chat;
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(base + "/models")).timeout(Duration.ofSeconds(20)).GET();
         if (secret != null && !secret.isBlank()) builder.header("Authorization", "Bearer " + secret.trim());
+        if (base.contains("anthropic.com") && secret != null && !secret.isBlank()) builder.header("x-api-key", secret.trim()).header("anthropic-version", "2023-06-01");
         HttpResponse<String> response = HTTP.send(builder.build(), HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IllegalStateException(explainError(response.statusCode(), errorText(response.body())));
@@ -666,26 +671,53 @@ public final class AiPilot extends Module {
     static String replacementModel(String old, List<String> ids) {
         if (ids.isEmpty()) return null;
         String o = old == null ? "" : old.toLowerCase(Locale.ROOT);
-        String family = o.replaceAll("[^a-z]+.*$", "");
-        String[] prefer = {"llama-3.3-70b", "gpt-4o-mini", "gpt-4.1-mini", "gemini-2.5-flash", "gemini-2.0-flash", "deepseek-chat",
-                "mistral-small", "qwen", "llama", "gpt", "gemini", "mistral"};
-        if (!family.isEmpty()) {
-            for (String id : ids) {
-                String l = id.toLowerCase(Locale.ROOT);
-                if (l.startsWith(family) && !l.contains("vision") && !l.contains("preview")) return id;
-            }
-        }
-        for (String want : prefer) {
-            for (String id : ids) {
-                String l = id.toLowerCase(Locale.ROOT);
-                if (l.contains(want) && !l.contains("vision") && !l.contains("mini-tts")) return id;
-            }
-        }
+        String fam = o.replaceAll("^[a-z0-9-]*/", "").replaceAll("[^a-z]+.*$", "");
+        String tier = tier(o);
+        // cheap, fast general chat models first: what this mod needs for short JSON plans
+        String[] prefer = {"gpt-oss-120b", "gemini", "claude", "gpt", "deepseek-chat", "mistral-small", "qwen", "llama", "mistral"};
+        String best = null;
+        long bestScore = Long.MIN_VALUE;
         for (String id : ids) {
             String l = id.toLowerCase(Locale.ROOT);
-            if (l.contains("instruct") || l.contains("chat")) return id;
+            if (l.equals(o) || l.contains("guard") || l.contains("vision") || l.contains("embed") || l.contains("tts")) continue;
+            String bare = l.replaceAll("^[a-z0-9-]*/", "");
+            long sc = 0;
+            if (!fam.isEmpty() && bare.startsWith(fam)) sc += 1000;          // same family as the retired model
+            if (!tier.isEmpty() && l.contains(tier)) sc += 300;              // and the same size class
+            for (int k = 0; k < prefer.length; k++) {
+                if (l.contains(prefer[k])) {
+                    sc += 200 - k * 15;
+                    break;
+                }
+            }
+            if (l.contains("preview") || l.contains("-exp") || l.contains("experimental")) sc -= 400;   // can vanish at short notice
+            if (l.contains("lite") || l.contains("nano")) sc -= 60;
+            if (l.contains("pro") || l.contains("opus") || l.contains("large") || l.contains("ultra")) sc -= 90;   // slow and costly
+            if (l.contains("instruct") || l.contains("chat")) sc += 10;
+            int[] v = version(bare);
+            sc = sc * 10_000 + v[0] * 100L + v[1];                            // newest version breaks ties
+            if (sc > bestScore) {
+                bestScore = sc;
+                best = id;
+            }
         }
-        return ids.get(0);
+        return best == null ? ids.get(0) : best;
+    }
+
+    private static final String[] TIERS = {"flash", "mini", "haiku", "small", "chat", "instant", "turbo", "sonnet", "medium"};
+
+    private static String tier(String l) {
+        for (String t : TIERS) if (l.contains(t)) return t;
+        return "";
+    }
+
+    /** The first version number in a model id (3.5 in gemini-3.5-flash); dates do not count. */
+    private static int[] version(String id) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+)(?:\\.(\\d+))?").matcher(id);
+        if (!m.find()) return new int[] {0, 0};
+        int a = Integer.parseInt(m.group(1));
+        int b = m.group(2) == null ? 0 : Integer.parseInt(m.group(2));
+        return a > 1000 ? new int[] {0, 0} : new int[] {a, b};
     }
 
     /**
@@ -1409,7 +1441,25 @@ public final class AiPilot extends Module {
         return body(instruction, false);
     }
 
+    /** Models the providers have shut down, and what each preset uses now; a saved old name moves over by itself. */
+    private static final java.util.Map<String, String> RETIRED = java.util.Map.of(
+            "gemini-2.0-flash", "gemini-3.5-flash",
+            "gemini-2.0-flash-001", "gemini-3.5-flash",
+            "gemini-2.0-flash-lite", "gemini-3.1-flash-lite",
+            "llama-3.3-70b-versatile", "openai/gpt-oss-120b",
+            "llama-3.1-8b-instant", "openai/gpt-oss-20b");
+
+    private void migrateModel() {
+        String now = model.get() == null ? "" : model.get().trim();
+        String next = RETIRED.get(now);
+        if (next == null) return;
+        model.set(next);
+        Zeus.save();
+        Minecraft.getInstance().execute(() -> Notify.info("Zeus AI: " + now + " was shut down by the provider, switched to " + next));
+    }
+
     private String body(String instruction, boolean bare) {
+        migrateModel();
         JsonObject root = new JsonObject();
         root.addProperty("model", model.get().trim());
         if (!noTemperature) root.addProperty("temperature", temperature.get());

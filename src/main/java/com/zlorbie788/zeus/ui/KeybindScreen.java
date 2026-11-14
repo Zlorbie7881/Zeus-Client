@@ -267,10 +267,15 @@ public final class KeybindScreen extends Screen {
         renderBackground(g, mx, my, partialTick);
 
         // sizes: the keyboard takes the top, the module list the rest
-        u = Math.min(40f, Math.min((width - 24) / KB_W, (height * 0.5f) / KB_H));
+        // on short screens the keyboard gets nearly all the height, and the list slides up over it when needed
+        boolean compact = height < 360;
+        u = Math.min(40f, Math.min((width - 24) / KB_W, (compact ? height - 80f : height * 0.5f) / KB_H));
         int kw = Math.round(KB_W * u), kh = Math.round(KB_H * u);
         kx = (width - kw) / 2;
         ky = 30;
+        panelY = ky + kh + 14;
+        if (compact && (selected != null || listening != null || search.isFocused() || !search.getValue().isEmpty()))
+            panelY = Math.min(panelY, Math.round(height * 0.38f));
         int bound = 0;
         for (Module m : all) if (bound(m)) bound++;
         int shared = 0;
@@ -287,7 +292,7 @@ public final class KeybindScreen extends Screen {
         for (Cap c : CAPS) {
             int x = kx + Math.round(c.x * u), y = ky + Math.round(c.y * u);
             int w = Math.round((c.x + c.w) * u) - Math.round(c.x * u), h = Math.round((c.y + c.h) * u) - Math.round(c.y * u);
-            boolean hot = mx >= x && mx < x + w && my >= y && my < y + h;
+            boolean hot = mx >= x && mx < x + w && my >= y && my < y + h && my < panelY;
             if (hot) hover = c;
             drawCap(g, c, x + 1, y + 1, w - 2, h - 2, hot, q);
         }
@@ -295,8 +300,8 @@ public final class KeybindScreen extends Screen {
         // panel with the module list
         panelX = kx - 8;
         panelW = kw + 16;
-        panelY = ky + kh + 14;
         panelH = height - panelY - 8;
+        if (panelY < ky + kh + 14) g.fill(0, panelY - 6, width, height, 0x99050A14);   // overlay: shade the keys behind
         drawPanel(g, mx, my, partialTick, q);
 
         if (hover != null && listening == null) tooltip(g, hover, mx, my);
@@ -534,7 +539,7 @@ public final class KeybindScreen extends Screen {
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         double x = event.x(), y = event.y();
         int button = event.button();
-        Cap c = capAt(x, y);
+        Cap c = y < panelY ? capAt(x, y) : null;
         if (c != null) {
             search.setFocused(false);
             if (button == 1 && c.bindable) {       // right click a key: unlink everything on it
