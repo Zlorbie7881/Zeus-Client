@@ -112,7 +112,7 @@ public final class AiPilot extends Module {
 
     private enum JobKind { CHOP, MINE_UNTIL, MINE_COUNT, GOTO, FOLLOW, COLLECT, TUNNEL, FARM, SLEEP,
                            REPLANT, EAT, FOOD, FISH, HUNT, FLEE, SHOOT, SHEAR, MILK, QUARRY, PLACE, TORCH, DROP, RETURN, EXPLORE,
-                           HOUSE, SWIM, CLIMB, BRIDGE, TILL, CRAFT, SMELT, STORE, TAKE }
+                           HOUSE, SWIM, CLIMB, BRIDGE, TILL, CRAFT, SMELT, STORE, TAKE, SCHEMATIC }
 
     private static final class Job {
         final JobKind kind;
@@ -124,6 +124,7 @@ public final class AiPilot extends Module {
         long started = System.currentTimeMillis();
         long nextSearch;
         long healUntil;
+        Direction stairDir;
         long nextScan;
         long quietSince;
         BlockPos block;
@@ -195,6 +196,8 @@ public final class AiPilot extends Module {
                 case DROP -> "dropping " + target;
                 case RETURN -> "walking back";
                 case EXPLORE -> "exploring";
+                case SCHEMATIC -> (phase ? "building " + target + " (" + mined + "/" + Math.max(1, wanted) + ")"
+                        : "getting materials for " + target);
                 case HOUSE -> (phase ? "building a house (" + mined + " blocks)"
                         : "gathering materials for a house (" + target.replace('_', ' ') + ")");
                 case SWIM -> "swimming";
@@ -211,6 +214,7 @@ public final class AiPilot extends Module {
 
     private Job job;
     private static BlockPos mining;
+    private static long mineTick = -1;
     private static java.util.List<BlockPos> blueprint;
     private static int blueprintIndex;
     private final java.util.ArrayDeque<String> chain = new java.util.ArrayDeque<>();
@@ -232,6 +236,10 @@ public final class AiPilot extends Module {
     private final Setting.Num perHour = add(new Setting.Num("Requests per hour", "A cap so a stuck loop cannot drain your credits.", 40, 5, 240, 5, ""));
     private final Setting.Num wait = add(new Setting.Num("Seconds between requests", "Keeps the client from hammering the provider.", 4, 1, 60, 1, " s"));
     private final Setting.Bool strictJson = add(new Setting.Bool("Strict JSON", "Asks the provider for a JSON object so the answer parses first time. It switches itself off if the provider rejects the option.", true));
+    private final Setting.Bool chatHud = add(new Setting.Bool("Chat window", "A small chat window on screen for you and Zeus AI: your /zeus ai messages on the right, its answers on the left.", false));
+    private final Setting.Choice chatCorner = add(new Setting.Choice("Chat window place", "Which corner the chat window sits in.", 0, "Bottom right", "Top right", "Top left", "Middle left")).showIf(() -> chatHud.on());
+    private final Setting.Num chatSize = add(new Setting.Num("Chat window size", "How big the chat window is.", 1.0, 0.6, 1.6, 0.1, "x")).showIf(() -> chatHud.on());
+    private final Setting.Bool chatFade = add(new Setting.Bool("Chat window hides when quiet", "Fades the chat window out 30 seconds after the last message. Off: it stays.", true)).showIf(() -> chatHud.on());
     private final Setting.Bool shareChat = add(new Setting.Bool("Share recent chat", "Sends the last few chat lines with each request, so you can say reply to him or what did they say. Off by default because it sends other players' messages to your AI provider.", false));
     private final Setting.Bool selfHeal = add(new Setting.Bool("Retry what failed", "When an action did not take effect, asks the model one more time with the results so it can correct itself.", true));
     private final Setting.Info status = add(new Setting.Info("Status", this::lines));
@@ -257,6 +265,102 @@ public final class AiPilot extends Module {
             CHAT.addLast(line.length() > 140 ? line.substring(0, 140) : line);
             while (CHAT.size() > 8) CHAT.removeFirst();
         }
+    }
+
+    /** The conversation for the chat window: who said it, what, when. */
+    public record Line(boolean you, String text, long at) {}
+
+    private static final java.util.Deque<Line> TALK = new ArrayDeque<>();
+
+    public static void talk(boolean you, String text) {
+        if (text == null || text.isBlank()) return;
+        synchronized (TALK) {
+            Line last = TALK.peekLast();
+            if (last != null && last.you() == you && last.text().equals(text)) return;
+            TALK.addLast(new Line(you, text.length() > 240 ? text.substring(0, 240) + "…" : text, System.currentTimeMillis()));
+            while (TALK.size() > 30) TALK.removeFirst();
+        }
+    }
+
+    @Override
+    protected void onHud(net.minecraft.client.gui.GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+        if (!chatHud.on() || mc.options.hideGui) return;
+        java.util.List<Line> lines;
+        synchronized (TALK) {
+            lines = new ArrayList<>(TALK);
+        }
+        long now = System.currentTimeMillis();
+        float alpha = 1f;
+        if (chatFade.on()) {
+            long quiet = lines.isEmpty() ? Long.MAX_VALUE : now - lines.get(lines.size() - 1).at();
+            if (busy || job != null) quiet = 0;
+            alpha = quiet < 30_000 ? 1f : Math.max(0f, 1f - (quiet - 30_000) / 1500f);
+            if (alpha <= 0.01f) return;
+        }
+        float sc = (float) chatSize.get();
+        int pw = Math.round(170 * sc), maxText = pw - 26;
+        // lay out bubbles from the newest up until the window is full
+        int maxH = Math.round(150 * sc);
+        java.util.List<Object[]> bubbles = new ArrayList<>();
+        int used = 0;
+        for (int i = lines.size() - 1; i >= 0 && used < maxH; i--) {
+            Line l = lines.get(i);
+            java.util.List<String> wrapped = wrap(l.text(), maxText);
+            int bh = wrapped.size() * 9 + 6;
+            if (used + bh + 4 > maxH && !bubbles.isEmpty()) break;
+            bubbles.add(0, new Object[] {l, wrapped, bh});
+            used += bh + 4;
+        }
+        String status = busy ? "thinking…" : job != null ? shorten(job.label()) : hasKey() ? "ready" : "no key: /zeus ai tutorial";
+        int ph = used + 22;
+        int corner = chatCorner.index();
+        int x = corner == 0 || corner == 1 ? w - pw - 6 : 6;
+        int y = corner == 0 ? h - ph - 52 : corner == 3 ? (h - ph) / 2 : 6;
+        int a = Math.round(alpha * 255);
+        g.pose().pushMatrix();
+        com.zlorbie788.zeus.ui.Draw.rrect(g, x, y, pw, ph, 6, (Math.round(0.72f * a) << 24) | 0x070B16);
+        com.zlorbie788.zeus.ui.Draw.rrectLine(g, x, y, pw, ph, 6, (Math.round(0.6f * a) << 24) | 0x3A6ACA);
+        com.zlorbie788.zeus.ui.Draw.text(g, "ZEUS AI", x + 7, y + 5, (a << 24) | 0x8CC4FF);
+        com.zlorbie788.zeus.ui.Draw.textRight(g, status, x + pw - 7, y + 5, (Math.round(0.7f * a) << 24) | (busy ? 0xFFD166 : 0x9FB2D8));
+        int by = y + 17;
+        if (bubbles.isEmpty()) {
+            com.zlorbie788.zeus.ui.Draw.text(g, "Type /zeus ai <request>", x + 7, by + 2, (Math.round(0.6f * a) << 24) | 0xFFFFFF);
+        }
+        for (Object[] b : bubbles) {
+            Line l = (Line) b[0];
+            @SuppressWarnings("unchecked") java.util.List<String> wrapped = (java.util.List<String>) b[1];
+            int bh = (int) b[2];
+            int tw = 0;
+            for (String s2 : wrapped) tw = Math.max(tw, com.zlorbie788.zeus.ui.Draw.width(s2));
+            int bw = tw + 10;
+            int bx = l.you() ? x + pw - 7 - bw : x + 7;
+            int fill = l.you() ? 0x2A5CC8 : 0x1C2436;
+            com.zlorbie788.zeus.ui.Draw.rrect(g, bx, by, bw, bh, 4, (Math.round(0.9f * a) << 24) | fill);
+            int ty = by + 3;
+            for (String s2 : wrapped) {
+                com.zlorbie788.zeus.ui.Draw.text(g, s2, bx + 5, ty, (a << 24) | (l.you() ? 0xFFFFFF : 0xE6ECF8));
+                ty += 9;
+            }
+            by += bh + 4;
+        }
+        g.pose().popMatrix();
+    }
+
+    private static java.util.List<String> wrap(String text, int width) {
+        java.util.List<String> out = new ArrayList<>();
+        StringBuilder line = new StringBuilder();
+        for (String word : text.split(" ")) {
+            String next = line.length() == 0 ? word : line + " " + word;
+            if (com.zlorbie788.zeus.ui.Draw.width(next) > width && line.length() > 0) {
+                out.add(line.toString());
+                line = new StringBuilder(word);
+            } else {
+                line = new StringBuilder(next);
+            }
+            if (out.size() >= 6) break;
+        }
+        if (line.length() > 0 && out.size() < 7) out.add(line.toString());
+        return out;
     }
 
     /** Pending reminders: due time and text. */
@@ -595,8 +699,13 @@ public final class AiPilot extends Module {
                 || lowered.equals("same again") || lowered.equals("one more time");
         if (again && lastAsked.isBlank()) return "Nothing to repeat yet.";
         final String prompt = again ? lastAsked : typed;
+        if (!typed.startsWith("These actions were attempted")) talk(true, typed);
         if (!again && !prompt.startsWith("These actions were attempted")) lastAsked = prompt;
         Step work = jobStep(prompt.toLowerCase(Locale.ROOT));
+        if (work != null && !"job".equals(work.action()) && !"stop".equals(work.action())) {
+            apply(work);
+            return lastAction == null || lastAction.isBlank() ? "Done." : capital(lastAction) + ".";
+        }
         if (work != null) {
             if ("stop".equals(work.action())) {
                 boolean was = job != null;
@@ -798,9 +907,13 @@ public final class AiPilot extends Module {
             Notify.info("AI: correcting " + bad + " action(s) that did not take effect");
             return;
         }
-        if (speak.on()) Notify.info("AI: " + summary);
+        if (speak.on()) AiTutorial.chat(summary, failures() > 0);
         RESULTS.clear();
         followUps = 0;
+    }
+
+    private static String capital(String s) {
+        return s.isEmpty() ? s : Character.toUpperCase(s.charAt(0)) + s.substring(1);
     }
 
     private static boolean failed(String result) {
@@ -907,6 +1020,18 @@ public final class AiPilot extends Module {
             }
             case "theme" -> {
                 theme(step.value());
+                return;
+            }
+            case "schematics" -> {
+                java.util.List<java.nio.file.Path> files = SchematicPlan.files();
+                if (files.isEmpty()) AiTutorial.chat("No schematics yet. Save one with Litematica or drop .litematic files into the schematics folder of this instance.", true);
+                else AiTutorial.schematics(files);
+                lastAction = files.size() + " schematic(s) listed";
+                return;
+            }
+            case "materials" -> {
+                for (String line : schematicReport(step.value())) AiTutorial.chat(line, false);
+                lastAction = "listed the materials for " + step.value();
                 return;
             }
             case "look", "face", "look_at" -> {
@@ -1247,6 +1372,9 @@ public final class AiPilot extends Module {
         StringBuilder builder = new StringBuilder();
         builder.append("You are Zeus AI, the assistant inside the Zeus Minecraft client. You turn what the player types into actions. Answer with one JSON object only, no prose outside it, no code fences.\n");
         builder.append("Schema: {\"say\":\"one short friendly sentence for the player\",\"actions\":[{\"do\":\"<verb>\",\"module\":\"<id>\",\"setting\":\"<exact setting name>\",\"value\":\"<new value>\"}]}\n");
+        builder.append("Schematics: job value build schematic <name> gathers the materials (chops, mines, crafts, smelts what it can) and then builds it 3 blocks in front of the player; add here to restart it at the current spot. do=materials with value <name> lists what it needs; do=schematics lists the files.\n");
+        builder.append("Plan like a player: for a goal that needs several jobs, chain them with then in one job value, checking the inventory in the context first. Example, diamonds with no iron pickaxe: prepare then mine until iron then smelt 3 iron then craft iron pickaxe then mine until diamond. Do not repeat steps the inventory shows are already done.\n");
+        builder.append("Finding ores: always use the job mine until <ore> (it digs a safe staircase to the right depth). Never use dig down to look for ores; digging straight down is dangerous.\n");
         builder.append("look turns the player toward value: coordinates (x y z), the nearest player or mob, a mob name or a block name. remind sets a chat reminder: value is minutes then the text, for example 10 check the furnace (use 30s or 2h for other units).\n");
         builder.append("Verbs: on, off, toggle, set (need module); job, stop, hold, look, remind, preset, theme, waypoint, explain, remember, forget, report, help, open, hud, keybinds, panic, undo (no module). hold puts an item in hand: value is the item (pickaxe, bread, diamond sword, nothing).\n");
         builder.append("Examples:\n");
@@ -1649,6 +1777,13 @@ public final class AiPilot extends Module {
                 return new Step("job", "", "", text);
             }
         }
+        if (text.matches("^(build|print|make)( the| my)? schematic.*") || text.startsWith("schematic ")
+                || (text.startsWith("build ") && !text.contains("house") && !text.contains("bridge") && SchematicPlan.find(text.substring(6)) != null)) {
+            return new Step("job", "", "", text.replaceFirst("^make", "build"));
+        }
+        if (text.matches("^(list|show)( the| my)? schematics?$") || text.equals("schematics")) return new Step("schematics", "", "", "");
+        java.util.regex.Matcher mats = java.util.regex.Pattern.compile("^(?:materials|material list|what do i need) (?:for )?(.+)$").matcher(text);
+        if (mats.find() && SchematicPlan.find(mats.group(1)) != null) return new Step("materials", "", "", mats.group(1));
         java.util.regex.Matcher forest = java.util.regex.Pattern
                 .compile("(?:chop|cut|break|mine|get) (\\d+) trees?").matcher(text);
         if (forest.find()) return new Step("job", "", "", "chop " + forest.group(1) + " trees");
@@ -1920,6 +2055,35 @@ public final class AiPilot extends Module {
             float yaw = mc.player.getYRot();
             Vec3 dir = new Vec3(-Math.sin(Math.toRadians(yaw)), 0, Math.cos(Math.toRadians(yaw))).normalize();
             started = new Job(JobKind.EXPLORE, "", away, mc.player.position().add(dir.scale(away)));
+        } else if (text.startsWith("schematic") || text.startsWith("build schematic") || text.startsWith("build the schematic")
+                || text.startsWith("print ") || (text.startsWith("build ") && SchematicPlan.find(text.substring(6)) != null
+                && !text.contains("house") && !text.contains("bridge"))) {
+            String name = text.replaceFirst("^(build the schematic|build my schematic|build schematic|schematic|print|build)\\s*", "").trim();
+            boolean fresh = name.endsWith(" here") || name.equals("here");
+            name = name.replaceFirst("\\s*here$", "").trim();
+            java.nio.file.Path file = SchematicPlan.find(name);
+            if (file == null) {
+                Notify.warn(SchematicPlan.files().isEmpty()
+                        ? "No schematics found. Put .litematic files in the schematics folder of this instance."
+                        : "No schematic called " + name + ". Try /zeus ai schematics");
+                return false;
+            }
+            String shown = SchematicPlan.display(file);
+            if (schem == null || !schem.file.equals(file) || fresh) {
+                try {
+                    BlockPos origin = mc.player.blockPosition().relative(facing(mc.player.getYRot()), 3);
+                    schem = SchematicPlan.load(file, origin);
+                    schemIndex = 0;
+                    schemTried.clear();
+                    schemSkipped = 0;
+                    AiTutorial.chat("Building " + shown + ": " + schem.order.size() + " blocks, " + schem.needs.size()
+                            + " kinds of material, starting 3 blocks in front of you at " + origin.getX() + " " + origin.getY() + " " + origin.getZ() + ".", false);
+                } catch (Exception e) {
+                    Notify.warn("Could not read " + shown + ": " + e.getMessage());
+                    return false;
+                }
+            }
+            started = new Job(JobKind.SCHEMATIC, shown, schem.order.size(), null);
         } else if (text.startsWith("house") || text.contains("build a house") || text.contains("make a house")) {
             started = new Job(JobKind.HOUSE, "", 0, null);
         } else if (text.startsWith("swim")) {
@@ -2089,6 +2253,16 @@ public final class AiPilot extends Module {
                 Notify.info("Zeus AI: dropped " + chain.size() + " queued job(s) after the stop");
                 chain.clear();
             }
+            // A job that failed on its own (not stopped by the player) goes back to the model with the
+            // reason, so it can work around it: make the missing tool, go somewhere else, try another way.
+            boolean byPlayer = reason.contains("stopped by") || reason.equals("stopped") || reason.contains("switched off") || reason.contains("you died");
+            if (!byPlayer && selfHeal.on() && hasSecret() && followUps < 2 && !lastAsked.isBlank() && followAt == 0) {
+                followUps++;
+                followPrompt = "These actions were attempted and produced these results: the job '" + label + "' stopped because " + reason
+                        + ". The player originally asked: " + lastAsked + ". Work around the problem and carry on with the request, or explain in say why it cannot be done. Reply with the single JSON object and nothing else.";
+                followAt = System.currentTimeMillis() + 1500L;
+                AiTutorial.chat("That did not work (" + reason + "), thinking of another way…", true);
+            }
             return;
         }
         if (!chain.isEmpty()) {
@@ -2213,6 +2387,7 @@ public final class AiPilot extends Module {
             case RETURN -> returnTick(mc);
             case EXPLORE -> exploreTick(mc);
             case HOUSE -> houseTick(mc);
+            case SCHEMATIC -> schematicTick(mc);
             case SWIM -> swimTick(mc);
             case CLIMB -> climbTick(mc);
             case BRIDGE -> bridgeTick(mc);
@@ -3208,6 +3383,172 @@ public final class AiPilot extends Module {
         if (walkTo(mc, job.to, 2.5)) endJob(mc, "explored the area");
     }
 
+    // ------------------------------------------------------------------ schematics
+    private static SchematicPlan schem;
+    private static int schemIndex;
+    private static int schemSkipped;
+    private static final java.util.Map<net.minecraft.world.item.Item, Integer> schemTried = new java.util.HashMap<>();
+    private static long schemCellSince;
+    private static int schemDeferred;
+
+    /** What is still missing for the rest of the build, as item -> count. */
+    private java.util.Map<net.minecraft.world.item.Item, Integer> schemMissing(Minecraft mc) {
+        java.util.Map<net.minecraft.world.item.Item, Integer> need = new java.util.LinkedHashMap<>();
+        for (int i = schemIndex; i < schem.order.size(); i++) {
+            SchematicPlan.Place pl = schem.order.get(i);
+            if (mc.level.getBlockState(pl.at()).is(pl.block())) continue;
+            need.merge(pl.item(), 1, Integer::sum);
+        }
+        java.util.Map<net.minecraft.world.item.Item, Integer> missing = new java.util.LinkedHashMap<>();
+        for (var e : need.entrySet()) {
+            net.minecraft.world.item.Item item = e.getKey();
+            int have = countItems(mc, st -> st.is(item));
+            if (have < e.getValue()) missing.put(item, e.getValue() - have);
+        }
+        return missing;
+    }
+
+    /** "materials for <schematic>" as chat lines: what it needs, what you have, what it can get itself. */
+    public static java.util.List<String> schematicReport(String name) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        java.nio.file.Path file = SchematicPlan.find(name);
+        if (file == null) {
+            out.add(SchematicPlan.files().isEmpty() ? "No schematics in " + SchematicPlan.folders().get(0) : "No schematic called " + name);
+            return out;
+        }
+        Minecraft mc = Minecraft.getInstance();
+        try {
+            SchematicPlan plan = SchematicPlan.load(file, BlockPos.ZERO);
+            out.add(plan.name + ": " + plan.order.size() + " blocks" + (plan.unplaceable > 0 ? " (+" + plan.unplaceable + " without an item)" : ""));
+            int shown = 0;
+            for (var e : plan.needs.entrySet()) {
+                int have = mc.player == null ? 0 : countItems(mc, st -> st.is(e.getKey()));
+                String how = SchematicPlan.jobFor(e.getKey(), e.getValue());
+                out.add("  " + e.getValue() + " x " + SchematicPlan.itemName(e.getKey()).replace('_', ' ') + "  (have " + have
+                        + (have >= e.getValue() ? ", ok)" : how == null ? ", bring these)" : ", will " + how.split(" ")[0] + ")"));
+                if (++shown >= 14) {
+                    if (plan.needs.size() > shown) out.add("  ... and " + (plan.needs.size() - shown) + " more");
+                    break;
+                }
+            }
+        } catch (Exception e) {
+            out.add("Could not read " + SchematicPlan.display(file) + ": " + e.getMessage());
+        }
+        return out;
+    }
+
+    private void schematicTick(Minecraft mc) {
+        if (schem == null) {
+            giveUp(mc, "lost the schematic");
+            return;
+        }
+        if (!job.phase) {
+            java.util.Map<net.minecraft.world.item.Item, Integer> missing = schemMissing(mc);
+            for (var e : missing.entrySet()) {
+                net.minecraft.world.item.Item item = e.getKey();
+                int tries = schemTried.getOrDefault(item, 0);
+                String how = SchematicPlan.jobFor(item, e.getValue());
+                if (how == null || tries >= 2) continue;
+                schemTried.put(item, tries + 1);
+                String resume = "build schematic " + schem.name;
+                String name = SchematicPlan.itemName(item).replace('_', ' ');
+                job.note = "getting " + e.getValue() + " " + name;
+                AiTutorial.chat("Need " + e.getValue() + " more " + name + " for " + schem.name + ": " + how, false);
+                if (startOne(how)) {
+                    chain.addFirst(resume);
+                    return;
+                }
+            }
+            java.util.List<String> lacking = new java.util.ArrayList<>();
+            for (var e : missing.entrySet()) {
+                lacking.add(e.getValue() + " " + SchematicPlan.itemName(e.getKey()).replace('_', ' '));
+                if (lacking.size() >= 6) break;
+            }
+            if (!lacking.isEmpty()) {
+                AiTutorial.chat("Building " + schem.name + " with what I have. I could not get: " + String.join(", ", lacking)
+                        + ". Put them in your inventory and say build schematic " + schem.name + " again to finish.", true);
+            }
+            job.phase = true;
+            job.wanted = schem.order.size();
+            schemCellSince = System.currentTimeMillis();
+        }
+        // skip finished cells
+        while (schemIndex < schem.order.size() && mc.level.getBlockState(schem.order.get(schemIndex).at()).is(schem.order.get(schemIndex).block())) {
+            schemIndex++;
+            job.mined++;
+        }
+        if (schemIndex >= schem.order.size()) {
+            String done = schem.name + " finished: " + job.mined + " blocks" + (schemSkipped > 0 ? ", " + schemSkipped + " skipped" : "");
+            schem = null;
+            endJob(mc, done);
+            return;
+        }
+        SchematicPlan.Place pl = schem.order.get(schemIndex);
+        long now = System.currentTimeMillis();
+        if (now - schemCellSince > 9000L) {
+            // stuck on this block: try it again at the end of the build, then give up on it
+            schemCellSince = now;
+            if (schemDeferred < schem.order.size()) {
+                schem.order.add(schem.order.remove(schemIndex));
+                schemDeferred++;
+            } else {
+                schemIndex++;
+                schemSkipped++;
+            }
+            return;
+        }
+        java.util.function.Predicate<ItemStack> item = st -> st.is(pl.item());
+        if (countItems(mc, item) <= 0) {
+            boolean canGet = SchematicPlan.jobFor(pl.item(), 1) != null && schemTried.getOrDefault(pl.item(), 0) < 2;
+            if (canGet) {
+                job.phase = false;
+                return;
+            }
+            schemIndex++;
+            schemSkipped++;
+            schemCellSince = now;
+            return;
+        }
+        BlockState there = mc.level.getBlockState(pl.at());
+        if (!there.isAir() && !there.canBeReplaced()) {
+            job.note = "clearing " + pl.at().getX() + " " + pl.at().getY() + " " + pl.at().getZ();
+            mineBlock(mc, pl.at());
+            return;
+        }
+        // never build into ourselves
+        if (mc.player.getBoundingBox().intersects(new net.minecraft.world.phys.AABB(pl.at()))) {
+            BlockPos away = pl.at().relative(facing(mc.player.getYRot()).getOpposite(), 2);
+            walkTo(mc, centre(away), 0.5);
+            return;
+        }
+        if (Build.distTo(pl.at()) > Build.REACH - 0.5) {
+            job.note = "walking to the next block (" + job.mined + "/" + job.wanted + ")";
+            walkTo(mc, centre(pl.at()), 2.5);
+            return;
+        }
+        releaseKeys(mc);
+        if (ensureHotbar(mc, item) < 0) return;
+        lookAt(mc.player, centre(pl.at()));
+        if (Build.against(pl.at(), Build.REACH) == null) {
+            // nothing to place against yet; come back to it after its neighbours
+            if (schemDeferred < schem.order.size()) {
+                schem.order.add(schem.order.remove(schemIndex));
+                schemDeferred++;
+            } else {
+                schemIndex++;
+                schemSkipped++;
+            }
+            schemCellSince = now;
+            return;
+        }
+        if (Build.place(pl.at(), item, true, Build.REACH)) {
+            job.mined++;
+            schemIndex++;
+            schemCellSince = now;
+            job.note = "building " + schem.name + " (" + job.mined + "/" + job.wanted + ")";
+        }
+    }
+
     private void houseTick(Minecraft mc) {
         if (job.target.isBlank()) {
             job.target = pickHouseMaterial(mc);
@@ -3587,7 +3928,7 @@ public final class AiPilot extends Module {
         boolean seeThrough = ray != null && ray.enabled();
         int radius = seeThrough ? Math.min(48, jobRange.i() * 2) : jobRange.i();
         if (now >= job.nextScan) {
-            job.nextScan = now + 300L;
+            job.nextScan = now + 600L;
             BlockPos spotted = nearestOre(mc, job.target, radius, 24);
             // Ore sealed inside stone is not a target: the old code walked at it and bounced off
             // the wall. Anything the player can already see is fair game.
@@ -3682,13 +4023,36 @@ public final class AiPilot extends Module {
             return;
         }
         double dx = to.x - p.getX(), dz = to.z - p.getZ();
-        float yaw = Math.hypot(dx, dz) < 1.5 ? p.getYRot() : (float) Math.toDegrees(Math.atan2(-dx, dz));
-        Direction dir = facing(yaw);
+        // Straight above or below the goal there is no direction to head in; keep one direction for
+        // the whole staircase.  Following the camera made it wobble between two directions while it
+        // looked at each block, which dug a spiral shaft that looked like digging straight down.
+        Direction dir;
+        if (Math.hypot(dx, dz) >= 1.5) {
+            dir = facing((float) Math.toDegrees(Math.atan2(-dx, dz)));
+        } else {
+            if (job.stairDir == null) job.stairDir = facing(p.getYRot());
+            dir = job.stairDir;
+        }
         BlockPos feet = p.blockPosition();
         BlockPos step = feet.relative(dir);
         BlockPos floor = step.below();
         BlockPos under = floor.below();
-        if (unsafe(mc, step) || unsafe(mc, step.above()) || unsafe(mc, floor) || unsafe(mc, under)) {
+        if (unsafe(mc, step) || unsafe(mc, step.above()) || unsafe(mc, floor) || unsafe(mc, under)
+                || unsafeAround(mc, step) || unsafeAround(mc, floor) || unsafe(mc, step.above().above())) {
+            rotateSideways(mc);
+            return;
+        }
+        if (open(mc, floor) && open(mc, under)) {
+            // the next step down opens onto a drop or a cave: bridge it with a block, or turn away
+            java.util.function.Predicate<ItemStack> block = s -> !s.isEmpty() && s.getItem() instanceof net.minecraft.world.item.BlockItem bi
+                    && !(bi.getBlock() instanceof net.minecraft.world.level.block.FallingBlock) && bi.getBlock().defaultBlockState().isSolid();
+            if (ensureHotbar(mc, block) >= 0 && Build.replaceable(under)) {
+                lookAt(p, centre(under));
+                if (Build.place(under, block, true, Build.REACH)) {
+                    job.note = "filling a drop under the staircase";
+                    return;
+                }
+            }
             rotateSideways(mc);
             return;
         }
@@ -3726,8 +4090,16 @@ public final class AiPilot extends Module {
             return;
         }
         double dx = to.x - p.getX(), dz = to.z - p.getZ();
-        float yaw = Math.hypot(dx, dz) < 1.5 ? p.getYRot() : (float) Math.toDegrees(Math.atan2(-dx, dz));
-        Direction dir = facing(yaw);
+        // Straight above or below the goal there is no direction to head in; keep one direction for
+        // the whole staircase.  Following the camera made it wobble between two directions while it
+        // looked at each block, which dug a spiral shaft that looked like digging straight down.
+        Direction dir;
+        if (Math.hypot(dx, dz) >= 1.5) {
+            dir = facing((float) Math.toDegrees(Math.atan2(-dx, dz)));
+        } else {
+            if (job.stairDir == null) job.stairDir = facing(p.getYRot());
+            dir = job.stairDir;
+        }
         BlockPos feet = p.blockPosition();
         BlockPos step = feet.relative(dir).above();
         if (unsafe(mc, step) || unsafe(mc, step.above())) {
@@ -3748,6 +4120,7 @@ public final class AiPilot extends Module {
             pillar(mc);
             return;
         }
+        float yaw = dir.toYRot();
         p.setYRot(yaw);
         p.setYHeadRot(yaw);
         mc.options.keyUp.setDown(true);
@@ -3811,7 +4184,16 @@ public final class AiPilot extends Module {
         job.detourUntil = System.currentTimeMillis() + 700L;
         p.setYRot(p.getYRot() + turn);
         p.setYHeadRot(p.getYRot());
+        if (job.stairDir != null) job.stairDir = turn > 0 ? job.stairDir.getClockWise() : job.stairDir.getCounterClockWise();
         job.note = "looking for a safer way through";
+    }
+
+    /** Lava or water next to a block we are about to open would pour in. */
+    private static boolean unsafeAround(Minecraft mc, BlockPos pos) {
+        for (Direction d : Direction.Plane.HORIZONTAL) {
+            if (unsafe(mc, pos.relative(d))) return true;
+        }
+        return false;
     }
 
     private static boolean unsafe(Minecraft mc, BlockPos pos) {
@@ -4055,14 +4437,29 @@ public final class AiPilot extends Module {
                 : (Math.abs(rx) >= Math.abs(rz) ? (rx >= 0 ? Direction.EAST : Direction.WEST)
                 : (rz >= 0 ? Direction.SOUTH : Direction.NORTH));
         // Holding attack matters: with it released, Minecraft calls stopDestroyBlock every tick
-        // and the block never accumulates break progress. Vanilla then finishes the break for us.
+        // and the block never accumulates break progress.  While attack is held and the crosshair
+        // is on the block, vanilla already advances the break once per tick; adding our own
+        // continueDestroyBlock on top doubled the speed, the server refused the early break and the
+        // block came back (the "breaks every block twice" bug).  So: crosshair on the block, let
+        // vanilla mine it; crosshair somewhere else (air, an entity), drive the break ourselves.
         mc.options.keyAttack.setDown(true);
-        if (mining == null || !mining.equals(pos) || !mc.gameMode.isDestroying()) {
+        boolean vanillaHas = mc.hitResult instanceof BlockHitResult bh
+                && mc.hitResult.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK && bh.getBlockPos().equals(pos);
+        if (!vanillaHas) {
+            long tick = mc.level.getGameTime();
+            if (tick != mineTick) {
+                mineTick = tick;
+                if (mining == null || !mining.equals(pos) || !mc.gameMode.isDestroying()) {
+                    mining = pos;
+                    mc.gameMode.startDestroyBlock(pos, face);
+                } else {
+                    mc.gameMode.continueDestroyBlock(pos, face);
+                }
+                p.swing(InteractionHand.MAIN_HAND);
+            }
+        } else {
             mining = pos;
-            mc.gameMode.startDestroyBlock(pos, face);
         }
-        mc.gameMode.continueDestroyBlock(pos, face);
-        p.swing(InteractionHand.MAIN_HAND);
         if (!mc.level.getBlockState(pos).isAir()) return false;
         releaseAttack(mc);
         job.note = "mined " + pos.getX() + " " + pos.getY() + " " + pos.getZ();
@@ -4520,7 +4917,26 @@ public final class AiPilot extends Module {
     }
 
     private BlockPos nearestOre(Minecraft mc, String wanted, int radius, int height) {
-        return search(mc, mc.player.blockPosition(), radius, height, state -> matches(state, wanted));
+        java.util.Set<net.minecraft.world.level.block.Block> blocks = blocksFor(wanted);
+        if (blocks.isEmpty()) return null;
+        return search(mc, mc.player.blockPosition(), radius, height, state -> blocks.contains(state.getBlock()));
+    }
+
+    private static final java.util.Map<String, java.util.Set<net.minecraft.world.level.block.Block>> BLOCKS_FOR = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * Every block a name matches, worked out once.  Scanning tens of thousands of blocks used to look
+     * up and compare each block's id string, which is what made ore searches stutter.
+     */
+    private static java.util.Set<net.minecraft.world.level.block.Block> blocksFor(String wanted) {
+        String key = wanted == null ? "" : wanted.toLowerCase(Locale.ROOT).trim();
+        return BLOCKS_FOR.computeIfAbsent(key, k -> {
+            java.util.Set<net.minecraft.world.level.block.Block> set = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+            for (net.minecraft.world.level.block.Block b : BuiltInRegistries.BLOCK) {
+                if (matches(b.defaultBlockState(), k)) set.add(b);
+            }
+            return set;
+        });
     }
 
     private static boolean matches(BlockState state, String wanted) {
@@ -4840,7 +5256,7 @@ public final class AiPilot extends Module {
         answered = System.currentTimeMillis();
         lastAction = done == 0 ? "nothing to do" : done + " action(s) by the built-in parser";
         String message = plan.say().isBlank() ? note : note + ". " + plan.say();
-        if (speak.on()) Notify.info(message);
+        if (speak.on()) AiTutorial.chat(message, plan.steps().isEmpty());
         return message;
     }
 
@@ -5036,6 +5452,12 @@ public final class AiPilot extends Module {
             builder.append(" Inventory empty.");
         }
         builder.append(nearbyBlocks(client));
+        java.util.List<java.nio.file.Path> schematics = SchematicPlan.files();
+        if (!schematics.isEmpty()) {
+            builder.append(" Schematics available:");
+            for (int i = 0; i < Math.min(10, schematics.size()); i++) builder.append(i == 0 ? " " : ", ").append(SchematicPlan.display(schematics.get(i)));
+            builder.append('.');
+        }
         Extras.Waypoints points = Zeus.get(Extras.Waypoints.class);
         if (points != null) {
             try {
