@@ -1,0 +1,18 @@
+name: Clean history
+on: workflow_dispatch
+jobs:
+  clean:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.CLEAN_TOKEN }}
+      - name: Remove AI co-author lines and push
+        run: |
+          pip install -q git-filter-repo
+          URL=$(git remote get-url origin)
+          git filter-repo --force --message-callback "import re; return re.sub(rb'(?im)^\s*(co-authored-by|claude-session):.*\n?|^.*generated (with|by) .*\n?', b'', message)"
+          git remote add origin "$URL"
+          git push --force origin main
+          echo "Left over co-author lines: $(git log --format=%B | grep -ci 'co-authored-by')"
