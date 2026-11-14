@@ -156,6 +156,8 @@ public final class AiPilot extends Module {
         long verticalAt;
         BlockPos ore;
         long lightAt;
+        long junkAt;
+        boolean dodging;
         int crafts;
         int step;
         long biteAt;
@@ -1465,7 +1467,7 @@ public final class AiPilot extends Module {
         builder.append("Only send actions that are needed. Never invent ids. If the request cannot be done, return an empty actions list and explain in say.\n");
         builder.append("Prefix any job with repeat N to run the whole plan N times, for example: repeat 3 chop a tree then mine 10 stone.\n");
         builder.append("go to mines a staircase down, cuts steps up or towers up on its own when the target sits at another height, and it never digs the block under its feet. mine until only closes on ore it can already see, mines it, and reports the block that actually broke.\n");
-        builder.append("Movement is planned on the block grid: when the direct line is blocked it searches for a walkable path around walls, up ledges and down drops, never through lava, fire or cactus.\n");
+        builder.append("Movement is planned on the block grid: when the direct line is blocked it searches for a walkable path around walls, up ledges and down drops, never through lava, fire or cactus. During any job it backs away from a hissing creeper, and on long mining jobs it throws away rubble (dirt, gravel, granite, diorite, andesite, tuff, spare cobblestone) when the inventory is full so ore is still picked up.\n");
         builder.append("Ore jobs staircase to the depth the ore lives at first (iron y16, diamond y-59) and then tunnel, so ask for mine 16 iron without naming a height.\n");
         builder.append("do can also be job, where value is a phrase like: chop tree, chop 3 trees, mine until iron, mine 20 stone, quarry 10, tunnel 30, strip mine, farm, replant, till 9, collect, hunt, flee, shoot, shear 3, milk, eat, sleep, torch 8, place cobblestone here, place torch at 120 64 -300, drop 32 dirt, explore 60, return, build a house, swim to 120 62 -300, climb 8, bridge 12, go to 120 64 -300, come here, follow me, follow Steve, dig down, stop. Chain them in one value with then: chop 2 trees then mine until iron.\n");
         builder.append("Survival and food: prepare (or gear up) makes a wooden pickaxe, a stone pickaxe, a stone sword and hunts for food in one go. fish 5 casts a rod it must already have, reels on the bobber dip and counts the catch. food 3 kills animals for meat.\n");
@@ -2440,8 +2442,10 @@ public final class AiPilot extends Module {
             job.healUntil = 0L;
             mc.options.keyUse.setDown(false);
         }
+        if (mc.screen == null && dodgeCreeper(mc)) return;
         if (mc.screen == null && defend(mc)) return;
         if (mc.screen == null) snack(mc);
+        if (mc.screen == null) tossJunk(mc);
         // Auto Eat owns the use key and the hotbar while it eats; fighting it would cancel the food.
         Gear.AutoEat eating = Zeus.get(Gear.AutoEat.class);
         if (eating != null && eating.enabled() && job.kind != JobKind.EAT && mc.player.isUsingItem()) {
@@ -5010,6 +5014,93 @@ public final class AiPilot extends Module {
         p.swing(InteractionHand.MAIN_HAND);
         job.note = "fighting off a " + mob.getName().getString();
         return true;
+    }
+
+    // A creeper that starts hissing is never worth a sword swing: back off out of blast range, let it
+    // fizzle, then carry on with the job. A calm creeper close by is pushed back with a hit instead.
+    private boolean dodgeCreeper(Minecraft mc) {
+        if (job == null || job.kind == JobKind.FLEE) return false;
+        Player p = mc.player;
+        net.minecraft.world.entity.monster.Creeper threat = null;
+        double best = 7.0;
+        for (net.minecraft.world.entity.Entity e : mc.level.entitiesForRendering()) {
+            if (!(e instanceof net.minecraft.world.entity.monster.Creeper c) || !c.isAlive()) continue;
+            double d = c.distanceTo(p);
+            if (d < best && c.getSwelling(1f) > 0.02f) {
+                best = d;
+                threat = c;
+            }
+        }
+        if (threat == null) {
+            if (job.dodging) {
+                job.dodging = false;
+                releaseKeys(mc);
+            }
+            return false;
+        }
+        job.dodging = true;
+        Vec3 away = p.position().subtract(threat.position());
+        if (away.horizontalDistanceSqr() < 1e-4) away = new Vec3(1, 0, 0);
+        Vec3 aim = p.position().add(away.normalize().scale(6.0)).add(0, p.getEyeHeight(), 0);
+        lookAt(p, aim);
+        mc.options.keyAttack.setDown(false);
+        mc.options.keyDown.setDown(false);
+        mc.options.keyUp.setDown(true);
+        mc.options.keySprint.setDown(true);
+        mc.options.keyJump.setDown(p.horizontalCollision);
+        job.note = "backing away from a creeper";
+        return true;
+    }
+
+    /** Blocks a mining job digs up by the stack and never needs many of. */
+    private static final java.util.Set<String> JUNK = java.util.Set.of(
+            "dirt", "gravel", "granite", "diorite", "andesite", "tuff", "calcite", "netherrack",
+            "cobblestone", "cobbled_deepslate", "rotten_flesh", "poisonous_potato", "dripstone_block", "sand");
+    /** Junk that is still handy to keep one stack of, for bridging, pillars and staircases. */
+    private static final java.util.Set<String> KEEP_ONE = java.util.Set.of("dirt", "cobblestone", "cobbled_deepslate", "sand");
+
+    // A full inventory makes every ore after it vanish on the floor. When the last slot fills on a
+    // long job, the AI throws away one stack of rubble, the way a player clears space mid-mine.
+    private void tossJunk(Minecraft mc) {
+        if (job == null) return;
+        switch (job.kind) {
+            case CHOP, MINE_UNTIL, MINE_COUNT, QUARRY, TUNNEL, EXPLORE -> { }
+            default -> { return; }
+        }
+        long now = System.currentTimeMillis();
+        if (now < job.junkAt) return;
+        job.junkAt = now + 1500L;
+        net.minecraft.world.entity.player.Inventory inv = mc.player.getInventory();
+        java.util.Map<String, Integer> stacks = new java.util.HashMap<>();
+        for (int i = 0; i < 36; i++) {
+            ItemStack st = inv.getItem(i);
+            if (st.isEmpty()) return;               // there is still room
+            stacks.merge(net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(st.getItem()).getPath(), 1, Integer::sum);
+        }
+        String wanted = job.target == null ? "" : job.target.toLowerCase(java.util.Locale.ROOT);
+        int pick = -1, pickCount = Integer.MAX_VALUE;
+        for (int i = 35; i >= 0; i--) {
+            if (i == Inv.selected()) continue;
+            ItemStack st = inv.getItem(i);
+            String id = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(st.getItem()).getPath();
+            if (!JUNK.contains(id) || (!wanted.isEmpty() && (wanted.contains(id) || id.contains(wanted)))) continue;
+            if (KEEP_ONE.contains(id) && stacks.getOrDefault(id, 0) < 2) continue;
+            if (st.getCount() < pickCount) {        // throw the smallest pile first, keep full stacks
+                pick = i;
+                pickCount = st.getCount();
+            }
+        }
+        if (pick < 0) {
+            if (job.note == null || !job.note.startsWith("inventory full")) {
+                Notify.warn("Zeus AI: inventory is full and nothing in it looks like rubble");
+            }
+            job.note = "inventory full, new items stay on the ground";
+            return;
+        }
+        String id = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(inv.getItem(pick).getItem()).getPath();
+        Inv.click(Inv.menuSlot(pick), 1, net.minecraft.world.inventory.ClickType.THROW);
+        job.note = "inventory full, threw away " + pickCount + " " + id.replace('_', ' ');
+        event("threw away " + pickCount + " " + id.replace('_', ' ') + " to make room");
     }
 
     // Jobs run for minutes; a human eats before mining the next vein instead of starving at 3 hunger.
