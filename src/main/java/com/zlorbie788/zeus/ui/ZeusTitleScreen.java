@@ -670,19 +670,13 @@ public final class ZeusTitleScreen extends Screen {
             if (fx && sp > 0.02f) Draw.shadow(g, x, y, w, h, 3, Math.max(3, Math.round(5 * u * sp)), 0.40f * sp * ease);
             x += Math.round(plateMag[i]);
             y -= lift;
-            if (gl > 0.01f) Draw.glow(g, x, y, w, h, 3, i == CRATES ? 0xFFF5C04A : 0xFF7C9CE0, Math.max(3, Math.round(6 * u)), 0.34f * gl * ease);
-            if (i == CRATES && gl < 0.99f) {
-                // idle: a slow gold breath round the plate and a sweep of light every few seconds
-                float breath = 0.5f + 0.5f * (float) Math.sin(t * 2.2f);
-                Draw.glow(g, x, y, w, h, 3, 0xFFF5C04A, Math.max(3, Math.round(7 * u)), (0.16f + 0.14f * breath) * (1f - gl) * ease);
-            }
+            if (gl > 0.01f) Draw.glow(g, x, y, w, h, 3, 0xFF7C9CE0, Math.max(3, Math.round(6 * u)), 0.34f * gl * ease);
             if (plate != null) plate.draw(g, x, y, w, h, Draw.rgba(0xFFFFFFFF, ease));
             else Draw.rrect(g, x, y, w, h, 3, Draw.rgba(0xFF05070C, ease));
             Tex.Img ink = Tex.fitted("menu_ink_" + NAMES[i], "textures/gui/menu/ink_" + NAMES[i] + ".png", w * gs, h * gs, false, 0, 0);
             if (ink != null) {
                 ink.draw(g, x, y, w, h, Draw.rgba(0xFFFFFFFF, ease));
-                if (i == CRATES) ink.draw(g, x, y, w, h, Draw.rgba(0xFFFFD27A, (0.35f + 0.25f * (float) Math.sin(t * 2.2f)) * ease));
-                if (gl > 0.02f) ink.draw(g, x, y, w, h, Draw.rgba(i == CRATES ? 0xFFFFE6A8 : 0xFFDCE8FF, 0.55f * gl * ease));
+                if (gl > 0.02f) ink.draw(g, x, y, w, h, Draw.rgba(0xFFDCE8FF, 0.55f * gl * ease));
             } else {
                 Draw.boldCenter(g, NAMES[i].toUpperCase(), x + w / 2, y + h / 2 - 4, Draw.rgba(0xFFC8C0B4, ease));
             }
@@ -695,30 +689,21 @@ public final class ZeusTitleScreen extends Screen {
                 }
                 HoverFx.ripple(g, x, y, w, h, enterX[i], since / 0.7f, u, ease);
             }
-            if (i == CRATES && fx) {
-                float cyc = (t % 4.5f) / 0.9f;
-                if (cyc < 1f && HoverFx.shine(g, x, y, w, h, cyc, u, ease * 0.7f, shineBand) && ink != null) {
+            if (i == CRATES && fx && gl < 0.5f && com.zlorbie788.zeus.core.Crates.heldTotal() > 0) {
+                // crates are waiting: a soft silver sweep runs across now and then
+                float cyc = (t % 6f) / 0.9f;
+                if (cyc < 1f && HoverFx.shine(g, x, y, w, h, cyc, u, ease * 0.5f, shineBand) && ink != null) {
                     g.enableScissor(Math.max(x, shineBand[0]), y, Math.min(x + w, shineBand[1]), y + h);
-                    ink.draw(g, x, y, w, h, Draw.rgba(0xFFFFF1C8, 0.85f * ease));
+                    ink.draw(g, x, y, w, h, Draw.rgba(0xFFFFFFFF, 0.6f * ease));
                     g.disableScissor();
                 }
             }
             if (i == CRATES) {
-                // a gold count of crates waiting to be opened, with a soft pulse
                 int waiting = com.zlorbie788.zeus.core.Crates.heldTotal();
-                if (waiting > 0) {
-                    String n = waiting > 99 ? "99+" : String.valueOf(waiting);
-                    int bh = Math.max(10, Math.round(h * 0.42f));
-                    int bw = Math.max(bh, Draw.widthBold(n) + 8);
-                    int bx = x + w + Math.round(6 * u), by = y + (h - bh) / 2;
-                    float pulse = 0.5f + 0.5f * (float) Math.sin(t * 3.0f);
-                    Draw.glow(g, bx, by, bw, bh, bh / 2, 0xFFF5C04A, 6, (0.15f + 0.15f * pulse) * ease);
-                    Draw.rrect(g, bx, by, bw, bh, bh / 2, Draw.rgba(0xFFFFD27A, ease), Draw.rgba(0xFFC8901E, ease));
-                    Draw.boldCenter(g, n, bx + bw / 2, by + (bh - 8) / 2, Draw.rgba(0xFF1A1206, ease));
-                }
+                if (waiting > 0) MenuExtras.crateCount(g, x + w + Math.round(6 * u), y, h, waiting, ease, t);
             }
-            if (fx) MenuExtras.chevrons(g, x, y, w, h, gl * ease, u, i == CRATES ? 0xFFF5D08A : 0xFFA8BEEA);
-            if (gl > 0.02f) Draw.rrectLine(g, x, y, w, h, 3, Draw.rgba(i == CRATES ? 0xFFF5D08A : 0xFFA8BEEA, (0.68f + 0.10f * (float) Math.sin(t * 4f)) * gl * ease));
+            if (fx) MenuExtras.chevrons(g, x, y, w, h, gl * ease, u, 0xFFA8BEEA);
+            if (gl > 0.02f) Draw.rrectLine(g, x, y, w, h, 3, Draw.rgba(0xFFA8BEEA, (0.68f + 0.10f * (float) Math.sin(t * 4f)) * gl * ease));
             if (gl > 0.02f && fx) {
                 PlateFx.hover(g, x, y, w, h, t, gl * ease, u);
                 HoverFx.underline(g, x, y, w, h, gl * ease, t);
@@ -768,12 +753,9 @@ public final class ZeusTitleScreen extends Screen {
             news.draw(g, mouseX, mouseY, dt, 1f - (1f - na) * (1f - na), t);
         }
 
-        String name = minecraft.getUser().getName().toUpperCase(java.util.Locale.ROOT);
-        String line = "VERSION " + ZeusMenu.MENU_VERSION + " - " + name + " ONLINE";
-        Draw.textCenter(g, line, width / 2, height - 11, 0x99B4C0D8);
         String back = "Classic menu";
         boolean hotB = inClassic(mouseX, mouseY);
-        Draw.textCenter(g, back, width / 2, height - 23, hotB ? 0xFFFFFFFF : 0x99B4C0D8);
+        Draw.textCenter(g, back, width / 2, height - 13, hotB ? 0xFFFFFFFF : 0x99B4C0D8);
 
         MenuClock.draw(g, width, height, u, Math.max(0f, Math.min(1f, (t - 0.6f) / 0.6f)));
         if (!UiSettings.CALM.on()) MenuExtras.splash(g, ux(LOGO_X + LOGO_W * 1.06f) + Draw.widthBold(MenuExtras.splashRaw()) * Math.max(0.7f, Math.min(1.6f, u * 2.4f)) * 0.42f, uy(LOGO_Y + LOGO_H * 0.74f), u, t);
@@ -791,7 +773,7 @@ public final class ZeusTitleScreen extends Screen {
 
     private boolean inClassic(int mx, int my) {
         int cw = Draw.width("Classic menu") + 10;
-        return mx >= width / 2 - cw / 2 && mx < width / 2 + cw / 2 && my >= height - 25 && my < height - 13;
+        return mx >= width / 2 - cw / 2 && mx < width / 2 + cw / 2 && my >= height - 15 && my < height - 3;
     }
 
     private void drawLogo(GuiGraphics g, float u, float t, int gs) {
