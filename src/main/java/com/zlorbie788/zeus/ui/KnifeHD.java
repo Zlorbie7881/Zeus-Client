@@ -132,7 +132,7 @@ public final class KnifeHD {
                     String g = k.get("glow").getAsString().replace("#", "");
                     m.glow = 0xFF000000 | Integer.parseInt(g, 16);
                     m.len = len;
-                    m.half = half;
+                    m.half = k.has("half") ? k.get("half").getAsFloat() : half;  // the karambit uses a taller sheet
                     m.zmax = zmax;
                     JsonArray tip = k.getAsJsonArray("tip");
                     m.tipU = tip.get(0).getAsFloat();

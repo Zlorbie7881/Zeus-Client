@@ -63,6 +63,19 @@ def fin_gold(kn, mask, sfrac, d_edge, d_spine, bev):
     return alb, 1.0, 1.0
 
 
+def fin_bloodstone(kn, mask, sfrac, d_edge, d_spine, bev):
+    """Dark red marble: deep crimson clouds over near-black, with hot pink veins where they meet."""
+    n = fbm(0.9, 1901, 5)
+    m = fbm(2.2, 1903, 4)
+    tone = np.clip(n * 0.85 + 0.25 * (m - 0.5), 0, 1)
+    alb = ramp(tone, [(0, hexc("140306")), (0.35, hexc("3c0610")), (0.55, hexc("8a0f22")),
+                      (0.72, hexc("c8213e")), (1, hexc("ff6a86"))])
+    vein = np.exp(-((n - 0.62) / 0.025) ** 2)
+    alb = lerp(alb, np.minimum(1, alb * 1.5 + 0.10), vein * 0.5)
+    alb *= (0.95 + 0.06 * brushed(1905))[..., None]
+    return alb, 0.9, 0.85
+
+
 F = {
     "damascus": (T.fin_damascus, "Damascus", "#dfe6ef"),
     "slaughter": (T.fin_slaughter, "Slaughter", "#ff4a3a"),
@@ -80,6 +93,7 @@ F = {
     "night": (fin_night, "Night", "#8c96a6"),
     "rust": (fin_rust, "Rust coat", "#d07030"),
     "gold": (fin_gold, "Gold leaf", "#ffcf4a"),
+    "bloodstone": (fin_bloodstone, "Bloodstone", "#e0283c"),
 }
 
 
@@ -105,47 +119,121 @@ def finish_knife(kn, skin):
 
 
 # ------------------------------------------------------------------ the types
+# The karambit is traced from a reference picture: its outline (ring, finger grooves, guard and the
+# claw) lives in ref/karambit_outline.json as a smoothed outline polygon, and is laid onto the sheet
+# along the handle's axis. Points below are pixels of that picture.
+KARAMBIT_REF = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ref", "karambit_outline.json")
+K_RING = (252.0, 43.0)                        # centre of the finger ring
+K_AXIS = (-0.8805, 0.4747)                    # along the handle, ring towards blade
+K_ACROSS = (0.4747, 0.8805)                   # across, towards the inside of the curve
+K_SCALE = 0.0954                              # knife units per picture pixel
+K_U0 = 1.6 + 31 * K_SCALE                     # sheet u of the ring centre
+K_JUNCTION = ((112.0, 89.0), (163.0, 122.0))  # where the guard meets the blade
+K_TIP = (100.0, 246.0)
+K_CURL = (178.0, 196.0)                       # a point inside the curve, for telling edge from spine
+KARAMBIT_CELL_H = 768                         # taller sheet: the claw hangs far below the handle
+
+
+def _to_pic(u, v):
+    du, dv = (u - K_U0) / K_SCALE, v / K_SCALE
+    return (K_RING[0] + du * K_AXIS[0] + dv * K_ACROSS[0], K_RING[1] + du * K_AXIS[1] + dv * K_ACROSS[1])
+
+
+def _to_sheet(x, y):
+    dx, dy = x - K_RING[0], y - K_RING[1]
+    return (K_U0 + K_SCALE * (dx * K_AXIS[0] + dy * K_AXIS[1]), K_SCALE * (dx * K_ACROSS[0] + dy * K_ACROSS[1]))
+
+
 def karambit(skin):
-    """A crescent: ring, curved handle and hooked claw blade all bend round the same side, with the
-    edge on the inside of the curve."""
+    from scipy import ndimage
     kn = T.Knife("karambit_" + skin, "Karambit · " + F[skin][1])
-    u_b = 10.8                                          # where the handle meets the blade
+    ref = json.load(open(KARAMBIT_REF))
+    sil = poly_mask([_to_sheet(x, y) for x, y in ref["outline"]])
+    hx, hy, hr = ref["ring_hole"]
+    X, Y = _to_pic(U, V)
+    ring_hole = (np.hypot(X - hx, Y - hy) < hr).astype(np.float32)
+    sil = sil * (1 - ring_hole)
 
-    def c(u):                                           # centre line of the handle
-        return -0.80 + 1.75 * max(0.0, (u_b - u) / 8.2) ** 1.7
+    # regions in picture space
+    (jx1, jy1), (jx2, jy2) = K_JUNCTION
+    nx, ny = -(jy2 - jy1), (jx2 - jx1)
+    nl = math.hypot(nx, ny)
+    nx, ny = nx / nl, ny / nl
+    if (K_TIP[0] - jx1) * nx + (K_TIP[1] - jy1) * ny < 0:
+        nx, ny = -nx, -ny
+    dj = ((X - jx1) * nx + (Y - jy1) * ny) * K_SCALE                 # signed distance past the guard, units
+    tip_d = ((K_TIP[0] - jx1) * nx + (K_TIP[1] - jy1) * ny) * K_SCALE
+    ring_d = np.hypot(X - K_RING[0], Y - K_RING[1]) * K_SCALE
+    blade_m = sil * smoothstep(-0.03, 0.03, dj)
+    ring_m = sil * (1 - smoothstep(-0.03, 0.03, dj)) * (ring_d < 2.35)
+    handle_m = np.clip(sil - blade_m - ring_m, 0, 1)
 
-    # handle: (u, spine-side half, edge-side half); a finger guard bump where it meets the blade
-    raw = [(2.5, 0.95, 0.95), (3.4, 1.02, 1.00), (6.0, 1.00, 1.02), (9.0, 1.00, 1.02), (10.0, 1.02, 1.30),
-           (10.45, 1.04, 1.55), (10.8, 1.02, 1.20)]
-    st = T.interp_stations(raw)
-    st = T.finger_grooves(st, 3.6, 9.7, 3, 0.30)
-    pts = [(u, c(u) - a) for u, a, b in st] + [(u, c(u) + b) for u, a, b in st[::-1]]
-    m = poly_mask(pts)
-    inside = sdf_inside(m)
-    T.rubber(kn, m, hexc("121214"), 1901, rnd=0.55)
-    # a raised rim round the grip panel and fine grip grooves across it
-    rim = np.clip(1 - np.abs(inside - 0.14) / 0.05, 0, 1) * m
-    kn.alb = lerp(kn.alb, hexc("2c2e33"), rim * 0.7)
-    for cu in (4.6, 8.4):
-        T.screw(kn, cu, c(cu) - 0.05, 0.2, colour="4a4d55", metal=1.0)
-    # the ring: steel, wide, with a polished inner lip
-    rc_u, rc_v = 1.45, c(1.45) + 0.05
-    d = np.hypot(U - rc_u, V - rc_v)
-    rm = ((d <= 1.42) & (d >= 0.90)).astype(np.float32)
-    mid, half = 1.16, 0.26
-    rh = np.sqrt(np.clip(1 - ((d - mid) / half) ** 2, 0, 1)) * half
-    steel = T.steel_base(1903, 0.55)
-    lip = np.clip(1 - (d - 0.90) / 0.10, 0, 1)
-    steel = lerp(steel, np.minimum(1, steel * 1.6 + 0.15), lip * 0.8)
-    kn.paint(rm, steel, height=rh, metal=1.0, gloss=0.85, rnd=0.2, side=hexc("3a3e46"))
-    kn.cut((d < 0.90).astype(np.float32))
-    # the claw: wide at the base, sweeping round to a needle point
-    T.blade(kn, u_b, 22.6, -1.85, 0.22, -0.35, clip=0.0, belly=0.0, clip_pow=1.25,
-            teeth=(0.04, 0.17, 0.10, 0.22), fuller=None, choil=False, swedge=False, bevel_w=0.70,
-            finish=F[skin][0], tang=0.35, bend=3.35, bend_pow=2.15)
-    kn.part("ring", 0.0, 2.9, 0.40, 0.30)
-    kn.part("handle", 2.9, u_b, 0.95, 0.55)
-    kn.part("blade", u_b, 22.8, 0.24, 0.0)
+    # ---- handle: dark grey rubber, rounded body, knurled panels, finger grooves from the outline
+    inside = sdf_inside((handle_m + ring_m > 0.5).astype(np.float32))
+    body_h = np.clip(inside / 0.55, 0, 1) ** 0.6 * 0.30
+    T.rubber(kn, handle_m, hexc("36383d"), 1901, rnd=0.6)
+    kn.height += body_h * handle_m
+    panel = handle_m * smoothstep(0.30, 0.42, inside) * smoothstep(K_U0 + 2.6, K_U0 + 3.2, U) * (dj < -0.9)
+    kn_a = np.abs(np.sin((U + V) * 9.0)) * np.abs(np.sin((U - V) * 9.0))
+    kn.alb = lerp(kn.alb, kn.alb * (0.55 + 0.6 * kn_a)[..., None], panel * 0.9)
+    kn.height += -0.05 * panel * (1 - kn_a)
+    # a moulded lip round each panel, a seam where the guard meets the blade
+    lip = np.clip(1 - np.abs(inside - 0.30) / 0.05, 0, 1) * handle_m * smoothstep(K_U0 + 2.6, K_U0 + 3.2, U) * (dj < -0.9)
+    kn.alb = lerp(kn.alb, np.minimum(1, kn.alb * 1.6 + 0.04), lip * 0.6)
+    seam = np.exp(-((dj + 0.06) / 0.05) ** 2) * sil
+    kn.alb = lerp(kn.alb, kn.alb * 0.3, seam * 0.8)
+    # spine jimping: little notches along the top of the handle near the guard and near the ring
+    top = np.where(handle_m > 0.5, V, 99).min(0)[None, :]
+    for a, b in ((K_U0 + 8.8, K_U0 + 11.0), (K_U0 + 1.6, K_U0 + 3.6)):
+        ph = ((U - a) / 0.26) % 1.0
+        notch = (U > a) & (U < b) & (V < top + 0.12 * (1 - np.abs(ph - 0.5) * 2))
+        kn.cut((notch & (handle_m > 0)).astype(np.float32))
+    for cu in (K_U0 + 5.0, K_U0 + 9.0):
+        T.screw(kn, cu, float(np.interp(cu, U[0], np.where(handle_m > 0.5, V, 0).sum(0) / np.maximum((handle_m > 0.5).sum(0), 1))) - 0.25,
+                0.17, colour="4a4d55", metal=1.0)
+
+    # ---- blade: spine on the outside of the curve, edge on the inside
+    finish = F[skin][0]
+    gx = ndimage.sobel(ndimage.gaussian_filter(blade_m, 2.0), 1)
+    gy = ndimage.sobel(ndimage.gaussian_filter(blade_m, 2.0), 0)
+    cu_, cv_ = _to_sheet(*K_CURL)
+    toward = (cu_ - U) * (-gx) + (cv_ - V) * (-gy)                     # outward normal . direction to the curl
+    bnd = (blade_m > 0.5) & (ndimage.binary_dilation(blade_m <= 0.5, iterations=1)) & (dj > 0.08)
+    edge_px = bnd & (toward > 0)
+    spine_px = bnd & (toward <= 0)
+    d_edge = ndimage.distance_transform_edt(~edge_px) / GP
+    d_spine = ndimage.distance_transform_edt(~spine_px) / GP
+    sfrac = np.clip(dj / tip_d, 0, 1)
+    width = d_edge + d_spine
+    bw = np.minimum(0.85, 0.62 * width)
+    bev = np.clip(1 - d_edge / np.maximum(bw, 1e-3), 0, 1)
+    h = -0.42 * bev ** 1.15 - 0.10 * np.clip(1 - d_spine / 0.12, 0, 1)
+    alb, metal, gloss = finish(kn, blade_m, sfrac, d_edge, d_spine, bev)
+    alb = alb * (1 + 0.20 * bev[..., None])
+    edge_line = np.clip(1 - d_edge / 0.08, 0, 1)
+    alb = lerp(alb, np.minimum(1, alb * 1.7 + 0.35), edge_line * 0.85)
+    seam_b = np.exp(-((d_edge - bw) / 0.035) ** 2) * (bw > 0.2)
+    alb = alb * (1 - 0.25 * seam_b[..., None])
+    scr = T.scratches(kn.id, K_U0 + 10, 27.5, -1.0, 10.0) * blade_m
+    alb = lerp(alb, np.minimum(1, alb * 1.35 + 0.07), scr[..., None] * 0.45)
+    side = np.ones_like(alb) * hexc("8e949c")[None, None, :] * 0.85
+    kn.paint(blade_m, alb, height=h, metal=metal, gloss=gloss, bevel=np.clip(bev * 0.85 + edge_line, 0, 1), side=side)
+
+    # ---- ring: the tang comes through the handle as a steel finger ring in the blade's finish
+    ra, rm_, rg = finish(kn, ring_m, np.zeros_like(U), np.full_like(U, 1.0), np.full_like(U, 1.0), np.zeros_like(U))
+    rin = sdf_inside((ring_m > 0.5).astype(np.float32))
+    rh = np.clip(rin / 0.35, 0, 1) ** 0.5 * 0.2
+    lipr = np.clip(1 - rin / 0.10, 0, 1)
+    ra = lerp(ra, np.minimum(1, ra * 1.5 + 0.12), lipr * 0.6)
+    kn.paint(ring_m, ra, height=rh, metal=rm_, gloss=rg, bevel=lipr * 0.7, rnd=0.2, side=hexc("3a3e46"))
+
+    tip_u, tip_v = _to_sheet(*K_TIP)
+    kn.tip = (tip_u, tip_v)
+    ring_end = K_U0 + 2.3
+    ju = min(_to_sheet(*K_JUNCTION[0])[0], _to_sheet(*K_JUNCTION[1])[0])
+    kn.part("ring", 0.0, ring_end, 0.40, 0.30)
+    kn.part("handle", ring_end, ju + 0.6, 0.95, 0.55)
+    kn.part("blade", ju + 0.6, 28.2, 0.24, 0.0)
     return finish_knife(kn, skin)
 
 
@@ -305,7 +393,7 @@ def stiletto(skin):
 
 
 TYPES = [
-    ("karambit", karambit, ["crimson", "sapphire", "fade", "tiger", "slaughter"]),
+    ("karambit", karambit, ["bloodstone", "crimson", "sapphire", "fade", "tiger", "slaughter"]),
     ("m9", m9, ["camo", "damascus", "case", "ruby", "night"]),
     ("butterfly", butterfly, ["fade", "marble", "emerald", "slaughter", "ultraviolet"]),
     ("huntsman", huntsman, ["night", "urban", "tiger", "case", "crimson"]),
@@ -321,13 +409,24 @@ def main():
     meta = json.load(open(T.OUT_JSON))
     have = {k["id"]: k for k in meta["knives"]}
     tactical = [k for k in meta["knives"] if k["id"].startswith("tac_")]
+    tall = {"karambit": KARAMBIT_CELL_H}
     for kind, build, skins in TYPES:
         if only and kind not in only:
+            continue
+        if kind in tall and os.environ.get("KNIFE_CELL_H") != str(tall[kind]):
+            import subprocess
+            env = dict(os.environ, KNIFE_CELL_H=str(tall[kind]))
+            subprocess.run([sys.executable, os.path.abspath(__file__), kind], env=env, check=True)
+            meta = json.load(open(T.OUT_JSON))
+            have = {k["id"]: k for k in meta["knives"]}
             continue
         for skin in skins:
             kn = build(skin)
             print("baking", kn.id, flush=True)
-            have[kn.id] = T.write(kn, min_level=1)
+            entry = T.write(kn, min_level=1)
+            if T.HALF != 3.55:
+                entry["half"] = round(T.HALF, 4)
+            have[kn.id] = entry
     order = [k["id"] for k in tactical]
     for kind, build, skins in TYPES:
         order += [kind + "_" + s for s in skins]

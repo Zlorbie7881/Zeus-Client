@@ -8,6 +8,7 @@ The finished sheets are downsampled from that grid, so every outline is anti-ali
 """
 
 import math
+import os
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -16,6 +17,11 @@ from scipy import ndimage
 LEN = 28.4          # knife units covered by the sheet width
 HALF = 3.55         # knife units from the centre line to the sheet's top and bottom
 W, H = 1024, 256    # one cell of the finished sheet (level 0)
+# A knife that sweeps far off its centre line (the karambit's claw) bakes on a taller sheet:
+# KNIFE_CELL_H sets the cell height and HALF follows from it, at the same pixels per unit.
+if os.environ.get("KNIFE_CELL_H"):
+    H = int(os.environ["KNIFE_CELL_H"])
+    HALF = H * LEN / W / 2
 SS = 2              # supersampling factor
 PX = W / LEN        # pixels per knife unit at level 0
 GW, GH = W * SS, H * SS
