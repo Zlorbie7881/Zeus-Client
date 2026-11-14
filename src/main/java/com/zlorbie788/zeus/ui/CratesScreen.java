@@ -572,12 +572,16 @@ public final class CratesScreen extends Screen {
         else ny -= 13;
         int have = Crates.held(c.id);
         Draw.textCenter(g, Draw.fit(have > 0 ? "You have " + have + "  ·  " + Crates.keys() + " key" + (Crates.keys() == 1 ? "" : "s") : "You have none yet", cw), ccx, ny + 24, have > 0 ? TEXT : FAINT);
-        boolean canOpen = have > 0 && Crates.keys() > 0;
+        boolean canOpen = Crates.canOpen(c);
         int bw = Math.min(cw - 6, 150);
-        button(g, H_OPEN, ccx - bw / 2, ny + 37, bw, 20, canOpen ? "OPEN CRATE" : have > 0 ? "NEEDS A KEY" : "NO CRATE", c.colour, canOpen, true, mx, my, t, dt);
+        button(g, H_OPEN, ccx - bw / 2, ny + 37, bw, 20, canOpen ? "OPEN  \u00b7  " + Crates.KEYS_PER_OPEN + " KEYS" : have > 0 ? "NEEDS " + Crates.KEYS_PER_OPEN + " KEYS" : "NO CRATE", c.colour, canOpen, true, mx, my, t, dt);
         boolean canBuy = Crates.tokens() >= Crates.KEY_PRICE;
         button(g, H_BUY, ccx - bw / 2, ny + 61, bw, 16, small ? "KEY  ·  " + Crates.KEY_PRICE + " TOKENS" : "BUY KEY  ·  " + Crates.KEY_PRICE + " TOKENS", GOLD, canBuy, false, mx, my, t, dt);
-        if (!canBuy && !compact) Draw.textCenter(g, Draw.fit((Crates.KEY_PRICE - Crates.tokens()) + " more tokens for a key", cw), ccx, ny + 80, FAINT);
+        if (!compact) {
+            String hint = !canBuy ? (Crates.KEY_PRICE - Crates.tokens()) + " more tokens for a key"
+                    : Crates.tokens() >= Crates.KEY_PRICE * 2 ? "Shift-click to buy " + Math.min(Crates.KEYS_PER_OPEN, Crates.tokens() / Crates.KEY_PRICE) + " at once" : "";
+            if (!hint.isEmpty()) Draw.textCenter(g, Draw.fit(hint, cw), ccx, ny + 80, FAINT);
+        }
         // right: contents drop in one after another
         int rx = cx0 + cw + 10, rw = px + pw - 12 - rx;
         Draw.bold(g, "INSIDE", rx, top, TEXT);
@@ -722,7 +726,7 @@ public final class CratesScreen extends Screen {
         }
         int iy = by + 70, iw = Math.min(pw - 24, 430);
         if (iy + 62 > py + ph - 32) {
-            Draw.textCenter(g, Draw.fit("1 token per 5 min of active play  ·  a key costs " + Crates.KEY_PRICE + " tokens  ·  free crate every 90 min", pw - 24), cx, by + 72, FAINT);
+            Draw.textCenter(g, Draw.fit("1 token per 5 min of play  ·  a key costs " + Crates.KEY_PRICE + " tokens, a crate takes " + Crates.KEYS_PER_OPEN + "  ·  free crate every 90 min", pw - 24), cx, by + 72, FAINT);
             return;
         }
         Draw.rrect(g, cx - iw / 2, iy, iw, 62, 8, 0xFF0B1124);
@@ -730,7 +734,7 @@ public final class CratesScreen extends Screen {
         Draw.bold(g, "HOW TO EARN", cx - iw / 2 + 10, iy + 6, GOLD);
         Draw.textRight(g, "opened " + Crates.opened(), cx + iw / 2 - 10, iy + 6, FAINT);
         String[] lines = {"1 Zeus token for every 5 minutes of active play. Standing still earns nothing.",
-                "A key costs " + Crates.KEY_PRICE + " tokens. A free random crate drops every 90 minutes of play.",
+                "A key costs " + Crates.KEY_PRICE + " tokens and a crate takes " + Crates.KEYS_PER_OPEN + " keys. A free crate drops every 90 minutes of play.",
                 "Already own the knife? You get tokens back instead, more for rarer drops."};
         for (int i = 0; i < lines.length; i++) Draw.text(g, Draw.fit("•  " + lines[i], iw - 20), cx - iw / 2 + 10, iy + 19 + i * 13, SUB);
     }
@@ -964,9 +968,10 @@ public final class CratesScreen extends Screen {
                 case H_CRATE -> setSel(h[1]);
                 case H_OPEN -> startOpening(Crates.CRATES.get(sel));
                 case H_BUY -> {
-                    if (Crates.buyKey()) {
+                    int n = Crates.buyKeys(event.hasShiftDown() ? Crates.KEYS_PER_OPEN : 1);
+                    if (n > 0) {
                         snd(SoundEvents.EXPERIENCE_ORB_PICKUP, 1.2f, 0.6f);
-                        say("Bought a key for " + Crates.KEY_PRICE + " tokens");
+                        say("Bought " + (n == 1 ? "a key" : n + " keys") + " for " + n * Crates.KEY_PRICE + " tokens");
                     }
                 }
                 case H_REDEEM -> redeem();
@@ -1080,7 +1085,7 @@ public final class CratesScreen extends Screen {
     }
 
     private void startOpening(Crate c) {
-        if (Crates.held(c.id) <= 0 || Crates.keys() <= 0) return;
+        if (!Crates.canOpen(c)) return;
         Crates.Result res = Crates.open(c);
         if (res == null) return;
         opening = new Opening(c, res, lastCrateCx, lastCrateCy, lastCrateSize);
@@ -1503,7 +1508,7 @@ public final class CratesScreen extends Screen {
             }
             g.pose().popMatrix();
             // buttons rise in one after another
-            boolean again = Crates.held(crate.id) > 0 && Crates.keys() > 0;
+            boolean again = Crates.canOpen(crate);
             int w = 104, gap = 8;
             int n = again ? 3 : 2;
             int x = Math.round(cx) - (n * w + (n - 1) * gap) / 2;

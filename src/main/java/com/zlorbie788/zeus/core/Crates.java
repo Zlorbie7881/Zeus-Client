@@ -91,7 +91,9 @@ public final class Crates {
     }
 
     public static final String STARTER = "karambit_stock";
-    public static final int KEY_PRICE = 30;
+    public static final int KEY_PRICE = 10;
+    /** Keys one crate takes to open. */
+    public static final int KEYS_PER_OPEN = 3;
     public static final long TOKEN_MS = 5 * 60_000L;
     public static final long DROP_MS = 90 * 60_000L;
     private static final long IDLE_MS = 90_000L;
@@ -282,8 +284,8 @@ public final class Crates {
             {"6dea54b17c2ad5be3ea52bad89f0d7accb1311c257393758c443f5d347fa684e", "all:1"},
             {"067d5ff5449328b3aa1828c58d970b9ada777f89bcb6272e4a51f4b510836203", "random:1"},
             {"0be4d3a13396c9656696819dcd4ed24e0ef43113aae508b6ca0debe6c733e495", "random:2"},
-            // admin: keys only, works any number of times ("*" = reusable)
-            {"3aa6ba0b339531d4dd7de2311eda45c3631d697b062999f7bec01af6c27b4e18", "keys:99:*"}
+            // admin: 6 of every crate plus the keys to open them all, works any number of times ("*" = reusable)
+            {"3aa6ba0b339531d4dd7de2311eda45c3631d697b062999f7bec01af6c27b4e18", "admin:6:*"}
     };
     /** Keys are capped so a reusable code can never overflow the count. */
     public static final int MAX_KEYS = 9999;
@@ -470,12 +472,23 @@ public final class Crates {
 
     // ------------------------------------------------------------------ actions
     public static boolean buyKey() {
+        return buyKeys(1) == 1;
+    }
+
+    /** Buys up to n keys with tokens; returns how many were bought. */
+    public static int buyKeys(int n) {
         load();
-        if (tokens < KEY_PRICE || keys >= MAX_KEYS) return false;
-        tokens -= KEY_PRICE;
-        keys++;
+        int can = Math.min(n, Math.min(tokens / KEY_PRICE, MAX_KEYS - keys));
+        if (can <= 0) return 0;
+        tokens -= can * KEY_PRICE;
+        keys += can;
         save(true);
-        return true;
+        return can;
+    }
+
+    /** True when this crate is held and there are enough keys to open it. */
+    public static boolean canOpen(Crate c) {
+        return held(c.id) > 0 && keys() >= KEYS_PER_OPEN;
     }
 
     public record Result(Item item, Crate crate, boolean duplicate, int refund) {
@@ -534,10 +547,10 @@ public final class Crates {
     /** Opens one crate with one key. Returns null when either is missing. */
     public static Result open(Crate c) {
         load();
-        if (held(c.id) <= 0 || keys <= 0) return null;
+        if (held(c.id) <= 0 || keys < KEYS_PER_OPEN) return null;
         held.merge(c.id, -1, Integer::sum);
         if (held.get(c.id) <= 0) held.remove(c.id);
-        keys--;
+        keys -= KEYS_PER_OPEN;
         opened++;
         Item it = roll(c);
         boolean dup = owns(it.id);
@@ -568,6 +581,13 @@ public final class Crates {
             int n = Integer.parseInt(parts[1]);
             boolean reusable = parts.length > 2 && parts[2].equals("*");
             if (!reusable && redeemed.contains(h)) return new Redeem(false, "That code has already been used on this account.");
+            if (parts[0].equals("admin")) {
+                for (Crate cr : CRATES) held.merge(cr.id, n, Integer::sum);
+                int add = Math.min(n * CRATES.size() * KEYS_PER_OPEN, MAX_KEYS - keys);
+                keys += Math.max(0, add);
+                save(true);
+                return new Redeem(true, "Admin: +" + n + " of every crate and +" + Math.max(0, add) + " keys.");
+            }
             if (parts[0].equals("keys")) {
                 int add = Math.min(n, MAX_KEYS - keys);
                 if (add <= 0) return new Redeem(false, "You already hold the most keys you can (" + MAX_KEYS + ").");
@@ -582,13 +602,16 @@ public final class Crates {
             if (parts[0].equals("all")) for (Crate cr : CRATES) which.add(cr.id);
             else if (parts[0].equals("random")) for (int i = 0; i < n; i++) which.add(CRATES.get(RNG.nextInt(CRATES.size())).id);
             else for (String s : parts[0].split("\\+")) for (int i = 0; i < n; i++) which.add(s);
+            int keysAdded = 0;
             for (String id : which) {
                 held.merge(id, 1, Integer::sum);
-                if (keys < MAX_KEYS) keys++;
+                int add = Math.min(KEYS_PER_OPEN, MAX_KEYS - keys);
+                keys += Math.max(0, add);
+                keysAdded += Math.max(0, add);
                 got.add(crate(id).name);
             }
             save(true);
-            return new Redeem(true, "Unlocked " + summary(got) + (which.size() == 1 ? " and a key" : " and " + which.size() + " keys") + ".");
+            return new Redeem(true, "Unlocked " + summary(got) + " and " + keysAdded + " keys to open " + (which.size() == 1 ? "it" : "them") + ".");
         }
         if (++fails >= MAX_FAILS) {
             fails = 0;
@@ -636,7 +659,7 @@ public final class Crates {
             tokens++;
             earned++;
             dirty = true;
-            if (tokens == KEY_PRICE) Zeus.toast("Zeus Crates: you have " + KEY_PRICE + " tokens, enough for a key", true);
+            if (tokens == KEY_PRICE * KEYS_PER_OPEN) Zeus.toast("Zeus Crates: " + tokens + " tokens, enough keys to open a crate", true);
             else Zeus.toast("Zeus Crates: +1 Zeus token (" + tokens + ")", true);
         }
         if (dropMs >= DROP_MS) {
@@ -732,6 +755,7 @@ public final class Crates {
             JsonObject d = JsonParser.parseString(body).getAsJsonObject();
             tokens = d.get("tokens").getAsInt();
             keys = Math.max(0, Math.min(MAX_KEYS, d.get("keys").getAsInt()));
+            if (!d.has("kv")) keys = Math.min(MAX_KEYS, keys * KEYS_PER_OPEN);   // saved before crates took 3 keys
             activeMs = d.get("active").getAsLong();
             dropMs = d.get("drop").getAsLong();
             earned = d.has("earned") ? d.get("earned").getAsLong() : 0;
@@ -772,6 +796,7 @@ public final class Crates {
         JsonObject d = new JsonObject();
         d.addProperty("tokens", tokens);
         d.addProperty("keys", keys);
+        d.addProperty("kv", 2);
         d.addProperty("active", activeMs);
         d.addProperty("drop", dropMs);
         d.addProperty("earned", earned);

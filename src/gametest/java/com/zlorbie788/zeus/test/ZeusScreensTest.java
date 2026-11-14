@@ -193,7 +193,7 @@ public class ZeusScreensTest implements FabricClientGameTest {
         try {
             Crates.load();
             set(null, Crates.class, "tokens", 42);
-            set(null, Crates.class, "keys", 8);
+            set(null, Crates.class, "keys", 30);
             Field h = Crates.class.getDeclaredField("held");
             h.setAccessible(true);
             Map<String, Integer> held = (Map<String, Integer>) h.get(null);
