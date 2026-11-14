@@ -706,7 +706,7 @@ public final class ZeusTitleScreen extends Screen {
                     String n = waiting > 99 ? "99+" : String.valueOf(waiting);
                     int bh = Math.max(10, Math.round(h * 0.42f));
                     int bw = Math.max(bh, Draw.widthBold(n) + 8);
-                    int bx = x + w - bw - Math.round(6 * u), by = y + (h - bh) / 2;
+                    int bx = x + w + Math.round(6 * u), by = y + (h - bh) / 2;
                     float pulse = 0.5f + 0.5f * (float) Math.sin(t * 3.0f);
                     Draw.glow(g, bx, by, bw, bh, bh / 2, 0xFFF5C04A, 6, (0.15f + 0.15f * pulse) * ease);
                     Draw.rrect(g, bx, by, bw, bh, bh / 2, Draw.rgba(0xFFFFD27A, ease), Draw.rgba(0xFFC8901E, ease));
