@@ -46,3 +46,8 @@ fabricApi {
         enableClientGameTests = true
     }
 }
+
+// GitHub's runners trip the test network synchroniser; the Fabric docs suggest switching it off.
+loom.runs.matching { it.name == 'clientGameTest' }.configureEach {
+    vmArg '-Dfabric.client.gametest.disableNetworkSynchronizer=true'
+}

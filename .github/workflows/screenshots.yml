@@ -6,6 +6,9 @@ on:
   push:
     branches: [knife-types]
 
+permissions:
+  contents: write
+
 jobs:
   screenshots:
     runs-on: ubuntu-latest
@@ -29,6 +32,19 @@ jobs:
       - name: List screenshots
         if: always()
         run: find . -name "*.png" -path "*screenshots*" -newer build.gradle | sort | head -100
+
+      - name: Publish screenshots to a temporary branch
+        if: always()
+        run: |
+          mkdir -p /tmp/shots
+          find . -name "*.png" -path "*screenshots*" -newer build.gradle -exec cp {} /tmp/shots/ \;
+          ls /tmp/shots | head -80
+          cd /tmp/shots
+          git init -q
+          git checkout -q -b ci-screenshots
+          git add -A
+          git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" commit -q -m "Screenshots for ${GITHUB_SHA}" || exit 0
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" ci-screenshots
 
       - uses: actions/upload-artifact@v4
         if: always()
