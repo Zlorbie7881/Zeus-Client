@@ -327,13 +327,43 @@ public final class CratesScreen extends Screen {
             Draw.glow(g, x + 2, y + lh - 1, w - 4, 3, 1, Draw.lighten(c.colour, 0.5f), Math.max(4, size / 5), 0.30f * k);
             g.fill(x + 3, y + lh - 1, x + w - 3, y + lh + 1, Draw.rgba(0xFFFFF6D8, k));
         }
-        float la = 1f - clamp01((lid - 0.55f) / 0.45f);
-        if (la > 0f) {
+        if (lid <= 0f) {
+            top.draw(g, -w / 2, y, w, lh, 0xFFFFFFFF);
+        } else {
+            // the latches let go: a click of light at each one
+            float pop = 1f - clamp01(lid / 0.35f);
+            if (pop > 0f) {
+                int ls = Math.max(4, size / 9);
+                for (int sgn = -1; sgn <= 1; sgn += 2) {
+                    int lx = Math.round(sgn * w * 0.3145f);
+                    Draw.glow(g, lx - 1, y + lh - 1, 2, 2, 1, Draw.lighten(c.colour, 0.6f), ls, 0.5f * pop * 3f / ls);
+                }
+            }
+            // light pours out of the open case
+            float th = Math.min(1f, lid / 0.8f) * 1.95f;          // swings up and back, a little past upright
+            float cs = (float) Math.cos(th), sn = (float) Math.sin(th);
+            float open = Math.min(1f, sn * 1.4f);
+            int beamC = Draw.lighten(c.colour, 0.45f);
+            Draw.glow(g, x + w / 6, y + lh - 1, w * 2 / 3, 2, 1, beamC, Math.max(6, size / 3), 0.45f * open);
+            for (int i = 0; i < 7; i++) {
+                float bx = x + w * (0.2f + 0.6f * i / 6f);
+                float fan = (bx - x - w / 2f) * 0.35f;
+                Draw.line(g, bx, y + lh, bx + fan, y + lh - size * (0.55f + 0.25f * ((i * 37) % 5) / 5f),
+                        Math.max(1f, size / 40f), Draw.rgba(beamC, 0.22f * open * (i % 2 == 0 ? 1f : 0.6f)));
+            }
+            // the lid on its hinge at the top edge: the front face folds back, then its darker inside shows
             g.pose().pushMatrix();
-            float lift = lid * size * 0.9f;
-            g.pose().translate(lid * size * 0.25f, y - lift);
-            g.pose().rotate(-lid * 0.9f);
-            top.draw(g, -w / 2, 0, w, lh, Draw.rgba(0xFFFFFFFF, la));
+            g.pose().translate(0, y - lh * 0.30f * sn);
+            float fold = Math.max(0.03f, Math.abs(cs));
+            if (cs >= 0f) {
+                g.pose().scale(1f, fold);
+                top.draw(g, -w / 2, 0, w, lh, 0xFFFFFFFF);
+            } else {
+                // upside down through the texture, not a mirrored pose: the GUI culls mirrored quads
+                g.pose().translate(0f, -lh * fold);
+                g.pose().scale(1f, fold);
+                top.drawPart(g, -w / 2, 0, w, lh, 0, top.h, top.w, -top.h, 0xFF4A5266);
+            }
             g.pose().popMatrix();
         }
         g.pose().popMatrix();
@@ -375,10 +405,16 @@ public final class CratesScreen extends Screen {
         g.fill(x + 3, y + h - 4, x + w - 3, y + h - 2, rc);
         boolean named = h >= 44;
         int kind = kindOf(it.id());
-        int kh = h - (named ? 20 : 8);
+        int kh = h - (named ? 17 : 5);
+        // a soft light in the rarity's colour behind the knife, so dark blades stand off the dark tile
+        int sp = Math.max(6, Math.min(w, kh) / 2);
+        Draw.glow(g, x + w / 2 - 1, y + kh / 2, 2, 2, 1, rc, sp, (0.20f + 0.12f * live) * 3f / sp);
         if (kind >= 0) {
-            if (live > 0.5f) KnifeArt.showcase(g, kind, 0, x + 3, y + 3, w - 6, kh, t, false);
-            else KnifeArt.still(g, kind, x + 3, y + 3, w - 6, kh);
+            if (live > 0.5f) KnifeArt.showcase(g, kind, 0, x + 1, y + 1, w - 2, kh + 2, t, false);
+            else KnifeArt.still(g, kind, x + 1, y + 1, w - 2, kh + 2);
+        }
+        if (it.rarity() == Rarity.CHROMA && !locked) {
+            Draw.sheen(g, x + 1, y + 1, w - 2, h - 2, 0x40FFFFFF, (now() * 0.45f) % 1.8f);
         }
         if (locked) {
             Draw.rrect(g, x, y, w, h, 5, 0xB0060810);
@@ -432,14 +468,33 @@ public final class CratesScreen extends Screen {
         g.pose().popMatrix();
 
         if (opening == null && inspect == null && tp >= 1f) super.render(g, mx, my, partial);
-        if (opening == null && inspect != null) renderInspect(g, mx, my, t, dt);
-        if (opening != null) opening.render(g, mx, my, t, dt);
+        if (opening == null && inspect != null) {
+            overlayLayer(g);
+            renderInspect(g, mx, my, t, dt);
+        }
+        if (opening != null) {
+            overlayLayer(g);
+            opening.render(g, mx, my, t, dt);
+        }
         floaters(g, t);
 
         if (!flash.isEmpty()) {
             float a = 1f - Math.max(0f, (System.currentTimeMillis() - flashAt - 2200) / 600f);
             if (a <= 0) flash = "";
             else Draw.toast(g, minecraft, width / 2, py + ph - 52, flash, true, a);
+        }
+    }
+
+    /**
+     * Starts a new GUI layer for a full-screen overlay. The GUI draws text after shapes within a layer, so without
+     * this the crate screen's text would show through the overlay; the game's own blur softens what is behind.
+     */
+    private static void overlayLayer(GuiGraphics g) {
+        g.nextStratum();
+        try {
+            g.blurBeforeThisStratum();
+        } catch (IllegalStateException e) {
+            // the game allows one blur a frame; the dark fill still covers
         }
     }
 
@@ -465,7 +520,9 @@ public final class CratesScreen extends Screen {
         shownKeys = approach(shownKeys, realK, 9f, dt);
         String tk = Math.round(shownTokens) + "";
         int cw = 34 + Draw.widthBold(tk) + 40;
-        int kx = px + pw - 14 - 64;
+        String ks = Math.round(shownKeys) + "";
+        int kw = 30 + Draw.widthBold(ks) + Draw.width("KEYS") + 8;
+        int kx = px + pw - 14 - kw;
         int tx = kx - 8 - cw;
         Draw.rrect(g, tx, py + 9, cw, 18, 9, 0xFF141A2C);
         Draw.rrectLine(g, tx, py + 9, cw, 18, 9, 0xFF3A3420);
@@ -473,10 +530,9 @@ public final class CratesScreen extends Screen {
         Draw.boldCenter(g, "Z", tx + 10, py + 14, 0xFF3A2A08);
         Draw.bold(g, tk, tx + 21, py + 14, GOLD);
         Draw.text(g, "TOKENS", tx + 24 + Draw.widthBold(tk), py + 14, SUB);
-        Draw.rrect(g, kx, py + 9, 64, 18, 9, 0xFF141A2C);
-        Draw.rrectLine(g, kx, py + 9, 64, 18, 9, 0xFF2A3E6A);
+        Draw.rrect(g, kx, py + 9, kw, 18, 9, 0xFF141A2C);
+        Draw.rrectLine(g, kx, py + 9, kw, 18, 9, 0xFF2A3E6A);
         drawKey(g, kx + 6, py + 13, 0xFFC8D4F0);
-        String ks = Math.round(shownKeys) + "";
         Draw.bold(g, ks, kx + 24, py + 14, TEXT);
         Draw.text(g, "KEYS", kx + 30 + Draw.widthBold(ks), py + 14, SUB);
 
@@ -591,17 +647,27 @@ public final class CratesScreen extends Screen {
             int shift = Math.round(rowHover[i] * 3f);
             drawCrate(g, c, x + 18 + shift, y + h / 2f + 1, Math.min(26, h), t + i, 0f, 0f, 0f);
             int n = Crates.held(c.id);
-            int badgeW = n > 0 ? Draw.widthBold("x" + n) + 14 : 0;
-            int nameW = w - 40 - badgeW;
+            String cname = c.name.replace(" Crate", "");
+            int sideBadge = n > 0 ? Draw.widthBold("x" + n) + 14 : 0;
+            // a narrow list puts the count on the crate icon, so the whole name fits beside it
+            boolean onIcon = n > 0 && Draw.widthBold(cname) > w - 40 - sideBadge;
+            int badgeW = onIcon ? 0 : sideBadge;
+            int nameW = w - 38 - badgeW;
             int tc = on ? TEXT : Draw.mix(0xFFB8C6E4, TEXT, rowHover[i]);
             if (h >= 26 && !small) {
-                Draw.bold(g, Draw.fit(c.name.replace(" Crate", ""), nameW), x + 36 + shift, y + h / 2 - 8, tc);
+                Draw.bold(g, Draw.fit(cname, nameW), x + 36 + shift, y + h / 2 - 8, tc);
                 int got = Crates.collected(c);
                 Draw.text(g, Draw.fit(got + " / " + c.items.size() + " collected", nameW), x + 36 + shift, y + h / 2 + 2, got == c.items.size() ? GOLD : FAINT);
             } else {
-                Draw.bold(g, Draw.fit(c.name.replace(" Crate", ""), nameW), x + 34 + shift, y + h / 2 - 4, tc);
+                Draw.bold(g, Draw.fit(cname, nameW), x + 34 + shift, y + h / 2 - 4, tc);
             }
-            if (n > 0) {
+            if (onIcon) {
+                String s = "" + n;
+                int bw = Math.max(9, Draw.widthBold(s) + 5);
+                int bx = x + 18 + shift + 8, byy = y + 1;
+                Draw.rrect(g, bx, byy, bw, 9, 4, c.colour);
+                Draw.boldCenter(g, s, bx + bw / 2, byy + 1, 0xFF0A0A10);
+            } else if (n > 0) {
                 String s = "x" + n;
                 int bw = Draw.widthBold(s) + 8;
                 Draw.rrect(g, x + w - bw - 6, y + h / 2 - 6, bw, 12, 6, c.colour);
@@ -946,7 +1012,7 @@ public final class CratesScreen extends Screen {
         hits.clear();
         float u = t - inspectAt;
         float e = outCubic(u / 0.3f);
-        g.fill(0, 0, width, height, Draw.rgba(0xF0030610, e));
+        g.fill(0, 0, width, height, Draw.rgba(0xD8030610, e));
         Item it = inspect;
         Rarity r = it.rarity();
         int[] b = inspectBox();
@@ -1199,13 +1265,19 @@ public final class CratesScreen extends Screen {
     }
 
     // ------------------------------------------------------------------ the opening sequence
+    /** A bright rainbow colour: 0 red round to 1 red again. */
+    private static int hue(float h) {
+        h = h - (float) Math.floor(h);
+        return 0xFF000000 | (java.awt.Color.HSBtoRGB(h, 0.58f, 1f) & 0xFFFFFF);
+    }
+
     private final class Opening {
         // timeline (seconds)
         // timeline (seconds); Quick open shortens every step
         final boolean fast = Crates.quick();
         final float FLY = fast ? 0.22f : 0.45f;       // crate flies from the panel to the middle
         final float RATTLE = fast ? 0.18f : 0.42f;    // shakes harder and harder
-        final float BURST = 0.22f;                     // lid blows off
+        final float BURST = 0.34f;                     // latches let go and the lid swings open
         final float SPIN0 = FLY + RATTLE + 0.05f;
         final float SPIN = fast ? 2.4f : 5.6f;        // reel runs and slows
         final float SETTLE = fast ? 0.25f : 0.40f;    // overshoot ticks back onto the winner
@@ -1223,7 +1295,10 @@ public final class CratesScreen extends Screen {
         float skipBy;
         int lastCard = Integer.MIN_VALUE;
         long lastTick;
-        boolean burstSound, landSound, revealSound, beamSound;
+        boolean burstSound, landSound, revealSound, beamSound, latchSound;
+        /** The secret tier gets its own reveal: rainbow light, a chord, more of everything. */
+        final boolean chroma;
+        int chimes;
         final float[][] sparks = new float[90][6];
         final float[][] confetti;
 
@@ -1233,6 +1308,7 @@ public final class CratesScreen extends Screen {
             this.fromX = fromX;
             this.fromY = fromY;
             this.fromSize = Math.max(40, fromSize);
+            chroma = r.item().rarity() == Rarity.CHROMA;
             Random rnd = new Random();
             for (int i = 0; i < 64; i++) reel.add(Crates.roll(c));
             win = 56;
@@ -1250,7 +1326,7 @@ public final class CratesScreen extends Screen {
                 s[5] = rnd.nextFloat() * 6.28f;
             }
             boolean gold = r.item().rarity().ordinal() >= Rarity.OLYMPIAN.ordinal();
-            confetti = new float[gold ? 70 : 0][6];
+            confetti = new float[chroma ? 130 : gold ? 70 : 0][6];
             for (float[] q : confetti) {
                 q[0] = rnd.nextFloat();
                 q[1] = rnd.nextFloat() * 1.5f;
@@ -1364,6 +1440,11 @@ public final class CratesScreen extends Screen {
                     lastCard = n;
                     snd(SoundEvents.CHEST_LOCKED, 1.2f + n * 0.05f, 0.25f + rattle * 0.3f);
                 }
+            }
+            if (!latchSound && rattle >= 1f) {
+                latchSound = true;
+                snd(SoundEvents.IRON_TRAPDOOR_OPEN, 1.75f, 0.45f);
+                snd(SoundEvents.CHAIN_BREAK, 1.6f, 0.4f);
             }
             if (!burstSound && lid > 0.05f) {
                 burstSound = true;
@@ -1498,9 +1579,26 @@ public final class CratesScreen extends Screen {
             if (!revealSound) {
                 announce(res);
             }
+            if (chroma) {
+                // a rising bell chord, one note at a time, then a shimmer
+                float[] notes = {0.84f, 1.0f, 1.26f, 1.5f, 1.68f, 2.0f};
+                while (chimes < notes.length && u >= chimes * 0.085f) {
+                    snd(SoundEvents.NOTE_BLOCK_BELL, notes[chimes], 0.55f);
+                    if (chimes % 2 == 0) snd(SoundEvents.AMETHYST_BLOCK_CHIME, notes[chimes], 0.8f);
+                    chimes++;
+                }
+                if (chimes == notes.length && u > 0.62f) {
+                    chimes++;
+                    snd(SoundEvents.AMETHYST_CLUSTER_BREAK, 1.4f, 0.9f);
+                    snd(SoundEvents.BEACON_POWER_SELECT, 1.5f, 0.6f);
+                }
+            }
             if (!revealSound) {
                 revealSound = true;
-                if (big) {
+                if (chroma) {
+                    snd(SoundEvents.UI_TOAST_CHALLENGE_COMPLETE, 1.15f, 0.9f);
+                    snd(SoundEvents.TOTEM_USE, 1.7f, 0.3f);
+                } else if (big) {
                     snd(SoundEvents.UI_TOAST_CHALLENGE_COMPLETE, 1.0f, 0.8f);
                     snd(SoundEvents.TOTEM_USE, 1.4f, 0.35f);
                 } else if (rar.ordinal() >= Rarity.DIVINE.ordinal()) {
@@ -1519,19 +1617,32 @@ public final class CratesScreen extends Screen {
             g.pose().pushMatrix();
             g.pose().translate(shk * (float) Math.sin(u * 70), shk * (float) Math.cos(u * 57));
             float e = outCubic(u / 0.45f);
-            if (u < 0.25f) g.fill(0, 0, width, height, Draw.rgba(0xFFFFFFFF, 0.45f * (1f - u / 0.25f)));
+            if (chroma) {
+                if (u < 0.45f) g.fill(0, 0, width, height, Draw.rgba(0xFFFFFFFF, 0.75f * (1f - u / 0.45f)));
+                // a rainbow light round the edges of the screen that keeps turning
+                int ew = Math.max(8, width / 14);
+                for (int i = 0; i < 4; i++) {
+                    int ec = hue(clock * 0.2f + i * 0.25f);
+                    float ea = 0.10f * e;
+                    if (i == 0) Draw.glow(g, 0, -2, width, 2, 1, ec, ew, ea);
+                    if (i == 1) Draw.glow(g, width, 0, 2, height, 1, ec, ew, ea);
+                    if (i == 2) Draw.glow(g, 0, height, width, 2, 1, ec, ew, ea);
+                    if (i == 3) Draw.glow(g, -2, 0, 2, height, 1, ec, ew, ea);
+                }
+            } else if (u < 0.25f) g.fill(0, 0, width, height, Draw.rgba(0xFFFFFFFF, 0.45f * (1f - u / 0.25f)));
             // soft rarity light and turning rays (two layers on the rarest drops)
             Draw.glow(g, Math.round(cx) - 60, Math.round(cy) - 30, 120, 60, 30, col, Math.round(Math.min(width, height) * 0.45f), 0.006f * e);
             int len = Math.round(Math.max(width, height) * 0.75f);
             int rays = 24;
-            for (int layer = 0; layer < (big ? 2 : 1); layer++) {
-                float rot = (layer == 0 ? 1 : -0.6f) * clock * 0.22f;
+            for (int layer = 0; layer < (chroma ? 3 : big ? 2 : 1); layer++) {
+                float rot = (layer == 0 ? 1 : layer == 1 ? -0.6f : 0.35f) * clock * 0.22f;
                 for (int i = 0; i < rays; i++) {
-                    double ang = rot + (i + layer * 0.5) * Math.PI * 2 / rays;
+                    double ang = rot + (i + layer * 0.33) * Math.PI * 2 / rays;
                     float alpha = (i % 2 == 0 ? 0.12f : 0.06f) * e * (layer == 0 ? 1f : 0.6f);
+                    int rc = chroma ? hue(i / (float) rays + layer * 0.17f + clock * 0.08f) : col;
                     for (int k = -2; k <= 2; k++) {
                         double aa = ang + k * 0.017;
-                        Draw.line(g, cx, cy, cx + (float) Math.cos(aa) * len, cy + (float) Math.sin(aa) * len, 3f, Draw.rgba(col, alpha * (1f - Math.abs(k) * 0.22f)));
+                        Draw.line(g, cx, cy, cx + (float) Math.cos(aa) * len, cy + (float) Math.sin(aa) * len, 3f, Draw.rgba(rc, alpha * (1f - Math.abs(k) * 0.22f)));
                     }
                 }
             }
@@ -1548,7 +1659,7 @@ public final class CratesScreen extends Screen {
                 float tw = 0.6f + 0.4f * (float) Math.sin(clock * 18 + s[5]);
                 int sz = Math.max(1, Math.round(s[2]));
                 g.fill(Math.round(x), Math.round(y), Math.round(x) + sz, Math.round(y) + sz,
-                        Draw.rgba(s[4] < 0.5f ? Draw.lighten(col, 0.5f) : 0xFFFFF4D0, (1f - life) * tw));
+                        Draw.rgba(chroma ? hue(s[4] + clock * 0.3f) : s[4] < 0.5f ? Draw.lighten(col, 0.5f) : 0xFFFFF4D0, (1f - life) * tw));
             }
             // gold confetti for an Olympian
             for (float[] q : confetti) {
@@ -1559,7 +1670,7 @@ public final class CratesScreen extends Screen {
                 g.pose().translate(x, y);
                 g.pose().rotate(u * 3 + q[3]);
                 int w = Math.round(q[4]), h = Math.max(1, Math.round(q[4] * 0.5f * Math.abs((float) Math.cos(u * 6 + q[3]))));
-                g.fill(-w, -h, w, h, q[5] < 0.5f ? 0xFFFFD66A : 0xFFFFF2C0);
+                g.fill(-w, -h, w, h, chroma ? hue(q[5] + u * 0.15f) : q[5] < 0.5f ? 0xFFFFD66A : 0xFFFFF2C0);
                 g.pose().popMatrix();
             }
             // the knife flies out of the winning card into the middle, turning as it comes
@@ -1583,8 +1694,21 @@ public final class CratesScreen extends Screen {
                 g.pose().pushMatrix();
                 g.pose().translate(cx, chipY + 7);
                 g.pose().scale(ra, ra);
-                Draw.rrect(g, -rw / 2, -7, rw, 14, 7, col);
-                Draw.boldCenter(g, rl, 0, -4, 0xFF0A0A12);
+                if (chroma) {
+                    Draw.glow(g, -rw / 2, -7, rw, 14, 7, col, 10, 0.25f);
+                    Draw.rrect(g, -rw / 2, -7, rw, 14, 7, 0xFF0A0A14);
+                    Draw.rrectLine(g, -rw / 2, -7, rw, 14, 7, col);
+                    int lx = -Draw.widthBold(rl) / 2;
+                    for (int i = 0; i < rl.length(); i++) {
+                        String letter = rl.substring(i, i + 1);
+                        Draw.bold(g, letter, lx, -4, hue(clock * 0.5f - i * 0.11f));
+                        lx += Draw.widthBold(letter);
+                    }
+                    Draw.sheen(g, -rw / 2, -7, rw, 14, 0x60FFFFFF, (clock * 0.6f) % 1.8f);
+                } else {
+                    Draw.rrect(g, -rw / 2, -7, rw, 14, 7, col);
+                    Draw.boldCenter(g, rl, 0, -4, 0xFF0A0A12);
+                }
                 g.pose().popMatrix();
             }
             // banner slides up, the name types itself in, a shine runs across

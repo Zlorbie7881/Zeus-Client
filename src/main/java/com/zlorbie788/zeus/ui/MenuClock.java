@@ -32,7 +32,10 @@ final class MenuClock {
         int x = width - Math.max(8, Math.round(18 * u)) - w;
         int y = Math.max(6, Math.round(14 * u)) - Math.round((1f - appear) * 8f);
         float a = appear;
-        Draw.rrect(g, x, y, w, h, 4, Draw.rgba(0xFF050914, 0.62f * a), Draw.rgba(0xFF03060E, 0.62f * a));
+        // a near-solid plaque: the sky photo's moon sits behind it and should not show through the frame
+        Draw.shadow(g, x, y, w, h, 4, Math.max(4, Math.round(6 * u)), 0.55f * a);
+        Draw.rrect(g, x, y, w, h, 4, Draw.rgba(0xFF0A1022, 0.90f * a), Draw.rgba(0xFF04070F, 0.92f * a));
+        g.fill(x + 4, y + 1, x + w - 4, y + 2, Draw.rgba(0xFF8CA0D0, 0.22f * a));
         Draw.rrectLine(g, x, y, w, h, 4, Draw.rgba(0xFF5A6C98, 0.80f * a));
         int xr = x + w - padX;
         Draw.textRightS(g, time, xr + 1, y + padY + 1, Draw.rgba(0xFF000000, 0.55f * a), ts);

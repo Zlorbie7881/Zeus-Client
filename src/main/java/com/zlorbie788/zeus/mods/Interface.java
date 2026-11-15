@@ -227,7 +227,12 @@ public final class Interface {
 
         private List<String[]> buildRows(Minecraft mc) {
             List<String[]> rows = new ArrayList<>(5);
-            if (coords.on()) rows.add(new String[]{"XYZ", String.format(Locale.ROOT, "%.0f  %.0f  %.0f", mc.player.getX(), mc.player.getY(), mc.player.getZ())});
+            // the Position panel already shows where you are: no second copy here
+            boolean positionOn = false;
+            for (com.zlorbie788.zeus.core.Module m : com.zlorbie788.zeus.core.Zeus.all()) {
+                if (m instanceof Coordinates && m.enabled()) positionOn = true;
+            }
+            if (coords.on() && !positionOn) rows.add(new String[]{"XYZ", String.format(Locale.ROOT, "%.0f  %.0f  %.0f", mc.player.getX(), mc.player.getY(), mc.player.getZ())});
             if (facing.on()) {
                 float yaw = ((mc.player.getYRot() % 360f) + 360f) % 360f;
                 String[] names = {"South", "South-west", "West", "North-west", "North", "North-east", "East", "South-east"};

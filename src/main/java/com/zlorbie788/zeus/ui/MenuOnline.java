@@ -91,6 +91,10 @@ public final class MenuOnline {
             }
         } catch (Exception ignored) {
         }
+        if (news == null || news.isEmpty()) {
+            String b = bundled();
+            if (b != null) news = parse(b);
+        }
         Thread t = new Thread(MenuOnline::fetch, "Zeus menu news");
         t.setDaemon(true);
         t.start();
@@ -114,7 +118,12 @@ public final class MenuOnline {
                 String tag = rel.has("tag_name") ? rel.get("tag_name").getAsString() : "";
                 if (tag.startsWith("build-")) latestBuild = Integer.parseInt(tag.substring(6));
                 latestName = rel.has("name") && !rel.get("name").isJsonNull() ? rel.get("name").getAsString() : tag;
-                if (newsText == null) newsText = fromRelease(rel);
+                if (newsText == null) {
+                    String fromRel = fromRelease(rel);
+                    // release notes with nothing but a title say less than the news this build came with
+                    long lines = fromRel.lines().filter(l -> !l.isBlank() && !l.startsWith("#") && !l.startsWith("~")).count();
+                    newsText = lines > 0 ? fromRel : bundled();
+                }
             }
         } catch (Exception ignored) {
         }
@@ -131,6 +140,15 @@ public final class MenuOnline {
             Files.createDirectories(cache().getParent());
             Files.writeString(cache(), c.toString());
         } catch (Exception ignored) {
+        }
+    }
+
+    /** The NEWS.md packed into this build, or null. */
+    private static String bundled() {
+        try (java.io.InputStream in = MenuOnline.class.getResourceAsStream("/assets/zeus/NEWS.md")) {
+            return in == null ? null : new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            return null;
         }
     }
 

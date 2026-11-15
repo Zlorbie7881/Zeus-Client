@@ -93,12 +93,34 @@ public class ZeusScreensTest implements FabricClientGameTest {
             }
             ctx.runOnClient(c -> set(c.screen, "tab", 0));
             ctx.runOnClient(c -> open(c, "hades"));
-            float[] at = {0.25f, 0.7f, 1.0f, 2.2f, 4.8f, 6.75f, 7.25f, 7.75f, 8.6f, 10.0f};
+            float[] at = {0.25f, 0.7f, 0.92f, 1.0f, 1.1f, 2.2f, 4.8f, 6.75f, 7.25f, 7.75f, 8.6f, 10.0f};
             float done = 0f;
             for (float a : at) {
                 run(ctx, a - done);
                 done = a;
                 ctx.takeScreenshot("open_" + tag + "_" + Math.round(a * 100));
+            }
+            ctx.runOnClient(c -> set(c.screen, "opening", null));
+            // a Chroma drop, straight to its reveal
+            ctx.runOnClient(c -> {
+                try {
+                    Crates.Crate cr = Crates.crate("poseidon");
+                    Crates.Result res = new Crates.Result(new Crates.Item("chroma_butterfly", Crates.Rarity.CHROMA), cr, false, 0);
+                    Class<?> oc = Class.forName("com.zlorbie788.zeus.ui.CratesScreen$Opening");
+                    var ctor = oc.getDeclaredConstructors()[0];
+                    ctor.setAccessible(true);
+                    Object op = ctor.newInstance(c.screen, cr, res, c.getWindow().getGuiScaledWidth() / 2, c.getWindow().getGuiScaledHeight() / 2, 80);
+                    set(c.screen, "opening", op);
+                    Method sk = oc.getDeclaredMethod("skip");
+                    sk.setAccessible(true);
+                    sk.invoke(op);
+                } catch (ReflectiveOperationException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            for (float a : new float[] {0.15f, 0.6f, 1.6f}) {
+                run(ctx, a);
+                ctx.takeScreenshot("chroma_reveal_" + tag + "_" + Math.round(a * 100));
             }
             ctx.runOnClient(c -> set(c.screen, "opening", null));
             ctx.runOnClient(c -> {
@@ -200,6 +222,19 @@ public class ZeusScreensTest implements FabricClientGameTest {
                 ctx.waitTicks(30);
                 ctx.takeScreenshot("hand_" + k);
             }
+            // the Zeus menu over the world
+            ctx.setScreen(() -> new com.zlorbie788.zeus.ui.ZeusScreen());
+            ctx.waitTicks(30);
+            ctx.takeScreenshot("zeus_menu_1920");
+            ctx.setScreen(() -> null);
+            ctx.waitTicks(5);
+            // at night the knife and arm dim with the world; the Chroma glow and sparkles still show
+            sp.getServer().runCommand("time set midnight");
+            ctx.runOnClient(c -> KnifeSwing.equipHd(Crates.hdOf("chroma_karambit")));
+            ctx.waitTicks(40);
+            ctx.takeScreenshot("hand_night_chroma_karambit");
+            sp.getServer().runCommand("time set day");
+            ctx.waitTicks(20);
             // the butterfly flicks open when it is drawn, then plays its tricks: photograph the flip as it goes
             for (String k : new String[] {"chroma_butterfly", "butterfly_fade"}) {
                 ctx.runOnClient(c -> KnifeSwing.equipHd(Crates.hdOf(k)));

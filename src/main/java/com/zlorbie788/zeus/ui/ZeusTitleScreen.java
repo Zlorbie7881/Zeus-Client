@@ -700,7 +700,7 @@ public final class ZeusTitleScreen extends Screen {
             }
             if (i == CRATES) {
                 int waiting = com.zlorbie788.zeus.core.Crates.heldTotal();
-                if (waiting > 0) MenuExtras.crateCount(g, x + w + Math.round(6 * u), y, h, waiting, ease, t);
+                if (waiting > 0) MenuExtras.crateCount(g, x + w, y, h, waiting, ease, t);
             }
             if (fx) MenuExtras.chevrons(g, x, y, w, h, gl * ease, u, 0xFFA8BEEA);
             if (gl > 0.02f) Draw.rrectLine(g, x, y, w, h, 3, Draw.rgba(0xFFA8BEEA, (0.68f + 0.10f * (float) Math.sin(t * 4f)) * gl * ease));

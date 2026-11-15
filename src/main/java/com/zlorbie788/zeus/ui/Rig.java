@@ -159,6 +159,13 @@ public final class Rig {
         alpha = a;
     }
 
+    private float light = 1f;
+
+    /** World light on the whole rig, 0..1 (1: as painted). */
+    public void light(float l) {
+        light = Math.max(0f, Math.min(1f, l));
+    }
+
     public int size() {
         return faces.size();
     }
@@ -275,7 +282,7 @@ public final class Rig {
             float ox = cx - ux * f.w / 2f - vx * f.h / 2f;
             float oy = cy - uy * f.w / 2f - vy * f.h / 2f;
             float lam = Math.max(0f, f.nx * LX + f.ny * LY + f.nz * LZ);
-            ctx.shade = 0.70f + 0.42f * lam;
+            ctx.shade = (0.70f + 0.42f * lam) * light;
             ctx.alpha = f.alphaScale;
             ctx.nx = f.nx;
             ctx.ny = f.ny;

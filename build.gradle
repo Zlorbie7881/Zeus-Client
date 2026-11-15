@@ -26,6 +26,10 @@ processResources {
     filesMatching("fabric.mod.json") {
         expand "version": modVersion
     }
+    // the news as it was when this build was made: the menu shows it until the online copy arrives
+    from(rootProject.file("NEWS.md")) {
+        into "assets/zeus"
+    }
     filesMatching("assets/zeus/build.properties") {
         expand "build": buildNumber
     }

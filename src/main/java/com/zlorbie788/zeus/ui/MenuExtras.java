@@ -111,16 +111,25 @@ final class MenuExtras {
     }
 
     /** The number of crates waiting, on a small stone plate beside the Zeus Crates button. */
-    static void crateCount(GuiGraphics g, int x, int y, int h, int n, float ease, float t) {
-        String s = n > 99 ? "99" : String.valueOf(n);
-        int cap = Math.max(5, Math.round(h * 0.34f));
-        int tw = GreekFont.supports(s) ? GreekFont.width(s, cap) : Draw.widthBold(s);
-        int bh = Math.max(12, Math.round(h * 0.70f)), bw = Math.max(bh, tw + 14);
-        int by = y + (h - bh) / 2;
+    /**
+     * How many crates are waiting: a gold coin pinned to the top-right corner of the crates button, like a
+     * notification badge, breathing softly. bx/by is the button's top-right corner, h its height.
+     */
+    static void crateCount(GuiGraphics g, int bx, int by, int h, int n, float ease, float t) {
+        String s = n > 99 ? "99+" : String.valueOf(n);
+        int d = Math.max(12, Math.round(h * 0.62f));
+        int tw = Draw.widthBold(s);
+        int w = Math.max(d, tw + Math.round(d * 0.55f));
+        int x = bx - w / 2 - Math.round(d * 0.15f), y = by - d / 2 + Math.round(d * 0.12f);
         float pulse = 0.5f + 0.5f * (float) Math.sin(t * 2.4f);
-        Draw.glow(g, x, by, bw, bh, 3, HOVER, 5, (0.10f + 0.12f * pulse) * ease);
-        Plate9.draw(g, x, by, bw, bh, Draw.rgba(0xFFFFFFFF, ease));
-        title(g, s, x + bw / 2, by + (bh - cap) / 2, cap, Draw.rgba(INK, ease));
+        int gold = 0xFFF2C14E;
+        Draw.glow(g, x + w / 2 - 1, y + d / 2 - 1, 2, 2, 1, gold, d, (0.18f + 0.14f * pulse) * ease * 3f / d);
+        Draw.shadow(g, x, y + 1, w, d, d / 2, 3, 0.5f * ease);
+        Draw.rrect(g, x, y, w, d, d / 2, Draw.rgba(0xFFFFE08A, ease), Draw.rgba(0xFFC8901E, ease));
+        Draw.rrectLine(g, x, y, w, d, d / 2, Draw.rgba(0xFF6A4A0C, ease));
+        g.fill(x + d / 3, y + 1, x + w - d / 3, y + 2, Draw.rgba(0xFFFFF6D0, 0.8f * ease));
+        float sc = Math.max(1f, Math.round(d / 11f * 2f) / 2f);
+        Draw.boldCenterS(g, s, x + w / 2, y + (d - Math.round(8 * sc)) / 2 + 1, Draw.rgba(0xFF3A2606, ease), sc);
     }
 
     /** The splash line beside the logo, tilted and pulsing like vanilla's, in the menu's pale blue. */

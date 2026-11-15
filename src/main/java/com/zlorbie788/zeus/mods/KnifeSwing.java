@@ -179,7 +179,7 @@ public final class KnifeSwing extends Module {
     private final Setting.Choice design = add(new Setting.Choice("Handle design", "Slotted has the long slot and slanted teeth of the knife in the video.", 0, KnifeArt.DESIGNS)).showIf(() -> false);
     private final Setting.Choice hand = add(new Setting.Choice("Hand", "My skin: the arm wears your own skin, like the game's own hand. The others are painted.", 0, ArmArt.LOOKS)).showIf(() -> section.index() == 0);
     private final Setting.Choice place = add(new Setting.Choice("Place", "Where on the screen. Bottom left is the left hand.", 0, "Bottom right", "Bottom left", "Centre")).showIf(() -> section.index() == 1);
-    private final Setting.Bool showFingers = add(new Setting.Bool("Show fingers", "Draws the blocky fingers and thumb on the handle. Off: only the arm and the knife.", false)).showIf(() -> section.index() == 0);
+    private final Setting.Bool showFingers = add(new Setting.Bool("Show fingers", "Draws the blocky fingers and thumb on the handle. Off: only the arm and the knife.", true)).showIf(() -> section.index() == 0);
     private final Setting.Num size = add(new Setting.Num("Size", "How big the hand and knife are.", 1.0, 0.5, 2.5, 0.1, "x")).showIf(() -> section.index() == 1);
     private final Setting.Num height = add(new Setting.Num("Hand height", "How high the hand holding the knife sits, measured up from the bottom of the screen. Every knife type is placed so its grip lands here.", 30, 5, 70, 1, "%")).showIf(() -> section.index() == 1);
     private final Setting.Num inset = add(new Setting.Num("Hand distance from edge", "How far in from the side of the screen the hand sits.", 22, 5, 50, 1, "%")).showIf(() -> section.index() == 1);
@@ -1360,6 +1360,10 @@ public final class KnifeSwing extends Module {
             ghostAngle.remove(0);
             ghostWhen.remove(0);
         }
+        // the world's light where the player stands dims the knife and the arm, like the game's own hand
+        lightNow += (worldLight(mc) - lightNow) * Math.min(1f, dt * 4f);
+        KnifeHD.ambient = lightNow;
+        rig.light(lightNow);
         float ghostFade = Math.min(1f, ghostStrength.f() / 100f);
         for (int i = 0; i < ghostAt.size(); i++) {
             float[] a = ghostAngle.get(i);
@@ -1384,9 +1388,11 @@ public final class KnifeSwing extends Module {
             float bottom = y0 + swayY + moveOff[1] + Math.max(e[3] * u, e[1] * u);
             if (bottom >= h + 2f) break;
         }
-        if (showFingers.on()) {
+        if (showFingers.on() && hdKnife < 0) {
             if (karambit()) kFingers(f, p, skin);
             else fingers(f, p, skin);
+        } else if (showFingers.on() && bf) {
+            fingers(f, p, skin);
         }
         rig.flush(g, u);
 
@@ -1405,6 +1411,18 @@ public final class KnifeSwing extends Module {
             knifeDrawn = drawMesh(g, f.knife, p.a, p.b, p.c, look, u, fade);
         } else {
             knifeDrawn = pixelKnife(g, f.knife, p.a, p.b, p.c, look, u, fade);
+        }
+        // fingers close round the HD knife's handle, in front of it; they open as a trick lets it go
+        if (knifeDrawn && hdKnife >= 0 && !bf && showFingers.on()) {
+            rig.clear();
+            hdFingers(f, p, skin, hdKnife, fade);
+            rig.flush(g, u);
+        }
+        KnifeHD.ambient = 1f;
+        if (knifeDrawn && hdKnife >= 0) {
+            KnifeHD.Model bm = bf ? KnifeHD.pieces(hdKnife).blade : KnifeHD.model(hdKnife);
+            Rig.T bt = bf ? KnifeHDGui.butterflyBlade(hdKnife, f.knife, p.a, p.b, p.c) : f.knife;
+            twinkle(g, bm, bt, u, dt, fade);
         }
         if (!knifeDrawn) knifeDrawn = pixelKnife(g, f.knife, p.a, p.b, p.c, look, u, fade);
         if (!knifeDrawn) {
@@ -1584,6 +1602,92 @@ public final class KnifeSwing extends Module {
             return com.zlorbie788.zeus.ui.KnifeHD.tip(com.zlorbie788.zeus.ui.KnifeHD.pieces(h).blade, KnifeHDGui.butterflyBlade(h, f.knife, p.a, p.b, p.c));
         }
         return karambit() ? KnifeArt.kTip(f.knife, key()) : KnifeArt.tip(f.knife, p.c);
+    }
+
+    private float lightNow = 1f;
+    private final java.util.ArrayDeque<float[]> twinkles = new java.util.ArrayDeque<>();
+    private float twinkleDue;
+
+    /**
+     * Chroma blades shed tiny stars that drift up and fade, so they read as rare even in bright daylight, where a
+     * glow is hard to see. A few dozen screen-space points at most: next to nothing to draw.
+     */
+    private void twinkle(GuiGraphics g, KnifeHD.Model m, Rig.T k, float u, float dt, float fade) {
+        if (m == null || m.emissive() < 0.9f || still()) {
+            twinkles.clear();
+            return;
+        }
+        twinkleDue += dt * 9f;
+        while (twinkleDue >= 1f && twinkles.size() < 40) {
+            twinkleDue -= 1f;
+            float[] at = KnifeHD.along(m, k, 0.12f + 0.85f * rnd.nextFloat());
+            float sc = u * 90f / (90f + at[2]);
+            twinkles.add(new float[] {at[0] * sc, at[1] * sc, (rnd.nextFloat() - 0.5f) * 10f, -6f - rnd.nextFloat() * 14f,
+                    0f, 0.55f + rnd.nextFloat() * 0.7f, rnd.nextFloat()});
+        }
+        twinkleDue = Math.min(twinkleDue, 1f);
+        float au = Math.abs(u);
+        int star = Draw.lighten(m.glow, 0.55f);
+        for (java.util.Iterator<float[]> it = twinkles.iterator(); it.hasNext(); ) {
+            float[] q = it.next();
+            q[4] += dt;
+            if (q[4] >= q[5]) {
+                it.remove();
+                continue;
+            }
+            q[0] += q[2] * dt;
+            q[1] += q[3] * dt;
+            float life = q[4] / q[5];
+            float a = (float) Math.sin(Math.PI * life) * fade;
+            int sz = Math.max(1, Math.round(au * (0.18f + 0.22f * q[6]) * (1f - 0.5f * life)));
+            int x = Math.round(q[0]), y = Math.round(q[1]);
+            int c = Draw.rgba(q[6] > 0.6f ? 0xFFFFFFFF : star, a);
+            g.fill(x - sz, y, x + sz + 1, y + 1, c);
+            g.fill(x, y - sz, x + 1, y + sz + 1, c);
+            if (sz > 1) Draw.glow(g, x - 1, y - 1, 2, 2, 1, m.glow, sz * 2, 0.35f * a * 3f / (sz * 2));
+        }
+    }
+
+    /** 0.3 in the dark up to 1 in full light, from the block and sky light at the player's eyes. */
+    private static float worldLight(Minecraft mc) {
+        if (mc.level == null || mc.player == null) return 1f;
+        if (mc.player.hasEffect(net.minecraft.world.effect.MobEffects.NIGHT_VISION)) return 1f;
+        net.minecraft.core.BlockPos pos = net.minecraft.core.BlockPos.containing(mc.player.getEyePosition());
+        int raw = mc.level.getRawBrightness(pos, mc.level.getSkyDarken());
+        float l = raw / 15f;
+        return 0.30f + 0.70f * l * (0.85f + 0.15f * l);
+    }
+
+    /**
+     * Four blocky fingers curled over the front of an HD knife's handle, and the thumb behind it, in the game's own
+     * blocky style. They belong to the fist, not the knife: when a trick spins or tosses the knife they open and let
+     * it go, and close round it again when it comes back.
+     */
+    private void hdFingers(Frame f, Pose p, ArmArt.Skin skin, int hd, float fade) {
+        KnifeHD.Model m = KnifeHD.model(hd);
+        if (m == null) return;
+        float rel = Math.max(0f, Math.min(1f, p.release));
+        // gone while the knife is away from the hand (tosses, flips)
+        float away = Math.abs(p.kx) + Math.abs(p.ky) + Math.abs(p.kz);
+        float a = fade * (1f - rel * 0.85f) * (1f - Math.min(1f, away / 3f));
+        if (a <= 0.03f) return;
+        rig.alpha(a);
+        float[] span = KnifeHD.handleSpan(m);
+        float len = span[1] - span[0];
+        float hw = 1.45f;                          // half the handle's width, in rig units
+        float fz = -(span[2] + 0.9f);              // in front of the handle's face
+        float fh = Math.max(1.5f, Math.min(2.2f, len * 0.14f));
+        float y0 = span[0] + len * 0.10f;
+        Rig.Painter paint = ArmArt.finger(skin);
+        for (int i = 0; i < 4; i++) {
+            float y = y0 + i * (fh + 0.15f) + fh / 2f;
+            // each finger lifts off the handle a little as the hand opens
+            Rig.T hinge = f.fist.move(-hw - 0.4f, y, fz).rotY(-rel * (1.1f + 0.08f * i));
+            rig.box(hinge, hw + 0.3f - 0.18f * i, 0f, 0f, 2f * hw + 0.6f - 0.36f * i, fh, 2.2f, paint, false);
+        }
+        // the thumb, along the back of the handle
+        Rig.T thumb = f.fist.move(hw + 0.2f, y0 + fh * 1.2f, -fz * 0.6f).rotZ(0.25f + 0.6f * rel);
+        rig.box(thumb, 0f, fh, 0f, 2.0f, fh * 2.2f, 2.0f, paint, false);
     }
 
     private void kFingers(Frame f, Pose p, ArmArt.Skin skin) {

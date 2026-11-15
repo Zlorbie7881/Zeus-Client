@@ -38,6 +38,12 @@ public final class KnifeHD {
     public static final int CELLS = 7;
     public static final int FACE = 0, RIM50 = 1, RIM13 = 2, SIDE = 3, GLOSS = 4, EDGE = 5, PROFILE = 6;
 
+    /**
+     * How much light reaches the knife, 0..1: the hand sets it from the world's light where the player stands, so a
+     * knife in a cave is dim; menus leave it at 1. The glow of rare blades is not dimmed: it shines in the dark.
+     */
+    public static float ambient = 1f;
+
     /** Model scale, the same as the other straight knives, so the hand and tricks fit. */
     public static final float SC = 1.2f;
     /** Knife units from the sheet's pommel end to the model origin. */
@@ -303,6 +309,14 @@ public final class KnifeHD {
         return k.point(mx(m.tipV * t), my(u), 0f);
     }
 
+    /** The handle's start and end along the knife (rig units), for the fingers that hold it. */
+    public static float[] handleSpan(Model m) {
+        for (Part p : m.parts) {
+            if ("handle".equals(p.name)) return new float[] {my(p.u0), my(p.u1), p.t * SC};
+        }
+        return new float[] {my(0.5f), my(12f), 0.9f * SC};
+    }
+
     /** How far up the knife the hand holds it, in rig units. */
     public static float grip(Model m) {
         for (Part p : m.parts) {
@@ -448,7 +462,7 @@ public final class KnifeHD {
         float cellV = 1f / CELLS;
         float tv0 = PROFILE * cellV, tv1 = (PROFILE + 1) * cellV;
         int a = Math.round(clamp(alpha) * 255f);
-        int lv = Math.round(clamp(lum) * 255f);
+        int lv = Math.round(clamp(lum * ambient) * 255f);
         int c = (a << 24) | (lv << 16) | (lv << 8) | lv;
         // only the rows this part's thickness can reach, inset half a texel
         float zt = Math.min(m.zmax, p.t + 0.05f);
@@ -546,6 +560,7 @@ public final class KnifeHD {
                     float nX = mode == -3f ? bnx : fx, nY = mode == -3f ? bny : fy, nZ = mode == -3f ? bnz : fz;
                     b = highlight(W[0], W[1], W[2], nX, nY, nZ, mode == -3f);
                 }
+                b *= ambient;
                 if (light) {
                     int lv = Math.round(clamp(b * alpha) * 255f);
                     col[idx] = (a << 24) | (lv << 16) | (lv << 8) | lv;
