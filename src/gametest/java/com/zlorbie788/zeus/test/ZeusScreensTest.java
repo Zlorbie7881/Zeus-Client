@@ -198,6 +198,8 @@ public class ZeusScreensTest implements FabricClientGameTest {
             aiTest(ctx, sp, "get me an iron pickaxe", "iron_pickaxe", 1, "iron_ingot 3", "oak_log 2");
             aiTest(ctx, sp, "get me a lantern", "lantern", 1, "iron_ingot 1", "coal 1", "oak_log 2");
             aiTest(ctx, sp, "get me a shield", "shield", 1, "iron_ingot 1", "oak_log 3");
+            aiTest(ctx, sp, "get me 3 iron ingots", "iron_ingot", 3, "raw_iron 3", "coal 1", "cobblestone 8");
+            aiTest(ctx, sp, "get me 2 cooked beef", "cooked_beef", 2, "beef 2", "coal 1");
         }
         // the test framework wants to finish on the vanilla title screen
         ctx.runOnClient(c -> UiSettings.MENU.set(false));
