@@ -277,30 +277,55 @@ public final class Clutch {
             }
             Player p = mc.player;
             if (when.index() == 0) {
-                if (!falling(p) || p.fallDistance < fall.get()) {
+                // Only worth a charge on the way down: fired while rising it just cancels the jump.
+                if (!falling(p) || p.fallDistance < fall.get() || p.getDeltaMovement().y > -0.05) {
                     note = "ready";
                     return;
                 }
             } else {
-                if (p.onGround() || !mc.options.keyJump.isDown()) {
+                if (p.onGround() || !mc.options.keyJump.isDown() || p.getDeltaMovement().y < -0.05) {
                     note = "ready";
                     return;
                 }
             }
+            // A mace hit in flight is worth more than a boost, so the charge waits its turn.
+            if (MaceMods.MaceAura.armed()) {
+                note = "letting the mace finish";
+                return;
+            }
             int slot = Inv.hotbar(Inv.is(Items.WIND_CHARGE));
-            if (slot < 0) {
+            boolean offhand = Inv.offhand(Inv.is(Items.WIND_CHARGE));
+            if (slot < 0 && !offhand) {
                 note = "no wind charge";
                 return;
             }
             if (Phantom.miss()) return;
-            Phantom.aimDown(p);
-            Inv.with(slot, () -> {
-                mc.gameMode.useItem(p, InteractionHand.MAIN_HAND);
-                p.swing(InteractionHand.MAIN_HAND);
-            });
+            fire(mc, p, slot, offhand);
             wait = cooldown.i();
             used++;
             note = "launched " + used;
+        }
+
+        /**
+         * The charge only pushes you if it goes off under your feet, so the server is told you are
+         * looking straight down for the use packet and then your real view is put back. Without the
+         * look packet the charge fires along the last rotation the server saw, which is usually level
+         * with the ground and does nothing.
+         */
+        private void fire(Minecraft mc, Player p, int slot, boolean offhand) {
+            float yaw = p.getYRot();
+            float pitch = p.getXRot();
+            float down = Math.min(90f, 89f + Phantom.wobble() * 0.2f);
+            p.setXRot(down);
+            com.zlorbie788.zeus.core.Aim.sendRotation(yaw, down);
+            if (offhand) {
+                mc.gameMode.useItem(p, InteractionHand.OFF_HAND);
+            } else {
+                Inv.with(slot, () -> mc.gameMode.useItem(p, InteractionHand.MAIN_HAND));
+            }
+            p.swing(InteractionHand.MAIN_HAND);
+            p.setXRot(pitch);
+            com.zlorbie788.zeus.core.Aim.sendRotation(yaw, pitch);
         }
 
         @Override

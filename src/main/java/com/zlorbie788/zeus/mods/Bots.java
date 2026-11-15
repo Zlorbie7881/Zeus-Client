@@ -73,19 +73,35 @@ public final class Bots {
 
         protected abstract String[] helperIds();
 
+        /** Modules the bot is useless without: these start even when "Run the helper modules" is off. */
+        protected String[] coreIds() {
+            return new String[0];
+        }
+
+        /**
+         * What the game will let a swing reach right now. The Reach module widens the vanilla limit,
+         * so a bot that kept its own 2.9 would stand at reach distance and never swing.
+         */
+        protected double hitRange(double wanted) {
+            return Math.max(wanted, Combat.Reach.entityRange() - 0.05);
+        }
+
         @Override
         protected void onEnable() {
             target = null;
             pearlCd = pearlAim = refillCd = tickNo = 0;
             mending = false;
             strafeLeft = 0;
-            if (helpers.on()) {
-                for (String id : helperIds()) {
-                    Module m = Zeus.get(id);
-                    if (m != null && !m.enabled()) {
-                        m.setEnabled(true);
-                        started.add(m);
-                    }
+            start(coreIds());
+            if (helpers.on()) start(helperIds());
+        }
+
+        private void start(String[] ids) {
+            for (String id : ids) {
+                Module m = Zeus.get(id);
+                if (m != null && !m.enabled()) {
+                    m.setEnabled(true);
+                    started.add(m);
                 }
             }
         }
@@ -122,6 +138,7 @@ public final class Bots {
 
         protected boolean canSwing() {
             if (target == null || System.currentTimeMillis() < reactAt) return false;
+            if (Phantom.miss()) return false;
             return hesitation.f() <= 0 || RNG.nextFloat() * 100f >= hesitation.f();
         }
 
@@ -415,7 +432,7 @@ public final class Bots {
     public static final class SwordBot extends Bot {
         private final Setting.Bool crits = add(new Setting.Bool("Critical hits", "Jumps and hits on the way down, so every hit is a critical hit.", true));
         private final Setting.Bool wtap = add(new Setting.Bool("W-tap", "Lets go of forward for a moment after each hit so the next hit knocks back again.", true));
-        private final Setting.Num reach = add(new Setting.Num("Hit reach", "How close the enemy must be before it swings.", 2.9, 2.0, 3.0, 0.1, " blocks"));
+        private final Setting.Num reach = add(new Setting.Num("Hit reach", "How close the enemy must be before it swings. The Reach module widens this by itself, so the bot uses every block it is allowed.", 2.9, 2.0, 6.0, 0.1, " blocks"));
         private final Setting.Num charge = add(new Setting.Num("Swing charge", "How charged the swing must be before it hits (1 is full).", 0.92, 0.5, 1.0, 0.02, ""));
         private final Setting.Num turn = add(new Setting.Num("Turn speed", "The most degrees your view turns in a tick. Lower looks more human.", 28, 6, 90, 2, " deg"));
         private int tapTicks;
@@ -476,7 +493,8 @@ public final class Bots {
             boolean facing = left < 14f || look.dot(dir) > 0.97;
             float strength = mc.player.getAttackStrengthScale(0f);
             boolean ready = strength >= charge.get();
-            boolean inReach = dist <= reach.get();
+            double swingAt = hitRange(reach.get());
+            boolean inReach = dist <= swingAt;
             strafeTick();
             boolean sl = strafe.on() && strafeDir < 0;
             boolean sr = strafe.on() && strafeDir > 0;
@@ -489,8 +507,8 @@ public final class Bots {
 
             boolean airborne = !mc.player.onGround();
             if (!ready) {
-                if (dist < reach.get() + 0.7) keys(mc, false, true, sl, sr, false, false);
-                else if (dist > reach.get() + 2.2) {
+                if (dist < swingAt + 0.7) keys(mc, false, true, sl, sr, false, false);
+                else if (dist > swingAt + 2.2) {
                     unstuck(mc);
                     keys(mc, true, false, sl, sr, jumpWanted(mc, chest), true);
                 }
@@ -543,8 +561,8 @@ public final class Bots {
         private final Setting.Choice blast = add(new Setting.Choice("Explosives", "Which explosive module the bot switches on. Anchors only work in the Overworld and the End.", 0, "Crystals", "Anchors", "Both"));
         private final Setting.Bool knockUp = add(new Setting.Bool("Knock them up", "Hits the enemy with your sword when they stand on the ground next to you, to lift them into the air where a crystal does more.", true));
         private final Setting.Bool guard = add(new Setting.Bool("Guard myself", "Switches Surround on while the bot runs (needs obsidian).", true));
-        private final Setting.Num near = add(new Setting.Num("Closest distance", "The bot backs off when the enemy is closer than this.", 3.5, 2.0, 6.0, 0.5, " blocks"));
-        private final Setting.Num far = add(new Setting.Num("Furthest distance", "The bot walks up to the enemy when they are further than this.", 6.5, 4.0, 10.0, 0.5, " blocks"));
+        private final Setting.Num near = add(new Setting.Num("Closest distance", "The bot backs off when the enemy is closer than this.", 3.0, 2.0, 6.0, 0.5, " blocks"));
+        private final Setting.Num far = add(new Setting.Num("Furthest distance", "The bot walks up to the enemy when they are further than this. Crystal Aura places inside 4.5 blocks, so going further just wastes the fight.", 4.5, 3.0, 10.0, 0.5, " blocks"));
         private final Setting.Num turn = add(new Setting.Num("Turn speed", "The most degrees your view turns in a tick.", 22, 6, 90, 2, " deg"));
         private int hitCd;
 
@@ -556,9 +574,16 @@ public final class Bots {
         @Override
         protected String[] helperIds() {
             List<String> ids = new ArrayList<>(List.of("autototem", "autoarmor", "autoeat", "autoreplenish"));
+            if (guard.on()) ids.add("surround");
+            return ids.toArray(new String[0]);
+        }
+
+        /** The explosive modules are what this bot is, so they start with it whatever the helpers say. */
+        @Override
+        protected String[] coreIds() {
+            List<String> ids = new ArrayList<>();
             if (blast.index() != 1) ids.add("crystalaura");
             if (blast.index() != 0) ids.add("anchoraura");
-            if (guard.on()) ids.add("surround");
             return ids.toArray(new String[0]);
         }
 
@@ -596,7 +621,7 @@ public final class Bots {
             boolean sl = strafe.on() && strafeDir < 0;
             boolean sr = strafe.on() && strafeDir > 0;
 
-            if (knockUp.on() && hitCd == 0 && dist <= 3.0 && target.onGround() && mc.player.getAttackStrengthScale(0f) >= 0.95f) {
+            if (knockUp.on() && hitCd == 0 && dist <= hitRange(3.0) && target.onGround() && mc.player.getAttackStrengthScale(0f) >= 0.95f) {
                 int sword = Inv.hotbar(Bot::sword);
                 if (sword >= 0) {
                     Inv.with(sword, () -> mc.gameMode.attack(mc.player, target));

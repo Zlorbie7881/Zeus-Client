@@ -27,6 +27,7 @@ import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.CraftingMenu;
 import net.minecraft.world.inventory.FurnaceMenu;
 import net.minecraft.world.inventory.InventoryMenu;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
@@ -141,6 +142,9 @@ public final class AiPilot extends Module {
         double lastZ;
         int blocked;
         int entityId = -1;
+        int shooter = -1;
+        long shooterUntil;
+        long shooterScan;
         long actionAt;
         int pending;
         int seen;
@@ -1521,6 +1525,8 @@ public final class AiPilot extends Module {
         builder.append("Ore jobs staircase to the depth the ore lives at first (iron y16, diamond y-59) and then tunnel, so ask for mine 16 iron without naming a height.\n");
         builder.append("do can also be job, where value is a phrase like: chop tree, chop 3 trees, mine until iron, mine 20 stone, quarry 10, tunnel 30, strip mine, farm, replant, till 9, collect, hunt, flee, shoot, shear 3, milk, eat, sleep, torch 8, place cobblestone here, place torch at 120 64 -300, drop 32 dirt, explore 60, return, build a house, swim to 120 62 -300, climb 8, bridge 12, go to 120 64 -300, come here, follow me, follow Steve, dig down, stop. Chain them in one value with then: chop 2 trees then mine until iron.\n");
         builder.append("Survival and food: prepare (or gear up) makes a wooden pickaxe, a stone pickaxe, a stone sword and hunts for food in one go. fish 5 casts a rod it must already have, reels on the bobber dip and counts the catch. food 3 kills animals for meat.\n");
+        builder.append("Fetch items: fetch 64 dirt, stock 32 oak planks, give me 16 end crystal. In creative the AI takes them straight out of the creative menu, in survival it crafts them when it knows the recipe and mines them otherwise. Crafting and smelting jobs also skip the work and take the result in creative.\n");
+        builder.append("Creative mode: every block breaks on the first swing without a tool, nothing is used up when you place it, flying is allowed and hunger never drops. Do not queue crafting or food jobs there, just mine, build and go where you are told.\n");
         builder.append("Chests: store 20 cobblestone, put away 32 dirt, deposit 5 diamond, take 32 iron, loot 16 bread, grab 4 torch. The job finds a chest, barrel or trapped chest within five blocks, opens it and shift-clicks one stack at a time, counts real items against the number asked for, and only matches the exact item: iron means ingots, never ore or a sword, so say iron_ore for ore.\n");
         builder.append("Crafting and furnaces: craft 4 planks, craft a crafting table, craft sticks, craft a furnace, craft a stone pickaxe, craft iron sword, craft torch, craft chest, craft bucket, craft bed, smelt 8 iron, cook 4 porkchop. The job places and opens its own crafting table or furnace, crafts planks or sticks from logs first when it has to, and furnishes fuel itself. Known recipes: planks, stick, crafting_table, furnace, chest, torch, stone_pickaxe, stone_axe, stone_shovel, stone_sword, stone_hoe, iron_pickaxe, iron_sword, bucket, bed.\n");
         if (!context.isBlank()) builder.append("Context: ").append(context).append('\n');
@@ -2083,11 +2089,30 @@ public final class AiPilot extends Module {
         // the chain has to fail because the player had bare hands.
         if (text.equals("prepare") || text.equals("gear up") || text.equals("get geared")
                 || text.equals("get tools") || text.equals("prepare to mine") || text.equals("bootstrap")) {
+            if (creative(mc)) {
+                Notify.info("Zeus AI: creative mode, there is nothing to gear up");
+                return;
+            }
             text = "craft 1 wooden pickaxe then craft 1 stone pickaxe then craft 1 stone sword then food 2";
             Notify.info("Zeus AI: tools and food first");
         }
         cancelJob(mc);
         chain.clear();
+        java.util.regex.Matcher fetch = java.util.regex.Pattern
+                .compile("^(?:fetch|stock|refill|give me) (\\d+) ([a-z_ ]+)$").matcher(text.trim());
+        if (fetch.find()) {
+            int n = Math.max(1, Math.min(2304, Integer.parseInt(fetch.group(1))));
+            String what = fetch.group(2).trim().replace('_', ' ');
+            if (creative(mc) && creativeGive(mc, what, n)) {
+                Notify.info("Zeus AI: took " + n + " x " + what + " out of the creative menu");
+                return;
+            }
+            if (!creative(mc)) {
+                String id = what.replace(' ', '_');
+                text = (Craft.find(id) != null ? "craft " : "mine ") + n + " " + what;
+                Notify.info("Zeus AI: no creative menu, so " + text);
+            }
+        }
         List<String> steps = new ArrayList<>();
         for (String part : text.split("\\s*(?:,|;|->|\\band then\\b|\\bthen\\b|\\bafter that\\b)\\s*")) {
             String step = part.trim().replaceFirst("^(and|then|please|also)\\s+", "").trim();
@@ -2493,6 +2518,7 @@ public final class AiPilot extends Module {
             mc.options.keyUse.setDown(false);
         }
         if (mc.screen == null && dodgeCreeper(mc)) return;
+        if (mc.screen == null && answerShooter(mc)) return;
         if (mc.screen == null && defend(mc)) return;
         if (mc.screen == null) snack(mc);
         if (mc.screen == null) tossJunk(mc);
@@ -2586,6 +2612,13 @@ public final class AiPilot extends Module {
     }
 
     private void craftTick(Minecraft mc) {
+        if (creative(mc)) {
+            int n = Math.max(1, job.wanted);
+            if (creativeGive(mc, job.target, n)) {
+                endJob(mc, "took " + n + " x " + job.target.replace('_', ' ') + " from the creative menu");
+                return;
+            }
+        }
         Craft.Recipe recipe = Craft.find(job.target);
         Craft.Book book = recipe == null ? Craft.book(mc, job.target) : null;
         if (recipe == null && book == null) {
@@ -2798,6 +2831,13 @@ public final class AiPilot extends Module {
 
     private void smeltTick(Minecraft mc) {
         String shown = job.target.replace('_', ' ');
+        if (creative(mc)) {
+            int n = Math.max(1, job.wanted);
+            if (creativeGive(mc, job.target, n)) {
+                endJob(mc, "took " + n + " x " + shown + " from the creative menu");
+                return;
+            }
+        }
         java.util.function.Predicate<ItemStack> input = Craft.smeltInput(job.target);
         if (input == null) {
             giveUp(mc, "I do not know the item " + shown);
@@ -3483,10 +3523,66 @@ public final class AiPilot extends Module {
         return best;
     }
 
+    /**
+     * Creative mode can pull any block out of thin air, so a build job never needs a stock of it.
+     * The item is requested through the same packet the creative inventory uses, which puts it in
+     * the slot on the server too instead of only in the local copy.
+     */
+    /** Resolves a spoken item name ("stone pickaxe") or an id ("stone_pickaxe") to an item. */
+    private static Item creativeItem(String name) {
+        String clean = name.trim().toLowerCase(java.util.Locale.ROOT);
+        if (clean.isEmpty()) return null;
+        Craft.Recipe recipe = Craft.find(clean.replace(' ', '_'));
+        if (recipe == null) recipe = Craft.find(clean);
+        if (recipe != null) return recipe.result();
+        var id = net.minecraft.resources.Identifier.tryParse(
+                clean.replace(' ', '_').contains(":") ? clean.replace(' ', '_') : "minecraft:" + clean.replace(' ', '_'));
+        if (id == null) return null;
+        Item item = net.minecraft.core.registries.BuiltInRegistries.ITEM.getValue(id);
+        return item == Items.AIR ? null : item;
+    }
+
+    private static boolean creativeGive(Minecraft mc, String name) {
+        return creativeGive(mc, name, 64);
+    }
+
+    /** Creative only: puts count of an item straight into the hotbar with the creative inventory packet. */
+    private static boolean creativeGive(Minecraft mc, String name, int count) {
+        Item item = creativeItem(name);
+        return item != null && creativeGive(mc, item, count);
+    }
+
+    private static boolean creativeGive(Minecraft mc, Item item, int count) {
+        if (!creative(mc) || mc.gameMode == null || item == null || item == Items.AIR) return false;
+        int max = Math.max(1, item.getDefaultMaxStackSize());
+        int left = Math.max(1, count);
+        int firstSlot = -1;
+        for (int i = 0; i < 9 && left > 0; i++) {
+            ItemStack have = Inv.get(i);
+            if (!have.isEmpty() && !(have.is(item) && have.getCount() < max)) continue;
+            int stack = Math.min(max, left);
+            mc.gameMode.handleCreativeModeItemAdd(new ItemStack(item, stack), Inv.menuSlot(i));
+            left -= stack;
+            if (firstSlot < 0) firstSlot = i;
+        }
+        if (firstSlot < 0) {
+            // Every hotbar slot holds something else: put it in the hand instead of giving up.
+            firstSlot = Inv.selected();
+            mc.gameMode.handleCreativeModeItemAdd(new ItemStack(item, Math.min(max, Math.max(1, count))),
+                    Inv.menuSlot(firstSlot));
+        }
+        if (firstSlot != Inv.selected()) Inv.select(firstSlot);
+        return true;
+    }
+
     private void placeTick(Minecraft mc) {
         String name = job.target;
         java.util.function.Predicate<net.minecraft.world.item.ItemStack> item = s -> named(s, name);
         if (ensureHotbar(mc, item) < 0 && !Inv.offhand(item)) {
+            if (creativeGive(mc, name)) {
+                job.note = "took " + name + " from the creative menu";
+                return;
+            }
             giveUp(mc, "no " + name + " in the inventory");
             return;
         }
@@ -3527,6 +3623,10 @@ public final class AiPilot extends Module {
 
     private void torchTick(Minecraft mc) {
         if (Inv.hotbar(s -> s.is(net.minecraft.world.item.Items.TORCH)) < 0) {
+            if (creativeGive(mc, Items.TORCH, 64)) {
+                job.note = "took torches from the creative menu";
+                return;
+            }
             giveUp(mc, "no torches in the hotbar");
             return;
         }
@@ -4663,6 +4763,7 @@ public final class AiPilot extends Module {
     }
 
     private static void equipTool(Minecraft mc, BlockState state) {
+        if (creative(mc)) return;
         int best = -1;
         float speed = 1.0f;
         for (int i = 0; i < 9; i++) {
@@ -4704,8 +4805,18 @@ public final class AiPilot extends Module {
         };
     }
 
+    /**
+     * Creative mode has no harvest rules, no tool tiers and no block cost, so every gate that exists
+     * to protect a survival job is skipped there instead of sending the AI off to craft a pickaxe it
+     * does not need.
+     */
+    private static boolean creative(Minecraft mc) {
+        return mc.player != null && mc.player.isCreative();
+    }
+
     /** True when something in the inventory can actually harvest this block and not just break it. */
     private static boolean canHarvest(Minecraft mc, BlockState state) {
+        if (creative(mc)) return true;
         if (!state.requiresCorrectToolForDrops()) return true;
         for (int i = 0; i < 36; i++) {
             ItemStack stack = Inv.get(i);
@@ -4955,6 +5066,23 @@ public final class AiPilot extends Module {
             if (job != null) job.note = "bedrock in the way";
             return false;
         }
+        if (creative(mc)) {
+            Player cp = mc.player;
+            Vec3 mid = centre(pos);
+            if (cp.getEyePosition().distanceTo(mid) > 5.5) {
+                walkTo(mc, mid, 1.2);
+                return false;
+            }
+            releaseAttack(mc);
+            lookAt(cp, mid);
+            if (job != null) job.note = "breaking " + pos.getX() + " " + pos.getY() + " " + pos.getZ();
+            if (mc.gameMode.destroyBlock(pos) && mc.level.getBlockState(pos).isAir()) {
+                if (job != null && job.kind == JobKind.MINE_UNTIL && matches(state, job.target)) job.ore = pos;
+                light(mc);
+                return true;
+            }
+            return mc.level.getBlockState(pos).isAir();
+        }
         // Breaking a block that needs a tool without one drops nothing and never finishes the
         // job, so make the tool first and come back instead of grinding at it forever.
         if (state.requiresCorrectToolForDrops() && !canHarvest(mc, state)) {
@@ -5054,7 +5182,7 @@ public final class AiPilot extends Module {
         if (job.kind == JobKind.HUNT || job.kind == JobKind.FLEE || job.kind == JobKind.SHOOT) return false;
         Player p = mc.player;
         if (p.getAttackStrengthScale(0.5f) < 0.85f) return false;
-        net.minecraft.world.entity.Entity mob = nearestMonster(mc, 3.2);
+        net.minecraft.world.entity.Entity mob = nearestMonster(mc, Math.max(3.2, Combat.Reach.entityRange()));
         if (mob == null) return false;
         int weapon = bestWeapon(mc);
         if (weapon >= 0 && weapon != Inv.selected()) Inv.select(weapon);
@@ -5153,9 +5281,102 @@ public final class AiPilot extends Module {
         event("threw away " + pickCount + " " + id.replace('_', ' ') + " to make room");
     }
 
+    // A skeleton can shoot a mining job from outside melee reach, and a job that ignores it just eats
+    // arrows until it dies. So being shot breaks the job off: shield up, walk at the shooter, hit it.
+    private boolean answerShooter(Minecraft mc) {
+        if (job == null || mc.level == null || mc.player == null) return false;
+        switch (job.kind) {
+            case FLEE, HUNT, SHOOT, GUARD, EAT, FOOD, SLEEP -> {
+                return false;
+            }
+            default -> {
+            }
+        }
+        Player p = mc.player;
+        long now = System.currentTimeMillis();
+        // Hit by something that shoots? Whatever the job was doing, that is what it has to answer.
+        if (p.hurtTime > 0) {
+            net.minecraft.world.entity.Entity attacker = p.getLastHurtByMob();
+            if (attacker != null && attacker.isAlive() && ranged(attacker) && p.distanceTo(attacker) <= 32) {
+                if (job.shooter != attacker.getId()) Notify.info("Zeus AI: the " + attacker.getName().getString() + " is shooting at it, breaking off");
+                job.shooter = attacker.getId();
+                job.shooterUntil = now + 9000L;
+            }
+        }
+        // Before the first arrow lands: a skeleton in plain sight down a tunnel is worth breaking off for.
+        if (job.shooter < 0 && now >= job.shooterScan) {
+            job.shooterScan = now + 600L;
+            net.minecraft.world.entity.Entity seen = nearestEntity(mc, 14.0,
+                    e -> e.isAlive() && ranged(e) && p.hasLineOfSight(e));
+            if (seen != null) {
+                job.shooter = seen.getId();
+                job.shooterUntil = now + 7000L;
+                Notify.info("Zeus AI: breaking off to answer the " + seen.getName().getString());
+            }
+        }
+        if (job.shooter < 0) return false;
+        net.minecraft.world.entity.Entity shooter = mc.level.getEntity(job.shooter);
+        double reach = Math.max(3.0, Combat.Reach.entityRange());
+        if (shooter == null || !shooter.isAlive()) {
+            job.shooter = -1;
+            return false;
+        }
+        double dist = p.distanceTo(shooter);
+        if (dist > 36 || (now > job.shooterUntil && dist > reach - 0.5)) {
+            job.shooter = -1;
+            return false;
+        }
+        String name = shooter.getName().getString();
+        releaseAttack(mc);
+        if (dist > reach - 0.5) {
+            // Facing the shooter is the same thing as walking at it, which is what the shield needs.
+            boolean shield = shieldsUp(mc);
+            mc.options.keyUse.setDown(shield);
+            job.note = (shield ? "shield up, closing on the " : "closing on the ") + name;
+            if (!walkTo(mc, shooter.position(), Math.max(1.2, reach - 0.9))) return true;
+            if (job == null) return false;
+        }
+        mc.options.keyUse.setDown(false);
+        mc.options.keyUp.setDown(false);
+        int weapon = bestWeapon(mc);
+        if (weapon >= 0 && weapon != Inv.selected()) Inv.select(weapon);
+        lookAt(p, shooter.position().add(0, shooter.getBbHeight() * 0.6, 0));
+        job.note = "breaking off to answer the " + name;
+        if (p.getAttackStrengthScale(0.5f) >= 0.9f) {
+            mc.gameMode.attack(p, shooter);
+            p.swing(InteractionHand.MAIN_HAND);
+        }
+        return true;
+    }
+
+    private static boolean ranged(net.minecraft.world.entity.Entity e) {
+        return e instanceof net.minecraft.world.entity.monster.Enemy
+                && e instanceof net.minecraft.world.entity.monster.RangedAttackMob;
+    }
+
+    // Only raise the shield when right click would actually reach it: a block, a pearl or a bucket in
+    // the main hand would be used first, so those slots are left alone.
+    private boolean shieldsUp(Minecraft mc) {
+        java.util.function.Predicate<ItemStack> shield = s -> s.is(Items.SHIELD);
+        if (Inv.offhand(shield)) {
+            int weapon = bestWeapon(mc);
+            if (weapon >= 0) Inv.select(weapon);
+            ItemStack main = Inv.get(Inv.selected());
+            // Anything right click would act on first: blocks, buckets, throwables, bows.
+            return !(main.getItem() instanceof net.minecraft.world.item.BlockItem)
+                    && !main.is(Items.BUCKET) && !main.is(Items.WATER_BUCKET) && !main.is(Items.LAVA_BUCKET)
+                    && !main.is(Items.ENDER_PEARL) && !main.is(Items.SNOWBALL) && !main.is(Items.EGG)
+                    && !main.is(Items.BOW) && !main.is(Items.CROSSBOW) && !main.is(Items.FISHING_ROD);
+        }
+        int slot = Inv.hotbar(shield);
+        if (slot < 0) return false;
+        Inv.select(slot);
+        return true;
+    }
+
     // Jobs run for minutes; a human eats before mining the next vein instead of starving at 3 hunger.
     private void snack(Minecraft mc) {
-        if (job == null) return;
+        if (job == null || creative(mc)) return;
         Player p = mc.player;
         if (p.getFoodData().getFoodLevel() > 18) {
             if (p.isUsingItem()) return;
@@ -5213,6 +5434,21 @@ public final class AiPilot extends Module {
                 job.path = null;
             }
             return true;
+        }
+        if (p.isCreative() && p.getAbilities().flying) {
+            // Walking logic is meaningless in creative flight: no gravity, no jump, no ledges.
+            double dy = target.y - p.getY();
+            if (flat <= stop && Math.abs(dy) < 1.0) {
+                releaseKeys(mc);
+                return true;
+            }
+            double step = Math.min(0.42, flat);
+            releaseKeys(mc);
+            p.setDeltaMovement(flat > 0.01 ? dx / flat * step : 0,
+                    Math.max(-0.42, Math.min(0.42, dy * 0.35)),
+                    flat > 0.01 ? dz / flat * step : 0);
+            if (job != null) job.note = "flying to " + Math.round(target.x) + " " + Math.round(target.y) + " " + Math.round(target.z);
+            return flat <= stop && Math.abs(dy) < 1.0;
         }
         if (job == null) return false;
         long now = System.currentTimeMillis();
@@ -5329,6 +5565,10 @@ public final class AiPilot extends Module {
         p.setYHeadRot(yaw);
         mc.options.keyUp.setDown(true);
         mc.options.keyJump.setDown((blockedAhead || bump) && p.onGround());
+        // Sprint on the long clear stretches, walk near trouble: sprinting into a ledge or a wall
+        // costs the reaction the detour needs, and hunger is a real resource on a long trip.
+        mc.options.keySprint.setDown(flat > 6.0 && !detour && !blockedAhead && !bump
+                && p.onGround() && !p.isInWater() && p.getFoodData().getFoodLevel() > 6);
         return false;
     }
 

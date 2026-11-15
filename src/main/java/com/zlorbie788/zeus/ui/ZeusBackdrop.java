@@ -21,7 +21,7 @@ public final class ZeusBackdrop {
             if (!UiSettings.BACKDROP.on() || !UiSettings.MENU.on()) return false;
             Minecraft mc = Minecraft.getInstance();
             if (mc == null || mc.level != null) return false;
-            if (s instanceof TitleScreen || s instanceof ZeusTitleScreen || s instanceof ZeusCreditsScreen || s instanceof VideoIntroScreen
+            if (s instanceof TitleScreen || s instanceof ZeusTitleScreen || s instanceof VideoIntroScreen
                     || s instanceof LevelLoadingScreen || s instanceof ConnectScreen) return false;
             busy = true;
             float t = (System.nanoTime() - BORN) / 1e9f;

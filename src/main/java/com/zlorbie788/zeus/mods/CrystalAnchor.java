@@ -29,18 +29,26 @@ import java.util.function.Predicate;
 public final class CrystalAnchor {
     private CrystalAnchor() {}
 
+    /**
+     * Keeps crystal and anchor actions from landing in the same tick. Each module gets its own
+     * clock: the first version handed the other module a "preferred" turn every time, which meant a
+     * module could never act twice in a row and both auras stopped after a single place or hit.
+     */
     private static final class ActionCoordinator {
-        private static long nextAllowedNanos;
-        private static String lastOwner = "";
-        private static String preferredOwner = "crystal";
+        private static final long GAP = 55_000_000L;
+
+        private static long crystalAt;
+        private static long anchorAt;
 
         private static synchronized boolean claim(String owner) {
             long now = System.nanoTime();
-            if (now < nextAllowedNanos) return false;
-            if (owner.equals(lastOwner) && !owner.equals(preferredOwner)) return false;
-            lastOwner = owner;
-            preferredOwner = owner.equals("crystal") ? "anchor" : "crystal";
-            nextAllowedNanos = now + 60_000_000L + ThreadLocalRandom.current().nextLong(35_000_000L);
+            if (owner.equals("crystal")) {
+                if (now - crystalAt < GAP) return false;
+                crystalAt = now;
+                return true;
+            }
+            if (now - anchorAt < GAP) return false;
+            anchorAt = now;
             return true;
         }
     }
@@ -157,6 +165,7 @@ public final class CrystalAnchor {
                             BlockPos up = b.above();
                             if (!Build.air(up) || !Build.air(up.above())) continue;
                             if (Build.distTo(b) > placeRange.get() + 0.5) continue;
+                            if (!Build.canPlace(up, placeRange.get() + 0.5)) continue;
                             Vec3 c = new Vec3(b.getX() + 0.5, b.getY() + 1.0, b.getZ() + 0.5);
                             float dt = Dmg.explosion(mc, c, target, 6f);
                             if (dt < minDamage.get()) continue;
@@ -371,9 +380,11 @@ public final class CrystalAnchor {
                 }
                 return;
             }
-            int slot = Inv.hotbar(s -> !s.is(Items.GLOWSTONE));
+            int slot = Inv.hotbar(s -> !s.is(Items.GLOWSTONE) && !s.is(Items.RESPAWN_ANCHOR));
             if (slot < 0) {
-                for (int i = 0; i < 9; i++) if (!Inv.get(i).is(Items.GLOWSTONE)) slot = i;
+                for (int i = 0; i < 9; i++) {
+                    if (!Inv.get(i).is(Items.GLOWSTONE) && !Inv.get(i).is(Items.RESPAWN_ANCHOR)) slot = i;
+                }
             }
             if (slot < 0) {
                 warn("Anchor Aura: free a hotbar slot that is not glowstone");

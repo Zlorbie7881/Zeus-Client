@@ -98,10 +98,16 @@ public final class Phantom extends Module {
         player.setXRot(Math.max(-90f, Math.min(90f, pitch)));
     }
 
-    /** Looks straight down, for buckets, pearls and wind charges. */
+    /**
+     * Looks straight down, for buckets, pearls and wind charges. The rotation is also put on the
+     * wire: a use packet is judged against the rotation the server last saw, and turning only the
+     * local camera leaves the charge firing level with the horizon, where it does nothing.
+     */
     public static void aimDown(Player player) {
         if (player == null) return;
-        player.setXRot(Math.max(-90f, Math.min(90f, 88f + wobble())));
+        float pitch = Math.max(-90f, Math.min(90f, 88f + wobble()));
+        player.setXRot(pitch);
+        com.zlorbie788.zeus.core.Aim.sendRotation(player.getYRot(), pitch);
     }
 
     private List<String> lines() {

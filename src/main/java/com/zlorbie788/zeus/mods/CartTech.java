@@ -583,15 +583,31 @@ public final class CartTech {
             note = "anchor down at " + spot.getX() + " " + spot.getY() + " " + spot.getZ();
         }
 
+        /**
+         * The anchor goes beside the target, never into them: Build.canPlace refuses a spot an
+         * entity is standing in, and the target is always standing in their own feet block, so the
+         * old three candidates (feet, under feet, above head) could never place anything at all.
+         */
         private BlockPos spot(Minecraft mc, Player t) {
             BlockPos feet = t.blockPosition();
-            BlockPos[] tries = {feet, feet.below(), feet.above()};
-            for (BlockPos pos : tries) {
-                if (Build.distTo(pos) > range.get()) continue;
-                if (!Build.canPlace(pos, range.get())) continue;
-                return pos;
+            BlockPos best = null;
+            double bestD = Double.MAX_VALUE;
+            for (int dx = -2; dx <= 2; dx++) {
+                for (int dz = -2; dz <= 2; dz++) {
+                    for (int dy = -1; dy <= 1; dy++) {
+                        if (dx == 0 && dz == 0) continue;
+                        BlockPos pos = feet.offset(dx, dy, dz);
+                        if (Build.distTo(pos) > range.get()) continue;
+                        if (!Build.canPlace(pos, range.get())) continue;
+                        double d = pos.distSqr(feet);
+                        if (d < bestD) {
+                            bestD = d;
+                            best = pos;
+                        }
+                    }
+                }
             }
-            return null;
+            return best;
         }
 
         private void charge(Minecraft mc, long now) {
@@ -635,7 +651,9 @@ public final class CartTech {
                 fail(mc, now, "the anchor is gone");
                 return;
             }
-            aim(mc, Vec3.atCenterOf(anchor).add(0, 2.5, 0));
+            // Look at the anchor itself: a shield only covers the side you face, and looking above
+            // the explosion leaves your body open to it.
+            aim(mc, Vec3.atCenterOf(anchor));
             if (!up) {
                 mc.options.keyUse.setDown(true);
                 up = true;
