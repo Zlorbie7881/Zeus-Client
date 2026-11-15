@@ -69,8 +69,27 @@ public final class Notify {
             LIVE.set(i, new Note(text, kind, now, Math.min(9, existing.repeats + 1)));
             return;
         }
+        // updates from one source ("Zeus AI: ...", "Fly: ...") replace that source's last note instead of
+        // stacking up, so a job reporting its progress shows one live line rather than a pile
+        String src = source(text);
+        if (src != null) {
+            for (int i = LIVE.size() - 1; i >= 0; i--) {
+                if (src.equals(source(LIVE.get(i).text))) {
+                    // update in place, without sliding in again
+                    LIVE.set(i, new Note(text, kind, now - 200L, 1));
+                    return;
+                }
+            }
+        }
         LIVE.add(new Note(text, kind, now, 1));
         while (LIVE.size() > MAX) LIVE.remove(0);
+    }
+
+    /** The "Source:" at the start of a note, or null when it has none. */
+    private static String source(String text) {
+        int c = text.indexOf(':');
+        if (c <= 0 || c > 24 || c + 1 >= text.length() || text.charAt(c + 1) != ' ') return null;
+        return text.substring(0, c);
     }
 
     public static void info(String text) {

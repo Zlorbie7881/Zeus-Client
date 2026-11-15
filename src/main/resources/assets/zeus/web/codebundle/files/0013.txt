@@ -264,6 +264,55 @@ public class ZeusScreensTest implements FabricClientGameTest {
             ctx.takeScreenshot("zeus_menu_1920");
             ctx.setScreen(() -> null);
             ctx.waitTicks(5);
+            // Name Tags on mobs in armour (players only off), one hurt, one with worn armour
+            ctx.runOnClient(c -> {
+                var m = com.zlorbie788.zeus.core.Zeus.get("nametags");
+                try {
+                    var f = m.getClass().getDeclaredField("onlyPlayers");
+                    f.setAccessible(true);
+                    ((com.zlorbie788.zeus.core.Setting.Bool) f.get(m)).set(false);
+                } catch (ReflectiveOperationException e) {
+                    throw new RuntimeException(e);
+                }
+                m.setEnabled(true);
+            });
+            sp.getServer().runCommand("execute as @a at @s run summon zombie ^-2 ^ ^6 {NoAI:1b,Silent:1b,PersistenceRequired:1b,Health:9f,CustomName:\"Hades\",equipment:{head:{id:\"minecraft:diamond_helmet\",components:{\"minecraft:damage\":300}},chest:{id:\"minecraft:netherite_chestplate\"},legs:{id:\"minecraft:iron_leggings\",components:{\"minecraft:damage\":180}},feet:{id:\"minecraft:diamond_boots\"},mainhand:{id:\"minecraft:netherite_sword\"}}}");
+            sp.getServer().runCommand("execute as @a at @s run summon skeleton ^2.5 ^ ^9 {NoAI:1b,Silent:1b,PersistenceRequired:1b,equipment:{head:{id:\"minecraft:golden_helmet\",components:{\"minecraft:damage\":70}},mainhand:{id:\"minecraft:bow\"}}}");
+            ctx.waitTicks(40);
+            ctx.takeScreenshot("nametags_1920");
+            // Zeus AI chat window with a short exchange and the model thinking
+            ctx.runOnClient(c -> {
+                var ai = com.zlorbie788.zeus.mods.AiPilot.find();
+                try {
+                    var f = ai.getClass().getDeclaredField("chatHud");
+                    f.setAccessible(true);
+                    ((com.zlorbie788.zeus.core.Setting.Bool) f.get(ai)).set(true);
+                    var b = ai.getClass().getDeclaredField("busy");
+                    b.setAccessible(true);
+                    b.set(null, true);
+                } catch (ReflectiveOperationException e) {
+                    throw new RuntimeException(e);
+                }
+                ai.setEnabled(true);
+                com.zlorbie788.zeus.mods.AiPilot.talk(true, "mine 10 iron and bring it back");
+                com.zlorbie788.zeus.mods.AiPilot.talk(false, "On it: I'll make a stone pickaxe first, then dig down to iron level and waypoint every vein I find.");
+                com.zlorbie788.zeus.mods.AiPilot.talk(true, "and light the tunnel");
+            });
+            ctx.waitTicks(10);
+            ctx.takeScreenshot("ai_chat_1920");
+            ctx.runOnClient(c -> {
+                try {
+                    var b = com.zlorbie788.zeus.mods.AiPilot.class.getDeclaredField("busy");
+                    b.setAccessible(true);
+                    b.set(null, false);
+                } catch (ReflectiveOperationException e) {
+                    throw new RuntimeException(e);
+                }
+                com.zlorbie788.zeus.mods.AiPilot.find().setEnabled(false);
+            });
+            sp.getServer().runCommand("kill @e[type=!player]");
+            ctx.runOnClient(c -> com.zlorbie788.zeus.core.Zeus.get("nametags").setEnabled(false));
+            ctx.waitTicks(5);
             // at night the knife and arm dim with the world; the Chroma glow and sparkles still show
             sp.getServer().runCommand("time set midnight");
             ctx.runOnClient(c -> KnifeSwing.equipHd(Crates.hdOf("chroma_karambit")));

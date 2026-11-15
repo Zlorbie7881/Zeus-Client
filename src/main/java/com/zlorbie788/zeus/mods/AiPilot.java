@@ -252,7 +252,7 @@ public final class AiPilot extends Module {
     private record Undo(Module module, Setting setting, boolean wasOn, String oldText, int oldIndex, double oldNum) {}
 
     private final Setting.Secret token = add(new Setting.Secret("apiKey"));
-    private final Setting.Text model = add(new Setting.Text("Model", "The model asked for at the endpoint. Any model the provider serves works.", "gpt-4o-mini", 60));
+    private final Setting.Text model = add(new Setting.Text("Model", "The model asked for at the endpoint. Any model the provider serves works.", "gpt-4.1-mini", 60));
     private final Setting.Text endpoint = add(new Setting.Text("Endpoint", "An OpenAI-compatible chat completions URL.", "https://api.openai.com/v1/chat/completions", 160));
     private final Setting.Bool toggles = add(new Setting.Bool("Switch modules", "Let the AI switch modules on and off.", true));
     private final Setting.Bool settings = add(new Setting.Bool("Change settings", "Let the AI change numeric, choice, text and switch settings.", true));
@@ -334,12 +334,16 @@ public final class AiPilot extends Module {
         }
     }
 
+    /** Wrapped text per chat line (lines never change, so each is wrapped once). */
+    private final java.util.IdentityHashMap<Line, java.util.List<String>> wrapped = new java.util.IdentityHashMap<>();
+
     private void drawChat(net.minecraft.client.gui.GuiGraphics g, Minecraft mc, int w, int h) {
         if (!chatHud.on() || mc.options.hideGui) return;
         java.util.List<Line> lines;
         synchronized (TALK) {
             lines = new ArrayList<>(TALK);
         }
+        if (wrapped.size() > 64) wrapped.keySet().retainAll(new java.util.HashSet<>(lines));
         long now = System.currentTimeMillis();
         float alpha = 1f;
         if (chatFade.on()) {
@@ -348,53 +352,87 @@ public final class AiPilot extends Module {
             alpha = quiet < 30_000 ? 1f : Math.max(0f, 1f - (quiet - 30_000) / 1500f);
             if (alpha <= 0.01f) return;
         }
+        // the whole window scales: lay it out at size 1, then scale it
         float sc = (float) chatSize.get();
-        int pw = Math.round(170 * sc), maxText = pw - 26;
-        // lay out bubbles from the newest up until the window is full
-        int maxH = Math.round(150 * sc);
+        int sw = Math.round(w / sc), sh = Math.round(h / sc);
+        int pw = 184, maxText = pw - 34;
+        int maxH = 150;
+        int thinkH = busy ? 16 : 0;
         java.util.List<Object[]> bubbles = new ArrayList<>();
-        int used = 0;
+        int used = thinkH > 0 ? thinkH + 4 : 0;
         for (int i = lines.size() - 1; i >= 0 && used < maxH; i--) {
             Line l = lines.get(i);
-            java.util.List<String> wrapped = wrap(l.text(), maxText);
-            int bh = wrapped.size() * 9 + 6;
+            java.util.List<String> wl = wrapped.computeIfAbsent(l, k -> wrap(k.text(), maxText));
+            int bh = wl.size() * 10 + 7;
             if (used + bh + 4 > maxH && !bubbles.isEmpty()) break;
-            bubbles.add(0, new Object[] {l, wrapped, bh});
+            bubbles.add(0, new Object[] {l, wl, bh});
             used += bh + 4;
         }
-        String status = busy ? "thinking…" : job != null ? shorten(job.label()) : hasKey() ? "ready" : "no key: /zeus ai tutorial";
-        int ph = used + 22;
+        String status = busy ? "Thinking" : job != null ? shorten(job.label()) : hasKey() ? "Ready" : "No key: /zeus ai tutorial";
+        int statusCol = busy ? 0xFFD166 : job != null ? 0x5FA8FF : hasKey() ? 0x4ADE80 : 0xFF6B6B;
+        int ph = Math.max(used, 14) + 30;
         int corner = chatCorner.index();
-        int x = corner == 0 || corner == 1 ? w - pw - 6 : 6;
-        int y = corner == 0 ? h - ph - 52 : corner == 3 ? (h - ph) / 2 : 6;
-        int a = Math.round(alpha * 255);
+        int x = corner == 0 || corner == 1 ? sw - pw - 6 : 6;
+        int y = corner == 0 ? sh - ph - Math.round(52 / sc) : corner == 3 ? (sh - ph) / 2 : 6;
+        float t = (System.nanoTime() % 1_000_000_000_000L) / 1e9f;
+
         g.pose().pushMatrix();
-        com.zlorbie788.zeus.ui.Draw.rrect(g, x, y, pw, ph, 6, (Math.round(0.72f * a) << 24) | 0x070B16);
-        com.zlorbie788.zeus.ui.Draw.rrectLine(g, x, y, pw, ph, 6, (Math.round(0.6f * a) << 24) | 0x3A6ACA);
-        com.zlorbie788.zeus.ui.Draw.text(g, "ZEUS AI", x + 7, y + 5, (a << 24) | 0x8CC4FF);
-        com.zlorbie788.zeus.ui.Draw.textRight(g, status, x + pw - 7, y + 5, (Math.round(0.7f * a) << 24) | (busy ? 0xFFD166 : 0x9FB2D8));
-        int by = y + 17;
-        if (bubbles.isEmpty()) {
-            com.zlorbie788.zeus.ui.Draw.text(g, "Type /zeus ai <request>", x + 7, by + 2, (Math.round(0.6f * a) << 24) | 0xFFFFFF);
+        g.pose().scale(sc, sc);
+        com.zlorbie788.zeus.ui.Draw.glow(g, x, y, pw, ph, 8, 0xFF3A6ACA, 7, 0.05f * alpha);
+        com.zlorbie788.zeus.ui.Draw.rrect(g, x, y, pw, ph, 8, rgb(0x161D2E, 0.92f * alpha), rgb(0x0A0F1A, 0.92f * alpha));
+        com.zlorbie788.zeus.ui.Draw.rrectLine(g, x, y, pw, ph, 8, rgb(0xFFFFFF, 0.16f * alpha));
+        g.fill(x + 8, y, x + pw - 8, y + 1, rgb(0x5FA8FF, 0.7f * alpha));
+        // header: mark, name, live status with a dot
+        com.zlorbie788.zeus.ui.Draw.rrect(g, x + 7, y + 6, 12, 12, 3, rgb(0x2A5CC8, alpha), rgb(0x1A3A8A, alpha));
+        com.zlorbie788.zeus.ui.Draw.boldCenter(g, "Z", x + 13, y + 8, rgb(0xFFFFFF, alpha));
+        com.zlorbie788.zeus.ui.Draw.bold(g, "Zeus AI", x + 24, y + 8, rgb(0xFFFFFF, alpha));
+        int stW = com.zlorbie788.zeus.ui.Draw.width(status);
+        int dotX = x + pw - 9 - stW - 7;
+        float pulse = busy ? 0.55f + 0.45f * (float) Math.sin(t * 6f) : 1f;
+        com.zlorbie788.zeus.ui.Draw.rrect(g, dotX, y + 10, 4, 4, 2, rgb(statusCol, alpha * pulse));
+        com.zlorbie788.zeus.ui.Draw.textRight(g, status, x + pw - 9, y + 8, rgb(0x9FB2D8, 0.9f * alpha));
+        g.fill(x + 7, y + 22, x + pw - 7, y + 23, rgb(0xFFFFFF, 0.07f * alpha));
+
+        int by = y + 27;
+        if (bubbles.isEmpty() && !busy) {
+            com.zlorbie788.zeus.ui.Draw.text(g, "Type /zeus ai <request>", x + 9, by + 3, rgb(0xFFFFFF, 0.55f * alpha));
         }
         for (Object[] b : bubbles) {
             Line l = (Line) b[0];
-            @SuppressWarnings("unchecked") java.util.List<String> wrapped = (java.util.List<String>) b[1];
+            @SuppressWarnings("unchecked") java.util.List<String> wl = (java.util.List<String>) b[1];
             int bh = (int) b[2];
             int tw = 0;
-            for (String s2 : wrapped) tw = Math.max(tw, com.zlorbie788.zeus.ui.Draw.width(s2));
-            int bw = tw + 10;
-            int bx = l.you() ? x + pw - 7 - bw : x + 7;
-            int fill = l.you() ? 0x2A5CC8 : 0x1C2436;
-            com.zlorbie788.zeus.ui.Draw.rrect(g, bx, by, bw, bh, 4, (Math.round(0.9f * a) << 24) | fill);
-            int ty = by + 3;
-            for (String s2 : wrapped) {
-                com.zlorbie788.zeus.ui.Draw.text(g, s2, bx + 5, ty, (a << 24) | (l.you() ? 0xFFFFFF : 0xE6ECF8));
-                ty += 9;
+            for (String s2 : wl) tw = Math.max(tw, com.zlorbie788.zeus.ui.Draw.width(s2));
+            int bw = tw + 12;
+            int bx = l.you() ? x + pw - 8 - bw : x + 8;
+            if (l.you()) {
+                com.zlorbie788.zeus.ui.Draw.rrect(g, bx, by, bw, bh, 6, rgb(0x3B74E0, 0.95f * alpha), rgb(0x2A5CC8, 0.95f * alpha));
+            } else {
+                com.zlorbie788.zeus.ui.Draw.rrect(g, bx, by, bw, bh, 6, rgb(0x232C40, 0.95f * alpha), rgb(0x1B2232, 0.95f * alpha));
+                com.zlorbie788.zeus.ui.Draw.rrectLine(g, bx, by, bw, bh, 6, rgb(0xFFFFFF, 0.06f * alpha));
+            }
+            int ty = by + 4;
+            for (String s2 : wl) {
+                com.zlorbie788.zeus.ui.Draw.text(g, s2, bx + 6, ty, rgb(l.you() ? 0xFFFFFF : 0xE6ECF8, alpha));
+                ty += 10;
             }
             by += bh + 4;
         }
+        if (busy) {
+            // a typing bubble with three bouncing dots while the model works
+            int bx = x + 8, bw = 30;
+            com.zlorbie788.zeus.ui.Draw.rrect(g, bx, by, bw, thinkH, 6, rgb(0x232C40, 0.95f * alpha), rgb(0x1B2232, 0.95f * alpha));
+            for (int i = 0; i < 3; i++) {
+                float ph2 = (float) Math.sin(t * 7f - i * 0.9f);
+                int dy = Math.round(Math.max(0f, ph2) * 2.5f);
+                com.zlorbie788.zeus.ui.Draw.rrect(g, bx + 8 + i * 6, by + 6 - dy, 4, 4, 2, rgb(0xC9D6F2, (0.5f + 0.5f * Math.max(0f, ph2)) * alpha));
+            }
+        }
         g.pose().popMatrix();
+    }
+
+    private static int rgb(int rgb, float alpha) {
+        return (Math.max(0, Math.min(255, Math.round(alpha * 255))) << 24) | (rgb & 0xFFFFFF);
     }
 
     private static java.util.List<String> wrap(String text, int width) {
@@ -536,9 +574,9 @@ public final class AiPilot extends Module {
                     "gemini-3.5-flash", "https://aistudio.google.com/app/apikey", true, false),
             new Provider("claude", "Anthropic Claude", "https://api.anthropic.com/v1/chat/completions", "claude-haiku-5-5",
                     "https://platform.claude.com/settings/keys", false, false),
-            new Provider("openrouter", "OpenRouter", "https://openrouter.ai/api/v1/chat/completions", "openai/gpt-4o-mini",
+            new Provider("openrouter", "OpenRouter", "https://openrouter.ai/api/v1/chat/completions", "openai/gpt-4.1-mini",
                     "https://openrouter.ai/keys", false, false),
-            new Provider("openai", "OpenAI", "https://api.openai.com/v1/chat/completions", "gpt-4o-mini",
+            new Provider("openai", "OpenAI", "https://api.openai.com/v1/chat/completions", "gpt-4.1-mini",
                     "https://platform.openai.com/api-keys", false, false),
             new Provider("deepseek", "DeepSeek", "https://api.deepseek.com/chat/completions", "deepseek-chat",
                     "https://platform.deepseek.com/api_keys", false, false),

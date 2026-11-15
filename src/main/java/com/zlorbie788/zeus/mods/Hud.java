@@ -87,9 +87,11 @@ public final class Hud {
             if (!Draw.cheap && com.zlorbie788.zeus.ui.UiSettings.HUD_GLOW.on()) Draw.glow(g, x + 1, y + 3, 2, h - 5, 4, accent(), 5, 0.55f * f);
             g.fill(x, y + 3, x + 2, y + h - 3, Draw.rgba(accent(), 0.95f * f));
         }
-        if (com.zlorbie788.zeus.ui.UiSettings.HUD_GLOW.on() && !Draw.cheap) Draw.glow(g, x, y, w, h, r, accent(), 7, 0.10f * f);
-        Draw.rrectLine(g, x + 1, y + 1, w - 2, h - 2, Math.max(1, r - 1), Draw.rgba(0xFFFFFFFF, 0.035f * f));
-        Draw.rrectLine(g, x, y, w, h, r, Draw.rgba(accent(), 0.55f * f));
+        if (com.zlorbie788.zeus.ui.UiSettings.HUD_GLOW.on() && !Draw.cheap) Draw.glow(g, x, y, w, h, r, accent(), 7, 0.06f * f);
+        // a quiet glass rim, and the accent as one bright hairline along the top
+        Draw.rrectLine(g, x, y, w, h, r, Draw.rgba(0xFFFFFFFF, 0.10f * f));
+        Draw.rrectLine(g, x, y, w, h, r, Draw.rgba(accent(), 0.16f * f));
+        if (w > 2 * r + 4) g.fill(x + r, y, x + w - r, y + 1, Draw.rgba(accent(), 0.80f * f));
         if (com.zlorbie788.zeus.ui.UiSettings.HUD_BRACKETS.on()) Draw.brackets(g, x + 2, y + 2, w - 4, h - 4, 6, Draw.rgba(accent(), 0.45f * f));
     }
 
@@ -195,16 +197,9 @@ public final class Hud {
 
     static void rule(GuiGraphics g, int x, int y, int w) {
         if (w <= 0) return;
-        int accent = accent();
-        int step = Math.max(1, Math.round(w / 8f));
-        for (int i = 0; i < 8; i++) {
-            int from = x + step * i;
-            int to = i == 7 ? x + w : Math.min(x + w, from + step);
-            float k = 1f - i / 8f;
-            g.fill(from, y, to, y + 1, Draw.rgba(accent, 0.50f * k * k));
-        }
+        // one faint divider with a short accent lead
         g.fill(x, y, x + w, y + 1, Draw.rgba(0xFFFFFFFF, 0.07f));
-        g.fill(x, y, x + Math.max(4, w / 6), y + 1, Draw.rgba(accent, 0.65f));
+        g.fill(x, y, x + Math.max(4, Math.min(18, w / 6)), y + 1, Draw.rgba(accent(), 0.75f));
     }
 
     static void row(GuiGraphics g, int x, int y, int w, String label, String value, int colour) {

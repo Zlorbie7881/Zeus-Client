@@ -22,9 +22,9 @@ public final class UiSettings {
 
     public static final Setting.Bool REDUCE_MOTION = Zeus.UI.add(new Setting.Bool("Reduce motion", "Stops pop-ups sliding and fading. Useful when movement on screen is distracting.", false));
 
-    public static final Setting.Bool HUD_BRACKETS = Zeus.UI.add(new Setting.Bool("HUD brackets", "Small accent brackets on the corners of every HUD box.", true));
+    public static final Setting.Bool HUD_BRACKETS = Zeus.UI.add(new Setting.Bool("HUD brackets", "Small accent brackets on the corners of every HUD box.", false)).resetOnRev();
 
-    public static final Setting.Bool HUD_SHEEN = Zeus.UI.add(new Setting.Bool("HUD sheen", "A slow light sweep across the title bar of every HUD box.", true));
+    public static final Setting.Bool HUD_SHEEN = Zeus.UI.add(new Setting.Bool("HUD sheen", "A slow light sweep across the title bar of every HUD box.", false)).resetOnRev();
 
     public static final Setting.Choice LAYOUT = Zeus.UI.add(new Setting.Choice("Layout", "Panel: one window with a sidebar. Windows: a floating, draggable window for every category.", 1,
 
@@ -94,11 +94,11 @@ public final class UiSettings {
 
     public static final Setting.Bool LOADING = Zeus.UI.add(new Setting.Bool("Zeus loading screens", "Replaces the game's Mojang start screen and its bar with the Zeus ring and the real percent while the game starts, shows the same ring with the real percent while a singleplayer world loads, and the menu background with the logo while you join a server.", true));
 
-    public static final Setting.Num HUD_OPACITY = Zeus.UI.add(new Setting.Num("HUD panel opacity", "How solid the boxes of the Panels page are (Info, Armor, Potion, Keystrokes, Radar...). 0% shows only the text.", 69, 0, 100, 1, "%"));
+    public static final Setting.Num HUD_OPACITY = Zeus.UI.add(new Setting.Num("HUD panel opacity", "How solid the boxes of the Panels page are (Info, Armor, Potion, Keystrokes, Radar...). 0% shows only the text.", 78, 0, 100, 1, "%")).resetOnRev();
 
-    public static final Setting.Num HUD_ROUND = Zeus.UI.add(new Setting.Num("HUD corner roundness", "How round the corners of those boxes are.", 4, 0, 10, 1, " px"));
+    public static final Setting.Num HUD_ROUND = Zeus.UI.add(new Setting.Num("HUD corner roundness", "How round the corners of those boxes are.", 7, 0, 10, 1, " px")).resetOnRev();
 
-    public static final Setting.Bool HUD_STRIPE = Zeus.UI.add(new Setting.Bool("HUD accent stripe", "The coloured bar on the left edge of the boxes.", true));
+    public static final Setting.Bool HUD_STRIPE = Zeus.UI.add(new Setting.Bool("HUD accent stripe", "The coloured bar on the left edge of the boxes.", false)).resetOnRev();
 
     public static final Setting.Choice PERFORMANCE = Zeus.UI.add(new Setting.Choice("Effects quality", "Auto: the thunder, sway and slide-ins are drawn lighter when your frame rate drops below 40 and come back above 55. Quality: always full. Fast: always light (best for weak computers).", 0,
 
