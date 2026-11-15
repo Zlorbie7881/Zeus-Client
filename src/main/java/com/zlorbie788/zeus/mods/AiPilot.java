@@ -2477,11 +2477,16 @@ public final class AiPilot extends Module {
         blueprint = null;
         blueprintIndex = 0;
         String label = job == null ? "job" : job.label();
+        boolean planning = job != null && job.kind == JobKind.GOAL && reason.startsWith("planned");
         job = null;
         lastAction = label + ": " + reason;
         event((done ? "finished " : "stopped ") + label + ": " + reason);
         Notify.good("Zeus AI: " + label + " — " + reason);
-        if (speak.on()) AiTutorial.chat((done ? "Done: " : "Stopped: ") + label + " — " + reason, !done);
+        if (speak.on() && !planning) {
+            // mid-plan steps get one short tick line; the end of a request and every stop get the full sentence
+            if (done && !chain.isEmpty()) AiTutorial.chat("\u2714 " + reason + "  \u00b7  " + chain.size() + " to go", false);
+            else AiTutorial.chat((done ? "Done: " : "Stopped: ") + label + " — " + reason, !done);
+        }
         if (!done) {
             if (!chain.isEmpty()) {
                 Notify.info("Zeus AI: dropped " + chain.size() + " queued job(s) after the stop");
@@ -3063,7 +3068,8 @@ public final class AiPilot extends Module {
                 job.note = "loading the furnace";
                 return;
             }
-            if (menu.getSlot(1).getItem().isEmpty()) {
+            boolean lit = menu instanceof net.minecraft.world.inventory.AbstractFurnaceMenu furnace && furnace.isLit();
+            if (menu.getSlot(1).getItem().isEmpty() && !lit) {        // a lit furnace has already taken its fuel
                 int fuel = Craft.find(menu, Craft::fuel);
                 if (fuel < 0) {
                     giveUp(mc, "no fuel for the furnace");
