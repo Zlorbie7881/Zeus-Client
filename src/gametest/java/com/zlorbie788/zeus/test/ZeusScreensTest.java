@@ -9,6 +9,7 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContex
 import com.zlorbie788.zeus.ui.UiSettings;
 import com.zlorbie788.zeus.ui.ZeusTitleScreen;
 import net.minecraft.client.Minecraft;
+import org.lwjgl.glfw.GLFW;
 import net.minecraft.client.gui.screens.TitleScreen;
 
 import java.lang.reflect.Field;
@@ -107,23 +108,31 @@ public class ZeusScreensTest implements FabricClientGameTest {
         run(ctx, 0.8f);
         ctx.takeScreenshot("picker_karambit");
         ctx.setScreen(() -> null);
-        // keybinds keyboard: link a few modules (two share G), then photograph it at a few sizes
+        // keybinds keyboard: link everyday modules (two share G), then photograph it at a few sizes
         ctx.runOnClient(c -> {
-            int[] keys = {org.lwjgl.glfw.GLFW.GLFW_KEY_R, org.lwjgl.glfw.GLFW.GLFW_KEY_G, org.lwjgl.glfw.GLFW.GLFW_KEY_G, org.lwjgl.glfw.GLFW.GLFW_KEY_V, org.lwjgl.glfw.GLFW.GLFW_KEY_KP_5};
-            int i = 0;
-            for (com.zlorbie788.zeus.core.Module m : com.zlorbie788.zeus.core.Zeus.all()) {
-                if (i >= keys.length) break;
-                if (!m.toggleable() || m.key == null) continue;
-                m.key.setKey(com.mojang.blaze3d.platform.InputConstants.Type.KEYSYM.getOrCreate(keys[i++]));
-            }
-            m4: for (com.zlorbie788.zeus.core.Module m : com.zlorbie788.zeus.core.Zeus.all()) {
-                if (m.toggleable() && m.key != null && m.key.isUnbound()) {
-                    m.key.setKey(com.mojang.blaze3d.platform.InputConstants.Type.MOUSE.getOrCreate(3));
-                    break m4;
+            Object[][] binds = {{"zoom", GLFW.GLFW_KEY_C}, {"freelook", GLFW.GLFW_KEY_V}, {"fullbright", GLFW.GLFW_KEY_G}, {"timechanger", GLFW.GLFW_KEY_G},
+                    {"waypoints", GLFW.GLFW_KEY_J}, {"coordsnapper", GLFW.GLFW_KEY_K}, {"breadcrumbs", GLFW.GLFW_KEY_N}, {"autofish", GLFW.GLFW_KEY_M},
+                    {"treebot", GLFW.GLFW_KEY_R}, {"autoeat", GLFW.GLFW_KEY_Y}, {"discordpresence", GLFW.GLFW_KEY_F6}, {"handmodel", GLFW.GLFW_KEY_KP_5},
+                    {"chunkborders", GLFW.GLFW_KEY_H}};
+            for (Object[] b : binds) {
+                for (com.zlorbie788.zeus.core.Module m : com.zlorbie788.zeus.core.Zeus.all()) {
+                    if (m.id.equals(b[0]) && m.key != null) m.key.setKey(com.mojang.blaze3d.platform.InputConstants.Type.KEYSYM.getOrCreate((Integer) b[1]));
                 }
+            }
+            for (com.zlorbie788.zeus.core.Module m : com.zlorbie788.zeus.core.Zeus.all()) {
+                if (m.id.equals("reticle") && m.key != null) m.key.setKey(com.mojang.blaze3d.platform.InputConstants.Type.MOUSE.getOrCreate(3));
             }
             net.minecraft.client.KeyMapping.resetMapping();
         });
+        // Minecraft's own keybinds list, for comparison
+        ctx.getInput().resizeWindow(1920, 1080);
+        ctx.runOnClient(c -> {
+            c.options.guiScale().set(2);
+            c.resizeDisplay();
+        });
+        ctx.setScreen(() -> new net.minecraft.client.gui.screens.options.controls.KeyBindsScreen(null, Minecraft.getInstance().options));
+        run(ctx, 0.5f);
+        ctx.takeScreenshot("vanilla_keys_1920_gui2");
         int[][] ksizes = {{1920, 1080, 0}, {1920, 1080, 2}, {854, 480, 0}};
         for (int[] s : ksizes) {
             ctx.getInput().resizeWindow(s[0], s[1]);
@@ -148,6 +157,9 @@ public class ZeusScreensTest implements FabricClientGameTest {
             });
             run(ctx, 0.5f);
             ctx.takeScreenshot("keys_g_" + tag);
+            ctx.runOnClient(c -> set(c.screen, "filter", 1));
+            run(ctx, 0.3f);
+            ctx.takeScreenshot("keys_g_linked_" + tag);
             ctx.setScreen(() -> null);
             ctx.waitTicks(2);
         }
