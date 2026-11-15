@@ -102,7 +102,19 @@ public final class ZeusLoading {
     private static float startShown;
     private static Object startSession;
 
+    /**
+     * Minecraft's text shader is not loaded until the first resource load finishes; drawing text before that makes
+     * the game log "Couldn't find source for shader rendertype_text" and crashes VulkanMod. Until then the loading
+     * screen only draws shapes and textures (the percentage uses the texture font).
+     */
+    private static boolean textReady;
+
+    public static boolean textReady() {
+        return textReady;
+    }
+
     public static boolean startup(Object session, GuiGraphics g, int w, int h, float progress, boolean done, float alpha) {
+        if (done) textReady = true;
         try {
             if (!UiSettings.LOADING.on()) return false;
             long now = System.nanoTime();
@@ -251,9 +263,11 @@ public final class ZeusLoading {
 
         int pct = Math.min(100, (int) Math.floor(p * 100f + 0.0001f));
         float s = Math.max(1f, k * 1.7f);
-        Draw.textCenterS(g, pct + "%", w / 2, ly + lh + Math.round(8f * k), Draw.rgba(0xFFB4C0DC, a), s);
+        int pctCap = Math.max(6, Math.round(6.5f * s));
+        if (GreekFont.available()) GreekFont.drawCentered(g, pct + "%", w / 2, ly + lh + Math.round(8f * k), pctCap, Draw.rgba(0xFFB4C0DC, a), false);
+        else if (textReady) Draw.textCenterS(g, pct + "%", w / 2, ly + lh + Math.round(8f * k), Draw.rgba(0xFFB4C0DC, a), s);
 
-        if (UiSettings.LOADING_TIPS.on()) tip(g, w, h, t, ly + lh + Math.round(8f * k) + Math.round(14f * s) + Math.round(10f * k), k, a);
+        if (textReady && UiSettings.LOADING_TIPS.on()) tip(g, w, h, t, ly + lh + Math.round(8f * k) + Math.round(14f * s) + Math.round(10f * k), k, a);
 
         float in = Math.max(0f, 1f - t / 0.35f);
         if (in > 0.01f) g.fill(0, 0, w, h, Draw.rgba(0xFF000000, in));
@@ -262,7 +276,9 @@ public final class ZeusLoading {
     private static final String[] TIPS = {
             "Press Z in a world to open the Zeus panel.",
             "Click a module's row to open its settings; click its switch to turn it on.",
-            "Click the None chip on a module and press a key to give it a key.",
+            "Type /zeus keybinds for a virtual keyboard: click a key and link modules to it.",
+            "Several modules can share one key; they all toggle together.",
+            "Play 3 minutes a day to keep your Zeus Crates streak and earn bonus tokens.",
             "Type /zeus find followed by a word to search every module.",
             "Type /zeus settings followed by a module name to read all of its settings.",
             "Panic, at the bottom right of the panel, switches everything off at once.",

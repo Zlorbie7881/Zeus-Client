@@ -1,16 +1,19 @@
-# Zeus Crates are here!
-Open crates from the main menu and unbox HD knives. Everyone starts with the Stock karambit.
+# New: keybinds keyboard
+Keybinds are now a full virtual keyboard. Click a key, pick modules from the list, done.
 
-- 6 crates: Olympus, Tempest, Hades, Nyx, Poseidon, Titan
-- 72 knives in 9 types
-- Rarities from Mortal to Olympian (1%)
-- Earn Zeus tokens by playing, buy keys
+- Several modules on one key toggle together
+- Press a key on your real keyboard to jump to it
+- Open it with /zeus keybinds
+
+# Zeus Crates
+Open crates from the main menu and unbox HD knives.
+
+- A crate takes 3 keys, a key costs 10 tokens
+- Daily streak: play 3 minutes a day for bonus tokens
+- Divine or better guaranteed every 25 opens
 - Got a promo code? Use the Redeem tab
 
-# New knives
-Karambit, M9 Bayonet, Butterfly, Huntsman, Bowie, Skeleton, Ursus and Stiletto, each with its own skins.
-
 # Zeus AI
-Type @ in chat and ask it to mine, build a schematic, farm or guard you.
+Coming soon!
 
 ~ Join the Discord for promo codes and news

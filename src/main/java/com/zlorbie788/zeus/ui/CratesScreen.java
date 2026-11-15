@@ -578,6 +578,9 @@ public final class CratesScreen extends Screen {
         boolean canBuy = Crates.tokens() >= Crates.KEY_PRICE;
         button(g, H_BUY, ccx - bw / 2, ny + 61, bw, 16, small ? "KEY  ·  " + Crates.KEY_PRICE + " TOKENS" : "BUY KEY  ·  " + Crates.KEY_PRICE + " TOKENS", GOLD, canBuy, false, mx, my, t, dt);
         if (!compact) {
+            int pi = Crates.pityIn();
+            String pity = pi == 1 ? "Next open: Divine or better guaranteed" : "Divine or better guaranteed within " + pi + " opens";
+            Draw.textCenter(g, Draw.fit(pity, cw), ccx, ny + 92, pi <= 3 ? 0xFFD32CE6 : FAINT);
             String hint = !canBuy ? (Crates.KEY_PRICE - Crates.tokens()) + " more tokens for a key"
                     : Crates.tokens() >= Crates.KEY_PRICE * 2 ? "Shift-click to buy " + Math.min(Crates.KEYS_PER_OPEN, Crates.tokens() / Crates.KEY_PRICE) + " at once" : "";
             if (!hint.isEmpty()) Draw.textCenter(g, Draw.fit(hint, cw), ccx, ny + 80, FAINT);

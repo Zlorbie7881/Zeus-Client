@@ -304,6 +304,9 @@ public final class Crates {
     private static long dropMs;
     private static long earned;
     private static int opened;
+    /** Opens in a row without a Divine or better knife; the PITY-th one is guaranteed to be Divine or better. */
+    private static int dry;
+    public static final int PITY = 25;
     private static boolean quick;
     private static int streak;
     private static int bestStreak;
@@ -544,6 +547,29 @@ public final class Crates {
         return c.items.get(0);
     }
 
+    /** A roll among this crate's knives of at least the given rarity, by their usual weights. */
+    static Item rollAtLeast(Crate c, Rarity min) {
+        int total = 0;
+        Map<Rarity, List<Item>> by = new HashMap<>();
+        for (Item it : c.items) if (it.rarity.ordinal() >= min.ordinal()) by.computeIfAbsent(it.rarity, k -> new ArrayList<>()).add(it);
+        if (by.isEmpty()) return roll(c);
+        for (Rarity r : by.keySet()) total += r.weight;
+        int pick = RNG.nextInt(total);
+        for (Rarity r : Rarity.values()) {
+            List<Item> l = by.get(r);
+            if (l == null) continue;
+            if (pick < r.weight) return l.get(RNG.nextInt(l.size()));
+            pick -= r.weight;
+        }
+        return roll(c);
+    }
+
+    /** Opens left until a Divine or better knife is guaranteed (1 = the next one). */
+    public static int pityIn() {
+        load();
+        return Math.max(1, PITY - dry);
+    }
+
     /** Opens one crate with one key. Returns null when either is missing. */
     public static Result open(Crate c) {
         load();
@@ -552,7 +578,8 @@ public final class Crates {
         if (held.get(c.id) <= 0) held.remove(c.id);
         keys -= KEYS_PER_OPEN;
         opened++;
-        Item it = roll(c);
+        Item it = dry + 1 >= PITY ? rollAtLeast(c, Rarity.DIVINE) : roll(c);
+        dry = it.rarity.ordinal() >= Rarity.DIVINE.ordinal() ? 0 : dry + 1;
         boolean dup = owns(it.id);
         int refund = dup ? it.rarity.refund : 0;
         if (dup) tokens += refund;
@@ -725,6 +752,7 @@ public final class Crates {
         dropMs = 0;
         earned = 0;
         opened = 0;
+        dry = 0;
         quick = false;
         streak = 0;
         bestStreak = 0;
@@ -760,6 +788,7 @@ public final class Crates {
             dropMs = d.get("drop").getAsLong();
             earned = d.has("earned") ? d.get("earned").getAsLong() : 0;
             opened = d.has("opened") ? d.get("opened").getAsInt() : 0;
+            dry = d.has("dry") ? Math.max(0, Math.min(PITY - 1, d.get("dry").getAsInt())) : 0;
             for (var e : d.getAsJsonObject("crates").entrySet()) held.put(e.getKey(), e.getValue().getAsInt());
             for (var e : d.getAsJsonArray("owned")) owned.add(e.getAsString());
             for (var e : d.getAsJsonArray("redeemed")) redeemed.add(e.getAsString());
@@ -801,6 +830,7 @@ public final class Crates {
         d.addProperty("drop", dropMs);
         d.addProperty("earned", earned);
         d.addProperty("opened", opened);
+        d.addProperty("dry", dry);
         JsonObject c = new JsonObject();
         held.forEach(c::addProperty);
         d.add("crates", c);

@@ -43,10 +43,10 @@ public final class Quality {
 
     public static final class Keybinds extends Module {
         public Keybinds() {
-            super("keybinds", "Keybinds", "Every module and its key on one screen. Click a box, press a key.", Category.INTERFACE);
+            super("keybinds", "Keybinds", "A full virtual keyboard: click any key (or press it) and link modules to it from a searchable list.", Category.INTERFACE);
             panelOnly();
             alias("keys", "bind", "hotkeys", "shortcuts", "binds");
-            add(new Setting.Action("Open the keybind screen", "A list of every module with its key. Click a key box and press the key you want; Backspace clears it.", Keybinds::open));
+            add(new Setting.Action("Open the keyboard", "Every key shows what is linked to it. Click a key, then click modules to link or unlink them; several modules on one key toggle together. Right click a key to clear it.", Keybinds::open));
             add(new Setting.Info("Bound now", () -> {
                 int n = 0;
                 int total = 0;
