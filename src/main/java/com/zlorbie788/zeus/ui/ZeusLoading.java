@@ -279,6 +279,7 @@ public final class ZeusLoading {
             "Type /zeus keybinds for a virtual keyboard: click a key and link modules to it.",
             "Several modules can share one key; they all toggle together.",
             "Play 3 minutes a day to keep your Zeus Crates streak and earn bonus tokens.",
+            "Zeus Crates has 3 new daily quests every day. Finish all three for a bonus.",
             "Type /zeus find followed by a word to search every module.",
             "Type /zeus settings followed by a module name to read all of its settings.",
             "Panic, at the bottom right of the panel, switches everything off at once.",

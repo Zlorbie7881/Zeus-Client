@@ -9,6 +9,7 @@ Keybinds are now a full virtual keyboard. Click a key, pick modules from the lis
 Open crates from the main menu and unbox HD knives.
 
 - A crate takes 3 keys, a key costs 10 tokens
+- New DAILY tab: 3 quests a day for tokens
 - Daily streak: play 3 minutes a day for bonus tokens
 - Divine or better guaranteed every 25 opens
 - Got a promo code? Use the Redeem tab
