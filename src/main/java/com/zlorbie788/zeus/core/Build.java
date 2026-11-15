@@ -116,7 +116,11 @@ public final class Build {
         if (mc.player == null) return false;
         if (mc.player.tickCount == placedTick) return false;
         BlockHitResult hit = against(pos, Math.max(reach, reach()));
-        if (hit == null || !useOn(hit, item, swing)) return false;
+        if (hit == null) return false;
+        // A placement whose face was never in the player's line of sight is a flag of its own, so
+        // look at it first. The rotation goes out before the use packet in the same tick.
+        if (!Aim.isLookingAt(hit.getLocation(), 8.0)) Aim.look(hit.getLocation());
+        if (!useOn(hit, item, swing)) return false;
         placedTick = mc.player.tickCount;
         return true;
     }
