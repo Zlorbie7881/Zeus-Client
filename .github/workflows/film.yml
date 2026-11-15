@@ -10,7 +10,11 @@ on:
 jobs:
   film:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [menus, world]
     steps:
       - uses: actions/checkout@v4
 
@@ -26,11 +30,11 @@ jobs:
 
       - name: Film
         env:
-          ZEUS_FILM: "1"
+          ZEUS_FILM: ${{ matrix.part }}
         run: chmod +x gradlew && ./gradlew runClientGameTest --stacktrace --no-daemon --console=plain -Pzeus_build=1
 
       - name: Encode the clips
-        if: always()
+        if: ${{ always() }}
         run: |
           mkdir -p /tmp/film /tmp/clips
           find . -name "*_film_*.png" -path "*screenshots*" -exec cp {} /tmp/film/ \;
@@ -53,9 +57,9 @@ jobs:
           ls -la /tmp/clips
 
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ always() }}
         with:
-          name: film
+          name: film-${{ matrix.part }}
           path: |
             /tmp/clips/*.mp4
             build/run/**/logs/latest.log

@@ -27,7 +27,7 @@ public class ZeusScreensTest implements FabricClientGameTest {
     public void runTest(ClientGameTestContext ctx) {
         ctx.getInput().resizeWindow(1920, 1080);
         if (System.getenv("ZEUS_FILM") != null) {
-            film(ctx);
+            film(ctx, System.getenv("ZEUS_FILM"));
             ctx.runOnClient(c -> com.zlorbie788.zeus.core.Clock.manual = -1L);
             ctx.runOnClient(c -> UiSettings.MENU.set(false));
             ctx.setScreen(TitleScreen::new);
@@ -324,11 +324,15 @@ public class ZeusScreensTest implements FabricClientGameTest {
         }
     }
 
-    private static void film(ClientGameTestContext ctx) {
+    private static void film(ClientGameTestContext ctx, String part) {
         ctx.waitFor(c -> c.screen instanceof ZeusTitleScreen, 20 * 60);
         ctx.runOnClient(c -> grant());
         ctx.runOnClient(c -> Crates.setQuick(false));
         run(ctx, 2.0f);
+        if ("world".equals(part)) {
+            filmWorld(ctx);
+            return;
+        }
         // the main menu building itself
         ctx.runOnClient(c -> com.zlorbie788.zeus.core.Clock.manual = System.nanoTime());
         ctx.setScreen(ZeusTitleScreen::new);
@@ -398,11 +402,15 @@ public class ZeusScreensTest implements FabricClientGameTest {
         });
         shoot(ctx, "keys_pick", 60);
         ctx.setScreen(() -> null);
-        // in a world: knives in the hand, tricks, the butterfly, the Zeus menu
+    }
+
+    /** In a world: knives in the hand, tricks, the butterfly, the Zeus menu. */
+    private static void filmWorld(ClientGameTestContext ctx) {
         try (TestSingleplayerContext sp = ctx.worldBuilder().create()) {
             sp.getClientWorld().waitForChunksRender();
             sp.getServer().runCommand("time set 1000");
-            sp.getServer().runCommand("gamerule doDaylightCycle false");
+            sp.getServer().runCommand("gamerule advance_time false");
+            ctx.runOnClient(c -> com.zlorbie788.zeus.core.Clock.manual = System.nanoTime());
             ctx.runOnClient(c -> KnifeSwing.equipHd(Crates.hdOf("karambit_bloodstone")));
             shoot(ctx, "hand_draw", 60);
             ctx.runOnClient(c -> KnifeSwing.pressTrick());
