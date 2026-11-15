@@ -279,6 +279,9 @@ public final class CratesScreen extends Screen {
         g.pose().popMatrix();
     }
 
+    /** For the screenshot test only: draws the chosen crate with its lid this far open (0 shut). */
+    static float previewLid;
+
     /** Where the lid of the case art ends, as a share of its height (tools/crates/make_crates.py SEAM). */
     private static final float CASE_SEAM = 0.2695f;
 
@@ -689,7 +692,7 @@ public final class CratesScreen extends Screen {
         int yC = top + Math.max(6, (avail - need) / 2 + 6) + Math.round(cs * 0.62f);
         Draw.glow(g, ccx - cw / 4, yC - cs / 4, cw / 2, cs / 2, 30, c.colour, 34, 0.010f + 0.012f * (1f - clamp01((t - selAt) / 0.6f)));
         int size = Math.max(8, Math.round(cs * (0.82f + 0.18f * pop)));
-        drawCrate(g, c, ccx, yC + bob, size, t, 0f, 0f, 0.25f * (1f - clamp01((t - selAt) / 0.5f)));
+        drawCrate(g, c, ccx, yC + bob, size, t, previewLid, 0f, 0.25f * (1f - clamp01((t - selAt) / 0.5f)));
         lastCrateCx = ccx;
         lastCrateCy = Math.round(yC + bob);
         lastCrateSize = cs;
