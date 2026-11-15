@@ -2481,7 +2481,8 @@ public final class AiPilot extends Module {
         blueprint = null;
         blueprintIndex = 0;
         String label = job == null ? "job" : job.label();
-        boolean planning = job != null && job.kind == JobKind.GOAL && reason.startsWith("planned");
+        // planning and the quiet "you have it" check after each item are bookkeeping, not news, while more is queued
+        boolean planning = job != null && job.kind == JobKind.GOAL && (reason.startsWith("planned") || reason.startsWith("you have") && !chain.isEmpty());
         job = null;
         lastAction = label + ": " + reason;
         event((done ? "finished " : "stopped ") + label + ": " + reason);
