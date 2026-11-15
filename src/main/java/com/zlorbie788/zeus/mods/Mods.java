@@ -10,6 +10,8 @@ public final class Mods {
 
     public static List<Module> create() {
         List<Module> m = new ArrayList<>();
+        m.add(new NameTags());
+        m.add(new ArmorBreaker());
         m.add(new Combat.KillAura());
         m.add(new AdvancedFeatures.MultiAura());
         m.add(new CrystalAnchor.CrystalAura());
