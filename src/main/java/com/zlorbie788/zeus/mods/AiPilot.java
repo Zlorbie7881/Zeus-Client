@@ -118,7 +118,7 @@ public final class AiPilot extends Module {
     private enum JobKind { CHOP, MINE_UNTIL, MINE_COUNT, GOTO, FOLLOW, COLLECT, TUNNEL, FARM, SLEEP,
                            REPLANT, EAT, FOOD, FISH, HUNT, FLEE, SHOOT, SHEAR, MILK, QUARRY, PLACE, TORCH, DROP, RETURN, EXPLORE,
                            HOUSE, SWIM, CLIMB, BRIDGE, TILL, CRAFT, SMELT, STORE, TAKE, SCHEMATIC,
-                           BREED, PLANT, GUARD, ARMOR, GOAL }
+                           BREED, PLANT, GUARD, ARMOR, GOAL, LOOT }
 
     private static final class Job {
         final JobKind kind;
@@ -203,6 +203,7 @@ public final class AiPilot extends Module {
                 case REPLANT -> "planting seeds" + (mined > 0 ? " (" + mined + " planted)" : "");
                 case EAT -> "eating";
                 case FOOD -> "hunting animals for food" + (mined > 0 ? " (" + mined + " killed)" : "");
+                case LOOT -> "getting " + target.replace('_', ' ') + " from mobs (" + Math.min(mined, Math.max(1, wanted)) + "/" + Math.max(1, wanted) + ")";
                 case FISH -> "fishing (" + Math.min(mined, Math.max(1, wanted)) + "/" + Math.max(1, wanted) + ")";
                 case HUNT -> "fighting" + (mined > 0 ? " (" + mined + " hits)" : "");
                 case FLEE -> "running away";
@@ -1515,7 +1516,7 @@ public final class AiPilot extends Module {
         builder.append("Schema: {\"say\":\"one short friendly sentence for the player\",\"actions\":[{\"do\":\"<verb>\",\"module\":\"<id>\",\"setting\":\"<exact setting name>\",\"value\":\"<new value>\"}]}\n");
         builder.append("More jobs: breed (or breed cows), plant 6 saplings, guard me (fights mobs near the player until stop), put on armor (wears the best pieces it has), set home, go home.\n");
         builder.append("Schematics: job value build schematic <name> gathers the materials (chops, mines, crafts, smelts what it can) and then builds it 3 blocks in front of the player; add here to restart it at the current spot. do=materials with value <name> lists what it needs; do=schematics lists the files.\n");
-        builder.append("GETTING ITEMS: the job obtain N <item> gets any item the game can make. It reads Minecraft's real recipes, works out every raw material from the inventory, makes the pickaxe each ore needs and a crafting table or furnace when none is near, then chops, mines, smelts and crafts in the right order, checks the result and tops it up if a step came up short. Use it whenever the player wants an item: obtain 1 iron pickaxe, obtain 16 torch, obtain 1 shield, obtain 64 oak planks, obtain 1 bow (it says what it cannot gather alone, like string). Use item ids from the game (iron_chestplate, golden_apple); plain words work too.\n");
+        builder.append("GETTING ITEMS: the job obtain N <item> gets any item the game can make. It reads Minecraft's real recipes, works out every raw material from the inventory, makes the pickaxe each ore needs and a crafting table or furnace when none is near, then chops, mines, smelts and crafts in the right order, checks the result and tops it up if a step came up short. Use it whenever the player wants an item: obtain 1 iron pickaxe, obtain 16 torch, obtain 1 shield, obtain 64 oak planks, obtain 1 bow (it hunts spiders for the string). Items only mobs drop come from the job loot N <item>: it hunts the right mob and picks the drops up (loot 3 string, loot 4 leather, loot 2 ender pearl, loot 6 bone); obtain uses it by itself when a recipe needs one. Use item ids from the game (iron_chestplate, golden_apple); plain words work too.\n");
         builder.append("Plan like a player: think about what the request needs, check the Inventory and Wearing in the context first, never redo what is already there, and chain jobs with then in one job value. Examples: diamonds with no iron pickaxe -> obtain 1 iron pickaxe then mine until diamond. full iron armour -> obtain 1 iron helmet then obtain 1 iron chestplate then obtain 1 iron leggings then obtain 1 iron boots then put on armor. ready for the night -> obtain 16 torch then food 3 then obtain 1 white bed. ready for the nether -> obtain 1 iron pickaxe then obtain 1 flint and steel then obtain 1 shield then food 4 (and say that obsidian needs a diamond pickaxe or a bucket of water on lava).\n");
         builder.append("Big goals (beat the game, a base, a farm, get strong): pick the next stage only, send its jobs, and say the plan in one sentence. When the jobs finish you get a message starting with These jobs finished: look at the new context, and either confirm in say with no actions, or send the jobs for what is still missing.\n");
         builder.append("Finding ores: always use the job mine until <ore> (it digs a safe staircase to the right depth). Never use dig down to look for ores; digging straight down is dangerous.\n");
@@ -2239,6 +2240,9 @@ public final class AiPilot extends Module {
             java.util.regex.Matcher count = java.util.regex.Pattern.compile("(\\d+)").matcher(text);
             started = new Job(JobKind.FISH, "fish",
                     count.find() ? Math.max(1, Math.min(64, Integer.parseInt(count.group(1)))) : 3, null);
+        } else if (lootRequest(text) != null) {
+            String[] lr = lootRequest(text);
+            started = new Job(JobKind.LOOT, lr[1], Math.max(1, Math.min(64, Integer.parseInt(lr[0]))), null);
         } else if (text.startsWith("food") || text.startsWith("meat") || text.contains("kill for food")
                 || text.contains("hunt for food") || text.contains("hunt animals")) {
             java.util.regex.Matcher count = java.util.regex.Pattern.compile("(\\d+)").matcher(text);
@@ -2637,6 +2641,7 @@ public final class AiPilot extends Module {
             case REPLANT -> replantTick(mc);
             case EAT -> eatTick(mc);
             case FOOD -> foodTick(mc);
+            case LOOT -> lootTick(mc);
             case FISH -> fishTick(mc);
             case HUNT -> huntTick(mc);
             case FLEE -> fleeTick(mc);
@@ -3349,6 +3354,124 @@ public final class AiPilot extends Module {
      * Kill animals for food: stalk one animal at a time, hit it when the attack is charged, then
      * move on. It stops with meat in the pack instead of swinging at nothing.
      */
+    // ------------------------------------------------------------------ loot: an item only mobs drop
+    /** Which mobs drop each item, by entity id. */
+    private static final java.util.Map<String, String[]> LOOT = new java.util.HashMap<>();
+
+    static {
+        loot("leather", "cow", "mooshroom", "horse", "donkey", "mule", "llama");
+        loot("feather", "chicken");
+        loot("string", "spider", "cave_spider");
+        loot("spider_eye", "spider", "cave_spider");
+        loot("bone", "skeleton", "stray", "bogged");
+        loot("arrow", "skeleton", "stray", "bogged");
+        loot("gunpowder", "creeper");
+        loot("rotten_flesh", "zombie", "husk", "drowned", "zombie_villager");
+        loot("ink_sac", "squid");
+        loot("glow_ink_sac", "glow_squid");
+        loot("rabbit_hide", "rabbit");
+        loot("rabbit_foot", "rabbit");
+        loot("slime_ball", "slime");
+        loot("ender_pearl", "enderman");
+        loot("blaze_rod", "blaze");
+        loot("magma_cream", "magma_cube");
+        loot("ghast_tear", "ghast");
+        loot("phantom_membrane", "phantom");
+        loot("prismarine_shard", "guardian");
+        loot("beef", "cow", "mooshroom");
+        loot("porkchop", "pig");
+        loot("mutton", "sheep");
+        loot("chicken", "chicken");
+        loot("rabbit", "rabbit");
+    }
+
+    private static void loot(String item, String... mobs) {
+        LOOT.put(item, mobs);
+    }
+
+    /** True if the planner or the player can ask for this item from mobs. */
+    public static boolean lootable(String item) {
+        return LOOT.containsKey(item);
+    }
+
+    /**
+     * "loot 3 string", "kill spiders for 4 string", "get 2 leather from cows": the count (as text) and the item id,
+     * or null when the text is not a loot request for an item some mob drops.
+     */
+    private static String[] lootRequest(String text) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("^(?:loot|kill [a-z_ ]+? for|hunt [a-z_ ]+? for|get|collect) (?:(\\d+) )?([a-z_ ]+?)(?: from [a-z_ ]+)?$").matcher(text.trim());
+        if (!m.find()) return null;
+        boolean asked = text.startsWith("loot") || text.startsWith("kill") || text.startsWith("hunt") || text.contains(" from ");
+        String id = m.group(2).trim().replace(' ', '_');
+        if (!LOOT.containsKey(id) && id.endsWith("s") && LOOT.containsKey(id.substring(0, id.length() - 1))) id = id.substring(0, id.length() - 1);
+        if (!LOOT.containsKey(id)) return null;
+        // "get 3 beef" stays the food job; meat is only looted when asked for from mobs
+        if (!asked && (id.equals("beef") || id.equals("porkchop") || id.equals("mutton") || id.equals("chicken") || id.equals("rabbit"))) return null;
+        if (!asked && !text.startsWith("get") && !text.startsWith("collect")) return null;
+        return new String[] {m.group(1) == null ? "1" : m.group(1), id};
+    }
+
+    private static boolean dropsFor(net.minecraft.world.entity.Entity e, String item) {
+        String[] mobs = LOOT.get(item);
+        if (mobs == null || !e.isAlive()) return false;
+        if (e instanceof net.minecraft.world.entity.AgeableMob baby && baby.isBaby()) return false;
+        String id = net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(e.getType()).getPath();
+        for (String mob : mobs) if (mob.equals(id)) return true;
+        return false;
+    }
+
+    /**
+     * Hunts the mobs that drop an item and picks the drops up, until that many more are in the inventory. Counts
+     * what actually arrived, so a cow that dropped no leather is just one more cow.
+     */
+    private void lootTick(Minecraft mc) {
+        Player p = mc.player;
+        String item = job.target;
+        String name = item.replace('_', ' ');
+        int have = inventoryCounts(mc).getOrDefault(item, 0);
+        if (job.baseline < 0) job.baseline = have;
+        job.mined = Math.max(0, have - job.baseline);
+        int want = Math.max(1, job.wanted);
+        if (job.mined >= want) {
+            endJob(mc, "got " + job.mined + " " + name);
+            return;
+        }
+        // drops on the ground first
+        net.minecraft.world.entity.Entity drop = nearestEntity(mc, 14, e -> e instanceof net.minecraft.world.entity.item.ItemEntity ie
+                && ie.isAlive() && net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(ie.getItem().getItem()).getPath().equals(item));
+        if (drop != null) {
+            job.note = "picking up " + name;
+            walkTo(mc, drop.position(), 0.4);
+            return;
+        }
+        net.minecraft.world.entity.Entity mob = nearestEntity(mc, 40, e -> dropsFor(e, item));
+        String mobs = String.join(" or ", LOOT.get(item)).replace('_', ' ');
+        if (mob == null) {
+            if (job.lastFound == 0) job.lastFound = System.currentTimeMillis();
+            if (System.currentTimeMillis() - job.lastFound > 6000L) {
+                giveUp(mc, (job.mined > 0 ? "got " + job.mined + " " + name + ", then " : "") + "no " + mobs + " within 40 blocks");
+            } else {
+                job.note = "looking for a " + mobs;
+            }
+            return;
+        }
+        job.lastFound = System.currentTimeMillis();
+        int weapon = bestWeapon(mc);
+        if (weapon >= 0 && Inv.selected() != weapon) Inv.select(weapon);
+        lookAt(p, mob.getEyePosition());
+        job.note = "after a " + mob.getName().getString() + " for " + name + " (" + job.mined + "/" + want + ")";
+        if (p.distanceTo(mob) > 2.8) {
+            walkTo(mc, mob.position(), 1.8);
+            return;
+        }
+        mc.options.keyUp.setDown(false);
+        mc.options.keyJump.setDown(false);
+        if (p.getAttackStrengthScale(0.5f) < 0.9f) return;
+        mc.gameMode.attack(p, mob);
+        p.swing(InteractionHand.MAIN_HAND);
+    }
+
     private void foodTick(Minecraft mc) {
         Player p = mc.player;
         int want = Math.max(1, job.wanted);
@@ -5108,6 +5231,7 @@ public final class AiPilot extends Module {
             case QUARRY -> "quarry " + Math.max(1, j.wanted);
             case TUNNEL -> "tunnel " + Math.max(1, j.wanted);
             case FOOD -> "food " + Math.max(1, j.wanted);
+            case LOOT -> "loot " + Math.max(1, j.wanted - j.mined) + " " + j.target;
             default -> j.target == null || j.target.isBlank() ? "stop" : j.target;
         };
     }

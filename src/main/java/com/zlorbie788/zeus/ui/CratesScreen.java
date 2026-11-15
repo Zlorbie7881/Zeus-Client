@@ -226,6 +226,7 @@ public final class CratesScreen extends Screen {
      * turn away (opening), and the whole crate can shake.
      */
     private void drawCrate(GuiGraphics g, Crate c, float cx, float cy, int size, float t, float lid, float shake, float glowBoost) {
+        if (drawCase(g, c, cx, cy, size, t, lid, shake, glowBoost)) return;
         int w = size, h = Math.round(size * 0.72f);
         float sx = shake * (float) Math.sin(t * 61) + shake * 0.5f * (float) Math.sin(t * 97);
         float sy = shake * 0.6f * (float) Math.cos(t * 53);
@@ -276,6 +277,66 @@ public final class CratesScreen extends Screen {
             g.pose().popMatrix();
         }
         g.pose().popMatrix();
+    }
+
+    /** Where the lid of the case art ends, as a share of its height (tools/crates/make_crates.py SEAM). */
+    private static final float CASE_SEAM = 0.2695f;
+
+    /** The case art at the sharpest size the crate needs on screen (the textures have no mipmaps). */
+    private static Tex.Img caseImg(Crate c, String part, int size) {
+        float px = size * (float) Math.max(1, minecraftScale());
+        int w = px > 300 ? 512 : px > 150 ? 256 : 128;
+        Tex.Img img = Tex.sprite("textures/crates/" + c.id + "_" + part + "_" + w + ".png");
+        return img != null ? img : Tex.sprite("textures/crates/" + c.id + "_" + part + "_256.png");
+    }
+
+    private static double minecraftScale() {
+        return net.minecraft.client.Minecraft.getInstance().getWindow().getGuiScale();
+    }
+
+    /**
+     * The crate as a hard equipment case: body and lid are painted textures (made by make_crates.py), the
+     * glows on top breathe and flare as the case is about to open. Returns false if the textures are missing.
+     */
+    private boolean drawCase(GuiGraphics g, Crate c, float cx, float cy, int size, float t, float lid, float shake, float glowBoost) {
+        Tex.Img body = caseImg(c, "body", size), top = caseImg(c, "lid", size);
+        if (body == null || top == null) return false;
+        int w = size, h = Math.round(size * 0.75f);
+        int lh = Math.round(h * CASE_SEAM);
+        float sx = shake * (float) Math.sin(t * 61) + shake * 0.5f * (float) Math.sin(t * 97);
+        float sy = shake * 0.6f * (float) Math.cos(t * 53);
+        float rot = shake * 0.006f * (float) Math.sin(t * 43);
+        g.pose().pushMatrix();
+        g.pose().translate(cx + sx, cy + sy);
+        g.pose().rotate(rot);
+        int x = -w / 2, y = -h / 2;
+        int r = Math.max(2, size / 14);
+        Draw.shadow(g, x, y + h / 6, w, h * 5 / 6, r, Math.max(3, size / 10), 0.55f);
+        float breath = 0.5f + 0.5f * (float) Math.sin(t * 2.0f);
+        Draw.glow(g, x, y, w, h, r, c.colour, Math.max(4, size / 6), 0.04f + 0.04f * breath + glowBoost);
+        body.draw(g, x, y + lh, w, h - lh, 0xFFFFFFFF);
+        // the medallion breathes, and flares as the case is about to open
+        int er = Math.max(3, Math.round(size * 0.14f));
+        int ecy = y + Math.round(h * 0.52f);
+        float pulse = Math.min(1f, breath + glowBoost * 3f);
+        Draw.glow(g, -er, ecy - er, er * 2, er * 2, er, c.colour, Math.max(3, er), 0.05f + 0.10f * pulse);
+        // light leaking from the seam as the lid is about to go
+        if (glowBoost > 0.02f || lid > 0f) {
+            float k = Math.min(1f, glowBoost * 2f + lid * 3f);
+            Draw.glow(g, x + 2, y + lh - 1, w - 4, 3, 1, Draw.lighten(c.colour, 0.5f), Math.max(4, size / 5), 0.30f * k);
+            g.fill(x + 3, y + lh - 1, x + w - 3, y + lh + 1, Draw.rgba(0xFFFFF6D8, k));
+        }
+        float la = 1f - clamp01((lid - 0.55f) / 0.45f);
+        if (la > 0f) {
+            g.pose().pushMatrix();
+            float lift = lid * size * 0.9f;
+            g.pose().translate(lid * size * 0.25f, y - lift);
+            g.pose().rotate(-lid * 0.9f);
+            top.draw(g, -w / 2, 0, w, lh, Draw.rgba(0xFFFFFFFF, la));
+            g.pose().popMatrix();
+        }
+        g.pose().popMatrix();
+        return true;
     }
 
     private static String shortName(String full) {

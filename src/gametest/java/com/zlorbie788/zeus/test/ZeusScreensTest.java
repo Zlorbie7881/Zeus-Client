@@ -222,6 +222,10 @@ public class ZeusScreensTest implements FabricClientGameTest {
             aiTest(ctx, sp, "get me 3 iron ingots", "iron_ingot", 3, "raw_iron 3", "coal 1", "cobblestone 8");
             aiTest(ctx, sp, "get me 2 cooked beef", "cooked_beef", 2, "beef 2", "coal 1");
             aiTest(ctx, sp, "get me full iron armor", "worn:iron", 4, "iron_ingot 24", "oak_log 1");
+            // leather only comes from mobs: the planner sends the loot job after the cows
+            aiTest(ctx, sp, "get me an item frame", "item_frame", 1, "oak_log 1",
+                    "/execute at @p run summon cow ~4 ~ ~", "/execute at @p run summon cow ~-4 ~ ~2", "/execute at @p run summon cow ~2 ~ ~-4",
+                    "/execute at @p run summon cow ~-3 ~ ~-3", "/execute at @p run summon cow ~5 ~ ~4", "/execute at @p run summon cow ~-5 ~ ~5");
         }
         // the test framework wants to finish on the vanilla title screen
         ctx.runOnClient(c -> UiSettings.MENU.set(false));
@@ -253,7 +257,7 @@ public class ZeusScreensTest implements FabricClientGameTest {
         sp.getServer().runCommand("clear @a");
         sp.getServer().runCommand("time set day");
         sp.getServer().runCommand("difficulty peaceful");
-        for (String g : give) sp.getServer().runCommand("give @a " + g);
+        for (String g : give) sp.getServer().runCommand(g.startsWith("/") ? g.substring(1) : "give @a " + g);
         ctx.waitTicks(10);
         ctx.runOnClient(c -> {
             for (com.zlorbie788.zeus.core.Module m : com.zlorbie788.zeus.core.Zeus.all()) {

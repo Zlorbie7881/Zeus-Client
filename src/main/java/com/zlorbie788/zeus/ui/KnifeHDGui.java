@@ -100,12 +100,14 @@ public final class KnifeHDGui {
         double t = (System.nanoTime() % 60_000_000_000L) / 1e9;
         float breathe = 0.62f + 0.38f * (float) Math.sin(t * 2.2 + m.id.hashCode() % 7);
         float au = Math.abs(unit);
-        int r = Math.max(4, Math.round(au * 4.2f));
-        for (int i = 0; i < 4; i++) {
-            float[] p = KnifeHD.along(m, k, 0.12f + 0.26f * i);
+        int r = Math.max(4, Math.round(au * 3.6f));
+        // a point with a wide soft fall-off is round; Draw.glow's peak is strength * spread / 3
+        float peak = 0.16f * e * breathe * alpha;
+        for (int i = 0; i < 5; i++) {
+            float[] p = KnifeHD.along(m, k, 0.10f + 0.20f * i);
             float s = unit * 90f / (90f + p[2]);
             int x = Math.round(p[0] * s), y = Math.round(p[1] * s);
-            Draw.glow(g, x - r, y - r, r * 2, r * 2, r, m.glow, r, 0.10f * e * breathe * alpha);
+            Draw.glow(g, x - 1, y - 1, 2, 2, 1, m.glow, r, peak * 3f / r);
         }
     }
 

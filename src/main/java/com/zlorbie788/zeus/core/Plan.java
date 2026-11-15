@@ -51,9 +51,29 @@ public final class Plan {
         raw("porkchop", "food", "", 1, NONE, 3);
         raw("chicken", "food", "", 1, NONE, 3);
         raw("mutton", "food", "", 1, NONE, 3);
-        raw("leather", "food", "", 0.5, NONE, 5);
-        raw("feather", "food", "", 0.5, NONE, 5);
+        // items only mobs drop: the loot job hunts the right mob and counts what actually lands in the inventory
+        loot("leather", 5);
+        loot("feather", 5);
+        loot("string", 6);
+        loot("spider_eye", 7);
+        loot("bone", 6);
+        loot("gunpowder", 9);
+        loot("rotten_flesh", 4);
+        loot("ink_sac", 6);
+        loot("glow_ink_sac", 9);
+        loot("rabbit_hide", 6);
+        loot("rabbit_foot", 12);
+        loot("slime_ball", 10);
+        loot("ender_pearl", 14);
+        loot("blaze_rod", 16);
+        loot("ghast_tear", 20);
+        loot("phantom_membrane", 15);
+        loot("prismarine_shard", 14);
         raw("wheat", "farm", "", 4, NONE, 3);
+    }
+
+    private static void loot(String id, double cost) {
+        raw(id, "loot", id, 1, NONE, cost);
     }
 
     private static void raw(String id, String verb, String what, double per, int tier, double cost) {
@@ -199,6 +219,7 @@ public final class Plan {
                 case "shear" -> "shear %d";
                 case "food" -> "food %d";
                 case "farm" -> "farm";
+                case "loot" -> "loot %d " + s.what;
                 default -> s.verb + " %d";
             };
             merged.merge(phrase, actions, Integer::sum);
