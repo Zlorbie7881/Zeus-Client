@@ -22,6 +22,11 @@ public final class Shapes {
 
     private static boolean broken;
 
+    /** True while rounded shapes draw as one textured piece each (cheap enough for the light effects mode too). */
+    static boolean ok() {
+        return !broken;
+    }
+
     /** The corner texture: (2R+1) square, white, alpha = coverage of a disc (fill) or a ring (outline) of radius R pixels. */
     private static Tex.Img corner(int rpx, int ring) {
         String key = "shape:" + rpx + ":" + ring;
