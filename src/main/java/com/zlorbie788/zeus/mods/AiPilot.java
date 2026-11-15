@@ -2667,6 +2667,15 @@ public final class AiPilot extends Module {
         return java.util.List.of();
     }
 
+    /**
+     * Closes the screen the way Escape does. A plain setScreen(null) never tells the server, so whatever sits
+     * in the crafting grid stays there and every later job thinks those materials are gone.
+     */
+    private static void closeScreen(Minecraft mc) {
+        if (mc.player != null && mc.screen instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?>) mc.player.closeContainer();
+        else mc.setScreen(null);
+    }
+
     /** True while a job runs or jobs are queued (used by the in-game tests). */
     public static boolean working() {
         AiPilot self = find();
@@ -2687,6 +2696,10 @@ public final class AiPilot extends Module {
         net.minecraft.world.entity.player.Inventory inv = mc.player.getInventory();
         for (int i = 0; i < inv.getContainerSize(); i++) {
             ItemStack st = inv.getItem(i);
+            if (!st.isEmpty()) m.merge(BuiltInRegistries.ITEM.getKey(st.getItem()).getPath(), st.getCount(), Integer::sum);
+        }
+        for (int i = 1; i <= 4; i++) {           // the 2x2 grid hands its items back when the inventory closes
+            ItemStack st = mc.player.inventoryMenu.getSlot(i).getItem();
             if (!st.isEmpty()) m.merge(BuiltInRegistries.ITEM.getKey(st.getItem()).getPath(), st.getCount(), Integer::sum);
         }
         return m;
@@ -2774,7 +2787,7 @@ public final class AiPilot extends Module {
             AbstractContainerMenu menu = mc.player.containerMenu;
             boolean right = table ? menu instanceof CraftingMenu : menu instanceof InventoryMenu;
             if (!right) {
-                mc.setScreen(null);
+                closeScreen(mc);
                 return;
             }
             if (recipe == null) {
@@ -2785,7 +2798,7 @@ public final class AiPilot extends Module {
                 job.note = "laying " + shown + " out in the grid";
                 Craft.fill(mc, menu, recipe, table);
                 if (!Craft.hasAll(menu, recipe) && ++job.step > 6) {
-                    mc.setScreen(null);
+                    closeScreen(mc);
                     job.step = 0;
                 }
                 return;
@@ -2793,7 +2806,7 @@ public final class AiPilot extends Module {
             ItemStack out = menu.getSlot(0).getItem();
             if (out.isEmpty()) {
                 if (++job.step > 60) {
-                    mc.setScreen(null);
+                    closeScreen(mc);
                     giveUp(mc, "the recipe never produced anything");
                 }
                 return;
@@ -2802,7 +2815,7 @@ public final class AiPilot extends Module {
             Craft.click(mc, menu, 0, 0, ClickType.QUICK_MOVE);
             job.note = "crafted " + shown + " (" + job.crafts + "/" + Math.max(1, job.wanted) + ")";
             if (job.crafts >= Math.max(1, job.wanted)) {
-                mc.setScreen(null);
+                closeScreen(mc);
                 endJob(mc, "crafted " + job.crafts + " x " + shown);
             }
             return;
@@ -2890,13 +2903,13 @@ public final class AiPilot extends Module {
             job.step = 0;
             job.note = "crafted " + shown + " (" + job.crafts + "/" + Math.max(1, job.wanted) + ")";
             if (job.crafts >= Math.max(1, job.wanted)) {
-                mc.setScreen(null);
+                closeScreen(mc);
                 endJob(mc, "crafted " + job.crafts + " x " + shown);
             }
             return;
         }
         if (++job.step > 80) {
-            mc.setScreen(null);
+            closeScreen(mc);
             giveUp(mc, "not enough materials for " + shown);
         }
     }
@@ -2912,17 +2925,17 @@ public final class AiPilot extends Module {
         if (mc.screen != null) {
             AbstractContainerMenu menu = mc.player.containerMenu;
             if (!(menu instanceof net.minecraft.world.inventory.ChestMenu)) {
-                mc.setScreen(null);
+                closeScreen(mc);
                 return;
             }
             if (limit > 0 && job.mined >= limit) {
-                mc.setScreen(null);
+                closeScreen(mc);
                 endJob(mc, "stored " + job.mined + " x " + shown);
                 return;
             }
             int from = Craft.find(menu, want);
             if (from < 0) {
-                mc.setScreen(null);
+                closeScreen(mc);
                 endJob(mc, "stored " + job.mined + " x " + shown);
                 return;
             }
@@ -2952,11 +2965,11 @@ public final class AiPilot extends Module {
         if (mc.screen != null) {
             AbstractContainerMenu menu = mc.player.containerMenu;
             if (!(menu instanceof net.minecraft.world.inventory.ChestMenu)) {
-                mc.setScreen(null);
+                closeScreen(mc);
                 return;
             }
             if (limit > 0 && job.mined >= limit) {
-                mc.setScreen(null);
+                closeScreen(mc);
                 endJob(mc, "took " + job.mined + " x " + shown);
                 return;
             }
@@ -2969,7 +2982,7 @@ public final class AiPilot extends Module {
                 job.note = "taking " + shown + " (" + job.mined + ")";
                 return;
             }
-            mc.setScreen(null);
+            closeScreen(mc);
             endJob(mc, "took " + job.mined + " x " + shown);
             return;
         }
@@ -3003,7 +3016,7 @@ public final class AiPilot extends Module {
         if (mc.screen != null) {
             AbstractContainerMenu menu = mc.player.containerMenu;
             if (!(menu instanceof FurnaceMenu)) {
-                mc.setScreen(null);
+                closeScreen(mc);
                 return;
             }
             ItemStack out = menu.getSlot(2).getItem();
@@ -3012,7 +3025,7 @@ public final class AiPilot extends Module {
                 Craft.click(mc, menu, 2, 0, ClickType.QUICK_MOVE);
                 job.note = "took " + job.crafts + " out of the furnace";
                 if (job.crafts >= Math.max(1, job.wanted)) {
-                    mc.setScreen(null);
+                    closeScreen(mc);
                     endJob(mc, "smelted " + job.crafts + " x " + shown);
                 }
                 return;
@@ -3020,7 +3033,7 @@ public final class AiPilot extends Module {
             if (menu.getSlot(0).getItem().isEmpty()) {
                 int from = Craft.find(menu, input);
                 if (from < 0) {
-                    mc.setScreen(null);
+                    closeScreen(mc);
                     giveUp(mc, "no " + shown + " to smelt");
                     return;
                 }

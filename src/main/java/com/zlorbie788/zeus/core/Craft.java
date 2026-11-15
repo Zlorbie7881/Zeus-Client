@@ -240,6 +240,16 @@ public final class Craft {
 
     /** Puts one missing ingredient in place and returns true, or true when the grid is already full. */
     public static boolean fill(Minecraft mc, AbstractContainerMenu menu, Recipe recipe, boolean table) {
+        // anything left in a cell the recipe does not use spoils the recipe: put it back first
+        for (int i = 0; i < 9; i++) {
+            if (recipe.cells().get(i) != null) continue;
+            int slot = slotFor(i, table);
+            if (slot < 0) continue;
+            if (!menu.getSlot(slot).getItem().isEmpty()) {
+                click(mc, menu, slot, 0, ClickType.QUICK_MOVE);
+                return false;
+            }
+        }
         for (int i = 0; i < 9; i++) {
             Predicate<ItemStack> want = recipe.cells().get(i);
             if (want == null) continue;
