@@ -316,7 +316,9 @@ public final class CratesScreen extends Screen {
         int r = Math.max(2, size / 14);
         Draw.shadow(g, x, y + h / 6, w, h * 5 / 6, r, Math.max(3, size / 10), 0.55f);
         float breath = 0.5f + 0.5f * (float) Math.sin(t * 2.0f);
-        Draw.glow(g, x, y, w, h, r, c.colour, Math.max(4, size / 6), 0.04f + 0.04f * breath + glowBoost);
+        int halo = Math.max(4, size / 6);
+        // the glow's peak grows with its spread: cap it, so a big case about to open does not turn into a block of light
+        Draw.glow(g, x, y, w, h, r, c.colour, halo, Math.min(0.04f + 0.04f * breath + glowBoost, 0.75f * 3f / halo));
         body.draw(g, x, y + lh, w, h - lh, 0xFFFFFFFF);
         // the medallion breathes, and flares as the case is about to open
         int er = Math.max(3, Math.round(size * 0.14f));
@@ -327,7 +329,8 @@ public final class CratesScreen extends Screen {
         // light leaking from the seam as the lid is about to go
         if (glowBoost > 0.02f || lid > 0f) {
             float k = Math.min(1f, glowBoost * 2f + lid * 3f);
-            Draw.glow(g, x + 2, y + lh - 1, w - 4, 3, 1, Draw.lighten(c.colour, 0.5f), Math.max(4, size / 5), 0.30f * k);
+            int leak = Math.max(4, size / 5);
+            Draw.glow(g, x + 2, y + lh - 1, w - 4, 3, 1, Draw.lighten(c.colour, 0.5f), leak, 0.45f * k * 3f / leak);
             g.fill(x + 3, y + lh - 1, x + w - 3, y + lh + 1, Draw.rgba(0xFFFFF6D8, k));
         }
         if (lid <= 0f) {
@@ -343,11 +346,12 @@ public final class CratesScreen extends Screen {
                 }
             }
             // light pours out of the open case
-            float th = Math.min(1f, lid / 0.8f) * 1.95f;          // swings up and back, a little past upright
+            float th = Math.min(1f, lid / 0.8f) * 2.3f;           // swings up and back, well past upright
             float cs = (float) Math.cos(th), sn = (float) Math.sin(th);
             float open = Math.min(1f, sn * 1.4f);
             int beamC = Draw.lighten(c.colour, 0.45f);
-            Draw.glow(g, x + w / 6, y + lh - 1, w * 2 / 3, 2, 1, beamC, Math.max(6, size / 3), 0.45f * open);
+            int seamSpread = Math.max(6, size / 4);
+            Draw.glow(g, x + w / 6, y + lh - 1, w * 2 / 3, 2, 1, beamC, seamSpread, 0.55f * open * 3f / seamSpread);
             for (int i = 0; i < 7; i++) {
                 float bx = x + w * (0.2f + 0.6f * i / 6f);
                 float fan = (bx - x - w / 2f) * 0.35f;

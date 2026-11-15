@@ -4,7 +4,9 @@ Six secret knives, one in every crate. About 1 in 400 opens.
 - Galaxy karambit, Molten Core M9, Prism Shard, Gilded Phoenix, Stardust butterfly, Spectrum kunai
 - Chroma and Olympian blades glow
 - Butterfly knives now flip like real ones: blade and handles swing round the pins
-- New crate cases with latches, a lit medallion and a nameplate
+- Chroma drops get their own rainbow reveal
+- New crate cases: the latches click and the lid swings open
+- Knives sit in your hand and dim in the dark
 
 # New: keybinds keyboard
 Keybinds are now a full virtual keyboard. Click a key, pick modules from the list, done.
