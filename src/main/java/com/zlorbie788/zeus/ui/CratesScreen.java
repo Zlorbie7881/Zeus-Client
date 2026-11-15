@@ -760,7 +760,7 @@ public final class CratesScreen extends Screen {
         long left = java.time.Duration.between(now, now.toLocalDate().plusDays(1).atStartOfDay()).toMillis();
         Draw.textRight(g, "New quests in " + clock(left), cx + cw, top + 2, FAINT);
         List<com.zlorbie788.zeus.core.Quests.Quest> qs = com.zlorbie788.zeus.core.Quests.list();
-        int ch = Math.max(30, Math.min(42, (bottom - top - 60) / 3 - 6));
+        int ch = Math.max(24, Math.min(42, (bottom - top - 16 - 14) / 3 - 6));
         int y = top + 16;
         for (int i = 0; i < qs.size(); i++) {
             var q = qs.get(i);
@@ -773,20 +773,22 @@ public final class CratesScreen extends Screen {
             int rw = Draw.widthBold(reward) + 14;
             Draw.rrect(g, cx + cw - rw - 8, yy + 7, rw, 13, 6, q.done() ? 0xFF1F5A40 : 0xFF2A2210);
             Draw.boldCenter(g, reward, cx + cw - 8 - rw / 2, yy + 10, q.done() ? 0xFF8CF0C0 : GOLD);
-            Draw.bold(g, Draw.fit((q.done() ? "\u2714 " : "") + q.text(), cw - rw - 30), cx + 10, yy + 9, q.done() ? 0xFF8CF0C0 : TEXT);
-            int bw = cw - 20, bx = cx + 10, byy = yy + ch - 12;
+            String count = q.progress() + " / " + q.target();
+            int cnt = Draw.width(count);
+            Draw.textRight(g, count, cx + cw - rw - 16, yy + 10, SUB);
+            Draw.bold(g, Draw.fit((q.done() ? "\u2714 " : "") + q.text(), cw - rw - cnt - 36), cx + 10, yy + 9, q.done() ? 0xFF8CF0C0 : TEXT);
+            int bw = cw - 20, bx = cx + 10, byy = yy + ch - Math.min(12, ch / 3);
             Draw.rrect(g, bx, byy, bw, 4, 2, 0xFF141C30);
             float f = q.fraction() * outCubic((t - tabAt - 0.1f) / 0.6f);
             if (f > 0) Draw.rrect(g, bx, byy, Math.max(3, Math.round(bw * f)), 4, 2, q.done() ? 0xFF5EE6A0 : GOLD);
-            Draw.textRight(g, q.progress() + " / " + q.target(), cx + cw - 10, byy - 11, SUB);
             y += ch + 6;
         }
         boolean all = com.zlorbie788.zeus.core.Quests.allDone();
         String bonus = all ? "All done! Bonus paid: +" + com.zlorbie788.zeus.core.Quests.BONUS + " tokens"
                 : "Finish all three for +" + com.zlorbie788.zeus.core.Quests.BONUS + " bonus tokens";
-        Draw.textCenter(g, Draw.fit(bonus, cw), cx + cw / 2, y + 4, all ? 0xFF8CF0C0 : SUB);
+        if (y + 10 < bottom) Draw.textCenter(g, Draw.fit(bonus, cw), cx + cw / 2, y + 2, all ? 0xFF8CF0C0 : SUB);
         String st = Crates.streakClaimedToday() ? "Daily streak: day " + Crates.streak() + " claimed" : "Daily streak: play " + clock(Crates.streakPlayLeft()) + " more today";
-        if (y + 18 < bottom) Draw.textCenter(g, Draw.fit(st, cw), cx + cw / 2, y + 18, FAINT);
+        if (y + 26 < bottom) Draw.textCenter(g, Draw.fit(st, cw), cx + cw / 2, y + 16, FAINT);
     }
 
     private void historyTab(GuiGraphics g, int mx, int my, float t, float dt) {
