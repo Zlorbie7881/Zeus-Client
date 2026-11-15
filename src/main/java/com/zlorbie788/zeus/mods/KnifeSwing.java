@@ -1390,8 +1390,8 @@ public final class KnifeSwing extends Module {
         }
         if (glove.index() == 0) {
             // a leather glove over the hand end, so the arm does not end in a bare stump at the handle
-            float gl = 7f;
-            rig.box(f.arm, 0f, ARM_L * 0.03f - gl / 2f + 0.4f, 0f, aw + 1.0f, gl, 9f, ArmArt.glove(skin), false);
+            float gl = 5f;
+            rig.box(f.arm, 0f, ARM_L * 0.03f - gl / 2f + 0.2f, 0f, aw + 0.6f, gl, 8.6f, ArmArt.glove(skin), false);
         }
         rig.flush(g, u);
 

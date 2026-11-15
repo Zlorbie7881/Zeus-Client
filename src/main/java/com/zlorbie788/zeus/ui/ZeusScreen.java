@@ -1091,11 +1091,11 @@ public final class ZeusScreen extends Screen {
         int best = Math.max(scoreText(ix.name, m.name, needle), scoreText(ix.id, m.id, needle));
         for (int i = 0; i < ix.aliasText.length; i++) best = Math.max(best, scoreText(ix.aliasText[i], m.aliases().get(i), needle) - 10);
         best = Math.max(best, scoreText(ix.category, null, needle) - 20);
-        best = Math.max(best, scoreText(ix.desc, null, needle) - 140);
+        best = Math.max(best, scoreLong(ix.desc, needle) - 140);
         List<Setting> list = m.settings();
         for (int i = 0; i < ix.settingNames.length && i < list.size(); i++) {
             best = Math.max(best, scoreText(ix.settingNames[i], list.get(i).name, needle) - 90);
-            best = Math.max(best, scoreText(ix.settingDescs[i], null, needle) - 170);
+            best = Math.max(best, scoreLong(ix.settingDescs[i], needle) - 170);
         }
         return best;
     }
@@ -1126,6 +1126,23 @@ public final class ZeusScreen extends Screen {
                 int d = editDistance(needle, word);
                 if (d <= limit) return 620 - d * 90;
             }
+        }
+        return -1;
+    }
+
+    /**
+     * Matching inside long text (descriptions): the words must really be there, or one word close to a typo of
+     * it. Scattered letters across a whole sentence do not count, or every long description matches everything.
+     */
+    private static int scoreLong(String hay, String needle) {
+        if (needle.isEmpty() || hay.isEmpty()) return -1;
+        int at = hay.indexOf(needle);
+        if (at >= 0) return 930 - Math.min(100, at);
+        if (needle.length() < 5 || needle.indexOf(' ') >= 0) return -1;
+        int limit = needle.length() <= 8 ? 1 : 2;
+        for (String word : hay.split("[^a-z0-9]+")) {
+            if (word.length() < 4) continue;
+            if (editDistance(needle, word) <= limit) return 600;
         }
         return -1;
     }
