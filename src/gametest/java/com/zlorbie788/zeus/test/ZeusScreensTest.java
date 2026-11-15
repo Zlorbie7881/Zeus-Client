@@ -92,6 +92,7 @@ public class ZeusScreensTest implements FabricClientGameTest {
                 ctx.takeScreenshot(tabNames[t] + "_" + tag);
             }
             ctx.runOnClient(c -> set(c.screen, "tab", 0));
+            ctx.runOnClient(c -> Crates.setQuick(false));
             ctx.runOnClient(c -> open(c, "hades"));
             float[] at = {0.25f, 0.7f, 0.92f, 1.0f, 1.1f, 2.2f, 4.8f, 6.75f, 7.25f, 7.75f, 8.6f, 10.0f};
             float done = 0f;

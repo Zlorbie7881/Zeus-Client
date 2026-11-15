@@ -276,6 +276,9 @@ public final class ZeusScreen extends Screen {
     public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         if (bgDrawn) return;
         bgDrawn = true;
+        // above the game's HUD: its hearts and hotbar are pictures, drawn after shapes in the same layer, so
+        // without a fresh layer they would show through the dim
+        if (minecraft != null && minecraft.level != null) g.nextStratum();
         if (windowsLayout()) g.fillGradient(0, 0, width, height, 0x90040610, 0xB8070B16);
         else g.fillGradient(0, 0, width, height, 0xC0040610, 0xE0070B16);
     }

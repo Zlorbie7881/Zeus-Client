@@ -1675,19 +1675,20 @@ public final class KnifeSwing extends Module {
         float[] span = KnifeHD.handleSpan(m);
         float len = span[1] - span[0];
         float hw = 1.45f;                          // half the handle's width, in rig units
-        float fz = -(span[2] + 0.9f);              // in front of the handle's face
-        float fh = Math.max(1.5f, Math.min(2.2f, len * 0.14f));
-        float y0 = span[0] + len * 0.10f;
+        float fz = -(span[2] + 1.0f);              // in front of the handle's face
+        float fh = Math.max(1.6f, Math.min(2.3f, len * 0.13f));
+        // a closed fist right where the arm ends: fingers wider than the handle, so the knife sits in a hand
+        float y0 = span[0] + fh * 0.2f;
         Rig.Painter paint = ArmArt.finger(skin);
         for (int i = 0; i < 4; i++) {
-            float y = y0 + i * (fh + 0.15f) + fh / 2f;
-            // each finger lifts off the handle a little as the hand opens
-            Rig.T hinge = f.fist.move(-hw - 0.4f, y, fz).rotY(-rel * (1.1f + 0.08f * i));
-            rig.box(hinge, hw + 0.3f - 0.18f * i, 0f, 0f, 2f * hw + 0.6f - 0.36f * i, fh, 2.2f, paint, false);
+            float y = y0 + i * fh + fh / 2f;
+            float fw = 2f * hw + 1.8f - 0.25f * i;  // the little finger at the bottom is the shortest
+            Rig.T hinge = f.fist.move(-hw - 0.9f, y, fz).rotY(-rel * (1.1f + 0.08f * i));
+            rig.box(hinge, fw / 2f, 0f, 0f, fw, fh - 0.12f, 2.6f, paint, false);
         }
-        // the thumb, along the back of the handle
-        Rig.T thumb = f.fist.move(hw + 0.2f, y0 + fh * 1.2f, -fz * 0.6f).rotZ(0.25f + 0.6f * rel);
-        rig.box(thumb, 0f, fh, 0f, 2.0f, fh * 2.2f, 2.0f, paint, false);
+        // the thumb lies across the front of the top two fingers, the way a fist holds a knife
+        Rig.T thumb = f.fist.move(-hw - 0.4f, y0 + fh * 3.1f, fz - 1.2f).rotZ(-0.12f).rotY(-rel * 0.9f);
+        rig.box(thumb, hw + 0.4f, 0f, 0f, 2f * hw + 0.8f, fh * 1.05f, 2.0f, paint, false);
     }
 
     private void kFingers(Frame f, Pose p, ArmArt.Skin skin) {
