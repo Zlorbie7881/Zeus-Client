@@ -31,8 +31,8 @@ import java.util.Random;
  * drawn from a cached still (see {@link KnifeHDGui#still}), so the screen stays smooth.
  */
 public final class CratesScreen extends Screen {
-    private static final String[] TABS = {"CRATES", "COLLECTION", "HISTORY", "REDEEM"};
-    private static final int T_CRATES = 0, T_COLL = 1, T_HIST = 2, T_REDEEM = 3;
+    private static final String[] TABS = {"CRATES", "COLLECTION", "HISTORY", "REDEEM", "DAILY"};
+    private static final int T_CRATES = 0, T_COLL = 1, T_HIST = 2, T_REDEEM = 3, T_DAILY = 4;
     private static final int GOLD = 0xFFF5C04A;
     private static final int TEXT = 0xFFE9F1FF;
     private static final int SUB = 0xFF8EA2CC;
@@ -362,6 +362,7 @@ public final class CratesScreen extends Screen {
         if (tab == 0) cratesTab(g, mx, my, t, dt);
         else if (tab == T_COLL) collectionTab(g, mx, my, t, dt);
         else if (tab == T_HIST) historyTab(g, mx, my, t, dt);
+        else if (tab == T_DAILY) dailyTab(g, mx, my, t, dt);
         else redeemTab(g, mx, my, t, dt);
         g.pose().popMatrix();
         if (tp < 1f) g.fill(px + 2, py + 56, px + pw - 2, py + ph - 32, Draw.rgba(PANEL, (1f - tp) * 0.85f));
@@ -749,6 +750,43 @@ public final class CratesScreen extends Screen {
         if (s < 3600) return (s / 60) + " min ago";
         if (s < 86400) return (s / 3600) + " h ago";
         return (s / 86400) + " d ago";
+    }
+
+    private void dailyTab(GuiGraphics g, int mx, int my, float t, float dt) {
+        int top = py + 62, bottom = py + ph - 34;
+        int cw = Math.min(pw - 28, 460), cx = px + (pw - cw) / 2;
+        Draw.bold(g, "DAILY QUESTS", cx, top + 2, GOLD);
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        long left = java.time.Duration.between(now, now.toLocalDate().plusDays(1).atStartOfDay()).toMillis();
+        Draw.textRight(g, "New quests in " + clock(left), cx + cw, top + 2, FAINT);
+        List<com.zlorbie788.zeus.core.Quests.Quest> qs = com.zlorbie788.zeus.core.Quests.list();
+        int ch = Math.max(30, Math.min(42, (bottom - top - 60) / 3 - 6));
+        int y = top + 16;
+        for (int i = 0; i < qs.size(); i++) {
+            var q = qs.get(i);
+            float in = outCubic((t - tabAt - i * 0.06f) / 0.35f);
+            int yy = y + Math.round((1f - in) * 10f);
+            int edge = q.done() ? 0xFF2F8F64 : 0xFF1C2A48;
+            Draw.rrect(g, cx, yy, cw, ch, 8, q.done() ? 0xFF0C1D18 : 0xFF0B1124);
+            Draw.rrectLine(g, cx, yy, cw, ch, 8, edge);
+            String reward = "+" + q.kind().reward + " TOKENS";
+            int rw = Draw.widthBold(reward) + 14;
+            Draw.rrect(g, cx + cw - rw - 8, yy + 7, rw, 13, 6, q.done() ? 0xFF1F5A40 : 0xFF2A2210);
+            Draw.boldCenter(g, reward, cx + cw - 8 - rw / 2, yy + 10, q.done() ? 0xFF8CF0C0 : GOLD);
+            Draw.bold(g, Draw.fit((q.done() ? "\u2714 " : "") + q.text(), cw - rw - 30), cx + 10, yy + 9, q.done() ? 0xFF8CF0C0 : TEXT);
+            int bw = cw - 20, bx = cx + 10, byy = yy + ch - 12;
+            Draw.rrect(g, bx, byy, bw, 4, 2, 0xFF141C30);
+            float f = q.fraction() * outCubic((t - tabAt - 0.1f) / 0.6f);
+            if (f > 0) Draw.rrect(g, bx, byy, Math.max(3, Math.round(bw * f)), 4, 2, q.done() ? 0xFF5EE6A0 : GOLD);
+            Draw.textRight(g, q.progress() + " / " + q.target(), cx + cw - 10, byy - 11, SUB);
+            y += ch + 6;
+        }
+        boolean all = com.zlorbie788.zeus.core.Quests.allDone();
+        String bonus = all ? "All done! Bonus paid: +" + com.zlorbie788.zeus.core.Quests.BONUS + " tokens"
+                : "Finish all three for +" + com.zlorbie788.zeus.core.Quests.BONUS + " bonus tokens";
+        Draw.textCenter(g, Draw.fit(bonus, cw), cx + cw / 2, y + 4, all ? 0xFF8CF0C0 : SUB);
+        String st = Crates.streakClaimedToday() ? "Daily streak: day " + Crates.streak() + " claimed" : "Daily streak: play " + clock(Crates.streakPlayLeft()) + " more today";
+        if (y + 18 < bottom) Draw.textCenter(g, Draw.fit(st, cw), cx + cw / 2, y + 18, FAINT);
     }
 
     private void historyTab(GuiGraphics g, int mx, int my, float t, float dt) {

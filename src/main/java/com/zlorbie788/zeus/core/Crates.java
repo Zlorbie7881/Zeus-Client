@@ -418,6 +418,18 @@ public final class Crates {
         return System.currentTimeMillis() - lastActive < IDLE_MS;
     }
 
+    static void markDirty() {
+        dirty = true;
+    }
+
+    /** Tokens from elsewhere (daily quests); counted as earned. */
+    static void addTokens(int n) {
+        load();
+        tokens += n;
+        earned += n;
+        dirty = true;
+    }
+
     // ------------------------------------------------------------------ daily streak
     private static long today() {
         return java.time.LocalDate.now().toEpochDay();
@@ -681,6 +693,7 @@ public final class Crates {
         activeMs += dt;
         dropMs += dt;
         streakTick(dt);
+        Quests.tick(mc, dt);
         if (activeMs >= TOKEN_MS) {
             activeMs -= TOKEN_MS;
             tokens++;
@@ -759,6 +772,7 @@ public final class Crates {
         lastDay = -1;
         countDay = -1;
         dayActiveMs = 0;
+        Quests.reset();
         history.clear();
     }
 
@@ -793,6 +807,7 @@ public final class Crates {
             for (var e : d.getAsJsonArray("owned")) owned.add(e.getAsString());
             for (var e : d.getAsJsonArray("redeemed")) redeemed.add(e.getAsString());
             quick = d.has("quick") && d.get("quick").getAsBoolean();
+            Quests.read(d);
             if (d.has("streak")) {
                 streak = d.get("streak").getAsInt();
                 bestStreak = d.get("best").getAsInt();
@@ -841,6 +856,7 @@ public final class Crates {
         redeemed.forEach(r::add);
         d.add("redeemed", r);
         d.addProperty("quick", quick);
+        Quests.write(d);
         d.addProperty("streak", streak);
         d.addProperty("best", bestStreak);
         d.addProperty("day", lastDay);

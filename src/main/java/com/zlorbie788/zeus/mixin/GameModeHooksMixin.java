@@ -29,10 +29,16 @@ public abstract class GameModeHooksMixin {
     private void zeus$attacked(Player player, Entity target, CallbackInfo ci) {
         QuickMods.CrystalOptimizer.hit(player, target);
         com.zlorbie788.zeus.mods.Combat.HitFx.burst(target);
+        com.zlorbie788.zeus.core.Quests.hit(target);
     }
 
     @Inject(method = "destroyBlock", at = @At("HEAD"), cancellable = true, require = 0)
     private void zeus$destroy(BlockPos pos, CallbackInfoReturnable<Boolean> cir) {
         if (QuickMods.AntiGhostBlock.holds()) cir.setReturnValue(false);
+    }
+
+    @Inject(method = "destroyBlock", at = @At("RETURN"), require = 0)
+    private void zeus$destroyed(BlockPos pos, CallbackInfoReturnable<Boolean> cir) {
+        if (Boolean.TRUE.equals(cir.getReturnValue())) com.zlorbie788.zeus.core.Quests.blockBroken();
     }
 }

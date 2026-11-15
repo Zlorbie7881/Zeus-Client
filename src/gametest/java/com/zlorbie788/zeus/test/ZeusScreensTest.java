@@ -62,8 +62,27 @@ public class ZeusScreensTest implements FabricClientGameTest {
             ctx.setScreen(() -> new CratesScreen(null));
             run(ctx, 0.8f);
             ctx.takeScreenshot("crates_" + tag);
-            String[] tabNames = {"crates", "collection", "history", "redeem"};
-            for (int tab = 1; tab <= 3; tab++) {
+            String[] tabNames = {"crates", "collection", "history", "redeem", "daily"};
+            ctx.runOnClient(c -> {
+                try {
+                    com.zlorbie788.zeus.core.Quests.list();
+                    Field tf = com.zlorbie788.zeus.core.Quests.class.getDeclaredField("targets");
+                    Field pf = com.zlorbie788.zeus.core.Quests.class.getDeclaredField("progress");
+                    Field df = com.zlorbie788.zeus.core.Quests.class.getDeclaredField("done");
+                    tf.setAccessible(true);
+                    pf.setAccessible(true);
+                    df.setAccessible(true);
+                    int[] tg = (int[]) tf.get(null);
+                    double[] pr = (double[]) pf.get(null);
+                    boolean[] dn = (boolean[]) df.get(null);
+                    pr[0] = tg[0];
+                    dn[0] = true;
+                    pr[1] = tg[1] * 0.45;
+                } catch (ReflectiveOperationException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            for (int tab = 1; tab <= 4; tab++) {
                 int t = tab;
                 ctx.runOnClient(c -> {
                     set(c.screen, "tab", t);
