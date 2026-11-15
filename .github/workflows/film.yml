@@ -7,6 +7,9 @@ on:
   push:
     branches: [knife-types]
 
+permissions:
+  contents: write
+
 jobs:
   film:
     runs-on: ubuntu-latest
@@ -50,11 +53,21 @@ jobs:
               for i, (_, f) in enumerate(sorted(files)):
                   os.symlink(f'/tmp/film/{f}', f'{d}/{i:05d}.png')
               subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-framerate', '30', '-i', f'{d}/%05d.png',
-                              '-c:v', 'libx264', '-preset', 'slow', '-crf', '12', '-pix_fmt', 'yuv420p',
+                              '-c:v', 'libx264', '-preset', 'slow', '-crf', '15', '-pix_fmt', 'yuv420p',
                               f'/tmp/clips/{name}.mp4'], check=True)
               print(name, len(files))
           PY
           ls -la /tmp/clips
+
+      - name: Publish the clips to a temporary branch
+        if: ${{ always() }}
+        run: |
+          cd /tmp/clips
+          git init -q
+          git checkout -q -b ci-film-${{ matrix.part }}
+          git add -A
+          git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" commit -q -m "Film for ${GITHUB_SHA}" || exit 0
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" ci-film-${{ matrix.part }}
 
       - uses: actions/upload-artifact@v4
         if: ${{ always() }}
