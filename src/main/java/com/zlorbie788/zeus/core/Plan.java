@@ -127,7 +127,9 @@ public final class Plan {
     }
 
     private static Result make(String item, int count, Map<String, Integer> inv, boolean tableNear, boolean furnaceNear, int depth) {
-        State st = new State(inv);
+        // a dry run on a copy finds which pickaxes and stations the plan needs; those are made first, from the real
+        // inventory, and the item itself is then planned from what is left
+        State st = new State(new HashMap<>(inv));
         need(st, item, count, 0);
         List<String> steps = new ArrayList<>();
         List<String> problems = new ArrayList<>(st.problems);
@@ -169,6 +171,14 @@ public final class Plan {
         if (!st.smelt.isEmpty() && !hasFurnace && depth < 3) {
             Result sub = make("furnace", 1, inv, hasTable, true, depth + 1);
             steps.addAll(sub.steps);
+        }
+        boolean probeFuel = st.fuel > 0;
+        st = new State(inv);
+        need(st, item, count, 0);
+        if (st.fuel > 0 || probeFuel) {
+            int have = inv.getOrDefault("coal", 0) + inv.getOrDefault("charcoal", 0);
+            int missing = st.fuel - have;
+            if (missing > 0 && !st.raw.containsKey("coal")) st.raw.merge("coal", (double) missing, Double::sum);
         }
         // gather: wood first, then by the pickaxe each needs
         List<Map.Entry<String, Double>> raws = new ArrayList<>(st.raw.entrySet());

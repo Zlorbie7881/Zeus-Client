@@ -36,7 +36,8 @@ public final class Recipes {
         }
 
         public boolean fitsInventory() {
-            return w <= 2 && h <= 2 && cells.stream().filter(c -> !c.isEmpty()).count() <= 4;
+            long used = cells.stream().filter(c -> !c.isEmpty()).count();
+            return shaped ? w <= 2 && h <= 2 : used <= 4;
         }
     }
 

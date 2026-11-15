@@ -177,6 +177,8 @@ public final class AiPilot extends Module {
         long pathAt;
         int pathIndex;
 
+        final long born = System.currentTimeMillis();
+
         Job(JobKind kind, String target, int wanted, Vec3 to) {
             this.kind = kind;
             this.target = target == null ? "" : target;
@@ -2518,6 +2520,12 @@ public final class AiPilot extends Module {
             job.toolChecked = true;
             if (autoTool.on() && toolUp(mc)) return;
         }
+        // Right after a container closes the inventory is still catching up with the server; jobs that read it
+        // (crafting, smelting, planning, chests) wait a moment so they see what the last job made.
+        if ((job.kind == JobKind.CRAFT || job.kind == JobKind.SMELT || job.kind == JobKind.GOAL || job.kind == JobKind.STORE
+                || job.kind == JobKind.TAKE) && System.currentTimeMillis() - job.born < 450L && mc.screen == null) {
+            return;
+        }
         if (mc.screen != null && job.kind != JobKind.CRAFT && job.kind != JobKind.SMELT) {
             releaseKeys(mc);
             return;
@@ -3105,6 +3113,11 @@ public final class AiPilot extends Module {
                 } else if (job.quietSince == 0) {
                     job.quietSince = now;
                 } else if (now - job.quietSince > 2200L) {
+                    if (job.mined == 0 && job.limit == null) {
+                        // never found a single log: say so instead of claiming a tree
+                        giveUp(mc, "there are no trees within reach, walk me to some trees or bring logs");
+                        return;
+                    }
                     job.trees++;
                     if (job.trees >= Math.max(1, job.wanted)) {
                         endJob(mc, job.trees + " tree(s), " + job.mined + " log(s)");
