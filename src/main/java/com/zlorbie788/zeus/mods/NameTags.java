@@ -29,7 +29,7 @@ public final class NameTags extends Module {
     private final Setting.Bool health = add(new Setting.Bool("Health", "Exact health and a bar. The number is what the health bar above their head really is, not a rounded heart count.", true));
     private final Setting.Bool distance = add(new Setting.Bool("Distance", "Metres to the player.", true));
     private final Setting.Bool armor = add(new Setting.Bool("Armour durability", "Each worn piece as an icon with a bar showing how close it is to breaking. Read from the equipment the server sends, so it is the real durability, not a guess.", true));
-    private final Setting.Bool percent = add(new Setting.Bool("Durability percent", "Show the percentage left under each piece.", true)).showIf(armor::on);
+    private final Setting.Bool percent = add(new Setting.Bool("Durability percent", "Show the percentage left under each piece, in small numbers.", true)).showIf(armor::on);
     private final Setting.Bool face = add(new Setting.Bool("Player head", "The player's face from their skin at the left of the plate.", true));
     private final Setting.Bool held = add(new Setting.Bool("Held item", "The item in their main hand next to their armour.", true));
     private final Setting.Bool onlyPlayers = add(new Setting.Bool("Players only", "Off shows mobs too, with their health and any armour they picked up.", true));
@@ -154,7 +154,6 @@ public final class NameTags extends Module {
         String hp = health.on() ? String.format(Locale.ROOT, "%.1f", le.getHealth()) : "";
         String abs = health.on() && absorb > 0.5f ? "+" + Math.round(absorb) : "";
         String sub = distance.on() ? Math.round(dist) + "m" : "";
-        float subSc = sc * 0.78f;
 
         // equipment cells: armour then the held item
         java.util.List<ItemStack> gear = new java.util.ArrayList<>(5);
@@ -166,68 +165,72 @@ public final class NameTags extends Module {
         }
         if (held.on() && !le.getMainHandItem().isEmpty()) gear.add(le.getMainHandItem());
 
-        int p = Math.round(5 * u);
-        int faceS = showFace ? Math.round(16 * u) : 0;
-        int nameW = title.isEmpty() ? 0 : Draw.widthBoldS(title, sc);
-        int hpW = hp.isEmpty() ? 0 : Draw.widthBoldS(hp, sc) + (abs.isEmpty() ? 0 : Draw.widthS(abs, subSc) + Math.round(2 * u));
-        int headW = (faceS > 0 ? faceS + Math.round(5 * u) : 0) + Math.max(nameW, Draw.widthS(sub, subSc)) + Math.round(10 * u) + hpW;
-        int cell = Math.round(18 * u);
+        // compact card: one header row, a thin health bar, a row of small item icons
+        int p = Math.max(2, Math.round(3 * u));
+        int gap = Math.max(1, Math.round(2 * u));
+        int faceS = showFace ? Math.round(9 * u) : 0;
+        float nameSc = sc * 0.9f;
+        float smallSc = sc * 0.7f;
+        int nameW = title.isEmpty() ? 0 : Draw.widthBoldS(title, nameSc);
+        int hpW = hp.isEmpty() ? 0 : Draw.widthS(hp, nameSc);
+        int absW = abs.isEmpty() ? 0 : Draw.widthS(abs, smallSc) + gap;
+        int subW = sub.isEmpty() ? 0 : Draw.widthS(sub, smallSc) + Math.round(4 * u);
+        int headH = Math.max(faceS, Math.round(8 * u));
+        int headW = (faceS > 0 ? faceS + Math.round(4 * u) : 0) + nameW + Math.round(6 * u) + subW + hpW + absW;
+        int cell = Math.round(12 * u);
         int gearW = gear.size() * cell;
-        int boxW = Math.max(Math.round(92 * u), Math.max(headW, gearW) + 2 * p);
-        int headH = Math.max(faceS, Math.round((title.isEmpty() ? 0 : 9 * u) + (sub.isEmpty() ? 0 : 8 * u)));
-        int barT = health.on() ? Math.max(3, Math.round(4 * u)) : 0;
-        int gearH = gear.isEmpty() ? 0 : Math.round((percent.on() ? 26 : 20) * u);
-        int boxH = p + headH + (barT > 0 ? Math.round(5 * u) + barT : 0) + (gearH > 0 ? Math.round(5 * u) + gearH : 0) + p;
+        int boxW = Math.max(Math.round(54 * u), Math.max(headW, gearW) + 2 * p);
+        int barT = health.on() ? Math.max(2, Math.round(2 * u)) : 0;
+        int gearH = gear.isEmpty() ? 0 : Math.round((percent.on() ? 17 : 12) * u);
+        int boxH = p + headH + (barT > 0 ? gap + barT : 0) + (gearH > 0 ? gap + gearH : 0) + p;
 
         if (bottom - boxH < 2) bottom = 2 + boxH;
         int x = Math.max(2, Math.min(w - 2 - boxW, cx - boxW / 2));
         int y = bottom - boxH;
-        int r = Math.max(3, Math.round(5 * u));
+        int r = Math.max(2, Math.round(3 * u));
 
-        // card: soft accent glow, glassy gradient, hairline rim, accent line along the top
-        Draw.glow(g, x, y, boxW, boxH, r, accent, Math.round(6 * u), 0.05f * a);
+        Draw.glow(g, x, y, boxW, boxH, r, accent, Math.round(4 * u), 0.05f * a);
         Draw.rrect(g, x, y, boxW, boxH, r, Draw.rgba(CARD_TOP, a), Draw.rgba(CARD_BOTTOM, a));
         Draw.rrectLine(g, x, y, boxW, boxH, r, Draw.rgba(RIM, a));
         g.fill(x + r, y, x + boxW - r, y + 1, Draw.rgba(accent, 0.75f * a));
 
         int cy = y + p;
         int tx = x + p;
+        int textY = cy + (headH - Math.round(7 * u)) / 2;
         if (showFace) {
             try {
                 var skin = ((net.minecraft.client.player.AbstractClientPlayer) le).getSkin();
-                Draw.rrect(g, tx - 1, cy - 1, faceS + 2, faceS + 2, 2, Draw.rgba(friend ? 0xFF6EE7A8 : 0xFF2A3550, a));
-                net.minecraft.client.gui.components.PlayerFaceRenderer.draw(g, skin, tx, cy, faceS, Draw.rgba(0xFFFFFFFF, a));
+                net.minecraft.client.gui.components.PlayerFaceRenderer.draw(g, skin, tx, cy + (headH - faceS) / 2, faceS, Draw.rgba(0xFFFFFFFF, a));
             } catch (Throwable ignored) {
                 // no skin yet: the plate still reads fine without the face
             }
-            tx += faceS + Math.round(5 * u);
+            tx += faceS + Math.round(4 * u);
         }
-        int lineY = cy + (headH - Math.round((title.isEmpty() ? 0 : 9 * u) + (sub.isEmpty() ? 0 : 8 * u))) / 2;
-        if (!title.isEmpty()) {
-            Draw.boldS(g, Draw.fit(title, Math.max(20, boxW - (tx - x) - p - hpW - Math.round(6 * u))), tx, lineY, Draw.rgba(friend ? 0xFF8EF0BE : 0xFFFFFFFF, a), sc);
-            lineY += Math.round(9 * u);
+        int right = x + boxW - p;
+        if (!abs.isEmpty()) {
+            Draw.textRightS(g, abs, right, textY + 1, Draw.rgba(0xFFFFD84D, a), smallSc);
+            right -= absW;
         }
-        if (!sub.isEmpty()) Draw.textS(g, (friend ? "Friend  \u00b7  " : "") + sub, tx, lineY, Draw.rgba(SUB, a), subSc);
         if (!hp.isEmpty()) {
-            int rx = x + boxW - p;
-            int hy = cy + (headH - Math.round(8 * u)) / 2;
-            if (!abs.isEmpty()) {
-                Draw.textRightS(g, abs, rx, hy + Math.round(1 * u), Draw.rgba(0xFFFFD84D, a), subSc);
-                rx -= Draw.widthS(abs, subSc) + Math.round(2 * u);
-            }
-            Draw.textRightS(g, hp, rx, hy, Draw.rgba(accent, a), sc);
+            Draw.textRightS(g, hp, right, textY, Draw.rgba(accent, a), nameSc);
+            right -= hpW;
+        }
+        if (!sub.isEmpty()) Draw.textRightS(g, sub, right - Math.round(4 * u), textY + 1, Draw.rgba(SUB, a), smallSc);
+        if (!title.isEmpty()) {
+            int room = Math.max(16, right - subW - tx - Math.round(2 * u));
+            Draw.boldS(g, Draw.fit(title, Math.round(room / nameSc)), tx, textY, Draw.rgba(friend ? 0xFF8EF0BE : 0xFFFFFFFF, a), nameSc);
         }
         cy += headH;
 
         if (barT > 0) {
-            cy += Math.round(5 * u);
+            cy += gap;
             int bx = x + p, bw = boxW - 2 * p;
-            int br = barT / 2;
+            int br = Math.max(1, barT / 2);
             Draw.rrect(g, bx, cy, bw, barT, br, Draw.rgba(0x33FFFFFF, a));
             int trail = Math.round(bw * an[1]);
             if (trail > Math.round(bw * an[0]) + 1) Draw.rrect(g, bx, cy, trail, barT, br, Draw.rgba(0xCCFFFFFF, a));
             int fill = Math.max(barT, Math.round(bw * an[0]));
-            Draw.rrect(g, bx, cy, fill, barT, br, Draw.rgba(Draw.lighten(accent, 0.25f), a), Draw.rgba(accent, a));
+            Draw.rrect(g, bx, cy, fill, barT, br, Draw.rgba(Draw.lighten(accent, 0.2f), a), Draw.rgba(accent, a));
             if (absorb > 0.5f) {
                 int aw = Math.round(bw * Math.min(1f, absorb / max));
                 Draw.rrect(g, bx + bw - aw, cy, aw, barT, br, Draw.rgba(0xE6FFD84D, a));
@@ -236,28 +239,27 @@ public final class NameTags extends Module {
         }
 
         if (!gear.isEmpty()) {
-            cy += Math.round(5 * u);
+            cy += gap;
             int gx = x + (boxW - gearW) / 2;
-            float is = 16f * u * 0.9f;
+            float is = 10f * u;
             for (ItemStack st : gear) {
                 int ccx = gx + cell / 2;
-                Draw.rrect(g, gx + 1, cy, cell - 2, Math.round(18 * u), Math.max(2, Math.round(3 * u)), Draw.rgba(0x14FFFFFF, a));
                 g.pose().pushMatrix();
-                g.pose().translate(ccx - is / 2f, cy + Math.round(1 * u));
+                g.pose().translate(ccx - is / 2f, cy);
                 g.pose().scale(is / 16f, is / 16f);
                 g.renderItem(st, 0, 0);
                 g.pose().popMatrix();
-                float frac = Armor.left(st);
-                boolean worn = st.getMaxDamage() > 0;
-                if (worn) {
+                if (st.getMaxDamage() > 0) {
+                    float frac = Armor.left(st);
                     int col = frac > 0.5f ? Draw.mix(0xFFFFC94D, 0xFF4ADE80, (frac - 0.5f) * 2f) : Draw.mix(0xFFFF4D5E, 0xFFFFC94D, frac * 2f);
-                    int bw = cell - Math.round(6 * u);
-                    int by = cy + Math.round(18 * u) - Math.max(2, Math.round(2 * u)) - 1;
-                    int bh = Math.max(1, Math.round(2 * u));
-                    g.fill(gx + 3, by, gx + 3 + bw, by + bh, Draw.rgba(0x55000000, a));
-                    g.fill(gx + 3, by, gx + 3 + Math.max(1, Math.round(bw * frac)), by + bh, Draw.rgba(col, a));
+                    int bw = cell - Math.round(3 * u);
+                    int bx = ccx - bw / 2;
+                    int by = cy + Math.round(11 * u);
+                    int bh = Math.max(1, Math.round(1 * u));
+                    g.fill(bx, by, bx + bw, by + bh, Draw.rgba(0x55000000, a));
+                    g.fill(bx, by, bx + Math.max(1, Math.round(bw * frac)), by + bh, Draw.rgba(col, a));
                     if (percent.on()) {
-                        Draw.textCenterS(g, Math.round(frac * 100f) + "%", ccx, cy + Math.round(19.5f * u), Draw.rgba(col, a), sc * 0.62f);
+                        Draw.textCenterS(g, String.valueOf(Math.round(frac * 100f)), ccx, cy + Math.round(13 * u), Draw.rgba(col, a), sc * 0.5f);
                     }
                 }
                 gx += cell;

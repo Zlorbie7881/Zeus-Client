@@ -44,7 +44,9 @@ public final class Draw {
     public static void rrect(GuiGraphics g, int x, int y, int w, int h, int r, int top, int bottom) {
         if (w <= 0 || h <= 0) return;
         r = Math.max(0, Math.min(r, Math.min(w, h) / 2));
-        if (cheap) {
+        // light mode used to square the corners to save draw calls; a rounded box is now one textured
+        // piece, so it keeps its corners and only falls back when the shape textures are unavailable
+        if (cheap && !Shapes.ok()) {
             r = Math.min(r, 1);
             if (top != bottom) top = bottom = mix(top, bottom, 0.5f);
         }
@@ -114,7 +116,7 @@ public final class Draw {
     public static void rrectLine(GuiGraphics g, int x, int y, int w, int h, int r, int color) {
         if (w < 2 || h < 2) return;
         r = Math.max(0, Math.min(r, Math.min(w, h) / 2));
-        if (cheap) r = Math.min(r, 1);
+        if (cheap && !Shapes.ok()) r = Math.min(r, 1);
         if (r >= 2 && Shapes.outline(g, x, y, w, h, r, color)) return;
         g.fill(x + r, y, x + w - r, y + 1, color);
         g.fill(x + r, y + h - 1, x + w - r, y + h, color);

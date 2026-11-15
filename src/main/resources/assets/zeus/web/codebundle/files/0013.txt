@@ -264,7 +264,9 @@ public class ZeusScreensTest implements FabricClientGameTest {
             ctx.takeScreenshot("zeus_menu_1920");
             ctx.setScreen(() -> null);
             ctx.waitTicks(5);
-            // Name Tags on mobs in armour (players only off), one hurt, one with worn armour
+            // Name Tags on mobs in armour (players only off), one hurt, one with worn armour.
+            // Effects quality "High": the test machine runs below 40 fps, which would draw the light version.
+            ctx.runOnClient(c -> com.zlorbie788.zeus.ui.UiSettings.PERFORMANCE.set(1));
             ctx.runOnClient(c -> {
                 var m = com.zlorbie788.zeus.core.Zeus.get("nametags");
                 try {
@@ -309,6 +311,7 @@ public class ZeusScreensTest implements FabricClientGameTest {
                     throw new RuntimeException(e);
                 }
                 com.zlorbie788.zeus.mods.AiPilot.find().setEnabled(false);
+                com.zlorbie788.zeus.ui.UiSettings.PERFORMANCE.set(0);
             });
             sp.getServer().runCommand("kill @e[type=!player]");
             ctx.runOnClient(c -> com.zlorbie788.zeus.core.Zeus.get("nametags").setEnabled(false));

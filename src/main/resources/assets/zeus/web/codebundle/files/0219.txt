@@ -96,24 +96,6 @@ public final class ArmArt {
         g.fill(0, 0, w, h, c.raw(s.glow & 0x00FFFFFF | 0xFF000000, a / 255f));
     }
 
-    public static Rig.Painter finger(Skin s) {
-        return (g, c, face, w, h) -> {
-            if (s.texture != null) {
-                int[] r = region(2, s.slim);
-                tex(g, c, s, r, w, h, 0);
-                if (face != 4 && face != 5) g.fill(0, 0, w, h, c.raw(0xFF000000, 0.10f));
-            } else {
-                int[] p = PALETTES[Math.max(0, Math.min(PALETTES.length - 1, s.look))];
-                g.fill(0, 0, w, h, c.col(p[1]));
-                g.fill(1, 1, w - 1, h - 1, c.col(Draw.mix(p[0], p[1], 0.22f)));
-            }
-            g.fill(0, 0, w, 1, c.raw(0xFFFFFFFF, 0.14f));
-            g.fill(0, h - 1, w, h, c.raw(0xFF000000, 0.30f));
-            g.fill(0, 0, 1, h, c.raw(0xFF000000, 0.14f));
-            glow(g, c, s, w, h);
-        };
-    }
-
     public static Skin skin(net.minecraft.client.player.AbstractClientPlayer player, int look, int glow) {
         Skin s = new Skin();
         s.look = look <= 0 ? 1 : look;

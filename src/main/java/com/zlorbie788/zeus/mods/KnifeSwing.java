@@ -179,7 +179,6 @@ public final class KnifeSwing extends Module {
     private final Setting.Choice design = add(new Setting.Choice("Handle design", "Slotted has the long slot and slanted teeth of the knife in the video.", 0, KnifeArt.DESIGNS)).showIf(() -> false);
     private final Setting.Choice hand = add(new Setting.Choice("Hand", "My skin: the arm wears your own skin, like the game's own hand. The others are painted.", 0, ArmArt.LOOKS)).showIf(() -> section.index() == 0);
     private final Setting.Choice place = add(new Setting.Choice("Place", "Where on the screen. Bottom left is the left hand.", 0, "Bottom right", "Bottom left", "Centre")).showIf(() -> section.index() == 1);
-    private final Setting.Bool showFingers = add(new Setting.Bool("Show fingers", "Draws the blocky fingers and thumb on the handle. Off: only the arm and the knife.", true)).showIf(() -> section.index() == 0);
     private final Setting.Num size = add(new Setting.Num("Size", "How big the hand and knife are.", 1.0, 0.5, 2.5, 0.1, "x")).showIf(() -> section.index() == 1);
     private final Setting.Num height = add(new Setting.Num("Hand height", "How high the hand holding the knife sits, measured up from the bottom of the screen. Every knife type is placed so its grip lands here.", 30, 5, 70, 1, "%")).showIf(() -> section.index() == 1);
     private final Setting.Num inset = add(new Setting.Num("Hand distance from edge", "How far in from the side of the screen the hand sits.", 22, 5, 50, 1, "%")).showIf(() -> section.index() == 1);
@@ -1388,12 +1387,6 @@ public final class KnifeSwing extends Module {
             float bottom = y0 + swayY + moveOff[1] + Math.max(e[3] * u, e[1] * u);
             if (bottom >= h + 2f) break;
         }
-        if (showFingers.on() && hdKnife < 0) {
-            if (karambit()) kFingers(f, p, skin);
-            else fingers(f, p, skin);
-        } else if (showFingers.on() && bf) {
-            fingers(f, p, skin);
-        }
         rig.flush(g, u);
 
         boolean knifeDrawn;
@@ -1411,12 +1404,6 @@ public final class KnifeSwing extends Module {
             knifeDrawn = drawMesh(g, f.knife, p.a, p.b, p.c, look, u, fade);
         } else {
             knifeDrawn = pixelKnife(g, f.knife, p.a, p.b, p.c, look, u, fade);
-        }
-        // fingers close round the HD knife's handle, in front of it; they open as a trick lets it go
-        if (knifeDrawn && hdKnife >= 0 && !bf && showFingers.on()) {
-            rig.clear();
-            hdFingers(f, p, skin, hdKnife, fade);
-            rig.flush(g, u);
         }
         KnifeHD.ambient = 1f;
         if (knifeDrawn && hdKnife >= 0) {
@@ -1658,70 +1645,6 @@ public final class KnifeSwing extends Module {
         return 0.30f + 0.70f * l * (0.85f + 0.15f * l);
     }
 
-    /**
-     * Four blocky fingers curled over the front of an HD knife's handle, and the thumb behind it, in the game's own
-     * blocky style. They belong to the fist, not the knife: when a trick spins or tosses the knife they open and let
-     * it go, and close round it again when it comes back.
-     */
-    private void hdFingers(Frame f, Pose p, ArmArt.Skin skin, int hd, float fade) {
-        KnifeHD.Model m = KnifeHD.model(hd);
-        if (m == null) return;
-        float rel = Math.max(0f, Math.min(1f, p.release));
-        // gone while the knife is away from the hand (tosses, flips)
-        float away = Math.abs(p.kx) + Math.abs(p.ky) + Math.abs(p.kz);
-        float a = fade * (1f - rel * 0.85f) * (1f - Math.min(1f, away / 3f));
-        if (a <= 0.03f) return;
-        rig.alpha(a);
-        float[] span = KnifeHD.handleSpan(m);
-        float len = span[1] - span[0];
-        float hw = 1.45f;                          // half the handle's width, in rig units
-        float fz = -(span[2] + 1.0f);              // in front of the handle's face
-        float fh = Math.max(1.6f, Math.min(2.3f, len * 0.13f));
-        // a closed fist right where the arm ends: fingers wider than the handle, so the knife sits in a hand
-        float y0 = span[0] + fh * 0.2f;
-        Rig.Painter paint = ArmArt.finger(skin);
-        for (int i = 0; i < 4; i++) {
-            float y = y0 + i * fh + fh / 2f;
-            float fw = 2f * hw + 1.8f - 0.25f * i;  // the little finger at the bottom is the shortest
-            Rig.T hinge = f.fist.move(-hw - 0.9f, y, fz).rotY(-rel * (1.1f + 0.08f * i));
-            rig.box(hinge, fw / 2f, 0f, 0f, fw, fh - 0.12f, 2.6f, paint, false);
-        }
-        // the thumb lies across the front of the top two fingers, the way a fist holds a knife
-        Rig.T thumb = f.fist.move(-hw - 0.4f, y0 + fh * 3.1f, fz - 1.2f).rotZ(-0.12f).rotY(-rel * 0.9f);
-        rig.box(thumb, hw + 0.4f, 0f, 0f, 2f * hw + 0.8f, fh * 1.05f, 2.0f, paint, false);
-    }
-
-    private void kFingers(Frame f, Pose p, ArmArt.Skin skin) {
-        Rig.Painter paint = ArmArt.finger(skin);
-        float rel = Math.max(0f, Math.min(1f, p.release));
-        float z = -2.3f;
-        for (int i = 0; i < 3; i++) {
-            float y = (i - 1) * 2.7f;
-            Rig.T hinge = f.fist.move(4.0f, y, z).rotY(rel * (1.15f + 0.1f * i));
-            rig.box(hinge, -2.8f, 0f, 0f, 5.6f, 2.6f, 3.2f, paint, false);
-        }
-        boolean inRing = ring() && Math.abs(p.kx) + Math.abs(p.ky) + Math.abs(p.kz) < 0.6f;
-        if (inRing) {
-            Rig.T ring = f.fist.move(0.2f, -KnifeArt.KGRIP, -1.3f);
-            rig.box(ring, 0f, 1.4f, 0f, 2.4f, 4.6f, 2.8f, paint, false);
-        }
-        Rig.T thumb = f.fist.move(-2.3f, -4.3f - 1.5f * rel, z - 0.2f).rotZ(0.25f + 0.7f * rel);
-        rig.box(thumb, 0f, 0f, 0f, 2.6f, 4.4f, 2.6f, paint, false);
-    }
-
-    private void fingers(Frame f, Pose p, ArmArt.Skin skin) {
-        Rig.Painter paint = ArmArt.finger(skin);
-        float rel = Math.max(0f, Math.min(1f, p.release));
-        float z = -(KnifeArt.PIN_Z + KnifeArt.HT / 2f + 1.5f);
-        for (int i = 0; i < 4; i++) {
-            float y = (i - 1.5f) * 2.4f;
-            float hx = 3.6f;
-            Rig.T hinge = f.fist.move(hx, y, z).rotY(rel * (1.15f + 0.1f * i));
-            rig.box(hinge, -2.5f, 0f, 0f, 5.0f, 2.3f, 3.0f, paint, false);
-        }
-        Rig.T thumb = f.fist.move(-2.3f, -5.6f - 2f * rel, z - 0.2f).rotZ(0.25f + 0.7f * rel);
-        rig.box(thumb, 0f, 0f, 0f, 2.6f, 4.6f, 2.6f, paint, false);
-    }
     private static boolean still() {
         return com.zlorbie788.zeus.ui.UiSettings.REDUCE_MOTION.on();
     }
