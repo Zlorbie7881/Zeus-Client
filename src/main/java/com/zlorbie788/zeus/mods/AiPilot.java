@@ -3110,11 +3110,26 @@ public final class AiPilot extends Module {
         return search(mc, mc.player.blockPosition(), radius, 3, match);
     }
 
+    /** Where to put down a crafting table or furnace: in front first, then any free spot on solid ground around the player. */
     private BlockPos spotFor(Minecraft mc) {
         Player p = mc.player;
-        BlockPos ahead = p.blockPosition().relative(facing(p.getYRot()));
-        if (Build.solid(ahead.below()) && Build.canPlace(ahead, Build.REACH)) return ahead;
-        if (Build.canPlace(p.blockPosition(), Build.REACH)) return p.blockPosition();
+        BlockPos feet = p.blockPosition();
+        Direction face = facing(p.getYRot());
+        java.util.List<BlockPos> tries = new java.util.ArrayList<>();
+        tries.add(feet.relative(face));
+        for (Direction d : new Direction[] {face.getClockWise(), face.getCounterClockWise(), face.getOpposite()}) tries.add(feet.relative(d));
+        for (int dx = -2; dx <= 2; dx++)
+            for (int dz = -2; dz <= 2; dz++)
+                for (int dy = -1; dy <= 1; dy++) {
+                    BlockPos q = feet.offset(dx, dy, dz);
+                    if (!tries.contains(q)) tries.add(q);
+                }
+        for (BlockPos q : tries) {
+            if (q.equals(feet) || q.equals(feet.above())) continue;                // never inside the player
+            if (!mc.level.getBlockState(q).canBeReplaced() || !Build.solid(q.below())) continue;
+            if (!mc.level.getBlockState(q.above()).isAir() && q.getY() >= feet.getY()) continue;
+            if (Build.canPlace(q, Build.REACH)) return q;
+        }
         return null;
     }
 
