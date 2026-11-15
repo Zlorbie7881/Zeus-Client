@@ -1,87 +1,856 @@
-package com.zlorbie788.zeus.ui;
+package com.zlorbie788.zeus.render;
+
+import com.zlorbie788.zeus.core.Module;
 
 import com.zlorbie788.zeus.core.Setting;
-import com.zlorbie788.zeus.core.Zeus;
 
-/** Settings of the panel itself. */
-public final class UiSettings {
-    private UiSettings() {}
+import com.zlorbie788.zeus.ui.Draw;
+import com.zlorbie788.zeus.render.Stroke;
 
-    public static final Setting.Choice ACCENT = Zeus.UI.add(new Setting.Choice("Accent colour", "The colour of the panel, the bolt and the module list.", 0,
-            "Storm blue", "Violet", "Gold", "Emerald", "Crimson", "Rainbow"));
-    public static final Setting.Num RAINBOW_SPEED = Zeus.UI.add(new Setting.Num("Rainbow speed", "How fast the colours of the panel cycle when the accent is Rainbow.", 40, 5, 200, 5, "%"))
-            .showIf(() -> ACCENT.index() == 5);
-    public static final Setting.Choice LAYOUT = Zeus.UI.add(new Setting.Choice("Layout", "Panel: one window with a sidebar. Windows: a floating, draggable window for every category.", 1,
-            "Panel", "Windows"));
-    /** Set once the Windows layout has been made the default for a config that was saved before it was. Not shown. */
-    public static final Setting.Bool LAYOUT_WINDOWS_DEFAULT = Zeus.UI.add(new Setting.Bool("Windows layout is the default", "Internal marker.", false)).showIf(() -> false);
-    public static final Setting.Choice CARDS = Zeus.UI.add(new Setting.Choice("Module cards", "How the Panel layout lists modules. Two columns: two cards side by side when there is room. One column: one wide card per row. A card that is open for its settings always takes the full width.", 0,
-            "Two columns", "One column"));
-    public static final Setting.Choice SORT = Zeus.UI.add(new Setting.Choice("Sort modules", "Category order: the order they were made in. Most used first: the modules you switch on most come first (until you have a history, a built-in guess of the most popular ones is used). A to Z: alphabetical.", 0,
-            "Category order", "Most used first", "A to Z"));
-    public static final Setting.Choice INTRO = Zeus.UI.add(new Setting.Choice("Intro animation", "What plays when the panel opens. Video: the Zeus intro film. Video once: the film the first time after the game starts, a quick lightning after that. Any key or click skips it.", 1,
-            "Video", "Video once", "Lightning", "Quick", "Off"));
-    public static final Setting.Bool MENU = Zeus.UI.add(new Setting.Bool("Zeus main menu", "Replaces the game's title screen with the Zeus menu. The Classic menu link in the corner turns it off.", true));
-    public static final Setting.Bool INTRO_SOUND = Zeus.UI.add(new Setting.Bool("Intro film sound", "Plays the sound of the intro films. Switch it off to watch them in silence.", true));
-    public static final Setting.Bool STARTUP_VIDEO = Zeus.UI.add(new Setting.Bool("Intro film at start-up", "Plays the Zeus intro film once when the game has finished loading.", true));
-    public static final Setting.Choice INTRO_FIT = Zeus.UI.add(new Setting.Choice("Intro film shape", "Stretch (the default): fills the window exactly, whatever its size. Fit: the whole picture, nothing cut, with the lightning carried on across the rest of the screen. Fill: crops the top and bottom to cover the window. ", 2,
-            "Fit + glow", "Fill (crop)", "Stretch"));
-    public static final Setting.Bool THUNDER = Zeus.UI.add(new Setting.Bool("Thunder sound", "The thunder of the storms on the main menu (the intro films have their own thunder in their sound).", true));
-    public static final Setting.Bool MENU_STORM = Zeus.UI.add(new Setting.Bool("Storms on the main menu", "After about a minute on the Zeus menu a thunderstorm can roll in: dark clouds, rain and lightning. It clears again after two minutes.", true));
-    public static final Setting.Bool MENU_SOUNDS = Zeus.UI.add(new Setting.Bool("Menu sounds", "A soft rumble when you point at a stone plate or a round button on the Zeus menu, and a crack of lightning when you click.", true));
-    public static final Setting.Bool MENU_AMBIENCE = Zeus.UI.add(new Setting.Bool("Menu ambience", "Low wind and soft rain under the Zeus menu, louder in a storm, wind alone in the snow.", true));
-    public static final Setting.Num AMBIENCE_VOLUME = Zeus.UI.add(new Setting.Num("Menu ambience volume", "How loud the wind and the rain on the menu are (also follows the game's Ambient slider).", 50, 0, 100, 5, "%"))
-            .showIf(MENU_AMBIENCE::on);
-    public static final Setting.Bool WINDOW_ICON = Zeus.UI.add(new Setting.Bool("Zeus window icon", "Shows the Zeus medallion in the task bar and the window's title bar instead of the game's icon. Takes effect when the game starts; switching it off needs a restart to bring the game's icon back.", true));
-    public static final Setting.Bool PAUSE_STYLE = Zeus.UI.add(new Setting.Bool("Zeus pause menu", "The Zeus medallion above the pause menu and stone plates with the Zeus lettering for its buttons.", true));
-    public static final Setting.Bool STONE_LISTS = Zeus.UI.add(new Setting.Bool("Stone plate lists (test)", "The world list and the server list as rows of stone plates, with stone plate buttons and the Zeus lettering for the title. A test: switch it off to get the game's own lists back.", true));
-    public static final Setting.Choice SEASON = Zeus.UI.add(new Setting.Choice("Seasonal menu", "Snow on the menu. Automatic: in December. Always: all year (to see it now). Off: never. In a storm the snow becomes a blizzard.", 0,
-            "Automatic (December)", "Always", "Off"));
-    public static final Setting.Bool BACKDROP = Zeus.UI.add(new Setting.Bool("Menu sky behind game screens", "The server list, the world list, the options and the disconnect and error screens get the Zeus menu's sky instead of the game's own background (only outside a world).", true));
-    public static final Setting.Bool MENU_CLOCK = Zeus.UI.add(new Setting.Bool("Date and time on the menu", "Shows today's date and the time, with seconds, in the top right corner of the Zeus menu.", true));
-    public static final Setting.Bool CLOCK_24H = Zeus.UI.add(new Setting.Bool("24-hour clock", "The menu clock shows 17:30 instead of 5:30 PM.", true));
-    public static final Setting.Bool MENU_AURORA = Zeus.UI.add(new Setting.Bool("Menu aurora", "A green and violet aurora in the sky of the seasonal menu, on clear winter nights. It fades out when the storm comes. Follows the Seasonal menu setting.", true));
-    public static final Setting.Bool LOADING_TIPS = Zeus.UI.add(new Setting.Bool("Loading tips", "A short Zeus tip under the loading ring while a world loads.", true));
-    public static final Setting.Bool LOADING = Zeus.UI.add(new Setting.Bool("Zeus loading screens", "Replaces the game's Mojang start screen and its bar with the Zeus ring and the real percent while the game starts, shows the same ring with the real percent while a singleplayer world loads, and the menu background with the logo while you join a server.", true));
-    public static final Setting.Num HUD_OPACITY = Zeus.UI.add(new Setting.Num("HUD panel opacity", "How solid the boxes of the Panels page are (Info, Armor, Potion, Keystrokes, Radar...). 0% shows only the text.", 69, 0, 100, 1, "%"));
-    public static final Setting.Num HUD_ROUND = Zeus.UI.add(new Setting.Num("HUD corner roundness", "How round the corners of those boxes are.", 4, 0, 10, 1, " px"));
-    public static final Setting.Bool HUD_STRIPE = Zeus.UI.add(new Setting.Bool("HUD accent stripe", "The coloured bar on the left edge of the boxes.", true));
-    public static final Setting.Choice PERFORMANCE = Zeus.UI.add(new Setting.Choice("Effects quality", "Auto: the thunder, sway and slide-ins are drawn lighter when your frame rate drops below 40 and come back above 55. Quality: always full. Fast: always light (best for weak computers).", 0,
-            "Auto", "Quality", "Fast"));
-    public static final Setting.Choice GAME_MODE = Zeus.UI.add(new Setting.Choice("Performance mode", "How much of your frame rate Zeus may use while you play. Balanced: everything as designed. Light (the default): scanners run every other tick, boxes and lines are drawn with fewer pieces and no halos. Minimal: scanners run every fourth tick and the on-screen boxes are flat. Open the Performance Monitor to see what each module costs.", 1,
-            "Balanced", "Light", "Minimal"));
-    public static final Setting.Bool AUTO_LIGHTEN = Zeus.UI.add(new Setting.Bool("Lighten automatically when the game lags", "When your frame rate falls below 45 Zeus steps up to at least Light, and below 30 to Minimal. It steps back down once the frame rate is healthy again.", true));
-    public static final Setting.Bool SHOW_COST = Zeus.UI.add(new Setting.Bool("Show what each module costs", "Measures how much of your frame time each switched-on module uses and shows it as a small percentage next to the module in the menu windows (green is small, red is a lot). The measuring itself is a few clock reads a frame. Switch it off for none.", true));
-    public static final Setting.Bool CONTRAST = Zeus.UI.add(new Setting.Bool("High contrast", "Brighter text and lines in the panel, so the small grey writing is easier to read.", false));
-    public static final Setting.Bool CALM = Zeus.UI.add(new Setting.Bool("Calm mode", "No screen shake, no bright flashes and no sliding in. For anyone who finds the lightning too much.", false));
-    public static final Setting.Bool TOASTS = Zeus.UI.add(new Setting.Bool("Messages", "Short pop-ups when something happens.", true));
-    public static final Setting.Bool REMEMBER_MODULE_STATES = Zeus.UI.add(new Setting.Bool("Remember enabled modules", "Restore the modules you had enabled after restarting Minecraft. World-dependent modules are restored only after a world has loaded.", true));
+import net.minecraft.client.Minecraft;
 
-    public static final Setting.Action HUD_EDITOR = Zeus.UI.add(new Setting.Action("Open HUD editor", "Drag, scale, hide and arrange every Zeus HUD widget on screen.", () -> {
-        net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
-        mc.setScreen(new HudEditorScreen(mc.screen));
-    }));
+import net.minecraft.client.gui.GuiGraphics;
 
-    public static final Setting.Action PLAY = Zeus.UI.add(new Setting.Action("Play intro film", "Shows the intro film now.", () -> {
-        net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
-        net.minecraft.client.gui.screens.Screen back = mc.screen;
-        if (VideoIntroScreen.available()) mc.setScreen(new VideoIntroScreen(() -> back, false));
-    }));
+import net.minecraft.core.BlockPos;
 
-    public static final Setting.Action PLAY_PANEL = Zeus.UI.add(new Setting.Action("Play panel intro", "Shows the five second film that plays when you press Z.", () -> {
-        net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
-        net.minecraft.client.gui.screens.Screen back = mc.screen;
-        if (VideoIntroScreen.available(VideoIntroScreen.PANEL)) mc.setScreen(new VideoIntroScreen(VideoIntroScreen.PANEL, () -> back, false));
-    }));
+import net.minecraft.world.level.block.state.BlockState;
 
-    public static final Setting.Action RESET = Zeus.UI.add(new Setting.Action("Reset windows", "Puts every window back where it started and unfolds it.", UiState::reset));
+import net.minecraft.world.phys.AABB;
 
-    static {
-        CONTRAST.onChange(() -> Accent.contrast(CONTRAST.on()));
+import net.minecraft.world.phys.shapes.VoxelShape;
+
+import java.util.concurrent.ConcurrentHashMap;
+
+public final class EspKit {
+
+    public static final String[] STYLES = {"Outline", "Outline + fill", "Fill", "Corners"};
+
+    public final Setting.Choice style;
+
+    public final Setting.Num width;
+
+    public final Setting.Bool glow;
+    public final Setting.Bool contrast;
+
+    public final Setting.Bool fade;
+
+    public final Setting.Bool tracers;
+
+    public final Setting.Choice tracerFrom;
+
+    public final Setting.Bool animate;
+
+    public final Setting.Num boxSize;
+
+    public final Setting.Bool reveal;
+
+    public boolean autoReveal = true;
+
+    public final Setting.Choice color;
+
+    public final Setting.Num opacity;
+
+    public final Setting.Num labelSize;
+
+    public final Setting.Num tracerWidth;
+
+    public final Setting.Choice tracerStyle;
+
+    public final Setting.Bool tracerFlow;
+
+    public final Setting.Bool tracerLabels;
+
+    public static final String[] COLOR_NAMES = {"Automatic", "White", "Red", "Orange", "Yellow", "Green", "Cyan", "Blue", "Purple", "Pink"};
+
+    public static final int[] COLOR_VALUES = {0, 0xFFFFFFFF, 0xFFFF4D5E, 0xFFFF9F43, 0xFFFFD84D, 0xFF4DFF88, 0xFF35E0D0, 0xFF4DA3FF, 0xFFB06BFF, 0xFFFF7AB6};
+
+    public static int pick(Setting.Choice c, int auto) {
+
+        int i = c.index();
+
+        return i <= 0 || i >= COLOR_VALUES.length ? auto : COLOR_VALUES[i];
+
     }
 
-    /** Makes sure the settings exist before they are loaded. */
-    public static void touch() {
-        Accent.contrast(CONTRAST.on());
+    private int tint(int auto) {
+
+        return pick(color, auto);
+
     }
+
+    private static <T extends Setting> T quiet(T s) {
+
+        return s;
+
+    }
+
+    public EspKit(Module m, int defaultStyle, boolean tracersOn) {
+
+        style = m.addSetting(new Setting.Choice("Style", "Outline: the edges of the block. Outline + fill: the edges and a tinted face. Fill: tinted faces. Corners: just the corners.", defaultStyle, STYLES));
+
+        width = m.addSetting(new Setting.Num("Line width", "Thickness of the outline.", 1.6, 0.8, 4.0, 0.2, ""));
+
+        glow = quiet(new Setting.Bool("Glow", "A soft halo around the lines.", true));
+        contrast = quiet(new Setting.Bool("Dark edges", "A thin dark line under every edge, so boxes stay readable against sky, snow, water and lava.", true));
+
+        fade = quiet(new Setting.Bool("Fade with distance", "Far things get softer so the near ones stand out.", true));
+
+        boxSize = quiet(new Setting.Num("Box size", "Scales every box around its middle. 1 is the real size of the block or entity.", 1.0, 0.1, 2.0, 0.1, ""));
+
+        reveal = quiet(new Setting.Bool("Reveal animation", "New finds fade in instead of popping up.", false).resetOnRev());
+
+        animate = quiet(new Setting.Bool("Pulse", "A slow, gentle pulse so finds catch your eye.", false).resetOnRev());
+
+        tracers = m.addSetting(new Setting.Bool("Tracers", "A line that points straight at each find, even when it is behind you.", tracersOn));
+
+        tracerFrom = m.addSetting(new Setting.Choice("Tracer from", "Where the lines start. Crosshair is the Anubis look; Bottom centre is the familiar Meteor/Wurst-style view; My body starts them at you, which is the one that looks right in third person.", 0, "Crosshair", "Bottom", "Top", "My body")).showIf(() -> tracers.on());
+
+        tracerWidth = quiet(new Setting.Num("Tracer width", "Thickness of the tracer lines.", 1.05, 0.6, 4.0, 0.2, "")).showIf(() -> tracers.on());
+
+        tracerStyle = m.addSetting(new Setting.Choice("Tracer style", "Default: a flat 1.5 pixel line at half strength from your crosshair, with an arrow for what is off the screen. Modern: a thin tail that swells into a bright head, with a glint and a diamond on the target. Beam: a soft glow around a steady line. Classic: one clean stroke.", 0, TRACER_STYLES)).showIf(() -> tracers.on());
+
+        tracerFlow = quiet(new Setting.Bool("Tracer glint", "A bright spark that travels from you to the target, so the eye follows the line.", true)).showIf(() -> tracers.on());
+
+        tracerLabels = quiet(new Setting.Bool("Tracer distance", "A small pill with the distance at the end of every line.", false)).showIf(() -> tracers.on());
+
+        color = m.addSetting(new Setting.Choice("Colour", "Automatic: every kind has its own colour. Pick one to draw everything of this ESP in it.", 0, COLOR_NAMES));
+
+        opacity = m.addSetting(new Setting.Num("Opacity", "How strong the outlines and fills are.", 100, 20, 100, 5, " %"));
+
+        labelSize = quiet(new Setting.Num("Label size", "Size of the name tags.", 100, 60, 200, 10, " %"));
+
+    }
+
+    private static final ConcurrentHashMap<Long, AABB> SHAPES = new ConcurrentHashMap<>();
+
+    private static long shapesAt;
+
+    public static AABB shape(Minecraft mc, int x, int y, int z) {
+
+        long now = System.currentTimeMillis();
+
+        if (now - shapesAt > 6000 || SHAPES.size() > 4000) {
+
+            SHAPES.clear();
+
+            shapesAt = now;
+
+        }
+
+        long key = BlockPos.asLong(x, y, z);
+
+        AABB b = SHAPES.get(key);
+
+        if (b != null) return b;
+
+        b = new AABB(x, y, z, x + 1, y + 1, z + 1);
+
+        try {
+
+            if (mc.level != null) {
+
+                BlockPos pos = new BlockPos(x, y, z);
+
+                BlockState st = mc.level.getBlockState(pos);
+
+                VoxelShape vs = st.getShape(mc.level, pos);
+
+                if (vs != null && !vs.isEmpty()) {
+
+                    AABB sb = vs.bounds();
+
+                    double pad = 0.01;
+
+                    b = new AABB(x + sb.minX - pad, y + sb.minY - pad, z + sb.minZ - pad, x + sb.maxX + pad, y + sb.maxY + pad, z + sb.maxZ + pad);
+
+                }
+
+            }
+
+        } catch (RuntimeException ignored) {
+
+        }
+
+        SHAPES.put(key, b);
+
+        return b;
+
+    }
+
+    private static final float[] T1 = new float[4];
+
+    private final java.util.HashMap<Long, long[]> seen = new java.util.HashMap<>();
+
+    private long purgeAt;
+
+    public float reveal(double cx, double cy, double cz) {
+
+        return reveal(((long) Math.floor(cx) * 73856093L) ^ ((long) Math.floor(cy) * 19349663L) ^ ((long) Math.floor(cz) * 83492791L));
+
+    }
+
+    public float reveal(long key) {
+
+        if (!reveal.on()) return 1f;
+
+        long now = System.currentTimeMillis();
+
+        long[] s = seen.get(key);
+
+        if (s == null || now - s[1] > 1500L) {
+
+            s = new long[] {now, now};
+
+            seen.put(key, s);
+
+        } else {
+
+            s[1] = now;
+
+        }
+
+        if (now - purgeAt > 3000L) {
+
+            purgeAt = now;
+
+            final long t = now;
+
+            seen.values().removeIf(v -> t - v[1] > 3000L);
+
+        }
+
+        float t = (now - s[0]) / 450f;
+
+        return t >= 1f ? 1f : t * t * (3f - 2f * t);
+
+    }
+
+    public float alphaFor(double dist, double range) {
+
+        if (!fade.on()) return 1f;
+
+        return (float) Math.max(0.4, 1.0 - dist / (range * 1.5));
+
+    }
+
+    public float pulse() {
+
+        return animate.on() ? 0.82f + 0.18f * (float) Math.sin(System.currentTimeMillis() / 330.0) : 1f;
+
+    }
+
+    public void box(GuiGraphics g, AABB b, int color, float alpha, boolean fillRoom) {
+
+        box(g, b.minX, b.minY, b.minZ, b.maxX, b.maxY, b.maxZ, color, alpha, fillRoom);
+
+    }
+
+    public void box(GuiGraphics g, double x1, double y1, double z1, double x2, double y2, double z2, int color, float alpha, boolean fillRoom) {
+
+        color = tint(color);
+
+        alpha *= opacity.f() / 100f;
+
+        double bs = boxSize.get();
+
+        if (Math.abs(bs - 1.0) > 0.001) {
+
+            double mx = (x1 + x2) / 2, my = (y1 + y2) / 2, mz = (z1 + z2) / 2;
+
+            double hx = (x2 - x1) / 2 * bs, hy = (y2 - y1) / 2 * bs, hz = (z2 - z1) / 2 * bs;
+
+            x1 = mx - hx; x2 = mx + hx; y1 = my - hy; y2 = my + hy; z1 = mz - hz; z2 = mz + hz;
+
+        }
+
+        if (autoReveal) alpha *= reveal(Math.floor((x1 + x2) / 2), Math.floor((y1 + y2) / 2), Math.floor((z1 + z2) / 2));
+
+        int st = style.index();
+
+        float p = pulse();
+
+        float thick = width.f() * 0.94f;
+
+        double[] cx = CORNER_X;
+
+        double[] cy = CORNER_Y;
+
+        double[] cz = CORNER_Z;
+
+        int i = 0;
+
+        for (int xi = 0; xi < 2; xi++) {
+
+            for (int yi = 0; yi < 2; yi++) {
+
+                for (int zi = 0; zi < 2; zi++) {
+
+                    cx[i] = xi == 0 ? x1 : x2;
+
+                    cy[i] = yi == 0 ? y1 : y2;
+
+                    cz[i] = zi == 0 ? z1 : z2;
+
+                    i++;
+
+                }
+
+            }
+
+        }
+
+        if ((st == 1 || st == 2) && fillRoom) fillBox(g, x1, y1, z1, x2, y2, z2, color, (st == 2 ? 0.30f : 0.16f) * alpha * p);
+
+        else if (st == 3 && fillRoom) fillBox(g, x1, y1, z1, x2, y2, z2, color, 0.045f * alpha * p);
+
+        float edgeA = (st == 2 ? 0.55f : 0.5f) * alpha;
+
+        int core = Draw.rgba(color, edgeA);
+
+        int halo = Draw.rgba(color, 0.14f * alpha * p);
+
+        for (int[] e : EDGES) {
+
+            double ax = cx[e[0]], ay = cy[e[0]], az = cz[e[0]], dx = cx[e[1]], dy = cy[e[1]], dz = cz[e[1]];
+            if (contrast.on()) line(g, ax, ay, az, dx, dy, dz, thick + 1.3f, Draw.rgba(0x000000, 0.42f * alpha), 0);
+            float near = thick;
+            if (Projector.width() > 0) {
+                double mx = (ax + dx) * 0.5 - Projector.eyeX();
+                double my = (ay + dy) * 0.5 - Projector.eyeY();
+                double mz = (az + dz) * 0.5 - Projector.eyeZ();
+                double dist = Math.sqrt(mx * mx + my * my + mz * mz);
+                near = thick * (float) Math.max(0.72, Math.min(1.45, 1.55 - dist / 110.0));
+            }
+
+            if (st == 3) {
+
+                double lx = (dx - ax) * 0.26, ly = (dy - ay) * 0.26, lz = (dz - az) * 0.26;
+
+                if (Projector.projectLine(ax + lx, ay + ly, az + lz, dx - lx, dy - ly, dz - lz, T1)) {
+
+                    Stroke.soft(g, T1[0], T1[1], T1[2], T1[3], Math.max(0.5f, thick * 0.3f), Draw.rgba(color, 0.30f * alpha));
+
+                }
+
+                line(g, ax, ay, az, ax + lx, ay + ly, az + lz, near * 1.15f, core, halo);
+
+                line(g, dx - lx, dy - ly, dz - lz, dx, dy, dz, near * 1.15f, core, halo);
+
+            } else {
+
+                line(g, ax, ay, az, dx, dy, dz, near, core, halo);
+
+            }
+
+        }
+
+    }
+
+    private static final double[] CORNER_X = new double[8];
+
+    private static final double[] CORNER_Y = new double[8];
+
+    private static final double[] CORNER_Z = new double[8];
+
+    private static final int[][] EDGES = {
+
+        {0, 1}, {1, 3}, {3, 2}, {2, 0}, {4, 5}, {5, 7}, {7, 6}, {6, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
+
+    private void line(GuiGraphics g, double x1, double y1, double z1, double x2, double y2, double z2, float thick, int core, int halo) {
+
+        if (!Projector.projectLine(x1, y1, z1, x2, y2, z2, T1)) return;
+
+        float px = Math.max(0.6f, thick / com.zlorbie788.zeus.ui.Tex.guiScale());
+
+        Stroke.hard(g, T1[0], T1[1], T1[2], T1[3], px, core);
+
+    }
+
+    public static void fillBox(GuiGraphics g, double x1, double y1, double z1, double x2, double y2, double z2, int color, float alpha) {
+
+        double ex = Projector.eyeX();
+
+        double ey = Projector.eyeY();
+
+        double ez = Projector.eyeZ();
+
+        if (ex > x1 && ex < x2 && ey > y1 && ey < y2 && ez > z1 && ez < z2) return;
+
+        float[] pts = new float[8];
+
+        for (int f = 0; f < 6; f++) {
+
+            int axis = f >> 1;
+
+            boolean hi = (f & 1) == 1;
+
+            double plane = axis == 0 ? (hi ? x2 : x1) : axis == 1 ? (hi ? y2 : y1) : (hi ? z2 : z1);
+
+            double eye = axis == 0 ? ex : axis == 1 ? ey : ez;
+
+            if (hi ? eye <= plane : eye >= plane) continue;
+
+            double[][] q = new double[4][];
+
+            switch (axis) {
+
+                case 0 -> q = new double[][] {{plane, y1, z1}, {plane, y2, z1}, {plane, y2, z2}, {plane, y1, z2}};
+
+                case 1 -> q = new double[][] {{x1, plane, z1}, {x2, plane, z1}, {x2, plane, z2}, {x1, plane, z2}};
+
+                default -> q = new double[][] {{x1, y1, plane}, {x2, y1, plane}, {x2, y2, plane}, {x1, y2, plane}};
+
+            }
+
+            boolean ok = true;
+
+            float[] t = new float[2];
+
+            for (int k = 0; k < 4 && ok; k++) {
+
+                if (!Projector.project(q[k][0], q[k][1], q[k][2], t)) ok = false;
+
+                pts[k * 2] = t[0];
+
+                pts[k * 2 + 1] = t[1];
+
+            }
+
+            if (!ok) continue;
+
+            float shade = axis == 1 ? (hi ? 1.0f : 0.55f) : axis == 0 ? 0.75f : 0.85f;
+
+            quad(g, pts, Draw.rgba(Draw.darken(color, 1f - shade), alpha));
+
+        }
+
+    }
+
+    private static void quad(GuiGraphics g, float[] p, int color) {
+
+        float minY = Math.min(Math.min(p[1], p[3]), Math.min(p[5], p[7]));
+
+        float maxY = Math.max(Math.max(p[1], p[3]), Math.max(p[5], p[7]));
+
+        int sh = Projector.height();
+
+        int y0 = Math.max(0, (int) Math.floor(minY));
+
+        int y1 = Math.min(sh, (int) Math.ceil(maxY));
+
+        if (y1 <= y0) return;
+
+        int lvl = com.zlorbie788.zeus.ui.Perf.level();
+
+        int step = Math.max(2, (y1 - y0) / (lvl == 0 ? 26 : lvl == 1 ? 12 : 7));
+
+        for (int y = y0; y < y1; y += step) {
+
+            float yc = y + step * 0.5f;
+
+            float lo = Float.MAX_VALUE;
+
+            float hi = -Float.MAX_VALUE;
+
+            for (int e = 0; e < 4; e++) {
+
+                float ax = p[e * 2], ay = p[e * 2 + 1];
+
+                float bx = p[((e + 1) & 3) * 2], by = p[((e + 1) & 3) * 2 + 1];
+
+                if ((ay <= yc && by > yc) || (by <= yc && ay > yc)) {
+
+                    float x = ax + (yc - ay) / (by - ay) * (bx - ax);
+
+                    if (x < lo) lo = x;
+
+                    if (x > hi) hi = x;
+
+                }
+
+            }
+
+            if (hi > lo) g.fill(Math.round(lo), y, Math.round(hi), y + step, color);
+
+        }
+
+    }
+
+    public void tracer(GuiGraphics g, int w, int h, double x, double y, double z, int color, float alpha) {
+
+        if (!tracers.on()) return;
+
+        double dist = 0;
+
+        if (Projector.width() > 0) {
+
+            double dx = x - Projector.eyeX();
+
+            double dy = y - Projector.eyeY();
+
+            double dz = z - Projector.eyeZ();
+
+            dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+        }
+
+        boolean labels = tracerLabels.on();
+
+        tracerLine(g, w, h, tracerFrom.index(), x, y, z, tint(color), alpha * opacity.f() / 100f, tracerWidth.f(),
+
+                tracerStyle.index(), tracerFlow.on(), labels, labels ? Math.round(dist) + "m" : null);
+
+    }
+
+    private static final java.util.List<int[]> PLACED = new java.util.ArrayList<>();
+
+    public static void resetLabels() {
+        PLACED.clear();
+    }
+
+    public static void plate(GuiGraphics g, String name, String distance, float health, boolean target, int cx, int top, int colour, float alpha, int w, int h, float scale) {
+        String head = name == null ? "" : name;
+        String tail = distance == null ? "" : distance;
+        float sc = Math.max(0.7f, Math.min(1.6f, scale));
+        int textW = Draw.widthS(head, sc) + (tail.isEmpty() ? 0 : Draw.widthS(tail, sc) + 7);
+        int pad = 4;
+        int barH = health >= 0 ? 3 : 0;
+        int boxH = Math.round(11 * sc) + barH + 2;
+        int bw = Math.max(26, textW + pad * 2);
+        int x = cx - bw / 2;
+        int y = top - boxH;
+        for (int attempt = 0; attempt < 6; attempt++) {
+            boolean clash = false;
+            for (int[] other : PLACED) {
+                if (x < other[2] && other[0] < x + bw && y < other[3] && other[1] < y + boxH) {
+                    clash = true;
+                    break;
+                }
+            }
+            if (!clash) break;
+            y -= boxH + 1;
+        }
+        if (y < 2) y = 2;
+        if (x < 2) x = 2;
+        if (x + bw > w - 2) x = Math.max(2, w - 2 - bw);
+        PLACED.add(new int[]{x, y, x + bw, y + boxH});
+        if (PLACED.size() > 40) PLACED.remove(0);
+        int accent = target ? Draw.mix(colour, 0xFFFFFFFF, 0.5f) : colour;
+        Draw.rrect(g, x, y, bw, boxH, 3, Draw.rgba(0x07090F, 0.62f * alpha));
+        Draw.rrectLine(g, x, y, bw, boxH, 3, Draw.rgba(accent, (target ? 0.80f : 0.32f) * alpha));
+        if (target) g.fill(x + 1, y + 2, x + 3, y + boxH - 2, Draw.rgba(accent, 0.90f * alpha));
+        Draw.textS(g, head, x + pad, y + 2, Draw.rgba(0xFFFFFFFF, alpha), sc);
+        if (!tail.isEmpty()) Draw.textRightS(g, tail, x + bw - pad, y + 2, Draw.rgba(Draw.mix(accent, 0xFFFFFFFF, 0.55f), alpha), sc);
+        if (barH > 0) {
+            int barY = y + boxH - barH - 1;
+            int full = bw - pad * 2;
+            int filled = Math.round(full * Math.max(0f, Math.min(1f, health)));
+            g.fill(x + pad, barY, x + pad + full, barY + barH, Draw.rgba(0x000000, 0.60f * alpha));
+            int hc = Draw.mix(0xFFFF4D4D, 0xFF5EE67A, Math.max(0f, Math.min(1f, health)));
+            g.fill(x + pad, barY, x + pad + filled, barY + barH, Draw.rgba(hc, 0.95f * alpha));
+        }
+    }
+
+    public void tag(GuiGraphics g, String text, String right, int cx, int top, int color, float alpha, int w, int h) {
+
+        label(g, text, right, cx, top, tint(color), alpha * opacity.f() / 100f, w, h, labelSize.f() / 100f);
+
+    }
+
+    public static final String[] TRACER_STYLES = {"Default", "Modern", "Beam", "Classic"};
+
+    public static void tracerLine(GuiGraphics g, int w, int h, int from, double x, double y, double z, int color, float alpha) {
+
+        tracerLine(g, w, h, from, x, y, z, color, alpha, 1.3f, 0, true, false, null);
+
+    }
+
+    public static void tracerLine(GuiGraphics g, int w, int h, int from, double x, double y, double z, int color, float alpha, float thick) {
+
+        tracerLine(g, w, h, from, x, y, z, color, alpha, thick, 0, true, false, null);
+
+    }
+
+    public static void tracerLine(GuiGraphics g, int w, int h, int from, double x, double y, double z, int color, float alpha, float thick,
+
+                                  int style, boolean flow, boolean labels, String label) {
+
+        if (alpha <= 0.01f) return;
+
+        float[] t = new float[2];
+
+        int where = Projector.screenPoint(x, y, z, 14f, t);
+
+        if (where < 0) return;
+
+        boolean behind = Projector.lastBehind();
+
+        float sx = w / 2f;
+
+        float sy = switch (from) {
+
+            case 1 -> h - 2f;
+
+            case 2 -> 2f;
+
+            case 3 -> h - 2f;
+
+            default -> h / 2f;
+
+        };
+
+        if (from == 3) {
+
+            float[] body = bodyPoint();
+
+            if (body != null) {
+
+                sx = body[0];
+
+                sy = body[1];
+
+            }
+
+        }
+
+        float dx = t[0] - sx;
+
+        float dy = t[1] - sy;
+
+        float len = (float) Math.hypot(dx, dy);
+
+        if (len < 6f) return;
+
+        if (style == 0) {
+
+            anubis(g, w, h, sx, sy, t[0], t[1], color, alpha, where, behind);
+
+            return;
+
+        }
+
+        style -= 1;
+
+        if (com.zlorbie788.zeus.ui.Perf.gameFast()) {
+
+            Stroke.soft(g, sx, sy, t[0], t[1], thick, Draw.rgba(color, 0.9f * alpha));
+
+            return;
+
+        }
+
+        switch (style) {
+
+            case 1 -> beam(g, w, h, sx, sy, t[0], t[1], color, alpha, thick, where);
+
+            case 2 -> classic(g, w, h, sx, sy, t[0], t[1], color, alpha, thick, where);
+
+            default -> modern(g, w, h, sx, sy, t[0], t[1], color, alpha, thick, flow, where);
+
+        }
+
+        if (labels) pill(g, w, h, t[0], t[1], label, color, alpha);
+
+    }
+
+    private static float[] arrowTip(int w, int h, float sx, float sy, float tx, float ty, int where) {
+        if (where == 0) return null;
+        float[] t = new float[2];
+        int where2 = Projector.screenPoint(tx, ty, 0, 1f, t);
+        if (where2 >= 0) return null;
+        double ang = Math.atan2(ty - sy, tx - sx);
+        float reach = 180f / com.zlorbie788.zeus.ui.Tex.guiScale();
+        return new float[] {sx + reach * (float)Math.cos(ang), sy + reach * (float)Math.sin(ang)};
+    }
+
+    private static void anubis(GuiGraphics g, int w, int h, float sx, float sy, float tx, float ty, int color, float alpha, int where, boolean behind) {
+
+        int gs = com.zlorbie788.zeus.ui.Tex.guiScale();
+
+        float px = 1.5f / gs;
+
+        int c = Draw.rgba(color, 0.5f * alpha);
+
+        if (!behind) Stroke.hard(g, sx, sy, tx, ty, px, c);
+
+        if (where != 0) {
+
+            double ang = Math.atan2(ty - h / 2.0, tx - w / 2.0);
+
+            float reach = 200f / gs;
+
+            float size = 10f / gs;
+
+            double blink = Math.abs((System.currentTimeMillis() % 1000L) - 500L) / 500.0;
+
+            float ax = (float) (w / 2.0 + reach * Math.cos(ang)) - size * 0.42265f;
+
+            float ay = (float) (h / 2.0 + reach * Math.sin(ang));
+
+            Stroke.arrow(g, ax, ay, size, (float) ang, Draw.rgba(color, (float) (0.5f * alpha * blink)));
+
+        }
+
+    }
+
+    private static final float[] STEM = new float[4];
+
+    public static void stem(GuiGraphics g, double x, double y, double z, double height, int color, float alpha) {
+
+        if (Projector.depth(x, y, z) < 0.3 || Projector.depth(x, y + height, z) < 0.3) return;
+
+        if (!Projector.projectLine(x, y, z, x, y + height, z, STEM)) return;
+
+        int gs = com.zlorbie788.zeus.ui.Tex.guiScale();
+
+        Stroke.hard(g, STEM[0], STEM[1], STEM[2], STEM[3], 1.5f / gs, Draw.rgba(color, 0.5f * alpha));
+
+    }
+
+    public static int anubisColor(int kind) {
+
+        return switch (kind) {
+
+            case 0 -> 0xFFCDCDCD;
+
+            case 1 -> 0xFF91FF91;
+
+            case 2 -> 0xFF9191FF;
+
+            case 3 -> 0xFFFF9191;
+
+            case 4 -> 0xFF4B4B4B;
+
+            case 6 -> 0xFF00FFB4;
+
+            default -> 0xFF919191;
+
+        };
+
+    }
+
+    public static int distanceColor(double dist) {
+
+        double p = dist / 60.0;
+
+        if (p > 1.0) return 0xFF00FF00;
+
+        int r = p < 0.5 ? 255 : 255 - (int) (255.0 * (p - 0.5) / 0.5);
+
+        int gr = p < 0.5 ? (int) (255.0 * p / 0.5) : 255;
+
+        return 0xFF000000 | r << 16 | gr << 8;
+
+    }
+
+    private static float[] bodyPoint() {
+
+        Minecraft mc = Minecraft.getInstance();
+
+        if (mc.player == null || Projector.width() <= 0) return null;
+
+        float[] p = new float[2];
+
+        double x = mc.player.getX();
+
+        double y = mc.player.getY() + mc.player.getBbHeight() * 0.55;
+
+        double z = mc.player.getZ();
+
+        int where = Projector.screenPoint(x, y, z, 1f, p);
+
+        return where < 0 ? null : p;
+
+    }
+
+    private static void beam(GuiGraphics g, int w, int h, float sx, float sy, float tx, float ty, int color, float alpha, float thick, int where) {
+        Stroke.soft(g, sx, sy, tx, ty, thick * 1.5f, Draw.rgba(color, 0.75f * alpha));
+        Stroke.soft(g, sx, sy, tx, ty, Math.max(0.6f, thick * 0.55f), Draw.rgba(Draw.mix(color, 0xFFFFFFFF, 0.6f), 0.85f * alpha));
+        if (where == 0) {
+            Stroke.diamond(g, (int)tx, (int)ty, (int)(5f + thick * 0.5f), Draw.rgba(color, alpha), 0.5f * alpha);
+        } else {
+            float[] edge = arrowTip(w, h, sx, sy, tx, ty, where);
+            if (edge != null) {
+                Stroke.diamond(g, (int)edge[0], (int)edge[1], (int)(5f + thick * 0.5f), Draw.rgba(color, 0.9f * alpha), 0.5f * alpha);
+            }
+        }
+    }
+
+    private static void classic(GuiGraphics g, int w, int h, float sx, float sy, float tx, float ty, int color, float alpha, float thick, int where) {
+        Stroke.soft(g, sx, sy, tx, ty, thick, Draw.rgba(color, 0.85f * alpha));
+        if (where == 0) {
+            Stroke.dot(g, (int)tx, (int)ty, (int)(thick * 0.8f), Draw.rgba(0xFFFFFFFF, 0.9f * alpha));
+        } else {
+            float[] edge = arrowTip(w, h, sx, sy, tx, ty, where);
+            if (edge != null) {
+                Stroke.dot(g, (int)edge[0], (int)edge[1], (int)(thick * 0.8f), Draw.rgba(0xFFFFFFFF, 0.9f * alpha));
+            }
+        }
+    }
+
+    private static void modern(GuiGraphics g, int w, int h, float sx, float sy, float tx, float ty, int color, float alpha, float thick, boolean flow, int where) {
+        Stroke.taper(g, sx, sy, tx, ty, thick * 1.25f, Draw.rgba(color, alpha));
+        if (flow) {
+            float period = 2000f;
+            float p = (System.currentTimeMillis() % (long) period) / period;
+            float head = 0.15f + 0.85f * p;
+            int glint = Draw.mix(color, 0xFFFFFFFF, 0.6f);
+            float fade = 0.5f + 0.5f * p;
+            if (Stroke.room()) Stroke.dot(g, sx + (tx - sx) * head, sy + (ty - sy) * head, thick * 1.5f, Draw.rgba(glint, 0.6f * alpha * fade));
+        }
+        if (where == 0) {
+            Stroke.diamond(g, (int)tx, (int)ty, (int)(5.5f + thick * 0.6f), Draw.rgba(color, 0.95f * alpha), 0.55f * alpha);
+            Stroke.dot(g, (int)tx, (int)ty, (int)1.1f, Draw.rgba(0xFFFFFFFF, 0.9f * alpha));
+        } else {
+            float[] edge = arrowTip(w, h, sx, sy, tx, ty, where);
+            if (edge != null) {
+                float ex = edge[0], ey = edge[1];
+                Stroke.diamond(g, (int)ex, (int)ey, (int)(5.5f + thick * 0.6f), Draw.rgba(color, 0.9f * alpha), 0.5f * alpha);
+                Stroke.dot(g, (int)ex, (int)ey, (int)1.1f, Draw.rgba(0xFFFFFFFF, 0.85f * alpha));
+            }
+        }
+    }
+
+    private static void pill(GuiGraphics g, int w, int h, float x, float y, String text, int color, float alpha) {
+        int size = Math.round(9 * com.zlorbie788.zeus.ui.Tex.guiScale());
+        int bw = com.zlorbie788.zeus.ui.Draw.width(text) + 8;
+        Draw.rrect(g, (int)(x - bw / 2), (int)(y - size / 2), bw, size, 3, Draw.rgba(0xFF0B1220, 0.85f * alpha));
+        Draw.rrectLine(g, (int)(x - bw / 2), (int)(y - size / 2), bw, size, 3, Draw.rgba(color, 0.7f * alpha));
+        Draw.textCenter(g, text, (int)x, (int)(y + 1), Draw.rgba(color, alpha));
+    }
+
+    public static void label(GuiGraphics g, String text, String right, int cx, int top, int color, float alpha, int w, int h, float scale) {
+        int rh = Math.round(11 * scale);
+        boolean hasRight = right != null && !right.isEmpty();
+        int rw = hasRight ? com.zlorbie788.zeus.ui.Draw.width(right) : 0;
+        int room = Math.max(24, (w > 0 ? w : 320) - 14 - (hasRight ? rw + 8 : 0));
+        String t = com.zlorbie788.zeus.ui.Draw.fit(text, room);
+        int tw = com.zlorbie788.zeus.ui.Draw.width(t);
+        int w2 = 10 + tw + (hasRight ? 8 + rw : 0);
+        int x = cx - w2 / 2;
+        if (w > 0 && w2 + 4 <= w) x = Math.max(2, Math.min(x, w - 2 - w2));
+        int y = Math.max(2, top - rh - 4);
+        Draw.rrect(g, x, y, w2, rh + 4, 3, Draw.rgba(0xFF0B1220, 0.8f * alpha));
+        Draw.rrectLine(g, x, y, w2, rh + 4, 3, Draw.rgba(color, 0.6f * alpha));
+        Draw.text(g, t, x + 5, y + 2, Draw.rgba(color, alpha));
+        if (hasRight) Draw.textRight(g, right, x + w2 - 5, y + 2, Draw.rgba(color, alpha * 0.7f));
+    }
+
+    public static void edgeMarker(GuiGraphics g, int w, int h, double x, double y, double z, int color, float alpha, float thick, String label) {
+        float[] t = new float[2];
+        int where = com.zlorbie788.zeus.render.Projector.screenPoint(x, y, z, 1f, t);
+        if (where < 0) return;
+        float sx = w / 2f, sy = h / 2f;
+        float dx = t[0] - sx, dy = t[1] - sy;
+        double ang = Math.atan2(dy, dx);
+        float reach = 180f / com.zlorbie788.zeus.ui.Tex.guiScale();
+        float tipX = (float) (sx + reach * Math.cos(ang));
+        float tipY = (float) (sy + reach * Math.sin(ang));
+        int c = com.zlorbie788.zeus.ui.Draw.rgba(color, 0.8f * alpha);
+        Stroke.diamond(g, (int)tipX, (int)tipY, (int)(5f + thick), c, 0.5f * alpha);
+        if (label != null) {
+            pill(g, w, h, tipX + (dx > 0 ? 12 : -12), tipY, label, color, alpha);
+        }
+    }
+
 }

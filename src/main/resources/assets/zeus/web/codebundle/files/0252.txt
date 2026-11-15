@@ -1,301 +1,231 @@
-{
-  "defaults": {
-    "version": "0.9.9.0",
-    "minecraft": "1.21.11",
-    "discordUrl": "https://discord.gg/GcbryFXgcR",
-    "downloadUrl": "",
-    "youtubeUrl": "",
-    "twitterUrl": "",
-    "tutorialUrl": "",
-    "siteName": "Zeus Client",
-    "siteUrl": "",
-    "sha256": "",
-    "contactEmail": "",
-    "githubUrl": ""
-  },
-  "tagline": "A cheat client for Minecraft 1.21.11.",
-  "subtitle": "Over 170 modules for Fabric, from combat and movement to ESP and base finding.",
-  "about": "Zeus is a client-side Fabric mod for Minecraft 1.21.11. It adds combat, movement, ESP and base-finding modules, and a menu where you switch them on and change their settings. It is a cheat client, so use it where cheats are allowed.",
-  "strip": [
-    {
-      "icon": "bolt",
-      "title": "Combat and movement",
-      "sub": "Auras, aim help, flight, speed",
-      "page": "features"
-    },
-    {
-      "icon": "puzzle",
-      "title": "170+ modules",
-      "sub": "Each one has settings you can change",
-      "page": "features"
-    },
-    {
-      "icon": "palette",
-      "title": "Your own layout",
-      "sub": "Themes, a HUD editor and profiles",
-      "page": "help"
-    },
-    {
-      "icon": "shield",
-      "title": "Panic button",
-      "sub": "Switches every module off at once",
-      "page": "help"
-    },
-    {
-      "icon": "search",
-      "title": "Base finding",
-      "sub": "Scanners for chunks and bases",
-      "page": "features"
-    },
-    {
-      "icon": "gift",
-      "title": "Free to download",
-      "sub": "Every release is in the timeline",
-      "page": "information"
+package com.zlorbie788.zeus.ui;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.resources.sounds.SimpleSoundInstance;
+import net.minecraft.sounds.SoundEvents;
+
+import java.util.Random;
+
+final class MenuStorm {
+    private MenuStorm() {}
+
+    static final float LENGTH = 120f;
+    private static final float RAMP_UP = 24f;
+    private static final float RAMP_DOWN = 20f;
+    private static final float SLANT_DEG = 11f;
+
+    private static final Random RNG = new Random();
+    private static long last;
+    private static float visit;
+    private static float nextStart = pickFirst();
+    private static boolean storming;
+    private static float clock;
+
+    static float level;
+
+    static boolean rising = true;
+
+    static float cloudClock;
+    private static float rainClock;
+
+    static float flash;
+    static float flashX = 0.5f;
+    static float flashY = 0.3f;
+    private static float nextStrike;
+    private static float strikeAt = -10f;
+    private static int strikeSeed;
+    private static boolean strikeBolt;
+    private static float boltX;
+    private static float boltDrift;
+    private static float boltDepth;
+    private static float thunderAt = -1f;
+    private static float thunderPitch = 0.8f;
+    private static float thunderVolume = 0.8f;
+
+    private static float pickFirst() {
+        return 60f + 40f * RNG.nextFloat();
     }
-  ],
-  "requirements": [
-    {
-      "title": "Minecraft",
-      "text": "Java Edition 1.21.11"
-    },
-    {
-      "title": "Loader",
-      "text": "Fabric Loader 0.18 or newer"
-    },
-    {
-      "title": "Dependency",
-      "text": "Fabric API for 1.21.11"
-    },
-    {
-      "title": "Java",
-      "text": "Java 21 or newer"
+
+    static void reset() {
+        visit = 0f;
+        nextStart = pickFirst();
+        storming = false;
+        clock = 0f;
+        level = 0f;
+        flash = 0f;
+        strikeAt = -10f;
+        nextStrike = 0f;
+        thunderAt = -1f;
+        last = 0;
     }
-  ],
-  "install": [
-    {
-      "title": "Install Fabric",
-      "text": "Download the Fabric installer from fabricmc.net and create a 1.21.11 profile."
-    },
-    {
-      "title": "Add Fabric API",
-      "text": "Put the Fabric API jar for 1.21.11 into your .minecraft/mods folder."
-    },
-    {
-      "title": "Add Zeus",
-      "text": "Copy the Zeus jar (not the -sources one) into the same mods folder."
-    },
-    {
-      "title": "Start the game",
-      "text": "Launch the Fabric 1.21.11 profile. Zeus loads automatically."
-    },
-    {
-      "title": "Open the menu",
-      "text": "Press Z in a world to open the Zeus menu (you can rebind it in Minecraft's controls)."
+
+    static float update() {
+        long now = com.zlorbie788.zeus.core.Clock.nanoTime();
+        float dt = last == 0 ? 0f : (now - last) / 1e9f;
+        last = now;
+        if (dt > 2.5f) {
+            float keep = cloudClock;
+            reset();
+            last = now;
+            cloudClock = keep;
+            dt = 0f;
+        }
+        float anim = Math.min(dt, 0.05f);
+        boolean allowed = UiSettings.MENU_STORM.on();
+        if (!storming) {
+            visit += dt;
+            if (allowed && visit >= nextStart) {
+                storming = true;
+                clock = 0f;
+                nextStrike = RAMP_UP * 0.5f + RNG.nextFloat() * 3f;
+                strikeAt = -10f;
+            }
+        } else {
+            clock += dt;
+            if (!allowed) clock = Math.max(clock, LENGTH - RAMP_DOWN);
+            if (clock >= LENGTH) {
+                storming = false;
+                visit = 0f;
+                nextStart = 90f + 120f * RNG.nextFloat();
+            }
+        }
+        if (storming) {
+            rising = clock < LENGTH * 0.5f && allowed;
+            float up = Math.min(1f, clock / RAMP_UP);
+            float down = Math.min(1f, (LENGTH - clock) / RAMP_DOWN);
+            float v = Math.max(0f, Math.min(up, down));
+            level = v * v * (3f - 2f * v);
+        } else {
+            level = 0f;
+        }
+        cloudClock += anim * (1f + 1.4f * level);
+        rainClock += anim;
+        lightning();
+        sounds();
+        return cloudClock;
     }
-  ],
-  "warning": "Many servers ban cheat clients, and your account can be punished for using one. Only use Zeus where cheats are allowed, and read the server's rules first. What you do with it is your responsibility.",
-  "disclaimer": "Zeus is an independent project. It is not affiliated with Mojang Studios or Microsoft. It is a client-side mod, so it only changes your own game.",
-  "tutorial": [
-    {
-      "title": "Open the menu",
-      "text": "Join a world or server and press Z. The modules are grouped into categories such as Combat, Movement, Visuals and Base Finding."
-    },
-    {
-      "title": "Find a module",
-      "text": "Type in the search box at the top. It matches names, descriptions and categories, and it copes with small typos."
-    },
-    {
-      "title": "Switch it on",
-      "text": "Click a module's switch. Click the rest of the row to open its settings."
-    },
-    {
-      "title": "Place your HUD",
-      "text": "Type /zeus hud, then drag the widgets where you want them. They snap to the screen edges, the centre lines and each other."
-    },
-    {
-      "title": "Open the control center",
-      "text": "Run /zeus website and open the link it prints in chat. You can also switch on Web Dashboard in the Interface category. The Settings page then lets you change modules from your browser."
-    },
-    {
-      "title": "Panic when you need to",
-      "text": "Panic switches every module off at once. Use the button in the menu, the Settings page or /zeus panic."
+
+    private static void lightning() {
+        flash = 0f;
+        if (!storming || level < 0.3f) return;
+        if (UiSettings.CALM.on() || Perf.fast()) {
+            if (clock >= nextStrike) {
+                nextStrike = clock + 6f + RNG.nextFloat() * 10f;
+                scheduleThunder(0.4f + RNG.nextFloat());
+            }
+            return;
+        }
+        if (clock >= nextStrike) {
+            strikeAt = clock;
+            strikeSeed++;
+            strikeBolt = RNG.nextFloat() < 0.68f;
+            boltX = 0.12f + 0.76f * RNG.nextFloat();
+            boltDrift = (RNG.nextFloat() - 0.5f) * 0.24f;
+            boltDepth = 0.45f + 0.30f * RNG.nextFloat();
+            flashX = strikeBolt ? boltX : 0.15f + 0.7f * RNG.nextFloat();
+            flashY = 0.22f + 0.2f * RNG.nextFloat();
+            nextStrike = clock + (2.0f + 6.5f * RNG.nextFloat()) * (1.5f - 0.55f * level);
+            scheduleThunder(0.25f + 1.4f * RNG.nextFloat());
+        }
+        float e = clock - strikeAt;
+        if (e < 0f || e > 1.1f) return;
+        float v = e < 0.07f ? e / 0.07f : e < 0.15f ? 0.30f : e < 0.24f ? 1f : Math.max(0f, 1f - (e - 0.24f) / 0.8f);
+        flash = v * (0.55f + 0.45f * level);
     }
-  ],
-  "commands": [
-    {
-      "cmd": "/zeus",
-      "text": "Opens the Zeus panel. Same as pressing Z."
-    },
-    {
-      "cmd": "/zeus hud",
-      "text": "Opens the HUD editor, where you move and scale widgets."
-    },
-    {
-      "cmd": "/zeus on <module>",
-      "text": "Switches a module on. Press Tab to see the module IDs."
-    },
-    {
-      "cmd": "/zeus off <module>",
-      "text": "Switches a module off."
-    },
-    {
-      "cmd": "/zeus toggle <module>",
-      "text": "Switches a module on or off, whichever it is not."
-    },
-    {
-      "cmd": "/zeus list",
-      "text": "Lists the modules and shows which are on."
-    },
-    {
-      "cmd": "/zeus panic",
-      "text": "Switches every module off."
-    },
-    {
-      "cmd": "/zeus tutorial",
-      "text": "Replays the animated tour of the categories."
-    },
-    {
-      "cmd": "/zeus website",
-      "text": "Starts the website and prints a clickable link in chat."
-    },
-    {
-      "cmd": "/zeus website status",
-      "text": "Says whether the website is running and on which port."
-    },
-    {
-      "cmd": "/zeus website stop",
-      "text": "Stops the website."
-    },
-    {
-      "cmd": "/zeus waypoint add <x> <y> <z> [name]",
-      "text": "Saves a waypoint at those coordinates."
+
+    private static void scheduleThunder(float delay) {
+        thunderAt = clock + delay;
+        thunderPitch = 0.62f + 0.4f * RNG.nextFloat();
+        thunderVolume = 0.45f + 0.45f * RNG.nextFloat();
     }
-  ],
-  "credits": [
-    {
-      "icon": "bolt",
-      "name": "Zlorbie788",
-      "role": "Creator and developer",
-      "text": "Wrote the client, the code, the website and the images.",
-      "tag": "Client, code, website, images"
-    },
-    {
-      "icon": "puzzle",
-      "name": "mitko_pandata",
-      "role": "Ideas",
-      "text": "Suggested modules and features.",
-      "tag": "Modules and feature ideas"
-    },
-    {
-      "icon": "play",
-      "name": "NikiTheFacter",
-      "role": "Animations",
-      "text": "Made the animations.",
-      "tag": "Animations"
-    },
-    {
-      "icon": "users",
-      "name": "The community",
-      "role": "Testing",
-      "text": "Tests builds, reports bugs and shares configs on Discord.",
-      "tag": "Testing and feedback"
+
+    private static void sounds() {
+        if (!storming || !UiSettings.THUNDER.on()) return;
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc == null) return;
+            if (thunderAt >= 0f && clock >= thunderAt) {
+                thunderAt = -1f;
+                var ev = RNG.nextFloat() < 0.7f ? SoundEvents.LIGHTNING_BOLT_THUNDER : SoundEvents.LIGHTNING_BOLT_IMPACT;
+                mc.getSoundManager().play(SimpleSoundInstance.forUI(ev, thunderPitch, thunderVolume * (0.4f + 0.6f * level)));
+            }
+        } catch (Throwable ignored) {
+        }
     }
-  ],
-  "references": [
-    {
-      "icon": "cube",
-      "name": "Meteor Client",
-      "kind": "Base mod style",
-      "text": "The general layout of a cheat client (module list, settings, categories, HUD) follows how Meteor Client does it.",
-      "url": "https://meteorclient.com"
-    },
-    {
-      "icon": "puzzle",
-      "name": "Fabric",
-      "kind": "Toolchain",
-      "text": "Zeus is built on Fabric Loader, Fabric API and Loom.",
-      "url": "https://fabricmc.net"
-    },
-    {
-      "icon": "cube",
-      "name": "Litematica",
-      "kind": "Schematic workflow",
-      "text": "The schematic library and builder read .litematic files and look in Litematica's schematics folder.",
-      "url": "https://github.com/maruohon/litematica"
-    },
-    {
-      "icon": "palette",
-      "name": "Inter and Exo 2",
-      "kind": "Website fonts",
-      "text": "The website uses these typefaces, under the SIL Open Font License.",
-      "url": "https://fonts.google.com"
-    },
-    {
-      "icon": "palette",
-      "name": "Cinzel Decorative and GFS Didot",
-      "kind": "Menu lettering",
-      "text": "Used for the lettering on the Zeus main menu and the news scroll, under the SIL Open Font License.",
-      "url": "https://fonts.google.com"
-    },
-    {
-      "icon": "shield",
-      "name": "DonutSMP",
-      "kind": "Server context",
-      "text": "A few helpers (Region Map, Goliath RTP, Media Base Finder) are written around how that server works. Zeus is not affiliated with it."
+
+    static float sinceStrike() {
+        return storming && strikeAt > -5f ? clock - strikeAt : -1f;
     }
-  ],
-  "safe": {
-    "title": "Is Zeus safe?",
-    "lead": "Yes, if you download it from an official place. Here is what you can check yourself.",
-    "checks": [
-      {
-        "icon": "code",
-        "title": "You can read the code",
-        "text": "Every file of this release is on the Source code page. You, or someone you trust, can read what it does before you run it."
-      },
-      {
-        "icon": "lock",
-        "title": "No accounts, no passwords",
-        "text": "Zeus never asks for your Minecraft or Microsoft login. If something calling itself Zeus asks for a password, it is not Zeus."
-      },
-      {
-        "icon": "eye",
-        "title": "No tracking",
-        "text": "There is no Zeus server and no telemetry. Three optional modules do connect out: Discord Webhook (to the address you type in), Staff Live (to YouTube, TikTok and Twitch) and Update Checker (to the version address you set)."
-      },
-      {
-        "icon": "shield",
-        "title": "A jar, not an installer",
-        "text": "Zeus is a Fabric mod .jar that goes in your mods folder. Be wary of any copy that comes as an .exe or tells you to turn off your antivirus."
-      },
-      {
-        "icon": "check",
-        "title": "Check the file",
-        "text": "The Download page shows the SHA-256 of the official jar. Hash your download and compare the two. If they differ, do not run it."
-      }
-    ],
-    "github": "If you would rather not download from this site, get the same jar from the project's GitHub page, or build it yourself from the source, and compare the checksum.",
-    "risk": "The bigger risk is on the game side. Many servers ban cheat clients, so read the rules of every server before you use Zeus."
-  },
-  "home": {
-    "about2": [
-      "Combat, movement, ESP and base finding",
-      "A menu with a HUD editor",
-      "Profiles, favourites and a web control center"
-    ],
-    "disc": [
-      "Ask for help",
-      "Share configs and setups",
-      "Report bugs and suggest modules",
-      "Hear about new releases first"
-    ]
-  },
-  "banner": {
-    "on": false,
-    "kind": "info",
-    "text": "",
-    "label": "",
-    "href": ""
-  }
+
+    static int strikeId() {
+        return strikeSeed;
+    }
+
+    static boolean on() {
+        return level > 0.004f;
+    }
+
+    static void bolt(GuiGraphics g, int width, int height) {
+        if (!strikeBolt || level < 0.3f || UiSettings.CALM.on() || Perf.fast()) return;
+        float e = clock - strikeAt;
+        if (e < 0f || e > 0.9f) return;
+        float fl = e < 0.08f ? e / 0.08f : e < 0.18f ? 0.35f : e < 0.3f ? 1f : Math.max(0f, 1f - (e - 0.3f) / 0.6f);
+        int seed = strikeSeed * 7 + (e > 0.18f && e < 0.3f ? 1 : 0);
+        float x0 = width * boltX;
+        float x1 = x0 + width * boltDrift;
+        float y1 = height * (0.50f + 0.32f * boltDepth);
+        float grow = Math.min(1f, e / 0.06f + 0.15f);
+        Lightning.bolt(g, x0, -4, x1, y1, grow, seed, Math.min(1f, fl * 1.1f), 0xFF8EC8FF, 0xFFD6E6FF, Math.max(1.3f, height / 170f), Perf.fast() ? 1 : 2, 0.7f, 0.3f, 3);
+        if (grow >= 1f) Lightning.bloom(g, x1, y1, height * 0.10f, 0xFFB4D2FF, 0.55f * fl);
+    }
+
+    private static final int RAIN_TEX = 512;
+
+    static void rain(GuiGraphics g, int width, int height) {
+        if (!on() || UiSettings.CALM.on() || Perf.fast() || MenuSnow.level() > 0.5f) return;
+        String[] names = {"mid", "near"};
+        float[] side = {1.0f, 1.45f};
+        float[] speed = {1.7f, 2.6f};
+        float[] alpha = {0.95f, 0.90f};
+        double ang = Math.toRadians(SLANT_DEG);
+        float dx = (float) -Math.sin(ang);
+        float dy = (float) Math.cos(ang);
+        float a = (float) Math.pow(level, 0.85) * 0.85f;
+        int gs = Tex.guiScale();
+        for (int i = 0; i < 2; i++) {
+            int ts = Math.max(64, Math.round(height * side[i]));
+            int px = Math.min(ts * gs, RAIN_TEX);
+            Tex.Img img = Tex.fitted("storm_rain_" + names[i], "textures/gui/menu/rain_" + names[i] + ".png", px, px, false, 0, 0);
+            if (img == null) continue;
+            float dist = rainClock * speed[i] * height;
+            float ox = ((dist * dx) % ts + ts) % ts;
+            float oy = ((dist * dy) % ts + ts) % ts;
+            int tint = Draw.rgba(0xFFFFFFFF, a * alpha[i]);
+            int x0 = Math.round(ox) - ts;
+            int y0 = Math.round(oy) - ts;
+            for (int x = x0; x < width; x += ts) {
+                for (int y = y0; y < height; y += ts) img.draw(g, x, y, ts, ts, tint);
+            }
+        }
+    }
+
+    static void warm(int width, int height, float cs, int gs, int cloudPx) {
+        try {
+            int kh = Math.round(cloudPx * 700f / 2560f);
+            Tex.fitted("menu_storm_a", "textures/gui/menu/storm_a.png", cloudPx, kh, false, 0, 0);
+            Tex.fitted("menu_storm_b", "textures/gui/menu/storm_b.png", cloudPx, kh, false, 0, 0);
+            int fh = Math.round(cloudPx * 1000f / 2560f);
+            Tex.fitted("menu_storm_full_a", "textures/gui/menu/storm_full_a.png", cloudPx, fh, false, 0, 0);
+            Tex.fitted("menu_storm_full_b", "textures/gui/menu/storm_full_b.png", cloudPx, fh, false, 0, 0);
+            Tex.fitted("menu_storm_scud", "textures/gui/menu/storm_scud.png", cloudPx, Math.round(cloudPx * 520f / 2560f), false, 0, 0);
+            String[] names = {"mid", "near"};
+            for (int i = 0; i < 2; i++) {
+                int px = Math.min(Math.round(height * (i == 0 ? 1.0f : 1.45f)) * gs, RAIN_TEX);
+                Tex.fitted("storm_rain_" + names[i], "textures/gui/menu/rain_" + names[i] + ".png", px, px, false, 0, 0);
+            }
+        } catch (RuntimeException | LinkageError e) {
+            com.zlorbie788.zeus.core.Zeus.LOG.warn("Storm pictures could not be prepared", e);
+        }
+    }
 }

@@ -174,8 +174,8 @@ public final class Tex {
         Img have = CACHE.get(key);
         if (have != null) return have;
         try (InputStream in = Tex.class.getResourceAsStream("/assets/zeus/" + path)) {
-            if (in == null) return null;
-            NativeImage image = NativeImage.read(NativeImage.Format.RGBA, in);
+            NativeImage image = in != null ? NativeImage.read(NativeImage.Format.RGBA, in) : derived(path);
+            if (image == null) return null;
             Img img = register(key, image, true);
             CACHE.put(key, img);
             return img;
@@ -183,6 +183,98 @@ public final class Tex {
             Zeus.LOG.warn("Could not load picture {}", path, e);
             return null;
         }
+    }
+
+    /** Missed lookups of pictures that are not shipped and cannot be made from another one. */
+    private static final java.util.Set<String> NOT_DERIVED = new java.util.HashSet<>();
+
+    /**
+     * Smaller copies of some pictures are not shipped (it keeps the jar small); they are made here from the next
+     * size up, exactly as the tools made them: a 2 x 2 box average of every channel. Knife sheets: level 2 from
+     * level 1 (the light rows keep their 2/255 marker alpha and their clear border rows). Crates: 256 and 128
+     * from 512.
+     */
+    private static NativeImage derived(String path) {
+        if (NOT_DERIVED.contains(path)) return null;
+        NativeImage out = null;
+        try {
+            if (path.startsWith("textures/knives/hd/") && path.endsWith("_2.png")) {
+                NativeImage src = read(path.substring(0, path.length() - 6) + "_1.png");
+                if (src != null) {
+                    try (src) {
+                        out = half(src, 7);
+                    }
+                }
+            } else if (path.startsWith("textures/crates/") && (path.endsWith("_256.png") || path.endsWith("_128.png"))) {
+                NativeImage src = read(path.substring(0, path.lastIndexOf('_')) + "_512.png");
+                if (src != null) {
+                    try (src) {
+                        if (path.endsWith("_256.png")) out = half(src, 0);
+                        else {
+                            try (NativeImage mid = half(src, 0)) {
+                                out = half(mid, 0);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (IOException | RuntimeException e) {
+            Zeus.LOG.warn("Could not make picture {}", path, e);
+        }
+        if (out == null) NOT_DERIVED.add(path);
+        return out;
+    }
+
+    private static NativeImage read(String path) throws IOException {
+        try (InputStream in = Tex.class.getResourceAsStream("/assets/zeus/" + path)) {
+            return in == null ? null : NativeImage.read(NativeImage.Format.RGBA, in);
+        }
+    }
+
+    /**
+     * Half size by 2 x 2 box average. With cells > 0 the picture is a knife sheet of that many rows of cells:
+     * a cell whose alpha never goes above 2 is a light cell, which keeps alpha 2 wherever it has any light and
+     * clear top and bottom rows.
+     */
+    private static NativeImage half(NativeImage src, int cells) {
+        int sw = src.getWidth(), sh = src.getHeight();
+        int w = Math.max(1, sw / 2), h = Math.max(1, sh / 2);
+        int[] in = new int[sw * sh];
+        for (int y = 0; y < sh; y++) {
+            for (int x = 0; x < sw; x++) in[y * sw + x] = src.getPixel(x, y);
+        }
+        boolean[] light = new boolean[Math.max(1, cells)];
+        int sch = cells > 0 ? sh / cells : sh;
+        if (cells > 0) {
+            for (int c = 0; c < cells; c++) {
+                int max = 0;
+                for (int i = c * sch * sw; i < (c + 1) * sch * sw; i++) max = Math.max(max, in[i] >>> 24);
+                light[c] = max > 0 && max <= 2;
+            }
+        }
+        int ch = cells > 0 ? h / cells : h;
+        NativeImage out = new NativeImage(w, h, false);
+        for (int y = 0; y < h; y++) {
+            int r0 = (2 * y) * sw, r1 = Math.min(2 * y + 1, sh - 1) * sw;
+            int cell = cells > 0 ? Math.min(cells - 1, y / ch) : 0;
+            int inCell = cells > 0 ? y - cell * ch : -1;
+            for (int x = 0; x < w; x++) {
+                int x1 = Math.min(2 * x + 1, sw - 1);
+                int p0 = in[r0 + 2 * x], p1 = in[r0 + x1], p2 = in[r1 + 2 * x], p3 = in[r1 + x1];
+                int v = 0;
+                for (int sft = 0; sft < 32; sft += 8) {
+                    int sum = ((p0 >>> sft) & 255) + ((p1 >>> sft) & 255) + ((p2 >>> sft) & 255) + ((p3 >>> sft) & 255);
+                    v |= ((sum + 2) >> 2) << sft;
+                }
+                if (cells > 0 && light[cell]) {
+                    boolean any = ((p0 | p1 | p2 | p3) >>> 24) != 0;
+                    int a = any && inCell >= 2 && inCell < ch - 2 ? 2 : 0;
+                    v = (v & 0x00FFFFFF) | (a << 24);
+                }
+                out.setPixel(x, y, v);
+            }
+        }
+        return out;
     }
 
     public static BufferedImage image(String path) {
@@ -250,6 +342,17 @@ public final class Tex {
         if (have != null && have.w == w && have.h == h) return have;
         if (have != null) have.release();
         Img img = blank(w, h);
+        img.put(argb);
+        CACHE.put(key, img);
+        return img;
+    }
+
+    /** Like made, but sampled smoothly (linear filtering): for shapes drawn at any size. */
+    public static Img madeSmooth(String key, int[] argb, int w, int h) {
+        Img have = CACHE.get(key);
+        if (have != null && have.w == w && have.h == h) return have;
+        if (have != null) have.release();
+        Img img = register(key, new NativeImage(w, h, true), true);
         img.put(argb);
         CACHE.put(key, img);
         return img;

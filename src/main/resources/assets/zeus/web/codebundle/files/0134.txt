@@ -1,333 +1,170 @@
 package com.zlorbie788.zeus.mods;
 
 import com.zlorbie788.zeus.core.Category;
+import com.zlorbie788.zeus.core.Dmg;
+import com.zlorbie788.zeus.core.Env;
 import com.zlorbie788.zeus.core.Module;
 import com.zlorbie788.zeus.core.Setting;
-import com.zlorbie788.zeus.core.Zeus;
-import com.zlorbie788.zeus.ui.Accent;
 import com.zlorbie788.zeus.ui.Draw;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.level.block.RespawnAnchorBlock;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.Vec3;
 
-import java.util.Locale;
+/**
+ * What the blast would do, before you commit to it. Crystal and anchor auras refuse to act when a
+ * blast would hurt them more than the target, and until now that refusal was silent: the aura just
+ * did nothing. This shows both numbers on the crosshair, and turns the whole card red when the
+ * blast would kill you, so "it does not work" becomes "of course it does not, it would kill me".
+ */
+public final class DamagePreview extends Module {
+    private final Setting.Num radius = add(new Setting.Num("Look for enemies",
+            "How far around the blast a target is looked for when the crosshair is on a crystal or a charged anchor.",
+            12, 4, 32, 2, " blocks"));
+    private final Setting.Bool bars = add(new Setting.Bool("Health bars",
+            "Draw a small bar under each number, so the damage reads against the health it is compared to.", true));
+    private final Setting.Num scale = add(new Setting.Num("Size", "Size of the card.", 100, 70, 160, 10, " %"));
+    private final Setting.Bool danger = add(new Setting.Bool("Warn when it kills me",
+            "Turns the card red when the blast would take your last heart.", true));
 
-/** Two more boxes for the Panels page: how your connection behaves, and what this play session looked like. */
-public final class NetPanels {
-    private NetPanels() {}
+    private Vec3 blast;
+    private float self;
+    private float theirs;
+    private String who;
 
-    private static int pingColour(int ms) {
-        return ms < 60 ? 0xFF5EE6A0 : ms < 120 ? 0xFFFFC857 : ms < 200 ? 0xFFFF8F4D : 0xFFFF5C6C;
+    public DamagePreview() {
+        super("damagepreview", "Damage Preview",
+                "While you look at an end crystal or a charged respawn anchor, shows the damage it would do to the nearest enemy and to you.",
+                Category.COMBAT);
+        alias("dmgpreview", "blast preview", "crystal damage");
+        light();
+        anywhere();
+        onByDefault();
     }
 
-    // ------------------------------------------------------------------ Net Info
-
-    /** Ping now, its average and spread, and a little graph of the last minute. */
-    public static final class NetInfo extends Module {
-        private final Setting.Choice corner = Hud.corner(this, 0);
-        private final Setting.Bool graph = add(new Setting.Bool("Graph", "A bar for every sample of the last while, coloured by how good the ping was.", true));
-        private final Setting.Num seconds = add(new Setting.Num("Memory", "How many seconds the graph and the average cover.", 60, 15, 180, 5, " s")).showIf(() -> this.graph.on());
-        private final Setting.Bool spread = add(new Setting.Bool("Lowest, average, highest", "The range of the ping over the memory.", true));
-        private final Setting.Bool jitter = add(new Setting.Bool("Jitter", "How much the ping jumps around. High jitter feels like lag even when the ping is low.", true));
-        private final Setting.Bool warn = add(new Setting.Bool("Warn when it is bad", "Tints the box red when the ping is over 250 ms or very jumpy.", true));
-        private final int[] ring = new int[180];
-        private int count;
-        private int head;
-        private int ticks;
-
-        public NetInfo() {
-            super("netinfo", "Net Info", "Your ping, how steady it is and a graph of the last minute.", Category.PANELS);
-            anywhere();
+    private static Vec3 crystal(Minecraft mc) {
+        if (mc.hitResult instanceof EntityHitResult ehr) {
+            Entity e = ehr.getEntity();
+            if (e.getType() == EntityType.END_CRYSTAL && e.isAlive()) return e.position();
+            return null;
         }
-
-        @Override
-        protected void onEnable() {
-            count = 0;
-            head = 0;
-        }
-
-        private int ping(Minecraft mc) {
-            try {
-                if (mc.getConnection() != null && mc.player != null) {
-                    PlayerInfo info = mc.getConnection().getPlayerInfo(mc.player.getUUID());
-                    if (info != null) return Math.max(0, info.getLatency());
+        if (mc.hitResult instanceof BlockHitResult bhr && bhr.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK
+                && mc.level != null) {
+            BlockPos p = bhr.getBlockPos();
+            BlockState st = mc.level.getBlockState(p);
+            if (st.is(Blocks.RESPAWN_ANCHOR)) {
+                int charges = 0;
+                try {
+                    charges = st.getValue(RespawnAnchorBlock.CHARGE);
+                } catch (RuntimeException ignored) {
                 }
-            } catch (RuntimeException ignored) {
-                // no connection
-            }
-            return -1;
-        }
-
-        @Override
-        protected void onTick(Minecraft mc) {
-            if (++ticks % 20 != 0) return;
-            int p = ping(mc);
-            if (p < 0) return;
-            ring[head] = p;
-            head = (head + 1) % ring.length;
-            if (count < ring.length) count++;
-        }
-
-        @Override
-        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
-            if (mc.player == null) return;
-            int n = Math.min(count, seconds.i());
-            int now = n == 0 ? Math.max(0, ping(mc)) : ring[(head - 1 + ring.length) % ring.length];
-            int lo = Integer.MAX_VALUE;
-            int hi = 0;
-            long sum = 0;
-            for (int i = 0; i < n; i++) {
-                int v = ring[(head - 1 - i + ring.length * 2) % ring.length];
-                lo = Math.min(lo, v);
-                hi = Math.max(hi, v);
-                sum += v;
-            }
-            int avg = n == 0 ? now : (int) (sum / n);
-            double var = 0;
-            for (int i = 0; i < n; i++) {
-                double d = ring[(head - 1 - i + ring.length * 2) % ring.length] - avg;
-                var += d * d;
-            }
-            int jit = n < 2 ? 0 : (int) Math.round(Math.sqrt(var / n));
-            if (n == 0) lo = now;
-
-            int rows = 1 + (spread.on() ? 1 : 0) + (jitter.on() ? 1 : 0);
-            int gw = graph.on() ? 60 : 0;
-            int bw = Math.max(gw + 12, 96);
-            int bh = rows * 11 + 6 + (graph.on() ? 20 : 0);
-            int[] at = Hud.place(corner.index(), bw, bh, w, h);
-            Hud.panel(g, at[0], at[1], bw, bh);
-            if (warn.on() && (now > 250 || jit > 80)) g.fill(at[0] + 2, at[1], at[0] + bw, at[1] + bh, Draw.rgba(0xFFFF3B4D, 0.14f));
-            int y = at[1] + 4;
-            Draw.text(g, "Ping", at[0] + 7, y, Accent.DIM);
-            Draw.textRight(g, now + " ms", at[0] + bw - 5, y, pingColour(now));
-            y += 11;
-            if (spread.on()) {
-                Draw.text(g, "Low / avg / high", at[0] + 7, y, Accent.DIM);
-                Draw.textRight(g, lo + "/" + avg + "/" + hi, at[0] + bw - 5, y, Accent.TEXT);
-                y += 11;
-            }
-            if (jitter.on()) {
-                Draw.text(g, "Jitter", at[0] + 7, y, Accent.DIM);
-                Draw.textRight(g, "±" + jit + " ms", at[0] + bw - 5, y, jit > 60 ? 0xFFFF8F4D : Accent.TEXT);
-                y += 11;
-            }
-            if (graph.on()) {
-                int gx = at[0] + 7;
-                int gy = at[1] + bh - 5;
-                int gwid = bw - 14;
-                int shown = Math.min(n, gwid / 2);
-                int top = Math.max(100, hi);
-                for (int i = 0; i < shown; i++) {
-                    int v = ring[(head - 1 - i + ring.length * 2) % ring.length];
-                    int bar = Math.max(1, Math.round(14f * Math.min(1f, v / (float) top)));
-                    int x = gx + gwid - (i + 1) * 2;
-                    g.fill(x, gy - bar, x + 1, gy, Draw.rgba(pingColour(v), 0.9f));
-                }
-                g.fill(gx, gy, gx + gwid, gy + 1, Draw.rgba(Accent.LINE, 1f));
+                if (charges > 0) return Vec3.atCenterOf(p);
             }
         }
-
-        @Override
-        public String info() {
-            return count == 0 ? null : ring[(head - 1 + ring.length) % ring.length] + " ms";
-        }
+        return null;
     }
 
-    // ------------------------------------------------------------------ Session
-
-    /** Time played this session, distance walked and your top speed. */
-    public static final class Session extends Module {
-        private final Setting.Choice corner = Hud.corner(this, 2);
-        private final Setting.Bool time = add(new Setting.Bool("Time played", "How long since you joined this world or server.", true));
-        private final Setting.Bool distance = add(new Setting.Bool("Distance", "How far you have travelled (flat distance, teleports are not counted).", true));
-        private final Setting.Bool speed = add(new Setting.Bool("Speed", "Your speed now and your top speed in blocks per second.", true));
-        private final Setting.Bool pos = add(new Setting.Bool("Blocks per minute", "Your average travel speed over the last minute.", false));
-        private long joined;
-        private double dist;
-        private double top;
-        private double lastX;
-        private double lastZ;
-        private boolean have;
-        private double now;
-        private final double[] minute = new double[60];
-        private int mi;
-        private int ticks;
-        private double secDist;
-        private Object lastLevel;
-
-        public Session() {
-            super("session", "Session", "Time played, distance travelled and your top speed since you joined.", Category.PANELS);
-            anywhere();
-        }
-
-        @Override
-        protected void onEnable() {
-            reset();
-        }
-
-        private void reset() {
-            joined = System.currentTimeMillis();
-            dist = 0;
-            top = 0;
-            have = false;
-            java.util.Arrays.fill(minute, 0);
-        }
-
-        @Override
-        protected void onTick(Minecraft mc) {
-            if (mc.player == null || mc.level == null) return;
-            if (mc.level != lastLevel) {
-                lastLevel = mc.level;
-                if (joined == 0 || System.currentTimeMillis() - joined > 2000) reset();
-            }
-            double x = mc.player.getX();
-            double z = mc.player.getZ();
-            if (have) {
-                double d = Math.hypot(x - lastX, z - lastZ);
-                if (d < 12) {
-                    dist += d;
-                    secDist += d;
-                    now = d * 20.0;
-                    top = Math.max(top, now);
-                }
-            }
-            lastX = x;
-            lastZ = z;
-            have = true;
-            if (++ticks % 20 == 0) {
-                minute[mi] = secDist;
-                mi = (mi + 1) % minute.length;
-                secDist = 0;
+    @Override
+    protected void onTick(Minecraft mc) {
+        blast = null;
+        who = null;
+        if (mc.player == null || mc.level == null || mc.screen != null) return;
+        Vec3 c = crystal(mc);
+        if (c == null) return;
+        boolean anchor = mc.hitResult instanceof BlockHitResult;
+        float power = anchor ? 5f : 6f;
+        float mine = Dmg.explosion(mc, c, mc.player, power);
+        LivingEntity best = null;
+        float bestDmg = -1f;
+        for (Entity e : Env.entities(mc, radius.get())) {
+            if (!(e instanceof LivingEntity le) || le == mc.player || !le.isAlive() || le.isSpectator()) continue;
+            float d = Dmg.explosion(mc, c, le, power);
+            if (d <= 0f) continue;
+            if (d > bestDmg) {
+                bestDmg = d;
+                best = le;
             }
         }
+        blast = c;
+        self = mine;
+        theirs = Math.max(0f, bestDmg);
+        who = best == null ? null : best.getName().getString();
+    }
 
-        @Override
-        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
-            if (mc.player == null) return;
-            java.util.List<String[]> rows = new java.util.ArrayList<>();
-            if (time.on()) {
-                long s = (System.currentTimeMillis() - joined) / 1000;
-                rows.add(new String[] {"Time", s >= 3600 ? String.format(Locale.ROOT, "%dh %02dm", s / 3600, s % 3600 / 60) : String.format(Locale.ROOT, "%dm %02ds", s / 60, s % 60)});
+    private static float health(LivingEntity e) {
+        return e.getHealth() + e.getAbsorptionAmount();
+    }
+
+    @Override
+    protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+        if (blast == null || mc.player == null) return;
+        float sc = scale.f() / 100f;
+        boolean lethal = danger.on() && self >= health(mc.player);
+        int rows = who == null ? 1 : 2;
+        int cw = Math.round(126 * sc);
+        int ch = Math.round((14 + rows * 15) * sc);
+        int x = w / 2 - cw / 2;
+        int y = h / 2 + Math.round(26 * sc);
+        if (y + ch > h - 6) y = h / 2 - ch - Math.round(26 * sc);
+
+        int edge = lethal ? 0xFFFF3B4D : self > 0 ? 0xFFFFC44D : 0xFF3C92FF;
+        Draw.rrect(g, x, y, cw, ch, 5, lethal ? 0xF01A0509 : 0xE60B1220);
+        Draw.rrectLine(g, x, y, cw, ch, 5, Draw.rgba(edge, 0.85f));
+
+        String head = lethal ? "FATAL TO YOU" : self > 0 ? "BLAST" : "SAFE BLAST";
+        Draw.text(g, head, x + 6, y + 4, lethal ? 0xFFFF6B78 : 0xFFE6EDFA);
+        String crystals = mc.hitResult instanceof BlockHitResult ? "anchor" : "crystal";
+        Draw.text(g, crystals, x + cw - 6 - Draw.width(crystals), y + 4, 0xFF7F93BD);
+
+        int ry = y + Math.round(16 * sc);
+        if (who != null) {
+            int col = theirs >= health(mc.player) ? 0xFFFF9AA4 : 0xFF5EE67A;
+            Draw.text(g, Draw.fit(who, Math.round(cw * 0.55f)), x + 6, ry, 0xFFC3D2F2);
+            String val = String.valueOf(Math.round(theirs));
+            Draw.text(g, val, x + cw - 6 - Draw.width(val), ry, col);
+            if (bars.on()) {
+                LivingEntity best = nearest(mc);
+                float total = best == null ? 20f : Math.max(1f, best.getMaxHealth());
+                float frac = best == null ? 0f : Math.min(1f, theirs / total);
+                int bw = cw - 12;
+                g.fill(x + 6, ry + 9, x + 6 + bw, ry + 11, 0x66000000);
+                g.fill(x + 6, ry + 9, x + 6 + Math.round(bw * frac), ry + 11, Draw.rgba(col, 0.9f));
             }
-            if (distance.on()) rows.add(new String[] {"Distance", dist >= 1000 ? String.format(Locale.ROOT, "%.2f km", dist / 1000) : Math.round(dist) + " m"});
-            if (speed.on()) {
-                rows.add(new String[] {"Speed", String.format(Locale.ROOT, "%.1f b/s", now)});
-                rows.add(new String[] {"Top speed", String.format(Locale.ROOT, "%.1f b/s", top)});
-            }
-            if (pos.on()) {
-                double sum = 0;
-                for (double v : minute) sum += v;
-                rows.add(new String[] {"Per minute", Math.round(sum) + " m"});
-            }
-            if (rows.isEmpty()) return;
-            int bw = 0;
-            for (String[] r : rows) bw = Math.max(bw, Draw.width(r[0]) + Draw.width(r[1]) + 24);
-            int bh = rows.size() * 11 + 6;
-            int[] at = Hud.place(corner.index(), bw, bh, w, h);
-            Hud.panel(g, at[0], at[1], bw, bh);
-            for (int i = 0; i < rows.size(); i++) {
-                int y = at[1] + 4 + i * 11;
-                Draw.text(g, rows.get(i)[0], at[0] + 7, y, Accent.DIM);
-                Draw.textRight(g, rows.get(i)[1], at[0] + bw - 5, y, Accent.TEXT);
-            }
+            ry += Math.round(15 * sc);
+        }
+        float hp = health(mc.player);
+        int meCol = lethal ? 0xFFFF3B4D : self > hp * 0.6f ? 0xFFFFC44D : 0xFFE6EDFA;
+        Draw.text(g, "you", x + 6, ry, 0xFFC3D2F2);
+        String meVal = Math.round(self) + " / " + Math.round(hp);
+        Draw.text(g, meVal, x + cw - 6 - Draw.width(meVal), ry, meCol);
+        if (bars.on()) {
+            float frac = Math.min(1f, self / Math.max(1f, hp));
+            int bw = cw - 12;
+            g.fill(x + 6, ry + 9, x + 6 + bw, ry + 11, 0x66000000);
+            g.fill(x + 6, ry + 9, x + 6 + Math.round(bw * frac), ry + 11, Draw.rgba(meCol, 0.9f));
         }
     }
 
-    // ------------------------------------------------------------------ Pop Counter
-
-    /** Names of players and how many totems each has popped since you joined (filled by the packet hook). */
-    private static final java.util.Map<String, Integer> POPS = new java.util.concurrent.ConcurrentHashMap<>();
-    private static final java.util.Map<String, Long> LAST_POP = new java.util.concurrent.ConcurrentHashMap<>();
-    private static volatile boolean popsOn;
-
-    /** Called by the packet hook for entity event 35 (a totem was used). */
-    public static void totemPopped(net.minecraft.world.entity.Entity e) {
-        if (!popsOn || e == null) return;
-        String name = e.getName().getString();
-        POPS.merge(name, 1, Integer::sum);
-        LAST_POP.put(name, System.currentTimeMillis());
-    }
-
-    /** Counts every totem you see pop, per player, and shows the busiest. Handy in a fight: you can see who is nearly out. */
-    public static final class PopCounter extends Module {
-        private final Setting.Choice corner = Hud.corner(this, 1);
-        private final Setting.Num rows = add(new Setting.Num("Players listed", "How many players are listed, most pops first.", 5, 1, 10, 1, ""));
-        private final Setting.Bool onlyNear = add(new Setting.Bool("Only players near you", "Hides players that are not in your view distance any more.", false));
-        private final Setting.Bool chat = add(new Setting.Bool("Message when it happens", "A short pop-up each time someone pops a totem.", false));
-        private final Setting.Num fadeAfter = add(new Setting.Num("Forget after", "A player drops off the list this many minutes after their last pop. 0 keeps everyone.", 10, 0, 60, 1, " min"));
-        private int lastTotal;
-
-        public PopCounter() {
-            super("popcounter", "Pop Counter", "Counts totem pops per player, so you can see who is nearly out of totems.", Category.PANELS);
-            anywhere();
-        }
-
-        @Override
-        protected void onEnable() {
-            popsOn = true;
-            POPS.clear();
-            LAST_POP.clear();
-            lastTotal = 0;
-        }
-
-        @Override
-        protected void onDisable() {
-            popsOn = false;
-        }
-
-        @Override
-        protected void onTick(Minecraft mc) {
-            int total = 0;
-            for (int v : POPS.values()) total += v;
-            if (chat.on() && total > lastTotal) {
-                String who = "";
-                long best = 0;
-                for (var e : LAST_POP.entrySet()) if (e.getValue() > best) {
-                    best = e.getValue();
-                    who = e.getKey();
-                }
-                Zeus.toast(who + " popped a totem (" + POPS.getOrDefault(who, 0) + ")", true);
-            }
-            lastTotal = total;
-            if (fadeAfter.i() > 0) {
-                long cut = System.currentTimeMillis() - fadeAfter.i() * 60_000L;
-                LAST_POP.entrySet().removeIf(e -> {
-                    if (e.getValue() < cut) {
-                        POPS.remove(e.getKey());
-                        return true;
-                    }
-                    return false;
-                });
+    private LivingEntity nearest(Minecraft mc) {
+        if (blast == null || mc.player == null) return null;
+        LivingEntity best = null;
+        double bestD = Double.MAX_VALUE;
+        for (Entity e : Env.entities(mc, radius.get())) {
+            if (!(e instanceof LivingEntity le) || le == mc.player || !le.isAlive()) continue;
+            double d = le.distanceToSqr(blast);
+            if (d < bestD) {
+                bestD = d;
+                best = le;
             }
         }
-
-        @Override
-        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
-            if (mc.player == null || mc.level == null) return;
-            java.util.List<java.util.Map.Entry<String, Integer>> list = new java.util.ArrayList<>(POPS.entrySet());
-            if (onlyNear.on()) {
-                java.util.Set<String> near = new java.util.HashSet<>();
-                for (var p : mc.level.players()) near.add(p.getName().getString());
-                list.removeIf(e -> !near.contains(e.getKey()));
-            }
-            if (list.isEmpty()) return;
-            list.sort((a, b) -> Integer.compare(b.getValue(), a.getValue()));
-            int n = Math.min(rows.i(), list.size());
-            int bw = 70;
-            for (int i = 0; i < n; i++) bw = Math.max(bw, Draw.width(list.get(i).getKey()) + 34);
-            int bh = n * 11 + 17;
-            int[] at = Hud.place(corner.index(), bw, bh, w, h);
-            Hud.panel(g, at[0], at[1], bw, bh);
-            Draw.text(g, "Totem pops", at[0] + 7, at[1] + 4, Accent.FAINT);
-            for (int i = 0; i < n; i++) {
-                int y = at[1] + 15 + i * 11;
-                var e = list.get(i);
-                boolean me = e.getKey().equals(mc.player.getName().getString());
-                Draw.text(g, e.getKey(), at[0] + 7, y, me ? com.zlorbie788.zeus.mods.Hud.accent() : Accent.TEXT);
-                int c = e.getValue();
-                Draw.textRight(g, Integer.toString(c), at[0] + bw - 5, y, c >= 4 ? 0xFFFF5C6C : c >= 2 ? 0xFFFFC857 : Accent.TEXT);
-            }
-        }
+        return best;
     }
 }

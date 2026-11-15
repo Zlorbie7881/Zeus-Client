@@ -1,579 +1,435 @@
 package com.zlorbie788.zeus.mods;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-import com.zlorbie788.zeus.core.Category;
-import com.zlorbie788.zeus.core.Inv;
 import com.zlorbie788.zeus.core.Module;
-import com.zlorbie788.zeus.core.Setting;
 import com.zlorbie788.zeus.core.Zeus;
-import com.zlorbie788.zeus.render.Projector;
-import com.zlorbie788.zeus.render.Wire;
-import com.zlorbie788.zeus.ui.Accent;
-import com.zlorbie788.zeus.ui.Draw;
-import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.core.BlockPos;
-import net.minecraft.world.entity.EquipmentSlot;
-import net.minecraft.world.inventory.ClickType;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.HitResult;
-import net.minecraft.world.phys.shapes.VoxelShape;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
+import net.minecraft.network.chat.MutableComponent;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
+import java.net.URI;
 import java.util.Locale;
-import java.util.Set;
 
-/** More modules that only change what your own game shows or does. */
-public final class Extras {
-    private Extras() {}
+/**
+ * /zeus ai tutorial: a step-by-step setup walkthrough in chat.
+ *
+ * Every step prints a short card with clickable buttons. Buttons that act inside the client carry
+ * a private marker in a copy-to-clipboard click event, which {@link #click} intercepts before
+ * vanilla handles it, so they work on every server and never send anything to the server.
+ * The walkthrough moves on by itself when the player finishes a step another way, for example
+ * by typing /zeus ai key by hand.
+ */
+public final class AiTutorial {
+    private AiTutorial() {}
 
-    // ------------------------------------------------------------------ Time Changer
+    private static final String MARK = "zeus-ai-tutorial:";
+    private static final int WELCOME = 0, ENABLE = 1, PROVIDER = 2, GET_KEY = 3, SAVE_KEY = 4, TEST = 5, TRY = 6, SAFETY = 7;
+    private static final int LAST = SAFETY;
+    private static final String[] TITLES = {"Welcome", "Switch the AI on", "Pick a provider", "Get an API key",
+            "Save the key", "Test the connection", "Try it out", "Stay in control"};
 
-    /** Holds the sky at the time you choose. Only your screen changes, the world keeps its own time. */
-    public static final class TimeChanger extends Module {
-        private final Setting.Choice preset = add(new Setting.Choice("Time", "The time of day to show.", 1, "Sunrise", "Day", "Noon", "Sunset", "Night", "Midnight", "Custom"));
-        private final Setting.Num custom = add(new Setting.Num("Custom time", "Ticks, 0 to 24000. 6000 is noon, 18000 is midnight.", 6000, 0, 24000, 250, "").showIf(() -> preset.index() == 6));
-        private final Setting.Bool freeze = add(new Setting.Bool("Freeze the sky", "The sun and moon stop. Off: the day keeps moving from that time.", true));
-        private static final long[] VALUES = {0L, 1000L, 6000L, 12000L, 13000L, 18000L};
-        private long clock;
+    private static volatile int step = -1;
+    private static volatile String chosen = "";
 
-        public TimeChanger() {
-            super("timechanger", "Time Changer", "Choose the time of day you see. Only your screen changes.", Category.RENDER);
-        }
-
-        private long wanted() {
-            return preset.index() == 6 ? custom.i() : VALUES[preset.index()];
-        }
-
-        @Override
-        protected void onEnable() {
-            clock = wanted();
-        }
-
-        @Override
-        protected void onTick(Minecraft mc) {
-            if (mc.level == null) return;
-            if (!freeze.on()) clock++;
-            else clock = wanted();
-            mc.level.setTimeFromServer(mc.level.getGameTime(), clock, false);
-        }
-
-        @Override
-        public String info() {
-            return preset.value();
-        }
+    public static boolean active() {
+        return step >= 0;
     }
 
-    // ------------------------------------------------------------------ Weather Changer
-
-    /** Clear sky, rain or a storm on your screen. */
-    public static final class WeatherChanger extends Module {
-        private final Setting.Choice mode = add(new Setting.Choice("Weather", "The weather you see.", 0, "Clear", "Rain", "Thunderstorm"));
-
-        public WeatherChanger() {
-            super("weatherchanger", "Weather Changer", "Choose the weather you see. Only your screen changes.", Category.RENDER);
-        }
-
-        @Override
-        protected void onTick(Minecraft mc) {
-            if (mc.level == null) return;
-            var weather = (com.zlorbie788.zeus.mixin.LevelWeatherAccessor) (Object) mc.level;
-            weather.zeus$setRain(mode.index() == 0 ? 0f : 1f);
-            weather.zeus$setThunder(mode.index() == 2 ? 1f : 0f);
-        }
-
-        @Override
-        public String info() {
-            return mode.value();
-        }
-    }
-
-    // ------------------------------------------------------------------ Chunk Borders
-
-    public static final class ChunkBorders extends Module {
-        private final Setting.Num radius = add(new Setting.Num("Chunks around", "0 shows only the chunk you are in.", 1, 0, 3, 1, ""));
-        private final Setting.Num height = add(new Setting.Num("Height", "How far up and down the lines go.", 32, 8, 96, 8, " blocks"));
-        private final Setting.Bool levels = add(new Setting.Bool("Section lines", "Rings every 16 blocks up the corners of your own chunk.", true));
-
-        public ChunkBorders() {
-            super("chunkborders", "Chunk Borders", "Draws the edges of chunks in the world.", Category.RENDER);
-            light();
-        }
-
-        @Override
-        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
-            if (mc.player == null || !Projector.prepare(mc, partial, w, h)) return;
-            int pcx = mc.player.getBlockX() >> 4;
-            int pcz = mc.player.getBlockZ() >> 4;
-            int r = radius.i();
-            double y0 = mc.player.getY() - height.get();
-            double y1 = mc.player.getY() + height.get();
-            int accent = Accent.main();
-            for (int dx = -r; dx <= r + 1; dx++) {
-                for (int dz = -r; dz <= r + 1; dz++) {
-                    boolean own = dx >= 0 && dx <= 1 && dz >= 0 && dz <= 1;
-                    double x = (pcx + dx) * 16.0;
-                    double z = (pcz + dz) * 16.0;
-                    Wire.line(g, x, y0, z, x, y1, z, own ? 1.4f : 1f, Draw.rgba(own ? 0xFFFFC857 : accent, own ? 0.9f : 0.5f), false);
+    /** Entry point for /zeus ai tutorial [next|back|stop|restart|N]. */
+    public static void command(String arg) {
+        String a = arg == null ? "" : arg.trim().toLowerCase(Locale.ROOT);
+        switch (a) {
+            case "", "start", "restart" -> {
+                if (a.isEmpty() && active()) {
+                    show();
+                    return;
                 }
+                chosen = "";
+                go(WELCOME);
             }
-            if (levels.on()) {
-                double x1 = pcx * 16.0;
-                double z1 = pcz * 16.0;
-                int first = (int) (Math.floor(y0 / 16.0) * 16);
-                for (int y = first; y <= y1; y += 16) {
-                    Wire.floor(g, x1, y, z1, 16, 1f, Draw.rgba(0xFFFFC857, 0.55f));
+            case "next", "continue" -> go(active() ? step + 1 : WELCOME);
+            case "back", "previous" -> go(Math.max(0, step - 1));
+            case "stop", "exit", "quit", "close", "end" -> stop();
+            default -> {
+                try {
+                    go(Math.max(0, Math.min(LAST, Integer.parseInt(a) - 1)));
+                } catch (NumberFormatException e) {
+                    say(Component.literal("Use /zeus ai tutorial, then next, back, stop or a step number 1-" + (LAST + 1) + ".").withStyle(ChatFormatting.GRAY));
                 }
             }
         }
     }
 
-    // ------------------------------------------------------------------ Block Outline
+    private static void stop() {
+        step = -1;
+        say(Component.literal("Tutorial closed. Reopen it any time with ").withStyle(ChatFormatting.GRAY)
+                .append(button("/zeus ai tutorial", ChatFormatting.AQUA, "restart", "Start the setup walkthrough again")));
+    }
 
-    public static final class BlockOutline extends Module {
-        private final Setting.Num thick = add(new Setting.Num("Line width", "Thickness of the outline.", 1.6, 1, 4, 0.2, " px"));
-        private final Setting.Bool rainbow = add(new Setting.Bool("Colour shift", "The outline slowly changes colour.", true));
-
-        public BlockOutline() {
-            super("blockoutline", "Block Outline", "A bright outline around the block you are looking at.", Category.RENDER);
+    private static void go(int next) {
+        if (next > LAST) {
+            finish();
+            return;
         }
+        step = next;
+        show();
+    }
 
-        @Override
-        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
-            if (mc.player == null || mc.level == null || mc.screen != null) return;
-            if (!(mc.hitResult instanceof BlockHitResult bhr) || bhr.getType() == HitResult.Type.MISS) return;
-            if (!Projector.prepare(mc, partial, w, h)) return;
-            BlockPos pos = bhr.getBlockPos();
-            VoxelShape shape = mc.level.getBlockState(pos).getShape(mc.level, pos);
-            if (shape.isEmpty()) return;
-            AABB b = shape.bounds();
-            float t = (System.currentTimeMillis() % 4000L) / 4000f;
-            int col = rainbow.on() ? Draw.mix(Accent.main(), Accent.second(), 0.5f + 0.5f * (float) Math.sin(t * 6.2832)) : Accent.main();
-            double e = 0.002;
-            Wire.box(g, pos.getX() + b.minX - e, pos.getY() + b.minY - e, pos.getZ() + b.minZ - e,
-                    pos.getX() + b.maxX + e, pos.getY() + b.maxY + e, pos.getZ() + b.maxZ + e, thick.f(), Draw.rgba(col, 0.95f), true);
+    private static void finish() {
+        step = -1;
+        rule();
+        say(Component.literal("  You're all set! ").withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD)
+                .append(Component.literal("Type ").withStyle(ChatFormatting.WHITE))
+                .append(Component.literal("/zeus ai <anything>").withStyle(ChatFormatting.AQUA))
+                .append(Component.literal(" whenever you need it.").withStyle(ChatFormatting.WHITE)));
+        rule();
+    }
+
+    // ---------------------------------------------------------------- the steps
+
+    private static void show() {
+        int s = step;
+        if (s < 0) return;
+        AiPilot pilot = AiPilot.find();
+        if (pilot == null) {
+            say(Component.literal("Zeus AI Functions is missing from this build.").withStyle(ChatFormatting.RED));
+            step = -1;
+            return;
+        }
+        header(s);
+        switch (s) {
+            case WELCOME -> {
+                text("Zeus AI lets you type what you want in plain words: ");
+                say(Component.literal("    \"turn on sprint\", \"set killaura range to 4\", \"mine 10 iron then come back\"").withStyle(ChatFormatting.AQUA));
+                text("It runs on an AI provider using your own API key. Several providers have free keys, and it can also run fully offline on your PC.");
+                text("This takes about two minutes. Your key is stored only in your Zeus config on this computer.");
+                buttons(button("[ Start ]", ChatFormatting.GREEN, "next", "Go to step 1"), close());
+            }
+            case ENABLE -> {
+                Module module = pilot;
+                if (module.enabled()) {
+                    good("Zeus AI Functions is already on.");
+                    buttons(next(), back(), close());
+                } else {
+                    text("The AI lives in the module Zeus AI Functions. It has to be on to answer.");
+                    buttons(button("[ Turn it on ]", ChatFormatting.GREEN, "enable", "Switch Zeus AI Functions on"), back(), close());
+                }
+            }
+            case PROVIDER -> {
+                AiPilot.Provider now = AiPilot.currentProvider();
+                text("Pick where the AI runs. Click one" + (now != null ? " (now: " + now.label() + ")" : "") + ":");
+                for (AiPilot.Provider p : AiPilot.PROVIDERS) {
+                    String tag = p.keyless() ? "runs on your PC, no key, no internet" : p.free() ? "free key" : "paid, pay as you go";
+                    if (p.id().equals("groq")) tag = "free key, very fast, recommended";
+                    say(Component.literal("   ")
+                            .append(button("[" + p.label() + "]", p.id().equals("groq") ? ChatFormatting.GREEN : ChatFormatting.AQUA,
+                                    "provider:" + p.id(), "Use " + p.label() + " with the model " + p.model()))
+                            .append(Component.literal("  " + tag).withStyle(ChatFormatting.GRAY)));
+                }
+                text("Already have a key from somewhere else? Skip ahead, the key's prefix picks the provider for you.");
+                buttons(button("[ Skip ]", ChatFormatting.GRAY, "next", "Keep the current provider"), back(), close());
+            }
+            case GET_KEY -> {
+                AiPilot.Provider p = provider();
+                if (p == null) {
+                    text("You are using a custom endpoint: " + AiPilot.endpointUrl());
+                    text("Get a key from that provider's website, then continue.");
+                    buttons(next(), back(), close());
+                } else if (p.keyless()) {
+                    text(p.label() + " runs the model on your own computer, so there is no key.");
+                    if (p.id().equals("ollama")) {
+                        text("1. Install Ollama from the link below and start it.");
+                        say(Component.literal("    2. In a terminal run: ").withStyle(ChatFormatting.WHITE)
+                                .append(Component.literal("ollama pull " + p.model()).withStyle(ChatFormatting.YELLOW)));
+                        text("3. Leave Ollama running while you play. A gaming PC with 8 GB+ of video memory works best.");
+                    } else {
+                        text("1. Install LM Studio, download a model and press Start Server on its Developer tab.");
+                        text("2. Use /zeus ai model <name> if the server shows a different model name.");
+                    }
+                    buttons(link("[ Download ]", p.keys()), button("[ Next: test it ]", ChatFormatting.GREEN, "goto:" + TEST, "Skip the key steps"), back(), close());
+                } else {
+                    text("1. Open the key page below and sign in (a free account is fine" + (p.free() ? "" : "; this provider needs credit") + ").");
+                    text("2. Create a new API key and copy it.");
+                    text("3. Come back here and press Next.");
+                    say(Component.literal("    Never share a key or paste it in public chat. Anyone with it can use your account.").withStyle(ChatFormatting.GOLD));
+                    buttons(link("[ Open " + p.label() + " keys ]", p.keys()), next(), back(), close());
+                }
+            }
+            case SAVE_KEY -> {
+                if (AiPilot.hasSecret()) {
+                    good("A key is saved. Paste a new one any time with /zeus ai key <key>.");
+                    buttons(next(), button("[ Replace key ]", ChatFormatting.YELLOW, null, "/zeus ai key ", "Type /zeus ai key and paste a new key"), back(), close());
+                } else if (AiPilot.hasKey()) {
+                    good("No key needed for " + AiPilot.endpointUrl() + ".");
+                    buttons(next(), back(), close());
+                } else {
+                    text("Click the button, paste your key (Ctrl+V, or Cmd+V on Mac) and press Enter:");
+                    say(Component.literal("    ").append(button("[ /zeus ai key ... ]", ChatFormatting.GREEN, null, "/zeus ai key ",
+                            "Puts /zeus ai key in the chat box, ready for your key")));
+                    text("The key is saved in your Zeus config and shown masked from now on. The walkthrough continues when it is saved.");
+                    buttons(back(), close());
+                }
+            }
+            case TEST -> {
+                AiPilot.Provider p = AiPilot.currentProvider();
+                text("Provider: " + (p == null ? "custom" : p.label()) + ", model " + AiPilot.modelName() + ".");
+                if (AiPilot.testPassed()) {
+                    good("Connection works: " + AiPilot.testResult() + ".");
+                    buttons(next(), button("[ Test again ]", ChatFormatting.AQUA, "test", "Send one tiny request"), back(), close());
+                } else {
+                    text("Send one tiny request to check the key, the endpoint and the model together:");
+                    buttons(button("[ Run test ]", ChatFormatting.GREEN, "test", "Sends one tiny request to your provider"), back(), close());
+                }
+            }
+            case TRY -> {
+                text("Click any example to send it, or type your own after /zeus ai:");
+                example("on sprint", "Switch a module on");
+                example("what does esp do?", "Ask about a module");
+                example("set killaura range to 4", "Change a setting");
+                example("preset pvp", "Switch on a group of modules");
+                text("In a survival world it can work for you too (say stop to end a job):");
+                example("chop a tree", "Walks to the nearest tree and cuts it down");
+                example("mine 10 stone", "Mines and counts real drops");
+                example("come here", "Walks to you");
+                text("Shortcuts: type @ at the start of a normal chat message (@mine 10 iron), or press J to open chat with /zeus ai typed.");
+                buttons(next(), back(), close());
+            }
+            case SAFETY -> {
+                text("A few commands keep you in charge:");
+                tip("/zeus ai stop", "Ends whatever job is running, right away.");
+                tip("/zeus ai undo", "Puts back the last module or setting the AI changed.");
+                tip("/zeus ai plan", "Shows what it planned and what each step did.");
+                tip("/zeus ai status", "Key, model, requests used this hour and the last error.");
+                tip("/zeus ai test", "Checks the connection again.");
+                text("In the Zeus AI Functions settings: Preview only shows what it would do without doing it, and Requests per hour caps how much of your key it can use.");
+                buttons(button("[ Finish ]", ChatFormatting.GREEN, "next", "Close the walkthrough"), back());
+            }
+            default -> {
+            }
         }
     }
 
-    // ------------------------------------------------------------------ Zoom
+    private static AiPilot.Provider provider() {
+        AiPilot.Provider picked = chosen.isEmpty() ? null : AiPilot.providerById(chosen);
+        AiPilot.Provider now = AiPilot.currentProvider();
+        return now != null ? now : picked;
+    }
 
-    /**
-     * Looks closer. The zoom is a smooth change of the game's own field of view, so everything that reads the renderer's
-     * view follows it exactly: third person, ESP boxes, tracers, name tags and the block outline all stay lined up while
-     * you are zoomed. Mouse sensitivity is scaled while zoomed so a high zoom can still be aimed, and the original values
-     * come back the moment the module is switched off.
-     */
-    public static final class Zoom extends Module {
-        /** How much closer the renderer shows things right now (1 = not zoomed). Read by GameRendererMixin every frame. */
-        private static volatile float live = 1f;
+    // ---------------------------------------------------------------- events from the AI module
 
-        public static float factorNow() {
-            return live;
-        }
+    /** A key was saved (by the button or by typing the command): move past the key steps. */
+    static void onKey() {
+        if (step == SAVE_KEY || step == GET_KEY || step == PROVIDER) go(TEST);
+    }
 
-        private final Setting.Num factor = add(new Setting.Num("Zoom", "How much closer.", 3, 1.5, 8, 0.5, "x"));
-        private final Setting.Bool smooth = add(new Setting.Bool("Smooth", "Slide in and out instead of snapping, like a real scope.", true));
-        private final Setting.Num sense = add(new Setting.Num("Mouse sensitivity while zoomed", "Scales your mouse sensitivity while the zoom is in, so aiming stays precise. 100 keeps it exactly as it is.", 45, 10, 100, 5, " %"));
-        private final Setting.Bool keepThird = add(new Setting.Bool("Works in third person", "The zoom is a field of view change, so it is the same in first and third person. Turn this off to have the zoom switch to first person while it is in.", true));
-        private double originalSense = -1;
-        private float shown = 1f;
-        private long lastMs;
-        private int savedPerspective = -1;
-        private boolean enabled;
-        private int frames;
-        // fallback, only used when the renderer hook is not in place: the old way of changing the FOV option
-        private int originalFov = -1;
-
-        public Zoom() {
-            super("zoom", "Zoom", "Look closer. Bind a key to hold it with the key on its card.", Category.UTILITY);
-            alias("scope", "spyglass", "magnify");
-            sense.onChange(this::applySense);
-        }
-
-        private void applySense() {
-            Minecraft mc = Minecraft.getInstance();
-            if (!enabled || originalSense < 0) return;
-            double want = originalSense * (sense.f() / 100.0);
-            if (Math.abs(mc.options.sensitivity().get() - want) > 1e-4) mc.options.sensitivity().set(want);
-        }
-
-        /** Once per frame: slides the zoom towards its goal at a speed that does not depend on the frame rate. */
-        private void frame(Minecraft mc) {
-            long now = System.nanoTime() / 1_000_000L;
-            float dt = lastMs == 0 ? 0.016f : Math.min(0.1f, (now - lastMs) / 1000f);
-            lastMs = now;
-            float goal = factor.f();
-            if (!smooth.on()) shown = goal;
-            else {
-                shown += (goal - shown) * (1f - (float) Math.exp(-dt * 16f));
-                if (Math.abs(goal - shown) < 0.004f) shown = goal;
+    /** A connection test finished. */
+    static void onTest(boolean ok) {
+        if (step != TEST) {
+            if (!ok && !active()) {
+                say(Component.literal("[Zeus] ").withStyle(ChatFormatting.AQUA)
+                        .append(Component.literal("Need help? ").withStyle(ChatFormatting.WHITE))
+                        .append(button("[ Open the setup walkthrough ]", ChatFormatting.GREEN, "restart", "/zeus ai tutorial")));
             }
-            frames++;
-            if (com.zlorbie788.zeus.render.Projector.hookSeen()) {
-                live = shown;
-                if (originalFov >= 0) {
-                    mc.options.fov().set(originalFov);
-                    originalFov = -1;
-                }
-            } else if (frames > 40) {
-                // the hook never ran: fall back to the FOV option so the zoom still works
-                if (originalFov < 0) originalFov = mc.options.fov().get();
-                int fov = Math.round((float) Math.max(30.0, originalFov / shown));
-                if (fov != mc.options.fov().get()) mc.options.fov().set(fov);
-            }
+            return;
         }
-
-        @Override
-        protected void onEnable() {
-            Minecraft mc = Minecraft.getInstance();
-            enabled = true;
-            originalSense = mc.options.sensitivity().get();
-            shown = 1f;
-            lastMs = 0;
-            frames = 0;
-            savedPerspective = -1;
-            if (!keepThird.on() && mc.options.getCameraType() != net.minecraft.client.CameraType.FIRST_PERSON) {
-                savedPerspective = mc.options.getCameraType().ordinal();
-                mc.options.setCameraType(net.minecraft.client.CameraType.FIRST_PERSON);
-            }
-            applySense();
+        if (ok) {
+            go(TRY);
+            return;
         }
-
-        @Override
-        protected void onTick(Minecraft mc) {
-            if (!enabled) return;
-            if (!smooth.on() || mc.screen != null) frame(mc);
+        String why = AiPilot.testResult().toLowerCase(Locale.ROOT);
+        text("How to fix it:");
+        if (why.contains("key")) tip("Key", "Copy the key again (the whole thing) and save it with /zeus ai key <key>.");
+        if (why.contains("not found") || why.contains("model")) {
+            tip("Model", "That model name is not available here. Pick one from the list:");
+            AiPilot.models();
         }
+        if (why.contains("nothing is answering") || why.contains("local ai")) tip("Server", "Start Ollama or LM Studio and keep it open.");
+        if (why.contains("connect")) tip("Network", "Check your internet, VPN or firewall.");
+        if (why.contains("rate") || why.contains("quota") || why.contains("credit")) tip("Limits", "Wait a minute, or add credit at your provider.");
+        buttons(button("[ Test again ]", ChatFormatting.GREEN, "test", "Send one tiny request"),
+                button("[ Change provider ]", ChatFormatting.AQUA, "goto:" + PROVIDER, "Back to step 3"),
+                button("[ Re-enter key ]", ChatFormatting.YELLOW, null, "/zeus ai key ", "Type /zeus ai key and paste the key"), close());
+    }
 
-        @Override
-        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
-            // every frame, so the slide is smooth at your frame rate rather than at 20 ticks a second
-            if (enabled && mc.screen == null && smooth.on()) frame(mc);
-        }
+    // ---------------------------------------------------------------- clicks
 
-        @Override
-        protected void onDisable() {
-            Minecraft mc = Minecraft.getInstance();
-            enabled = false;
-            live = 1f;
-            if (originalFov >= 0) mc.options.fov().set(originalFov);
-            if (originalSense >= 0) mc.options.sensitivity().set(originalSense);
-            if (savedPerspective >= 0) {
-                net.minecraft.client.CameraType[] all = net.minecraft.client.CameraType.values();
-                if (savedPerspective < all.length) mc.options.setCameraType(all[savedPerspective]);
-            }
-            originalFov = -1;
-            originalSense = -1;
-            shown = 1f;
-            savedPerspective = -1;
-        }
+    /** Called for every chat click; returns true when it was one of ours. */
+    public static boolean click(ClickEvent event) {
+        if (!(event instanceof ClickEvent.CopyToClipboard copy)) return false;
+        String value = copy.value();
+        if (value == null || !value.startsWith(MARK)) return false;
+        String action = value.substring(MARK.length());
+        Minecraft.getInstance().execute(() -> handle(action));
+        return true;
+    }
 
-        @Override
-        public String info() {
-            return factor.text();
+    private static void handle(String action) {
+        AiPilot pilot = AiPilot.find();
+        if (action.equals("restart")) {
+            command("restart");
+        } else if (action.equals("next")) {
+            command("next");
+        } else if (action.equals("back")) {
+            command("back");
+        } else if (action.equals("stop")) {
+            stop();
+        } else if (action.equals("enable")) {
+            if (pilot != null && !pilot.enabled()) pilot.setEnabled(true);
+            if (pilot != null && pilot.enabled()) go(PROVIDER);
+            else say(Component.literal("It could not be switched on. Open the panel with /zeus and check Zeus AI Functions.").withStyle(ChatFormatting.RED));
+        } else if (action.startsWith("provider:")) {
+            chosen = action.substring(9);
+            good(AiPilot.useProvider(chosen));
+            AiPilot.Provider p = AiPilot.providerById(chosen);
+            go(p != null && p.keyless() ? GET_KEY : AiPilot.hasSecret() ? SAVE_KEY : GET_KEY);
+        } else if (action.equals("test")) {
+            text(AiPilot.test());
+        } else if (action.startsWith("goto:")) {
+            go(Integer.parseInt(action.substring(5)));
+        } else if (action.startsWith("ask:")) {
+            String prompt = action.substring(4);
+            say(Component.literal("> /zeus ai " + prompt).withStyle(ChatFormatting.GRAY));
+            say(Component.literal("[Zeus] ").withStyle(ChatFormatting.AQUA)
+                    .append(Component.literal(AiPilot.ask(prompt)).withStyle(ChatFormatting.WHITE)));
         }
     }
 
-    // ------------------------------------------------------------------ Waypoints
+    // ---------------------------------------------------------------- chat helpers
 
-    /** Saved places, drawn as markers in the world. Everything is stored in config/zeus-waypoints.json. */
-    public static final class Waypoints extends Module {
-        private record Wp(String name, String dim, double x, double y, double z, int color) {}
+    private static void header(int s) {
+        rule();
+        say(Component.literal("  Zeus AI setup ").withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD)
+                .append(Component.literal("· step " + (s + 1) + "/" + (LAST + 1) + " · ").withStyle(ChatFormatting.DARK_GRAY))
+                .append(Component.literal(TITLES[s]).withStyle(ChatFormatting.WHITE, ChatFormatting.BOLD)));
+        StringBuilder bar = new StringBuilder("  ");
+        for (int i = 0; i <= LAST; i++) bar.append(i < s ? "■ " : i == s ? "▣ " : "□ ");
+        say(Component.literal(bar.toString()).withStyle(ChatFormatting.DARK_AQUA));
+    }
 
-        private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-        private static final int[] COLORS = {0xFF3DB8FF, 0xFF5EE6A0, 0xFFFFC857, 0xFFFF7A86, 0xFFB77BFF, 0xFFFF8F4D};
-        private final List<Wp> points = new ArrayList<>();
-        private final Setting.Bool deaths = add(new Setting.Bool("Mark where you die", "Adds a waypoint at the place you died.", true));
-        private final Setting.Text customName = add(new Setting.Text("Waypoint name", "Name for the coordinate waypoint.", "Custom waypoint", 32).temporary());
-        private final Setting.Text customX = add(new Setting.Text("Waypoint X", "World X coordinate.", "0", 16).temporary());
-        private final Setting.Text customY = add(new Setting.Text("Waypoint Y", "World Y coordinate.", "64", 16).temporary());
-        private final Setting.Text customZ = add(new Setting.Text("Waypoint Z", "World Z coordinate.", "0", 16).temporary());
-        private final Setting.Num fade = add(new Setting.Num("Hide when closer than", "Markers vanish when you are this close.", 4, 0, 20, 1, " blocks"));
-        private final Setting.Bool labels = add(new Setting.Bool("Names and distance", "Text under every marker.", true));
-        private boolean wasDead;
-        private boolean loaded;
+    private static void rule() {
+        say(Component.literal("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━").withStyle(ChatFormatting.DARK_GRAY));
+    }
 
-        public Waypoints() {
-            super("waypoints", "Waypoints", "Save places and see them through walls.", Category.UTILITY);
-            add(new Setting.Action("Add waypoint here", "Saves your current position.", this::addHere));
-            add(new Setting.Action("Add waypoint at coordinates", "Uses the X, Y and Z fields above in the current dimension.", this::addCoordinates));
-            add(new Setting.Action("Remove the nearest", "Deletes the waypoint closest to you in this dimension.", this::removeNearest));
-            add(new Setting.Action("Remove all", "Deletes every waypoint in this dimension.", this::clearHere));
-            add(new Setting.Info("Saved places", this::lines));
+    private static void text(String line) {
+        say(Component.literal("  " + line).withStyle(ChatFormatting.WHITE));
+    }
+
+    private static void good(String line) {
+        say(Component.literal("  ✔ " + line).withStyle(ChatFormatting.GREEN));
+    }
+
+    private static void tip(String label, String line) {
+        say(Component.literal("   • ").withStyle(ChatFormatting.DARK_AQUA)
+                .append(Component.literal(label).withStyle(ChatFormatting.AQUA))
+                .append(Component.literal("  " + line).withStyle(ChatFormatting.GRAY)));
+    }
+
+    private static void example(String prompt, String tip) {
+        say(Component.literal("   ").append(button("[ " + prompt + " ]", ChatFormatting.AQUA, "ask:" + prompt, tip + " (click to send)")));
+    }
+
+    private static void buttons(MutableComponent... parts) {
+        MutableComponent line = Component.literal("  ");
+        for (int i = 0; i < parts.length; i++) {
+            if (i > 0) line.append(Component.literal("  "));
+            line.append(parts[i]);
         }
+        say(line);
+    }
 
-        private static String dim(Minecraft mc) {
-            return mc.level == null ? "" : mc.level.dimension().toString();
+    private static MutableComponent next() {
+        return button("[ Next ]", ChatFormatting.GREEN, "next", "Go to the next step");
+    }
+
+    private static MutableComponent back() {
+        return button("[ Back ]", ChatFormatting.GRAY, "back", "Go back one step");
+    }
+
+    private static MutableComponent close() {
+        return button("[ Stop ]", ChatFormatting.RED, "stop", "Close the walkthrough");
+    }
+
+    private static MutableComponent button(String label, ChatFormatting colour, String action, String tip) {
+        return button(label, colour, action, null, tip);
+    }
+
+    /** A clickable label: runs one of our actions, or (with suggest) puts text in the chat box. */
+    private static MutableComponent button(String label, ChatFormatting colour, String action, String suggest, String tip) {
+        ClickEvent click = suggest != null ? new ClickEvent.SuggestCommand(suggest) : new ClickEvent.CopyToClipboard(MARK + action);
+        return Component.literal(label).withStyle(style -> style.withColor(colour).withBold(true).withClickEvent(click)
+                .withHoverEvent(new HoverEvent.ShowText(Component.literal(tip))));
+    }
+
+    private static MutableComponent link(String label, String url) {
+        return Component.literal(label).withStyle(style -> style.withColor(ChatFormatting.LIGHT_PURPLE).withBold(true).withUnderlined(true)
+                .withClickEvent(new ClickEvent.OpenUrl(URI.create(url)))
+                .withHoverEvent(new HoverEvent.ShowText(Component.literal(url))));
+    }
+
+    /** Clickable list of models: click one to put /zeus ai model <id> in the chat box. */
+    static void models(java.util.List<String> ids, String current) {
+        if (ids.isEmpty()) {
+            chat("The provider did not list any chat models.", true);
+            return;
         }
-
-        private static Path file() {
-            return FabricLoader.getInstance().getConfigDir().resolve("zeus-waypoints.json");
-        }
-
-        private void load() {
-            if (loaded) return;
-            loaded = true;
-            try {
-                if (!Files.isRegularFile(file())) return;
-                JsonElement e = JsonParser.parseString(Files.readString(file(), StandardCharsets.UTF_8));
-                if (!e.isJsonArray()) return;
-                for (JsonElement el : e.getAsJsonArray()) {
-                    JsonObject o = el.getAsJsonObject();
-                    points.add(new Wp(o.get("name").getAsString(), o.get("dim").getAsString(), o.get("x").getAsDouble(), o.get("y").getAsDouble(), o.get("z").getAsDouble(), o.get("color").getAsInt()));
-                }
-            } catch (IOException | RuntimeException ex) {
-                Zeus.LOG.warn("Could not read the waypoints", ex);
+        say(Component.literal("[Zeus AI] ").withStyle(ChatFormatting.AQUA)
+                .append(Component.literal(ids.size() + " model(s). Click one, then press Enter to use it:").withStyle(ChatFormatting.WHITE)));
+        int shown = 0;
+        MutableComponent line = Component.literal("  ");
+        int width = 0;
+        for (String id : ids) {
+            if (shown >= 60) break;
+            boolean now = id.equalsIgnoreCase(current);
+            MutableComponent b = button(now ? "[" + id + " ✔]" : "[" + id + "]", now ? ChatFormatting.GREEN : ChatFormatting.AQUA, null,
+                    "/zeus ai model " + id, now ? "The model in use" : "Use " + id);
+            if (width > 0 && width + id.length() > 70) {
+                say(line);
+                line = Component.literal("  ");
+                width = 0;
             }
+            line.append(b).append(Component.literal(" "));
+            width += id.length() + 3;
+            shown++;
         }
+        if (width > 0) say(line);
+        if (ids.size() > shown) say(Component.literal("  … and " + (ids.size() - shown) + " more").withStyle(ChatFormatting.GRAY));
+    }
 
-        private void save() {
-            try {
-                JsonArray a = new JsonArray();
-                for (Wp w : points) {
-                    JsonObject o = new JsonObject();
-                    o.addProperty("name", w.name());
-                    o.addProperty("dim", w.dim());
-                    o.addProperty("x", w.x());
-                    o.addProperty("y", w.y());
-                    o.addProperty("z", w.z());
-                    o.addProperty("color", w.color());
-                    a.add(o);
-                }
-                Files.writeString(file(), GSON.toJson(a), StandardCharsets.UTF_8);
-            } catch (IOException | RuntimeException ex) {
-                Zeus.LOG.warn("Could not save the waypoints", ex);
-            }
-        }
-
-        private void addPoint(String name, int color) {
-            Minecraft mc = Minecraft.getInstance();
-            if (mc.player == null) return;
-            load();
-            points.add(new Wp(name, dim(mc), mc.player.getX(), mc.player.getY(), mc.player.getZ(), color));
-            save();
-        }
-
-        /** Saves a place found by another module (a base, for example). Returns false when the name is already saved there. */
-        public boolean addAt(String name, double x, double y, double z) {
-            Minecraft mc = Minecraft.getInstance();
-            if (mc.level == null) return false;
-            load();
-            String d = dim(mc);
-            for (Wp w : points) if (w.dim().equals(d) && Math.abs(w.x() - x) < 24 && Math.abs(w.z() - z) < 24) return false;
-            points.add(new Wp(name, d, x, y, z, COLORS[points.size() % COLORS.length]));
-            save();
-            return true;
-        }
-
-        private void addHere() {
-            Minecraft mc = Minecraft.getInstance();
-            if (mc.player == null) return;
-            load();
-            int n = 1;
-            for (Wp w : points) if (w.name().startsWith("Waypoint")) n++;
-            addPoint("Waypoint " + n, COLORS[n % COLORS.length]);
-            Zeus.toast("Waypoint saved", true);
-        }
-
-        private void addCoordinates() {
-            Minecraft mc = Minecraft.getInstance();
-            if (mc.level == null) { Zeus.toast("Join a world before adding a waypoint", false); return; }
-            try {
-                double x = Double.parseDouble(customX.get().trim());
-                double y = Double.parseDouble(customY.get().trim());
-                double z = Double.parseDouble(customZ.get().trim());
-                if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z) || Math.abs(x) > 30_000_000 || Math.abs(z) > 30_000_000 || y < mc.level.getMinY() - 64 || y > mc.level.getMaxY() + 64) throw new NumberFormatException();
-                String name = customName.get().trim();
-                if (name.isEmpty()) name = "Custom waypoint";
-                boolean added = addAt(name, x, y, z);
-                Zeus.toast(added ? "Waypoint added at " + Math.round(x) + " " + Math.round(y) + " " + Math.round(z) : "A waypoint is already saved nearby", added);
-            } catch (NumberFormatException ex) {
-                Zeus.toast("Enter valid X, Y and Z coordinates", false);
-            }
-        }
-
-        private void removeNearest() {
-            Minecraft mc = Minecraft.getInstance();
-            if (mc.player == null) return;
-            load();
-            Wp best = null;
-            double bd = Double.MAX_VALUE;
-            for (Wp w : points) {
-                if (!w.dim().equals(dim(mc))) continue;
-                double d = mc.player.distanceToSqr(w.x(), w.y(), w.z());
-                if (d < bd) {
-                    bd = d;
-                    best = w;
-                }
-            }
-            if (best != null) {
-                points.remove(best);
-                save();
-                Zeus.toast("Removed " + best.name(), true);
-            }
-        }
-
-        private void clearHere() {
-            Minecraft mc = Minecraft.getInstance();
-            load();
-            points.removeIf(w -> w.dim().equals(dim(mc)));
-            save();
-            Zeus.toast("Waypoints cleared", true);
-        }
-
-        private List<String> lines() {
-            Minecraft mc = Minecraft.getInstance();
-            load();
-            List<String> out = new ArrayList<>();
-            for (Wp w : points) {
-                if (!w.dim().equals(dim(mc))) continue;
-                String d = mc.player == null ? "" : "  " + Math.round(Math.sqrt(mc.player.distanceToSqr(w.x(), w.y(), w.z()))) + " m";
-                out.add(w.name() + "  " + Math.round(w.x()) + " " + Math.round(w.y()) + " " + Math.round(w.z()) + d);
-                if (out.size() >= 8) break;
-            }
-            if (out.isEmpty()) out.add("None here yet");
-            return out;
-        }
-
-        @Override
-        protected void onEnable() {
-            load();
-        }
-
-        @Override
-        protected void onTick(Minecraft mc) {
-            if (mc.player == null) return;
-            boolean dead = mc.player.isDeadOrDying();
-            if (dead && !wasDead && deaths.on()) addPoint("Death", 0xFFFF5C6C);
-            wasDead = dead;
-        }
-
-        @Override
-        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
-            if (mc.player == null || points.isEmpty() || !Projector.prepare(mc, partial, w, h)) return;
-            String here = dim(mc);
-            float[] p = new float[2];
-            double ex = Projector.eyeX();
-            double ey = Projector.eyeY();
-            double ez = Projector.eyeZ();
-            for (Wp wp : points) {
-                if (!wp.dim().equals(here)) continue;
-                double dx = wp.x() - ex;
-                double dy = wp.y() + 1 - ey;
-                double dz = wp.z() - ez;
-                double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-                if (dist < fade.get() || !Projector.project(wp.x(), wp.y() + 1.0, wp.z(), p)) continue;
-                int x = Math.round(p[0]);
-                int y = Math.round(p[1]);
-                if (x < -20 || x > w + 20 || y < -20 || y > h + 20) continue;
-                int c = wp.color();
-                // a diamond
-                Draw.line(g, x, y - 6, x + 5, y, 1.4f, c);
-                Draw.line(g, x + 5, y, x, y + 6, 1.4f, c);
-                Draw.line(g, x, y + 6, x - 5, y, 1.4f, c);
-                Draw.line(g, x - 5, y, x, y - 6, 1.4f, c);
-                g.fill(x - 1, y - 1, x + 1, y + 1, 0xFFFFFFFF);
-                if (labels.on()) {
-                    String text = wp.name() + "  " + Math.round(dist) + " m";
-                    int tw = Draw.width(text);
-                    Draw.rrect(g, x - tw / 2 - 3, y + 9, tw + 6, 12, 4, 0xB00B0E16);
-                    Draw.text(g, text, x - tw / 2, y + 11, c);
-                }
-            }
-        }
-
-        @Override
-        public String info() {
-            Minecraft mc = Minecraft.getInstance();
-            int n = 0;
-            for (Wp w : points) if (w.dim().equals(dim(mc))) n++;
-            return n > 0 ? Integer.toString(n) : null;
+    /** The schematic files as chat lines with build and materials buttons. */
+    static void schematics(java.util.List<java.nio.file.Path> files) {
+        say(Component.literal("[Zeus AI] ").withStyle(ChatFormatting.AQUA)
+                .append(Component.literal(files.size() + " schematic(s), newest first:").withStyle(ChatFormatting.WHITE)));
+        for (int i = 0; i < Math.min(12, files.size()); i++) {
+            String name = SchematicPlan.display(files.get(i));
+            say(Component.literal("  " + name + "  ").withStyle(ChatFormatting.WHITE)
+                    .append(button("[Build]", ChatFormatting.GREEN, "ask:build schematic " + name, "Gather the materials and build it in front of you"))
+                    .append(Component.literal(" "))
+                    .append(button("[Materials]", ChatFormatting.AQUA, "ask:materials for " + name, "List what it needs and what you have")));
         }
     }
 
-    // ------------------------------------------------------------------ Auto Replenish
-
-    /** Puts a fresh stack in your hand when the one you are using runs low. */
-    public static final class AutoReplenish extends Module {
-        private final Setting.Num left = add(new Setting.Num("Refill at", "Swap in a new stack when this many or fewer are left.", 2, 1, 32, 1, " items"));
-        private int cooldown;
-
-        public AutoReplenish() {
-            super("autoreplenish", "Auto Replenish", "Swaps in a full stack of the same item when your hand runs low.", Category.UTILITY);
-        }
-
-        @Override
-        protected void onTick(Minecraft mc) {
-            if (mc.player == null || mc.gameMode == null || mc.screen != null) return;
-            if (cooldown-- > 0) return;
-            int slot = Inv.selected();
-            ItemStack cur = Inv.get(slot);
-            if (cur.isEmpty() || cur.getMaxStackSize() <= 1 || cur.getCount() > left.i()) return;
-            int best = -1;
-            int bestCount = cur.getCount();
-            for (int i = 9; i < 36; i++) {
-                ItemStack s = Inv.get(i);
-                if (!s.isEmpty() && ItemStack.isSameItemSameComponents(s, cur) && s.getCount() > bestCount) {
-                    best = i;
-                    bestCount = s.getCount();
-                }
-            }
-            if (best < 0) return;
-            Inv.click(Inv.menuSlot(best), slot, ClickType.SWAP);
-            cooldown = 6;
-        }
+    /** Shows the player's own prefixed request in chat, greyed, so the conversation reads naturally. */
+    static void echo(String text) {
+        say(Component.literal("> " + text).withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));
     }
 
-    // ------------------------------------------------------------------ Durability Alert
-
-    public static final class DurabilityAlert extends Module {
-        private final Setting.Num percent = add(new Setting.Num("Warn below", "Percent of durability left.", 10, 2, 50, 1, "%"));
-        private final Set<String> warned = new HashSet<>();
-        private int ticks;
-
-        public DurabilityAlert() {
-            super("durabilityalert", "Durability Alert", "A message when your tool or armor is about to break.", Category.UTILITY);
+    /** A persistent chat line from the AI (toasts fade too fast for real answers). */
+    public static void chat(String text, boolean problem) {
+        if (text == null || text.isBlank()) return;
+        AiPilot.talk(false, text);
+        MutableComponent line = Component.literal("[Zeus AI] ").withStyle(ChatFormatting.AQUA)
+                .append(Component.literal(text).withStyle(problem ? ChatFormatting.GOLD : ChatFormatting.WHITE));
+        if (problem && !active()) {
+            line.append(Component.literal("  ")).append(button("[ Fix it ]", ChatFormatting.GREEN, "restart", "Open the setup walkthrough"));
         }
+        say(line);
+    }
 
-        @Override
-        protected void onEnable() {
-            warned.clear();
-        }
-
-        @Override
-        protected void onTick(Minecraft mc) {
-            if (mc.player == null || ++ticks % 20 != 0) return;
-            check("hand", mc.player.getMainHandItem());
-            for (EquipmentSlot s : new EquipmentSlot[] {EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
-                check(s.name(), mc.player.getItemBySlot(s));
-            }
-        }
-
-        private void check(String key, ItemStack s) {
-            if (s.isEmpty() || !s.isDamaged()) {
-                warned.remove(key);
-                return;
-            }
-            double left = (s.getMaxDamage() - s.getDamageValue()) * 100.0 / Math.max(1, s.getMaxDamage());
-            if (left <= percent.get()) {
-                if (warned.add(key)) Zeus.toast(s.getHoverName().getString() + " is almost broken (" + String.format(Locale.ROOT, "%.0f", left) + "%)", false);
-            } else if (left > percent.get() + 5) {
-                warned.remove(key);
-            }
-        }
+    private static void say(Component component) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.gui == null) return;
+        mc.gui.getChat().addMessage(component);
     }
 }

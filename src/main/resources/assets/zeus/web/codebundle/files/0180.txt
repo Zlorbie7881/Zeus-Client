@@ -1,138 +1,104 @@
-package com.zlorbie788.zeus.ui;
+package com.zlorbie788.zeus.mods;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
+import com.zlorbie788.zeus.core.Category;
+import com.zlorbie788.zeus.core.Module;
+import com.zlorbie788.zeus.core.Setting;
 import com.zlorbie788.zeus.core.Zeus;
-import net.minecraft.client.gui.GuiGraphics;
-
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
+import com.zlorbie788.zeus.ui.Accent;
+import com.zlorbie788.zeus.ui.Draw;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
-import java.util.Map;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.ItemStack;
 
-/**
- * The Zeus lettering as a font: a row of silver, carved-metal capitals (made by {@code tools/greek_font.py}) drawn letter by
- * letter at any size. Lower case is drawn as capitals. Text that has a letter the font does not have (other alphabets) is not
- * drawn by this class: {@link #supports} says so and the caller uses the game's font instead.
- */
-public final class GreekFont {
-    private GreekFont() {}
+public final class PriceTags extends Module {
+    private final Setting.Bool dealsOnly = add(new Setting.Bool("Deals only", "Hides the tags on items that are not under market.", false));
+    private final Setting.Num dealAt = add(new Setting.Num("Deal from", "How far under the learned price an item has to be before it counts as a deal.", 20, 5, 90, 5, " %"));
+    private final Setting.Bool prices = add(new Setting.Bool("Listing prices", "Shows the price written on a listing when no market price is known for it.", true));
+    private final Setting.Bool values = add(new Setting.Bool("Market values", "Shows the learned market value when the listing has no readable price.", true));
+    private final Setting.Info summary = addSetting(new Setting.Info("Price Tags: status", this::lines));
 
-    private static final String PICTURE = "textures/gui/menu/greek.png";
-    private static boolean tried;
-    private static boolean ok;
-    private static int cap = 128;
-    private static int row = 190;
-    private static int base = 158;
-    private static int pad = 14;
-    private static int space = 59;
-    private static int gap = 27;
-    private static int total;
-    private static final Map<Character, int[]> GLYPHS = new HashMap<>();
+    private int deals;
+    private double best;
 
-    private static void load() {
-        if (tried) return;
-        tried = true;
-        try (InputStream in = GreekFont.class.getResourceAsStream("/assets/zeus/textures/gui/menu/greek.json")) {
-            if (in == null) return;
-            JsonObject o = JsonParser.parseReader(new InputStreamReader(in, StandardCharsets.UTF_8)).getAsJsonObject();
-            cap = o.get("cap").getAsInt();
-            row = o.get("row").getAsInt();
-            base = o.get("base").getAsInt();
-            pad = o.get("pad").getAsInt();
-            space = o.get("space").getAsInt();
-            gap = o.get("gap").getAsInt();
-            JsonObject g = o.getAsJsonObject("g");
-            for (Map.Entry<String, com.google.gson.JsonElement> e : g.entrySet()) {
-                JsonArray a = e.getValue().getAsJsonArray();
-                GLYPHS.put(e.getKey().charAt(0), new int[] {a.get(0).getAsInt(), a.get(1).getAsInt(), a.get(2).getAsInt()});
-                total = Math.max(total, a.get(0).getAsInt() + a.get(1).getAsInt());
+    public PriceTags() {
+        super("price_tags", "Price Tags", "Puts the learned market value, the profit and the discount on every item in an open container, so a good listing is obvious without reading a single line of lore.", Category.UTILITY);
+        alias("price tags", "market tags", "auction values");
+    }
+
+    public static void render(GuiGraphics g, AbstractContainerMenu menu, int left, int top) {
+        PriceTags self = Zeus.get(PriceTags.class);
+        if (self != null) self.draw(g, menu, left, top);
+    }
+
+    private void draw(GuiGraphics g, AbstractContainerMenu menu, int left, int top) {
+        deals = 0;
+        best = 0;
+        if (!enabled()) return;
+        for (Slot slot : menu.slots) {
+            ItemStack stack = slot.getItem();
+            if (stack == null || stack.isEmpty()) continue;
+            String name = stack.getHoverName().getString();
+            double fair = AuctionMind.fair(name);
+            double price = AhSniper.priceOf(stack);
+            if (fair <= 0 && price <= 0) continue;
+            String label;
+            int colour;
+            if (price > 0 && fair > 0) {
+                double off = (1.0 - price / fair) * 100.0;
+                boolean deal = off >= dealAt.f();
+                if (deal) {
+                    deals++;
+                    if (off > best) best = off;
+                }
+                if (dealsOnly.on() && !deal) continue;
+                label = (off >= 0 ? "+" : "-") + shortMoney(Math.abs(fair - price));
+                colour = off >= 0 ? Accent.OK : Accent.BAD;
+            } else if (price > 0) {
+                if (dealsOnly.on() || !prices.on()) continue;
+                label = shortMoney(price);
+                colour = Accent.DIM;
+            } else {
+                if (dealsOnly.on() || !values.on()) continue;
+                label = shortMoney(fair);
+                colour = Accent.INFO;
             }
-            ok = !GLYPHS.isEmpty();
-        } catch (Exception | LinkageError e) {
-            Zeus.LOG.warn("The Zeus lettering could not be read; the game's font is used instead", e);
+            paint(g, left + slot.x, top + slot.y, label, colour);
         }
     }
 
-    public static boolean available() {
-        load();
-        return ok;
+    private static void paint(GuiGraphics g, int x, int y, String label, int colour) {
+        float scale = 0.62f;
+        int w = Math.round(Draw.widthS(label, scale));
+        g.fill(x + 1, y + 9, x + 16, y + 16, 0x70000000);
+        Draw.textS(g, label, x + 15 - Math.min(14, w), y + 9, colour, scale);
     }
 
-    /** True when every character of the text can be drawn with this font (spaces and lower case included). */
-    public static boolean supports(String text) {
-        if (!available()) return false;
-        for (int i = 0; i < text.length(); i++) {
-            char c = Character.toUpperCase(text.charAt(i));
-            if (c != ' ' && !GLYPHS.containsKey(c)) return false;
-        }
-        return true;
+    private static String shortMoney(double value) {
+        if (value >= 1e12) return trim(value / 1e12) + "t";
+        if (value >= 1e9) return trim(value / 1e9) + "b";
+        if (value >= 1e6) return trim(value / 1e6) + "m";
+        if (value >= 1e3) return trim(value / 1e3) + "k";
+        return Long.toString(Math.round(value));
     }
 
-    /** The width of the text, in interface pixels, for letters {@code capHeight} high. */
-    public static int width(String text, int capHeight) {
-        if (!available()) return Draw.width(text);
-        float s = capHeight / (float) cap;
-        float x = 0f;
-        String t = text.toUpperCase(Locale.ROOT);
-        for (int i = 0; i < t.length(); i++) {
-            char c = t.charAt(i);
-            if (c == ' ') {
-                x += space;
-                continue;
-            }
-            int[] g = GLYPHS.get(c);
-            if (g == null) continue;
-            x += g[2] + (i < t.length() - 1 ? gap : 0);
-        }
-        return Math.round(x * s);
+    private static String trim(double value) {
+        return value >= 100 ? Long.toString(Math.round(value)) : String.format(Locale.ROOT, "%.1f", value);
     }
 
-    /** Draws the text with its capitals {@code capHeight} interface pixels high, the top of the capitals at y. */
-    public static void draw(GuiGraphics g, String text, int x, int y, int capHeight, int tint, boolean shadow) {
-        if (!available()) {
-            Draw.text(g, text, x, y, tint);
-            return;
-        }
-        int gs = Tex.guiScale();
-        float s = capHeight / (float) cap;
-        float px = s * gs;                       // texture pixels per atlas pixel
-        int tw = Math.max(1, Math.round(total * px));
-        int th = Math.max(1, Math.round(row * px));
-        Tex.Img img = Tex.fitted("greek_" + th, PICTURE, tw, th, false, 0, 0);
-        if (img == null) {
-            Draw.text(g, text, x, y, tint);
-            return;
-        }
-        String t = text.toUpperCase(Locale.ROOT);
-        float cx = x;
-        int topPad = base - cap;                 // the capitals start this far down in the picture
-        int dy = y - Math.round(topPad * s);
-        int dh = Math.round(row * s);
-        for (int i = 0; i < t.length(); i++) {
-            char c = t.charAt(i);
-            if (c == ' ') {
-                cx += space * s;
-                continue;
-            }
-            int[] gl = GLYPHS.get(c);
-            if (gl == null) continue;
-            int dx = Math.round(cx - pad * s);
-            int dw = Math.round(gl[1] * s);
-            int sx = Math.round(gl[0] * px);
-            int sw = Math.min(img.w - sx, Math.round(gl[1] * px));
-            if (sw > 0 && dw > 0) {
-                if (shadow) img.drawPart(g, dx + 1, dy + 1, dw, dh, sx, 0, sw, th, Draw.rgba(0xFF000000, Math.min(1f, Draw.a(tint) / 255f * 0.75f)));
-                img.drawPart(g, dx, dy, dw, dh, sx, 0, sw, th, tint);
-            }
-            cx += (gl[2] + gap) * s;
-        }
+    private List<String> lines() {
+        List<String> out = new ArrayList<>();
+        out.add(deals > 0 ? deals + " deal(s) in view, best " + Math.round(best) + " % under market" : "No deals in the open window");
+        out.add("Price book: " + AuctionMind.books() + " items, counted from listings and purchases");
+        out.add("Deal from " + Math.round(dealAt.f()) + " % under market");
+        return out;
     }
 
-    public static void drawCentered(GuiGraphics g, String text, int cx, int y, int capHeight, int tint, boolean shadow) {
-        draw(g, text, cx - width(text, capHeight) / 2, y, capHeight, tint, shadow);
+    @Override
+    public String info() {
+        return deals > 0 ? deals + " deals" : null;
     }
 }

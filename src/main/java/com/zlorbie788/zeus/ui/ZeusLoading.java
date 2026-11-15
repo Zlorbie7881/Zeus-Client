@@ -274,7 +274,7 @@ public final class ZeusLoading {
     }
 
     private static final String[] TIPS = {
-            "Press Z in a world to open the Zeus panel.",
+            "Press {menu} in a world to open the Zeus panel.",
             "Click a module's row to open its settings; click its switch to turn it on.",
             "Type /zeus keybinds for a virtual keyboard: click a key and link modules to it.",
             "Several modules can share one key; they all toggle together.",
@@ -306,7 +306,7 @@ public final class ZeusLoading {
         if (a <= 0.02f) return;
         int cap = Math.max(7, Math.round(7.5f * k));
         GreekFont.drawCentered(g, "TIP", w / 2, y, cap, Draw.rgba(0xFF8FA6D8, a), true);
-        String text = TIPS[idx];
+        String text = TIPS[idx].replace("{menu}", com.zlorbie788.zeus.client.ZeusClient.menuKeyName());
         float sc = Math.max(1f, k * 1.05f);
         int max = Math.round(w * 0.8f);
         while (sc > 0.7f && Draw.widthS(text, sc) > max) sc -= 0.05f;

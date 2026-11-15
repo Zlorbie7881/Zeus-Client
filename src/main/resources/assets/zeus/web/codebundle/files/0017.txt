@@ -1,112 +1,235 @@
-package com.zlorbie788.zeus.core;
+package com.zlorbie788.zeus.client;
 
+import com.mojang.blaze3d.platform.InputConstants;
+import com.zlorbie788.zeus.core.Module;
+import com.zlorbie788.zeus.core.Zeus;
+import com.zlorbie788.zeus.ui.UiSettings;
+import com.zlorbie788.zeus.ui.ZButton;
+import com.zlorbie788.zeus.ui.ZeusMenu;
+import com.zlorbie788.zeus.ui.ZeusScreen;
+import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
+import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
-import net.minecraft.world.InteractionHand;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.item.ItemEntity;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.resources.Identifier;
+import org.lwjgl.glfw.GLFW;
 
-import java.util.function.Predicate;
+public class ZeusClient implements ClientModInitializer {
+    public static final String MOD_ID = "zeus";
 
-/** Placing blocks and using items on blocks, the way a player does with a right click. */
-public final class Build {
-    private Build() {}
+    public static final KeyMapping.Category CATEGORY = KeyMapping.Category.register(Identifier.fromNamespaceAndPath(MOD_ID, "main"));
 
-    public static final double REACH = 4.6;
+    public static KeyMapping OPEN;
 
-    private static Minecraft mc() {
-        return Minecraft.getInstance();
+    public static KeyMapping TRICK;
+
+    public static KeyMapping TRICK_NEXT;
+
+    public static KeyMapping SPEAR_LUNGE;
+
+    public static KeyMapping PALETTE;
+    public static KeyMapping ASK_AI;
+
+    private static boolean pendingOpen;
+    private static boolean pendingHudEditor;
+    private static boolean pendingKeybinds;
+
+    public static void openLater() {
+        pendingOpen = true;
     }
 
-    public static BlockState state(BlockPos p) {
-        return mc().level.getBlockState(p);
+    public static void openKeybindsLater() {
+        pendingKeybinds = true;
     }
 
-    public static boolean replaceable(BlockPos p) {
-        return state(p).canBeReplaced();
+    public static void openHudEditorLater() {
+        pendingHudEditor = true;
     }
 
-    public static boolean air(BlockPos p) {
-        return state(p).isAir();
+    /** The name of the key that opens the Zeus menu, as the player sees it ("Right Shift"). */
+    public static String menuKeyName() {
+        if (OPEN == null || OPEN.isUnbound()) return "Right Shift";
+        return OPEN.getTranslatedKeyMessage().getString();
     }
 
-    /** Something solid you could stand on or place against. */
-    public static boolean solid(BlockPos p) {
-        BlockState s = state(p);
-        return !s.isAir() && !s.canBeReplaced() && !s.getCollisionShape(mc().level, p).isEmpty();
+    /** Sets the key that opens the Zeus menu and saves it with the game's own key binds. */
+    public static void setMenuKey(InputConstants.Key key) {
+        if (OPEN == null) return;
+        OPEN.setKey(key);
+        KeyMapping.resetMapping();
+        Minecraft.getInstance().options.save();
     }
 
-    /** A living thing or a placed object is in the way (dropped items do not count). */
-    public static boolean blocked(BlockPos p) {
-        for (Entity e : mc().level.getEntities((Entity) null, new AABB(p))) {
-            if (e instanceof ItemEntity || !e.isAlive() || e.isSpectator()) continue;
-            return true;
+    private static boolean menuKeyChecked;
+
+    /** Zeus used to open on Z; the menu now opens on Right Shift. Players still on the old default move over once. */
+    private static void moveMenuKeyOnce(Minecraft mc) {
+        if (menuKeyChecked || OPEN == null || mc.options == null) return;
+        menuKeyChecked = true;
+        if (UiSettings.MENU_KEY_MOVED.on()) return;
+        UiSettings.MENU_KEY_MOVED.set(true);
+        if ("key.keyboard.z".equals(OPEN.saveString())) {
+            setMenuKey(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_RIGHT_SHIFT));
+            Zeus.LOG.info("The Zeus menu key moved from Z to Right Shift; change it in Zeus settings or on the keybinds keyboard");
         }
-        return false;
+        Zeus.save();
     }
 
-    public static Vec3 eye() {
-        return mc().player.getEyePosition();
-    }
-
-    public static double distTo(BlockPos p) {
-        return eye().distanceTo(Vec3.atCenterOf(p));
-    }
-
-    /** A click on the top face of a block. */
-    public static BlockHitResult top(BlockPos base) {
-        return new BlockHitResult(new Vec3(base.getX() + 0.5, base.getY() + 1.0, base.getZ() + 0.5), Direction.UP, base, false);
-    }
-
-    /** Finds a neighbour of {@code pos} to click on so that the block lands on {@code pos}. Null when there is none in reach. */
-    public static BlockHitResult against(BlockPos pos, double reach) {
-        BlockHitResult best = null;
-        double bestD = Double.MAX_VALUE;
-        for (Direction d : Direction.values()) {
-            BlockPos nb = pos.relative(d);
-            if (!solid(nb)) continue;
-            Direction face = d.getOpposite();
-            Vec3 hit = new Vec3(nb.getX() + 0.5 + face.getStepX() * 0.5, nb.getY() + 0.5 + face.getStepY() * 0.5, nb.getZ() + 0.5 + face.getStepZ() * 0.5);
-            double dist = eye().distanceTo(hit);
-            if (dist > reach || dist >= bestD) continue;
-            best = new BlockHitResult(hit, face, nb, false);
-            bestD = dist;
+    @Override
+    public void onInitializeClient() {
+        UiSettings.touch();
+        OPEN = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.zeus.open", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_RIGHT_SHIFT, CATEGORY));
+        TRICK = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.zeus.trick", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_R, CATEGORY));
+        TRICK_NEXT = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.zeus.trick_next", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, CATEGORY));
+        SPEAR_LUNGE = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.zeus.spear_lunge", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, CATEGORY));
+        PALETTE = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.zeus.palette", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_K, CATEGORY));
+        ASK_AI = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.zeus.ask_ai", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_J, CATEGORY));
+        Zeus.init();
+        for (Module m : Zeus.all()) {
+            if (!m.toggleable()) continue;
+            m.key = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.zeus.module." + m.id, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, CATEGORY));
         }
-        return best;
-    }
-
-    /** True when something could be placed at pos right now (free, in reach, with something to click on). */
-    public static boolean canPlace(BlockPos pos, double reach) {
-        return replaceable(pos) && !blocked(pos) && against(pos, reach) != null;
-    }
-
-    /** Uses the item on a block: the hand is the offhand when it holds the item, otherwise the hotbar slot is selected for a moment. */
-    public static boolean useOn(BlockHitResult hit, Predicate<ItemStack> item, boolean swing) {
-        Minecraft mc = mc();
-        if (mc.gameMode == null || mc.player == null) return false;
-        if (Inv.offhand(item)) {
-            mc.gameMode.useItemOn(mc.player, InteractionHand.OFF_HAND, hit);
-            if (swing) mc.player.swing(InteractionHand.OFF_HAND);
-            return true;
+        try {
+            Commands.init();
+        } catch (Throwable t) {
+            Zeus.LOG.error("Zeus commands could not be registered; /zeus will be missing", t);
         }
-        int slot = Inv.hotbar(item);
-        if (slot < 0) return false;
-        return Inv.with(slot, () -> {
-            mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, hit);
-            if (swing) mc.player.swing(InteractionHand.MAIN_HAND);
+        try {
+            ZButton.register();
+        } catch (Throwable t) {
+            Zeus.LOG.error("The Zeus button could not be registered", t);
+        }
+        HudElementRegistry.attachElementBefore(VanillaHudElements.MISC_OVERLAYS, Identifier.fromNamespaceAndPath(MOD_ID, "hud"), (g, tracker) -> {
+            try {
+                Minecraft mc = Minecraft.getInstance();
+                com.zlorbie788.zeus.ui.ZeusLoading.worldFade(g, mc.getWindow().getGuiScaledWidth(), mc.getWindow().getGuiScaledHeight());
+                if (mc.options.hideGui) return;
+                if (mc.screen instanceof net.minecraft.client.gui.screens.PauseScreen) return;
+                Zeus.hud(g, mc, tracker.getGameTimeDeltaPartialTick(false), mc.getWindow().getGuiScaledWidth(), mc.getWindow().getGuiScaledHeight());
+            } catch (Throwable t) {
+                hudErrors++;
+                long now = System.currentTimeMillis();
+                if (now - lastHudError > 4000L) {
+                    lastHudError = now;
+                    Zeus.LOG.error("Zeus HUD drawing threw; the HUD was skipped", t);
+                }
+                if (hudErrors > 200 && !Zeus.destroyed()) Zeus.destroy();
+            }
         });
+        ClientTickEvents.END_CLIENT_TICK.register(ZeusClient::onTick);
+        ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
+            try {
+                com.zlorbie788.zeus.client.web.LocalControlServer.stop();
+                Zeus.save();
+                com.zlorbie788.zeus.mods.AuctionMind.flush();
+                com.zlorbie788.zeus.core.Crates.flush();
+            } catch (Throwable t) {
+                Zeus.LOG.error("Zeus could not finish saving while the game closed", t);
+            }
+        });
+        Zeus.LOG.info("Zeus {} loaded. Press Right Shift in a world (or type /zeus) to open the panel.", Zeus.VERSION);
     }
 
-    /** Places the held item on pos. */
-    public static boolean place(BlockPos pos, Predicate<ItemStack> item, boolean swing, double reach) {
-        if (!replaceable(pos) || blocked(pos)) return false;
-        BlockHitResult hit = against(pos, reach);
-        return hit != null && useOn(hit, item, swing);
+    private static long lastTickError;
+    private static int tickErrors;
+    private static long lastHudError;
+    private static int hudErrors;
+
+    private static void onTick(Minecraft mc) {
+        try {
+            onTickBody(mc);
+            // Last word on the look each tick: holds and fade-homes for silent rotations even when no
+            // module aims, so the view never snaps back in one packet. Always on, not a module.
+            com.zlorbie788.zeus.core.Aim.tick(mc);
+        } catch (Throwable t) {
+            tickErrors++;
+            long now = System.currentTimeMillis();
+            if (now - lastTickError > 4000L) {
+                lastTickError = now;
+                Zeus.LOG.error("Zeus threw during a client tick; that tick was skipped", t);
+            }
+            if (tickErrors > 40 && !Zeus.destroyed()) {
+                Zeus.destroy();
+                Zeus.LOG.error("Zeus kept failing and switched itself off for this session");
+            }
+        }
+    }
+
+    private static void onTickBody(Minecraft mc) {
+        if (Zeus.destroyed()) {
+            if (mc.screen instanceof ZeusScreen) mc.setScreen(null);
+            return;
+        }
+        com.zlorbie788.zeus.ui.MenuAudio.tick();
+        com.zlorbie788.zeus.core.Crates.tick(mc);
+        com.zlorbie788.zeus.ui.LastPlayed.tick(mc);
+        if (com.zlorbie788.zeus.ui.UiSettings.WINDOW_ICON.on()) WindowIcon.tick(mc);
+        ZeusMenu.tick(mc);
+        if (pendingOpen) {
+            pendingOpen = false;
+            if (mc.level != null) mc.setScreen(ZeusScreen.make(null));
+        }
+        if (pendingKeybinds) {
+            pendingKeybinds = false;
+            com.zlorbie788.zeus.mods.Quality.Keybinds.open();
+        }
+        if (pendingHudEditor) {
+            pendingHudEditor = false;
+            if (mc.level != null) mc.setScreen(new com.zlorbie788.zeus.ui.HudEditorScreen(null));
+            else Zeus.toast("Open a world before editing the HUD", false);
+        }
+        moveMenuKeyOnce(mc);
+        if (mc.screen == null && mc.level != null) {
+            while (OPEN.consumeClick()) mc.setScreen(ZeusScreen.make(null));
+            while (TRICK.consumeClick()) com.zlorbie788.zeus.mods.KnifeSwing.pressTrick();
+            while (TRICK_NEXT.consumeClick()) com.zlorbie788.zeus.mods.KnifeSwing.nextTrick();
+            while (SPEAR_LUNGE.consumeClick()) {
+                Module spear = Zeus.get("spearswap");
+                if (spear instanceof com.zlorbie788.zeus.mods.QuickMods.SpearSwap sp) sp.lunge(mc);
+            }
+            while (PALETTE.consumeClick()) {
+                if (controlDown(mc) && !Zeus.destroyed()) mc.setScreen(new com.zlorbie788.zeus.ui.PaletteScreen(null));
+            }
+            while (ASK_AI.consumeClick()) {
+                // Opens chat with /zeus ai already typed, so asking the AI is one key away.
+                if (mc.screen == null && !Zeus.destroyed()) mc.setScreen(new net.minecraft.client.gui.screens.ChatScreen("/zeus ai ", false));
+            }
+            if (mc.screen == null) {
+                for (Module m : Zeus.all()) {
+                    if (m.key == null) continue;
+                    while (m.key.consumeClick()) m.toggle();
+                }
+            }
+        } else {
+            while (OPEN.consumeClick()) {
+            }
+            while (TRICK.consumeClick()) {
+            }
+            while (TRICK_NEXT.consumeClick()) {
+            }
+            while (SPEAR_LUNGE.consumeClick()) {  }
+            while (PALETTE.consumeClick()) {  }
+            while (ASK_AI.consumeClick()) {  }
+            for (Module m : Zeus.all()) {
+                if (m.key == null) continue;
+                while (m.key.consumeClick()) {
+                }
+            }
+        }
+        com.zlorbie788.zeus.mods.QuickMods.pulse(mc);
+        Zeus.tick(mc);
+    }
+
+    private static boolean controlDown(Minecraft mc) {
+        try {
+            return InputConstants.isKeyDown(mc.getWindow(), GLFW.GLFW_KEY_LEFT_CONTROL)
+                    || InputConstants.isKeyDown(mc.getWindow(), GLFW.GLFW_KEY_RIGHT_CONTROL);
+        } catch (RuntimeException ignored) {
+            return false;
+        }
     }
 }

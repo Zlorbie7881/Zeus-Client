@@ -80,10 +80,13 @@ def cut(entry, length, split, held_pin, swing_pin):
     kid = entry["id"]
     half = entry.get("half", 3.55)
     pieces = {}
-    levels = [lv for lv in (0, 1, 2) if os.path.exists(os.path.join(TEX, f"{kid}_{lv}.png"))]
+    l2 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "level2")
+    src = {lv: os.path.join(TEX, f"{kid}_{lv}.png") for lv in (0, 1)}
+    src[2] = os.path.join(l2, f"{kid}_2.png")   # level 2 base sheets are not shipped (see make_tactical.py)
+    levels = [lv for lv in (0, 1, 2) if os.path.exists(src[lv])]
     masks_l1 = None
     for lv in levels:
-        sheet = np.asarray(Image.open(os.path.join(TEX, f"{kid}_{lv}.png")).convert("RGBA")).astype(np.float32)
+        sheet = np.asarray(Image.open(src[lv]).convert("RGBA")).astype(np.float32)
         H, W = sheet.shape[:2]
         ch = H // CELLS
         u = (np.arange(W) + 0.5) / W * length

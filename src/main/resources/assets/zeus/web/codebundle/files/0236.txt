@@ -1,117 +1,414 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#040811">
-<meta name="description" content="Zeus Client is a Fabric cheat client for Minecraft 1.21.11 with combat, movement, ESP and base-finding modules.">
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="Zeus Client">
-<meta property="og:title" content="Zeus Client - a cheat client for Minecraft 1.21.11">
-<meta property="og:description" content="Combat, movement, ESP, base finding and a full in-game control center for Minecraft 1.21.11 on Fabric.">
-<meta property="og:image" content="/img/og.jpg">
-<meta name="twitter:card" content="summary_large_image">
-<link rel="manifest" href="/site.webmanifest">
-<link rel="preload" href="/fonts/Exo2-BlackItalic.woff" as="font" type="font/woff" crossorigin>
-<link rel="preload" href="/fonts/Inter-Regular.woff" as="font" type="font/woff" crossorigin>
-<title>Zeus Client</title>
-<link rel="icon" type="image/png" href="/img/favicon.png">
-<link rel="stylesheet" href="/css/site.css">
-<link rel="stylesheet" href="/css/v95.css">
-<link rel="stylesheet" href="/css/polish.css">
-</head>
-<body>
-<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
-  <defs>
-    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5M5.5 10v10h5v-6h3v6h5V10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3.5v11M7.5 10.5 12 15l4.5-4.5M4.5 19.5h15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-    <symbol id="i-cube" viewBox="0 0 24 24"><path d="M12 2.8 20.5 7.5v9L12 21.2 3.5 16.5v-9zM3.8 7.7 12 12.3l8.2-4.6M12 12.3v8.7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/></symbol>
-    <symbol id="i-play" viewBox="0 0 24 24"><path d="M6.5 4.5v15l13-7.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
-    <symbol id="i-playfill" viewBox="0 0 24 24"><path d="M6 3.8v16.4L20 12z" fill="currentColor"/></symbol>
-    <symbol id="i-users" viewBox="0 0 24 24"><path d="M16.5 19.5v-1.3a3.7 3.7 0 0 0-3.7-3.7H8.2a3.7 3.7 0 0 0-3.7 3.7v1.3M10.5 11.2a3.6 3.6 0 1 0 0-7.2 3.6 3.6 0 0 0 0 7.2M20.5 19.5v-1.3a3.7 3.7 0 0 0-2.7-3.5M15.3 4.2a3.6 3.6 0 0 1 0 6.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 11v5.5M12 7.6v.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
-    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
-    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13.5 2.5 5 13.5h6l-1.2 8L19 10h-6.2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
-    <symbol id="i-puzzle" viewBox="0 0 24 24"><path d="M20 11.5V18a2 2 0 0 1-2 2h-3.6v-1.7a2.3 2.3 0 1 0-4.6 0V20H6a2 2 0 0 1-2-2v-3.7h1.7a2.3 2.3 0 1 0 0-4.6H4V6a2 2 0 0 1 2-2h3.8V3.7a2.3 2.3 0 1 1 4.6 0V4H18a2 2 0 0 1 2 2v3.4h-.6a2.3 2.3 0 1 0 0 4.6z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
-    <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3.2a8.8 8.8 0 1 0 0 17.6c1.3 0 2.1-.9 2.1-2 0-.6-.3-1-.6-1.4-.3-.4-.5-.8-.5-1.2 0-1 .8-1.9 1.9-1.9h2.1a3.6 3.6 0 0 0 3.6-3.6C20.6 6.6 16.8 3.2 12 3.2z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="7.6" cy="11" r="1.2" fill="currentColor"/><circle cx="10.2" cy="7.2" r="1.2" fill="currentColor"/><circle cx="15" cy="7.4" r="1.2" fill="currentColor"/></symbol>
-    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 2.8 19.8 5.6v6c0 4.9-3.3 8-7.8 9.6-4.5-1.6-7.8-4.7-7.8-9.6v-6z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="m8.6 12 2.5 2.5 4.4-4.9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-    <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M8 4h8v5.5a4 4 0 0 1-8 0zM8 5.5H4.5v1.8A3.7 3.7 0 0 0 8 11M16 5.5h3.5v1.8A3.7 3.7 0 0 1 16 11M12 13.5v4M8.5 20.5h7M10 17.5h4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-    <symbol id="i-gift" viewBox="0 0 24 24"><path d="M3.5 8.5h17v4h-17zM5 12.5v8h14v-8M12 8.5v12M12 8.5C9.8 8.5 8.2 7.5 8.2 6.1S9.3 4 10.6 4C12.4 4 12 7 12 8.5zM12 8.5c2.2 0 3.8-1 3.8-2.4S14.7 4 13.4 4C11.6 4 12 7 12 8.5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
-    <symbol id="i-discord" viewBox="0 0 24 24"><path d="M19.3 5.4A16.5 16.5 0 0 0 15.2 4l-.5 1a15 15 0 0 0-5.4 0l-.5-1a16.5 16.5 0 0 0-4.1 1.4C2 9.3 1.3 13.1 1.6 16.9a16.6 16.6 0 0 0 5 2.5l1.1-1.7a10.800 10.800 0 0 1-1.7-.8l.4-.3a11.900 11.900 0 0 0 10.200 0l.4.3c-.5.3-1.100.6-1.700.8l1.100 1.700a16.600 16.600 0 0 0 5-2.500c.4-4.400-.7-8.200-3.100-11.500zM8.700 14.600c-1 0-1.800-.9-1.800-2s.8-2 1.800-2 1.800.9 1.800 2-.8 2-1.800 2zm6.600 0c-1 0-1.800-.9-1.800-2s.8-2 1.800-2 1.800.9 1.800 2-.8 2-1.800 2z" fill="currentColor"/></symbol>
-    <symbol id="i-calendar" viewBox="0 0 24 24"><path d="M4.5 6h15v14h-15zM4.5 10.2h15M8.5 3.5V7M15.5 3.5V7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 13.5h2v2H8zM12 13.5h2v2h-2zM8 17h2v.1H8z" fill="currentColor"/></symbol>
-    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13.500 6.500 19 12l-5.500 5.500" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-    <symbol id="i-youtube" viewBox="0 0 24 24"><path d="M21.600 7.200a2.500 2.500 0 0 0-1.800-1.800C18.200 5 12 5 12 5s-6.200 0-7.800.4A2.500 2.500 0 0 0 2.400 7.200C2 8.800 2 12 2 12s0 3.200.4 4.800a2.500 2.500 0 0 0 1.800 1.800C5.800 19 12 19 12 19s6.200 0 7.800-.4a2.500 2.500 0 0 0 1.800-1.800c.4-1.600.4-4.800.4-4.800s0-3.200-.4-4.800zM10 15V9l5.200 3z" fill="currentColor"/></symbol>
-    <symbol id="i-twitter" viewBox="0 0 24 24"><path d="M22 5.900c-.7.300-1.500.5-2.300.6.800-.5 1.500-1.300 1.800-2.200-.8.500-1.700.8-2.600 1a4 4 0 0 0-6.900 3.700A11.400 11.400 0 0 1 3.800 4.800a4 4 0 0 0 1.200 5.400c-.7 0-1.300-.2-1.800-.5 0 2 1.400 3.700 3.200 4.100-.6.200-1.200.2-1.800.1.500 1.600 2 2.800 3.800 2.800A8.100 8.100 0 0 1 2.500 18a11.400 11.400 0 0 0 6.200 1.800c7.500 0 11.600-6.200 11.600-11.600v-.5c.8-.6 1.500-1.300 2-2z" fill="currentColor"/></symbol>
-    <symbol id="i-dots" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3" fill="currentColor"/><path d="M8 8h3v3H8zM13 13h3v3h-3zM13 8h3v3h-3zM8 13h3v3H8z" fill="#040811"/></symbol>
-    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
-    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.500" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.500 4.500" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
-    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9M13 4.500v5M7 14.500v5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
-    <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3.500v8M7 6.700a7.500 7.500 0 1 0 10 0" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
-    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.500" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7.500V12l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
-    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7.500-4.600-7.500-10A4.200 4.200 0 0 1 12 7.600 4.200 4.200 0 0 1 19.500 10c0 5.400-7.500 10-7.500 10z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
-    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8.500 6.500H20M8.500 12H20M8.500 17.500H20M4 6.500h.1M4 12h.1M4 17.500h.1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
-    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.500 4.500 4.500L19 7.500" fill="none" stroke="currentColor" stroke-width="2.200" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9.200 9.500a2.900 2.900 0 0 1 5.600.9c0 1.900-2.800 2.300-2.800 4.100M12 17.200v.1" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
-    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5.500h16v11H9.500L5.500 20v-3.500H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 10h8M8 13h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
-    <symbol id="i-send" viewBox="0 0 24 24"><path d="M4 12 20 4l-4.500 16-3.500-6.500z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="m12 13.500 4-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
-    <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 6.500C10.300 5.200 7.800 4.700 4.500 5v13c3.300-.3 5.800.2 7.500 1.500 1.700-1.300 4.200-1.800 7.500-1.500V5c-3.300-.3-5.800.2-7.500 1.500zM12 6.500v13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
-    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.500 12a7.500 7.500 0 1 1-2.200-5.300M19.500 4.500v4h-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.500" y="8.500" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M15.500 8.500V6a1.500 1.500 0 0 0-1.500-1.500H6A1.500 1.500 0 0 0 4.500 6v8A1.500 1.500 0 0 0 6 15.500h2.500" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
-    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3.500 13.800 10l6.200 2-6.200 2L12 20.500 10.200 14 4 12l6.200-2z" fill="currentColor"/></symbol>
-    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8.2" r="3.8" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4.5 20c.6-4 3.700-6 7.500-6s6.900 2 7.500 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
-    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.500" width="14" height="9.500" rx="2.200" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8.200 10.500V8a3.800 3.800 0 0 1 7.600 0v2.500M12 14.200v2.600" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
-    <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3.500" y="5.500" width="17" height="13" rx="2.200" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m4.500 7.500 7.500 5.700 7.500-5.700" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-    <symbol id="i-code" viewBox="0 0 24 24"><path d="m8.500 7-5 5 5 5M15.500 7l5 5-5 5M13.500 5l-3 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.500 6.500a1.800 1.800 0 0 1 1.800-1.800h3.700l2 2.300h7.700a1.800 1.800 0 0 1 1.800 1.800v8.700a1.800 1.800 0 0 1-1.800 1.800H5.300a1.800 1.800 0 0 1-1.800-1.800z" fill="none" stroke="currentColor" stroke-width="1.700" stroke-linejoin="round"/></symbol>
-    <symbol id="i-file" viewBox="0 0 24 24"><path d="M6.500 3.500h7l4 4v12a1 1 0 0 1-1 1h-10a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1zM13.500 3.500v4h4" fill="none" stroke="currentColor" stroke-width="1.700" stroke-linejoin="round"/></symbol>
-    <symbol id="i-github" viewBox="0 0 24 24"><path d="M12 2.500a9.500 9.500 0 0 0-3 18.500c.5.100.7-.2.700-.5v-1.800c-2.700.6-3.300-1.200-3.300-1.200-.4-1.100-1.100-1.400-1.100-1.400-.9-.6.100-.6.100-.6 1 .1 1.500 1 1.500 1 .9 1.500 2.300 1.100 2.900.8.1-.6.300-1.100.6-1.300-2.100-.3-4.400-1.100-4.400-4.800 0-1.100.4-1.900 1-2.600-.1-.3-.4-1.300.1-2.600 0 0 .8-.3 2.700 1a9.200 9.200 0 0 1 4.900 0c1.900-1.300 2.700-1 2.700-1 .5 1.300.2 2.300.1 2.600.6.700 1 1.500 1 2.600 0 3.700-2.300 4.500-4.400 4.800.4.300.7.900.7 1.800v2.700c0 .3.200.6.700.5A9.500 9.500 0 0 0 12 2.500z" fill="currentColor"/></symbol>
-    <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3.800 2.500 5.300 5.700.7-4.200 4 1.100 5.700-5.100-2.800-5.100 2.800 1.100-5.700-4.200-4 5.700-.7z" fill="none" stroke="currentColor" stroke-width="1.700" stroke-linejoin="round"/></symbol>
-    <symbol id="i-starfill" viewBox="0 0 24 24"><path d="m12 3.800 2.500 5.300 5.700.7-4.200 4 1.100 5.700-5.100-2.800-5.100 2.800 1.100-5.700-4.200-4 5.700-.7z" fill="currentColor" stroke="currentColor" stroke-width="1.200" stroke-linejoin="round"/></symbol>
-    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.500 12s3.600-6.500 9.500-6.500S21.500 12 21.500 12s-3.600 6.500-9.500 6.500S2.500 12 2.500 12z" fill="none" stroke="currentColor" stroke-width="1.700" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.700"/></symbol>
-    <symbol id="i-map" viewBox="0 0 24 24"><path d="m3.500 6.500 5.500-2 6 2 5.500-2v13l-5.500 2-6-2-5.500 2zM9 4.500v13M15 6.500v13" fill="none" stroke="currentColor" stroke-width="1.700" stroke-linejoin="round"/></symbol>
-    <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9.500 4.500h-4v15h4M14 8l4 4-4 4M18 12H9.500" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.500" y="4.500" width="17" height="15" rx="2.200" fill="none" stroke="currentColor" stroke-width="1.800"/><circle cx="9" cy="10" r="1.600" fill="currentColor"/><path d="m4.500 17 4.800-4.600 3.200 3 2.500-2.200 4.500 3.800" fill="none" stroke="currentColor" stroke-width="1.700" stroke-linejoin="round" stroke-linecap="round"/></symbol>
-    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.700 0l3-3a4 4 0 0 0-5.700-5.700l-1 1M14 10a4 4 0 0 0-5.700 0l-3 3a4 4 0 0 0 5.700 5.700l1-1" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round"/></symbol>
-    <symbol id="i-wand" viewBox="0 0 24 24"><path d="m4.500 19.500 10-10M14.500 5l.7 1.800L17 7.500l-1.800.7-.7 1.800-.7-1.800L12 7.500l1.800-.7zM18.500 11l.5 1.300 1.300.5-1.300.5-.5 1.300-.5-1.300-1.300-.5 1.300-.5z" fill="none" stroke="currentColor" stroke-width="1.700" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-  </defs>
-</svg>
+package com.zlorbie788.zeus.ui;
 
-<header class="nav" id="nav">
-  <div class="nav-inner">
-    <a class="brand" href="/" data-link aria-label="Zeus Client home">
-      <img src="/img/emblem.png" alt="" width="64" height="60">
-      <span class="brand-text"><b>ZEUS</b><i>CLIENT</i></span>
-    </a>
-    <nav class="links" id="links" aria-label="Main"></nav>
-    <a class="btn btn-help" id="helpTop" href="/help" data-link><svg class="i"><use href="#i-help"/></svg><span>Help</span></a>
-    <a class="btn btn-outline discord-btn" id="discordTop" href="#" target="_blank" rel="noopener noreferrer" hidden><svg class="i"><use href="#i-discord"/></svg><span>Join Our Discord</span><svg class="i small"><use href="#i-arrow"/></svg></a>
-  </div>
-</header>
+import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import java.util.List;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.navigation.ScreenRectangle;
+import net.minecraft.client.gui.render.TextureSetup;
+import net.minecraft.client.gui.render.state.GuiElementRenderState;
+import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.texture.AbstractTexture;
+import org.joml.Matrix3x2f;
 
-<canvas id="fx" aria-hidden="true"></canvas>
-<div class="progress" id="progress" aria-hidden="true"></div>
-<main id="view" tabindex="-1"></main>
+/**
+ * Submits the quads {@link KnifeHD} builds as real GUI geometry: four free vertices per quad,
+ * each with its own uv and colour, so faces are smoothly lit and the outline is the texture's.
+ *
+ * <p>Quads of one group share a pipeline and go into one element; the light groups use the
+ * premultiplied pipeline, whose texels carry almost no alpha, so they add light.  Groups are
+ * submitted in paint order and their bounds overlap, so the GUI keeps that order.
+ */
+public final class KnifeHDGui {
+    private KnifeHDGui() {
+    }
 
-<footer class="foot">
-  <div class="foot-inner">
-    <div class="foot-left"><img src="/img/emblem.png" alt="" width="38" height="36"><span id="footText">Zeus Client &copy; 2026. All rights reserved.</span></div>
-    <div class="foot-right" id="footSocial"></div>
-  </div>
-</footer>
+    private static final KnifeHD.Frame FRAME = new KnifeHD.Frame();
+    private static volatile long brokenUntil;
+    private static int failures;
+    private static String lastError = "";
 
-<div class="toast-host" id="toasts" aria-live="polite"></div>
-<noscript><div class="wrap" style="padding:40px 0"><h1>Zeus Client</h1><p>A cheat client for Minecraft 1.21.11 on Fabric. This site needs JavaScript to show its pages.</p></div></noscript>
-<script src="/js/app.js"></script>
-<script src="/js/pages.js"></script>
-<script src="/js/helper.js"></script>
-<script src="/js/dash.js"></script>
-<script src="/js/extra.js"></script>
-<script src="/js/source.js"></script>
-<script src="/js/v95.js"></script>
-<script src="/js/config.js"></script>
-<script src="/js/monitor.js"></script>
-<script src="/js/knife3d.js"></script>
-<script src="/js/knives.js"></script>
-<script src="/js/admin.js"></script>
-</body>
-</html>
+    /** One failure (a texture still uploading, a resource reload) should not cost the HD knife for the whole session. */
+    private static boolean broken() {
+        return failures >= 5 || com.zlorbie788.zeus.core.Clock.millis() < brokenUntil;
+    }
+
+    public static String problem() {
+        return failures == 0 ? "" : lastError;
+    }
+
+    public static boolean ready(int knife) {
+        if (broken()) return false;
+        KnifeHD.Model m = KnifeHD.model(knife);
+        return m != null && Tex.sprite(KnifeHD.sheet(m, 1)) != null;
+    }
+
+    /** Draws a knife at the rig transform k.  Returns false if it could not be drawn. */
+    public static boolean draw(GuiGraphics g, int knife, Rig.T k, float unit, float alpha, boolean light) {
+        return drawModel(g, KnifeHD.model(knife), k, unit, alpha, light);
+    }
+
+    private static final Rig.T[] PIECE_AT = new Rig.T[3];
+    private static final KnifeHD.Model[] PIECE_M = new KnifeHD.Model[3];
+    private static final float[] PIECE_Z = new float[3];
+
+    /**
+     * Draws a butterfly knife in its three pieces at the pixel butterfly's angles (see {@link KnifeHD#butterfly}),
+     * furthest piece first. Knives without pieces are drawn whole, turned like the blade.
+     */
+    public static boolean drawButterfly(GuiGraphics g, int knife, Rig.T k, float a, float b, float c, float unit, float alpha, boolean light) {
+        if (broken()) return false;
+        KnifeHD.Pieces ps = KnifeHD.pieces(knife);
+        if (ps == null) return false;
+        KnifeHD.butterfly(ps, k, a, b, c, PIECE_AT);
+        PIECE_M[0] = ps.blade;
+        PIECE_M[1] = ps.held;
+        PIECE_M[2] = ps.swing;
+        int[] order = {0, 1, 2};
+        for (int i = 0; i < 3; i++) PIECE_Z[i] = KnifeHD.depth(PIECE_M[i], PIECE_AT[i]);
+        for (int i = 0; i < 3; i++) {
+            for (int j = i + 1; j < 3; j++) {
+                if (PIECE_Z[order[j]] > PIECE_Z[order[i]]) {
+                    int t = order[i];
+                    order[i] = order[j];
+                    order[j] = t;
+                }
+            }
+        }
+        boolean ok = true;
+        for (int i : order) ok &= drawModel(g, PIECE_M[i], PIECE_AT[i], unit, alpha, light);
+        return ok;
+    }
+
+    /** Where the blade of a butterfly is, for its tip and trail. */
+    public static Rig.T butterflyBlade(int knife, Rig.T k, float a, float b, float c) {
+        KnifeHD.Pieces ps = KnifeHD.pieces(knife);
+        if (ps == null) return k;
+        Rig.T[] out = new Rig.T[3];
+        KnifeHD.butterfly(ps, k, a, b, c, out);
+        return out[0];
+    }
+
+    /**
+     * A soft halo of the knife's glow colour behind a rare blade, breathing with the blade's own glow. A few
+     * cheap blurred spots along the blade, drawn before the knife so they sit behind it.
+     */
+    private static void aura(GuiGraphics g, KnifeHD.Model m, Rig.T k, float unit, float alpha) {
+        float e = m.emissive();
+        if (e <= 0f || m.piece == KnifeHD.PIECE_HELD || m.piece == KnifeHD.PIECE_SWING) return;
+        double t = (com.zlorbie788.zeus.core.Clock.nanoTime() % 60_000_000_000L) / 1e9;
+        float breathe = 0.62f + 0.38f * (float) Math.sin(t * 2.2 + m.id.hashCode() % 7);
+        float au = Math.abs(unit);
+        int r = Math.max(4, Math.round(au * 3.6f));
+        // a point with a wide soft fall-off is round; Draw.glow's peak is strength * spread / 3
+        float peak = 0.16f * e * breathe * alpha;
+        for (int i = 0; i < 5; i++) {
+            float[] p = KnifeHD.along(m, k, 0.10f + 0.20f * i);
+            float s = unit * 90f / (90f + p[2]);
+            int x = Math.round(p[0] * s), y = Math.round(p[1] * s);
+            Draw.glow(g, x - 1, y - 1, 2, 2, 1, m.glow, r, peak * 3f / r);
+        }
+    }
+
+    public static boolean drawModel(GuiGraphics g, KnifeHD.Model m, Rig.T k, float unit, float alpha, boolean light) {
+        if (broken()) return false;
+        try {
+            if (m == null) return false;
+            if (light) aura(g, m, k, unit, alpha);
+            float pixels = (float) Minecraft.getInstance().getWindow().getGuiScale();
+            KnifeHD.Frame f = KnifeHD.build(FRAME, m, k, unit, pixels, alpha, light);
+            if (f.quads.isEmpty()) return false;
+            Geo geo = geo(m, f);
+            return geo != null && submit(g, geo);
+        } catch (RuntimeException | Error e) {
+            failures++;
+            brokenUntil = com.zlorbie788.zeus.core.Clock.millis() + 5_000L;
+            lastError = e.getClass().getSimpleName() + (e.getMessage() == null ? "" : ": " + e.getMessage());
+            com.zlorbie788.zeus.core.Zeus.LOG.warn("HD knife could not be drawn (attempt {}); using the pixel knife", failures, e);
+            return false;
+        }
+    }
+
+    private static final KnifeHD.Frame FIT = new KnifeHD.Frame();
+
+    // ------------------------------------------------------------------ cached still knives
+    /** One knife's ready-to-send vertices, split by pipeline, plus which sheet it samples. */
+    private static final class Geo {
+        final String sheet;
+        final String fallback;
+        final List<Batch> batches = new java.util.ArrayList<>();
+
+        Geo(String sheet, String fallback) {
+            this.sheet = sheet;
+            this.fallback = fallback;
+        }
+    }
+
+    /**
+     * VulkanMod cannot build the premultiplied-alpha GUI shader and crashes on it, so with VulkanMod the knife's
+     * highlight layer is drawn with the plain textured shader instead (it looks nearly the same).
+     */
+    private static final boolean VULKAN = net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("vulkanmod");
+
+    private static Geo geo(KnifeHD.Model m, KnifeHD.Frame f) {
+        Geo geo = new Geo(KnifeHD.sheet(m, f.level), f.level != 1 ? KnifeHD.sheet(m, 1) : null);
+        List<KnifeHD.Quad> qs = f.quads;
+        int start = 0;
+        while (start < qs.size()) {
+            int grp = qs.get(start).group;
+            int end = start;
+            while (end < qs.size() && qs.get(end).group == grp) end++;
+            boolean light2 = qs.get(start).light;
+            RenderPipeline pipe = light2 && !VULKAN ? RenderPipelines.GUI_TEXTURED_PREMULTIPLIED_ALPHA : RenderPipelines.GUI_TEXTURED;
+            Batch b = new Batch(pipe, qs, start, end);
+            if (b.n > 0) geo.batches.add(b);
+            start = end;
+        }
+        return geo;
+    }
+
+    private static boolean submit(GuiGraphics g, Geo geo) {
+        Tex.Img img = Tex.sprite(geo.sheet);
+        if (img == null && geo.fallback != null) img = Tex.sprite(geo.fallback);
+        if (img == null) return false;
+        AbstractTexture tex = Minecraft.getInstance().getTextureManager().getTexture(img.id);
+        TextureSetup setup = TextureSetup.singleTexture(tex.getTextureView(), tex.getSampler());
+        Matrix3x2f pose = new Matrix3x2f(g.pose());
+        ScreenRectangle scissor = g.scissorStack.peek();
+        for (Batch b : geo.batches) {
+            Element e = new Element(b, setup, pose, scissor);
+            if (e.bounds != null) g.guiRenderState.submitGuiElement(e);
+        }
+        return true;
+    }
+
+    /** Least recently used still knives, keyed by knife, box size and detail. Small: each is a few hundred quads. */
+    private static final java.util.LinkedHashMap<Long, Geo> STILL = new java.util.LinkedHashMap<>(64, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(java.util.Map.Entry<Long, Geo> e) {
+            return size() > 220;
+        }
+    };
+    private static final java.util.HashMap<Integer, float[]> REST_FIT = new java.util.HashMap<>();
+
+    /** The knife's on-screen box at unit 1 in the gallery's resting pose (measured once). */
+    private static float[] restFit(int knife, KnifeHD.Model m, Rig.T rest) {
+        float[] b = REST_FIT.get(knife);
+        if (b != null) return b;
+        KnifeHD.build(FIT, m, rest, 1f, 1f, 1f, false);
+        if (FIT.quads.isEmpty()) return null;
+        float x0 = Float.MAX_VALUE, y0 = Float.MAX_VALUE, x1 = -Float.MAX_VALUE, y1 = -Float.MAX_VALUE;
+        for (KnifeHD.Quad q : FIT.quads) {
+            for (int i = 0; i < 4; i++) {
+                x0 = Math.min(x0, q.x[i]);
+                y0 = Math.min(y0, q.y[i]);
+                x1 = Math.max(x1, q.x[i]);
+                y1 = Math.max(y1, q.y[i]);
+            }
+        }
+        b = new float[] {x0, y0, x1, y1};
+        REST_FIT.put(knife, b);
+        return b;
+    }
+
+    /**
+     * A knife fitted into a box in the gallery's resting pose, not moving. Built once per knife and
+     * box size, then only re-sent each frame: tiles, reel cards and locked previews use this.
+     */
+    public static boolean still(GuiGraphics g, int knife, int bx, int by, int bw, int bh, boolean big) {
+        if (broken() || bw <= 2 || bh <= 2) return false;
+        KnifeHD.Model m = KnifeHD.model(knife);
+        if (m == null) return false;
+        Rig.T k = Rig.T.rz((float) Math.PI - 1.10f).rotY(-0.35f).rotX(0.12f);
+        float[] b = restFit(knife, m, k);
+        if (b == null) return false;
+        float ew = Math.max(1e-3f, (b[2] - b[0]) * 0.80f), eh = Math.max(1e-3f, (b[3] - b[1]) * 0.80f);
+        float unit = Math.min(bw / ew, bh / eh) * 0.86f;
+        float pixels = (float) Minecraft.getInstance().getWindow().getGuiScale();
+        long key = ((long) knife << 40) ^ ((long) Math.round(unit * 32f) << 8) ^ ((long) Math.round(pixels) << 2) ^ (big ? 1 : 0);
+        try {
+            Geo geo = STILL.get(key);
+            if (geo == null) {
+                KnifeHD.Frame f = KnifeHD.build(FRAME, m, k, unit, pixels, 1f, true);
+                if (f.quads.isEmpty()) return false;
+                geo = geo(m, f);
+                STILL.put(key, geo);
+            }
+            g.pose().pushMatrix();
+            g.pose().translate(bx + bw / 2f - (b[0] + b[2]) / 2f * unit, by + bh / 2f - (b[1] + b[3]) / 2f * unit);
+            boolean ok = submit(g, geo);
+            g.pose().popMatrix();
+            return ok;
+        } catch (RuntimeException | Error e) {
+            failures++;
+            brokenUntil = com.zlorbie788.zeus.core.Clock.millis() + 5_000L;
+            lastError = e.getClass().getSimpleName() + (e.getMessage() == null ? "" : ": " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * The gallery view: the knife on a slow turn, fitted to the box.  The turn is gentle enough
+     * to keep the face towards the viewer and shows the highlights running along the blade.
+     */
+    public static boolean showcase(GuiGraphics g, int knife, int bx, int by, int bw, int bh, float time, boolean big) {
+        if (broken()) return false;
+        KnifeHD.Model m = KnifeHD.model(knife);
+        if (m == null) return false;
+        float sway = (float) Math.sin(time * (big ? 0.9 : 0.7) + knife * 0.8);
+        Rig.T k = Rig.T.rz((float) Math.PI - 1.10f).rotY(-0.35f + 0.32f * sway).rotX(0.12f + 0.06f * sway);
+        // fitted from the resting pose, measured once per knife, so the turning knife keeps one size
+        float[] fb = restFit(knife, m, Rig.T.rz((float) Math.PI - 1.10f).rotY(-0.35f).rotX(0.12f));
+        if (fb == null) return false;
+        float x0 = fb[0], y0 = fb[1], x1 = fb[2], y1 = fb[3];
+        // the sheet has empty margins around the knife; 0.80 of the quads' box is the knife
+        float ew = Math.max(1e-3f, (x1 - x0) * 0.80f), eh = Math.max(1e-3f, (y1 - y0) * 0.80f);
+        float unit = Math.min(bw / ew, bh / eh) * 0.86f;
+        g.pose().pushMatrix();
+        g.pose().translate(bx + bw / 2f - (x0 + x1) / 2f * unit, by + bh / 2f - (y0 + y1) / 2f * unit);
+        boolean ok = draw(g, knife, k, unit, 1f, true);
+        g.pose().popMatrix();
+        return ok;
+    }
+
+    /**
+     * Draws an HD knife fitted into a box with an explicit turn (yaw round its length) and tilt,
+     * for the crate reveal. The fit is measured once at rest so the knife does not pump in size
+     * as it turns.
+     */
+    public static boolean spin(GuiGraphics g, int knife, int bx, int by, int bw, int bh, float yaw, float tilt) {
+        if (broken()) return false;
+        KnifeHD.Model m = KnifeHD.model(knife);
+        if (m == null) return false;
+        Rig.T rest = Rig.T.rz((float) Math.PI - 1.10f).rotY(-0.35f).rotX(0.12f);
+        float[] fb = restFit(knife, m, rest);
+        if (fb == null) return false;
+        float x0 = fb[0], y0 = fb[1], x1 = fb[2], y1 = fb[3];
+        float ew = Math.max(1e-3f, (x1 - x0) * 0.80f), eh = Math.max(1e-3f, (y1 - y0) * 0.80f);
+        float unit = Math.min(bw / ew, bh / eh) * 0.86f;
+        Rig.T k = Rig.T.rz((float) Math.PI - 1.10f + tilt).rotY(yaw).rotX(0.12f);
+        g.pose().pushMatrix();
+        g.pose().translate(bx + bw / 2f - (x0 + x1) / 2f * unit, by + bh / 2f - (y0 + y1) / 2f * unit);
+        boolean ok = draw(g, knife, k, unit, 1f, true);
+        g.pose().popMatrix();
+        return ok;
+    }
+
+    /** Vertices for one pipeline's quads, copied out of the reused frame so they can be kept. */
+    private static final class Batch {
+        final RenderPipeline pipeline;
+        final float[] xy;
+        final float[] uv;
+        final int[] col;
+        final int n;
+        final float minX, minY, maxX, maxY;
+
+        Batch(RenderPipeline pipeline, List<KnifeHD.Quad> qs, int from, int to) {
+            this.pipeline = pipeline;
+            // GUI pipelines cull back faces, and which winding survives depends on how the 3D knife is turned.
+            // The knife's quads are flat, so each one is sent once, in the winding the GUI's own rectangles use
+            // (negative area with y down): half the vertices of sending both windings, nothing lost.
+            int count = (to - from) * 4;
+            xy = new float[count * 2];
+            uv = new float[count * 2];
+            col = new int[count];
+            float x0 = Float.MAX_VALUE, y0 = Float.MAX_VALUE, x1 = -Float.MAX_VALUE, y1 = -Float.MAX_VALUE;
+            int o = 0;
+            for (int i = from; i < to; i++) {
+                KnifeHD.Quad q = qs.get(i);
+                float area = 0f;
+                for (int k = 0; k < 4; k++) {
+                    int n2 = (k + 1) & 3;
+                    area += q.x[k] * q.y[n2] - q.x[n2] * q.y[k];
+                }
+                boolean flip = area > 0f;
+                {
+                    for (int k = 0; k < 4; k++) {
+                        int c = flip ? (4 - k) & 3 : k;
+                        float x = q.x[c], y = q.y[c];
+                        if (!Float.isFinite(x) || !Float.isFinite(y)) {
+                            x = 0f;
+                            y = 0f;
+                        }
+                        xy[o * 2] = x;
+                        xy[o * 2 + 1] = y;
+                        uv[o * 2] = q.u[c];
+                        uv[o * 2 + 1] = q.v[c];
+                        col[o] = q.c[c];
+                        x0 = Math.min(x0, x);
+                        y0 = Math.min(y0, y);
+                        x1 = Math.max(x1, x);
+                        y1 = Math.max(y1, y);
+                        o++;
+                    }
+                }
+            }
+            n = count;
+            minX = x0;
+            minY = y0;
+            maxX = x1;
+            maxY = y1;
+        }
+    }
+
+    /** One batch sent with this frame's pose and clip. */
+    private static final class Element implements GuiElementRenderState {
+        private final RenderPipeline pipeline;
+        private final TextureSetup setup;
+        private final Matrix3x2f pose;
+        private final ScreenRectangle scissor;
+        private final ScreenRectangle bounds;
+        private final float[] xy;
+        private final float[] uv;
+        private final int[] col;
+
+        Element(Batch b, TextureSetup setup, Matrix3x2f pose, ScreenRectangle scissor) {
+            this.pipeline = b.pipeline;
+            this.setup = setup;
+            this.pose = pose;
+            this.scissor = scissor;
+            this.xy = b.xy;
+            this.uv = b.uv;
+            this.col = b.col;
+            ScreenRectangle r = null;
+            if (b.n > 0 && b.maxX >= b.minX) {
+                int x0 = (int) Math.floor(b.minX), y0 = (int) Math.floor(b.minY);
+                int w = Math.max(1, (int) Math.ceil(b.maxX) - x0), h = Math.max(1, (int) Math.ceil(b.maxY) - y0);
+                r = new ScreenRectangle(x0, y0, w, h).transformMaxBounds(pose);
+                if (scissor != null) r = scissor.intersection(r);
+            }
+            bounds = r;
+        }
+
+        @Override
+        public void buildVertices(VertexConsumer vc) {
+            // a mirrored pose turns every winding round: send each quad's corners in reverse then
+            boolean mirror = pose.determinant() < 0f;
+            for (int i = 0; i < col.length; i++) {
+                int j = mirror ? (i & ~3) | ((4 - (i & 3)) & 3) : i;
+                vc.addVertexWith2DPose(pose, xy[j * 2], xy[j * 2 + 1]).setUv(uv[j * 2], uv[j * 2 + 1]).setColor(col[j]);
+            }
+        }
+
+        @Override
+        public RenderPipeline pipeline() {
+            return pipeline;
+        }
+
+        @Override
+        public TextureSetup textureSetup() {
+            return setup;
+        }
+
+        @Override
+        public ScreenRectangle scissorArea() {
+            return scissor;
+        }
+
+        @Override
+        public ScreenRectangle bounds() {
+            return bounds;
+        }
+    }
+}

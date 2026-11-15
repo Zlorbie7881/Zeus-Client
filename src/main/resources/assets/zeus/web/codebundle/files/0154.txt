@@ -1,236 +1,365 @@
 package com.zlorbie788.zeus.mods;
 
-import java.text.Normalizer;
+import com.zlorbie788.zeus.core.Category;
+import com.zlorbie788.zeus.core.Module;
+import com.zlorbie788.zeus.core.Setting;
+import com.zlorbie788.zeus.core.Zeus;
+import com.zlorbie788.zeus.ui.Accent;
+import com.zlorbie788.zeus.ui.Draw;
+import com.zlorbie788.zeus.ui.Logo;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
-/**
- * Decides whether a player's tab-list text says "staff". Written to follow the common DonutSMP staff conventions and kept
- * compatible with it: rank words (also written in small capitals or with accents), marker glyphs (stars and private-use icon
- * glyphs), a team name that starts with a two digit rank number, and a list of names that are always staff.
- */
-public final class StaffMatcher {
-    public static final String DEFAULT_RANK_WORDS = "owner, co-owner, manager, admin, administrator, developer, dev, sr-admin, sr-mod, senior-mod, moderator, mod, trial-mod, sr-helper, senior-helper, helper, trial-helper, support, staff";
-    public static final String DEFAULT_MARKERS = "U+2605 U+2606 U+2726 U+2727 U+272A U+272F U+2730 U+2B50";
-    public static final String[] MODES = {"Ranks + Markers + Team", "Ranks", "Markers", "Team Rank"};
+public final class Interface {
+    private Interface() {}
 
-    /** How a match was made, from the strongest to the weakest evidence. */
-    public static final int KIND_KNOWN = 0;
-    public static final int KIND_RANK = 1;
-    public static final int KIND_TEAM = 2;
-    public static final int KIND_MARKER = 3;
+    public static final class HudEditorLauncher extends Module {
+        public HudEditorLauncher() {
+            super("hudeditor", "HUD Editor", "Open the global editor to move, scale, hide and arrange Zeus HUD widgets.", Category.INTERFACE);
+            panelOnly();
+            add(new Setting.Action("Open HUD editor", "Opens the live HUD layout editor.", () -> {
+                Minecraft mc = Minecraft.getInstance();
+                mc.setScreen(new com.zlorbie788.zeus.ui.HudEditorScreen(mc.screen));
+            }));
+        }
+    }
 
-    private static final Pattern CODEPOINT = Pattern.compile("(?i)(?:u\\+|\\\\u)([0-9a-f]{4,6})");
-    private static final Pattern TEAM_RANK = Pattern.compile("^(\\d{2})-");
-    private static final int MAX_SPAN = 3;
-    private static final int TEAM_RANK_SLOTS = 100;
-    private static final Map<String, String> LABELS = Map.ofEntries(
-            Map.entry("owner", "Owner"), Map.entry("coowner", "Co-Owner"), Map.entry("manager", "Manager"), Map.entry("admin", "Admin"),
-            Map.entry("administrator", "Admin"), Map.entry("sradmin", "Sr. Admin"), Map.entry("developer", "Dev"), Map.entry("dev", "Dev"),
-            Map.entry("srmod", "Sr. Mod"), Map.entry("seniormod", "Sr. Mod"), Map.entry("moderator", "Mod"), Map.entry("mod", "Mod"),
-            Map.entry("trialmod", "Trial Mod"), Map.entry("srhelper", "Sr. Helper"), Map.entry("seniorhelper", "Sr. Helper"),
-            Map.entry("helper", "Helper"), Map.entry("trialhelper", "Trial Helper"), Map.entry("support", "Support"),
-            Map.entry("staff", "Staff"), Map.entry("builder", "Builder"));
-    private static final Map<Integer, Character> SMALL_CAPS = smallCaps();
+    public static final class Watermark extends Module {
+        public Watermark() {
+            super("watermark", "Watermark", "The Zeus logo and name in the corner.", Category.PANELS);
+            anywhere().onByDefault();
+        }
 
-    private final boolean useRanks;
-    private final boolean useMarkers;
-    private final boolean useTeamRank;
-    private final int teamRankMax;
-    private final boolean iconGlyphs;
-    private final Map<String, Integer> wordIndex = new HashMap<>();
-    private final List<Word> words = new ArrayList<>();
-    private final Set<Integer> markers;
-    private final Set<String> knownNames;
-    private final Set<String> ignoredNames;
+        private com.zlorbie788.zeus.ui.Tex.Img logo;
+        private boolean logoTried;
 
-    public StaffMatcher(String mode, String rankWords, String markerGlyphs, boolean iconGlyphs, int teamRankMax, String knownNames, String ignoredNames) {
-        boolean all = MODES[0].equals(mode);
-        this.useRanks = all || MODES[1].equals(mode);
-        this.useMarkers = all || MODES[2].equals(mode);
-        this.useTeamRank = all || MODES[3].equals(mode);
-        this.teamRankMax = teamRankMax;
-        this.iconGlyphs = iconGlyphs;
-        for (String raw : rankWords.split(",")) {
-            String typed = raw.trim();
-            String folded = fold(typed).replace(" ", "");
-            if (!folded.isEmpty() && !wordIndex.containsKey(folded)) {
-                wordIndex.put(folded, words.size());
-                words.add(new Word(folded, LABELS.getOrDefault(folded, capitalize(typed))));
+        @Override
+        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            int x = 6;
+            int y = 6;
+            String text = "ZEUS";
+            int tw = Draw.widthBold(text);
+            int boxH = 20;
+            int slot = 16;
+            int bw = 2 + slot + 5 + tw + 7;
+            Hud.record(x, y, bw, boxH);
+            Hud.panel(g, x, y, bw, boxH);
+            if (!logoTried) {
+                logoTried = true;
+                logo = com.zlorbie788.zeus.ui.Tex.resource("textures/gui/logo_z.png");
             }
+            if (logo != null) logo.draw(g, x + 2, y + 2, slot, slot, 0xFFFFFFFF);
+            else Logo.bolt(g, x + 2, y + 3, 14, Hud.accent());
+            g.fill(x + 2 + slot + 2, y + 5, x + 2 + slot + 3, y + boxH - 5, Draw.rgba(Hud.accent(), 0.35f));
+            Draw.bold(g, text, x + 2 + slot + 5, y + 6, 0xFFF2F6FF);
         }
-        this.markers = parseMarkers(markerGlyphs);
-        this.knownNames = parseNames(knownNames);
-        this.ignoredNames = parseNames(ignoredNames);
     }
 
-    /** The result of a match: the rank to show, how senior it is (lower is more senior) and how it was found. */
-    public record Match(String rank, int seniority, int kind) {}
+    public static final class ModuleList extends Module {
+        private final Setting.Bool glow = add(new Setting.Bool("Colour bar", "A coloured bar at the edge of every entry.", true));
+        private final Setting.Bool details = add(new Setting.Bool("Show details", "Extra information after the name, like the speed.", true));
+        private final Setting.Bool cost = add(new Setting.Bool("Show what each costs", "A small percentage after each name: how much of your frame time that module uses. Needs \"Show what each module costs\" in the Interface settings (on by default).", false));
 
-    private record Word(String folded, String label) {}
-
-    public Match match(String name, String teamName, String... tabTexts) {
-        if (name == null || name.isEmpty()) return null;
-        String key = name.toLowerCase(Locale.ROOT);
-        if (ignoredNames.contains(key)) return null;
-        StringBuilder combined = new StringBuilder();
-        for (String text : tabTexts) {
-            if (text != null && !text.isEmpty()) combined.append(text).append(' ');
+        public ModuleList() {
+            super("modulelist", "Module List", "The list of what is switched on, top right.", Category.PANELS);
+            anywhere().onByDefault();
         }
-        if (teamName != null && !teamName.isEmpty()) combined.append(teamName).append(' ');
-        String around = withoutName(stripLegacyCodes(combined.toString()), name);
-        Word rank = useRanks ? bestRank(around) : null;
-        if (rank != null) return new Match(rank.label(), wordIndex.get(rank.folded()), KIND_RANK);
-        int teamRank = useTeamRank ? teamRank(teamName) : -1;
-        if (teamRank >= 0 && teamRank <= teamRankMax) return new Match("Rank " + teamRankLabel(teamRank), words.size() + teamRank, KIND_TEAM);
-        if (knownNames.contains(key)) return new Match("Staff", words.size() + TEAM_RANK_SLOTS, KIND_KNOWN);
-        if (useMarkers && hasMarker(around)) return new Match("Staff", words.size() + TEAM_RANK_SLOTS, KIND_MARKER);
-        return null;
-    }
 
-    public static int teamRank(String teamName) {
-        if (teamName == null || teamName.length() < 3) return -1;
-        Matcher m = TEAM_RANK.matcher(teamName);
-        return m.lookingAt() ? Integer.parseInt(m.group(1)) : -1;
-    }
+        private Module[] rows = new Module[0];
+        private String[] infos = new String[0];
+        private int[] widths = new int[0];
+        private int[] nameWidths = new int[0];
+        private int count;
+        private int version = -1;
+        private long builtAt;
+        private boolean builtDetails;
 
-    public static String teamRankLabel(int teamRank) {
-        return teamRank < 10 ? "0" + teamRank : Integer.toString(teamRank);
-    }
-
-    private Word bestRank(String text) {
-        if (words.isEmpty()) return null;
-        List<String> tokens = tokens(text);
-        int best = Integer.MAX_VALUE;
-        int matchedSpan;
-        for (int i = 0; i < tokens.size(); i += Math.max(1, matchedSpan)) {
-            matchedSpan = 0;
-            for (int span = Math.min(MAX_SPAN, tokens.size() - i); span >= 1; span--) {
-                Integer index = wordIndex.get(String.join("", tokens.subList(i, i + span)));
-                if (index != null) {
-                    best = Math.min(best, index);
-                    matchedSpan = span;
-                    break;
+        private void rebuild() {
+            long now = System.nanoTime();
+            boolean det = details.on() || cost.on();
+            if (version == Zeus.activeVersion() && det == builtDetails && (!det || now - builtAt < 250_000_000L)) return;
+            version = Zeus.activeVersion();
+            builtDetails = det;
+            builtAt = now;
+            List<Module> on = new ArrayList<>();
+            for (Module m : Zeus.all()) {
+                if (m.enabled() && m.toggleable() && m != this && m.category != Category.INTERFACE && m.category != Category.PANELS) on.add(m);
+            }
+            count = on.size();
+            if (rows.length < count) {
+                rows = new Module[count + 8];
+                infos = new String[count + 8];
+                widths = new int[count + 8];
+                nameWidths = new int[count + 8];
+            }
+            String[] in = new String[count];
+            int[] w = new int[count];
+            int[] nw = new int[count];
+            Integer[] order = new Integer[count];
+            for (int i = 0; i < count; i++) {
+                Module m = on.get(i);
+                String info = details.on() ? m.info() : null;
+                if (cost.on() && m.costPct >= 0.1f) {
+                    String c = String.format(java.util.Locale.ROOT, "%.1f%%", m.costPct);
+                    info = info == null ? c : info + " " + c;
                 }
+                in[i] = info;
+                nw[i] = Draw.width(m.name);
+                w[i] = nw[i] + (in[i] != null ? 4 + Draw.width(in[i]) : 0);
+                order[i] = i;
+            }
+            java.util.Arrays.sort(order, (a, b) -> Integer.compare(w[b], w[a]));
+            for (int i = 0; i < count; i++) {
+                int k = order[i];
+                rows[i] = on.get(k);
+                infos[i] = in[k];
+                widths[i] = w[k];
+                nameWidths[i] = nw[k];
             }
         }
-        return best == Integer.MAX_VALUE ? null : words.get(best);
+
+        @Override
+        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            rebuild();
+            if (count == 0) {
+                Hud.listHeight = 0;
+                return;
+            }
+            String tally = Integer.toString(count);
+            int widest = Hud.captionWidth("Modules") + 12 + Hud.chipWidth(tally);
+            for (int i = 0; i < count; i++) widest = Math.max(widest, widths[i] + 26);
+            int pad = 8;
+            int rowH = 13;
+            int bw = widest + pad * 2;
+            int bh = Hud.TOP + count * rowH + 2;
+            int x = w - 6 - bw;
+            int y = 6;
+            Hud.record(x, y, bw, bh);
+            Hud.panel(g, x, y, bw, bh);
+            Hud.caption(g, x + pad, y + 7, "Modules", Draw.rgba(Hud.accent(), 0.85f));
+            Hud.chip(g, x + bw - pad, y + 5, tally, Hud.accent());
+            Hud.rule(g, x + pad, y + 18, bw - pad * 2);
+            boolean bar = glow.on();
+            int a1 = Hud.accent();
+            int a2 = Accent.second();
+            for (int i = 0; i < count; i++) {
+                int ry = y + Hud.TOP + i * rowH;
+                int c = Draw.mix(a1, a2, (i % 8) / 7f);
+                int tx = x + pad + (bar ? 6 : 0);
+                if (bar) Draw.rrect(g, x + pad, ry + 4, 2, 5, 1, Draw.rgba(c, 0.9f));
+                Draw.text(g, rows[i].name, tx, ry + 2, c);
+                if (infos[i] != null) Draw.text(g, infos[i], tx + nameWidths[i] + 4, ry + 2, 0xFF8B97B3);
+                if (i < count - 1) Hud.rule(g, x + pad, ry + rowH - 1, bw - pad * 2);
+            }
+            Hud.listHeight = bh;
+        }
     }
 
-    static List<String> tokens(String text) {
-        String folded = fold(text);
-        List<String> out = new ArrayList<>();
-        StringBuilder current = new StringBuilder();
-        for (int i = 0; i < folded.length(); i++) {
-            char c = folded.charAt(i);
-            if (c >= 'a' && c <= 'z') {
-                current.append(c);
-            } else if (current.length() > 0) {
-                out.add(current.toString());
-                current.setLength(0);
+    private static void row(GuiGraphics g, Minecraft mc, int x, int y, int w, String label, String value, boolean strong) {
+        Draw.text(g, label, x, y, Accent.DIM);
+        if (strong) Draw.bold(g, value, x + w - Draw.widthBold(value), y, Accent.TEXT);
+        else Draw.text(g, value, x + w - Draw.width(value), y, Draw.mix(Accent.TEXT, Accent.DIM, 0.3f));
+    }
+
+    public static final class InfoHud extends Module {
+        private final Setting.Bool coords = add(new Setting.Bool("Coordinates", "Where you are.", true));
+        private final Setting.Bool facing = add(new Setting.Bool("Direction", "Which way you face.", true));
+        private final Setting.Bool speed = add(new Setting.Bool("Speed", "How fast you move, in blocks per second.", true));
+        private final Setting.Bool fps = add(new Setting.Bool("Frames per second", "How smooth the game runs.", true));
+        private final Setting.Bool ping = add(new Setting.Bool("Ping", "Round trip time to the server (0 in singleplayer).", true));
+        private long last;
+        private float smooth = 60f;
+        private double lx;
+        private double lz;
+        private double bps;
+
+        public InfoHud() {
+            super("infohud", "Info", "Coordinates, direction, speed and frame rate at the bottom left.", Category.PANELS);
+            anywhere().onByDefault();
+        }
+
+        @Override
+        protected void onTick(Minecraft mc) {
+            if (mc.player == null) return;
+            bps = Math.sqrt(sq(mc.player.getX() - lx) + sq(mc.player.getZ() - lz)) * 20.0;
+            lx = mc.player.getX();
+            lz = mc.player.getZ();
+        }
+
+        private static double sq(double v) {
+            return v * v;
+        }
+
+        @Override
+        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            if (mc.player == null) return;
+            long now = System.nanoTime();
+            if (last != 0) smooth += ((1e9f / Math.max(1, now - last)) - smooth) * 0.05f;
+            last = now;
+            if (now - linesAt > 100_000_000L || cached.isEmpty()) {
+                linesAt = now;
+                cached = buildRows(mc);
+                boxW = 0;
+                for (String[] r : cached) boxW = Math.max(boxW, Hud.captionWidth(r[0]) + 18 + Draw.width(r[1]));
+            }
+            List<String[]> rows = cached;
+            if (rows.isEmpty()) return;
+            int bw = Math.max(boxW, Hud.captionWidth("Info")) + Hud.PAD * 2;
+            int bh = Hud.TOP + rows.size() * 12 + 3;
+            int x = 6;
+            int y = h - bh - 6 - 40;
+            Hud.record(x, y, bw, bh);
+            Hud.panel(g, x, y, bw, bh);
+            Hud.caption(g, x + Hud.PAD, y + 7, "Info", Draw.rgba(Hud.accent(), 0.85f));
+            Hud.rule(g, x + Hud.PAD, y + 18, bw - Hud.PAD * 2);
+            for (int i = 0; i < rows.size(); i++) {
+                row(g, mc, x + Hud.PAD, y + Hud.TOP + i * 12, bw - Hud.PAD * 2, rows.get(i)[0], rows.get(i)[1], false);
             }
         }
-        if (current.length() > 0) out.add(current.toString());
-        return out;
-    }
 
-    static String stripLegacyCodes(String text) {
-        if (text.indexOf('§') < 0) return text;
-        StringBuilder out = new StringBuilder(text.length());
-        for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
-            if (c == '§') i++;
-            else out.append(c);
+        private List<String[]> cached = List.of();
+        private long linesAt;
+        private int boxW;
+
+        private List<String[]> buildRows(Minecraft mc) {
+            List<String[]> rows = new ArrayList<>(5);
+            // the Position panel already shows where you are: no second copy here
+            boolean positionOn = false;
+            for (com.zlorbie788.zeus.core.Module m : com.zlorbie788.zeus.core.Zeus.all()) {
+                if (m instanceof Coordinates && m.enabled()) positionOn = true;
+            }
+            if (coords.on() && !positionOn) rows.add(new String[]{"XYZ", String.format(Locale.ROOT, "%.0f  %.0f  %.0f", mc.player.getX(), mc.player.getY(), mc.player.getZ())});
+            if (facing.on()) {
+                float yaw = ((mc.player.getYRot() % 360f) + 360f) % 360f;
+                String[] names = {"South", "South-west", "West", "North-west", "North", "North-east", "East", "South-east"};
+                rows.add(new String[]{"Facing", names[Math.round(yaw / 45f) % 8]});
+            }
+            if (speed.on()) rows.add(new String[]{"Speed", String.format(Locale.ROOT, "%.1f b/s", bps)});
+            if (fps.on()) rows.add(new String[]{"FPS", Integer.toString(Math.round(smooth))});
+            if (ping.on() && mc.getConnection() != null) {
+                var info = mc.getConnection().getPlayerInfo(mc.player.getUUID());
+                if (info != null && mc.getSingleplayerServer() == null) rows.add(new String[]{"Ping", info.getLatency() + " ms"});
+            }
+            return rows;
         }
-        return out.toString();
     }
 
-    static String fold(String text) {
-        String decomposed = Normalizer.normalize(text.replace('ǫ', 'q'), Normalizer.Form.NFKD);
-        StringBuilder out = new StringBuilder(decomposed.length());
-        int i = 0;
-        while (i < decomposed.length()) {
-            int cp = decomposed.codePointAt(i);
-            i += Character.charCount(cp);
-            if (Character.getType(cp) == Character.NON_SPACING_MARK) continue;
-            Character small = SMALL_CAPS.get(cp);
-            if (small != null) {
-                out.append(small.charValue());
-            } else {
-                int lower = Character.toLowerCase(cp);
-                out.append(lower >= 'a' && lower <= 'z' ? (char) lower : ' ');
+    public static final class Coordinates extends Module {
+        private final Setting.Bool decimals = add(new Setting.Bool("Decimals", "Show the fraction of a block too.", false));
+        private final Setting.Bool dimension = add(new Setting.Bool("Dimension", "A line under the position with the dimension you are in.", false));
+        private final Setting.Bool chunk = add(new Setting.Bool("Chunk", "A line under the position with the chunk and where you are inside it.", false));
+        private final Setting.Bool other = add(new Setting.Bool("Other side", "The same spot on the other side: divided by eight for the Nether, times eight for the Overworld.", false));
+
+        public Coordinates() {
+            super("coordinates", "Coordinates", "Your X, Y and Z, in their own small panel.", Category.PANELS);
+            anywhere().onByDefault();
+            alias("coords", "xyz", "position");
+        }
+
+        private List<String[]> cached = List.of();
+        private long linesAt;
+        private int boxW;
+
+        @Override
+        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            if (mc.player == null) return;
+            long now = System.nanoTime();
+            if (now - linesAt > 100_000_000L || cached.isEmpty()) {
+                linesAt = now;
+                cached = buildRows(mc);
+                boxW = 0;
+                for (String[] r : cached) boxW = Math.max(boxW, Hud.captionWidth(r[0]) + 18 + (r[0].equals("XYZ") ? Draw.widthBold(r[1]) : Draw.width(r[1])));
+            }
+            List<String[]> rows = cached;
+            if (rows.isEmpty()) return;
+            int bw = Math.max(boxW, Hud.captionWidth("Position")) + Hud.PAD * 2;
+            int bh = Hud.TOP + rows.size() * 12 + 3;
+            int x = 6;
+            int y = 30;
+            Hud.record(x, y, bw, bh);
+            Hud.panel(g, x, y, bw, bh);
+            Hud.caption(g, x + Hud.PAD, y + 7, "Position", Draw.rgba(Hud.accent(), 0.85f));
+            Hud.rule(g, x + Hud.PAD, y + 18, bw - Hud.PAD * 2);
+            for (int i = 0; i < rows.size(); i++) {
+                row(g, mc, x + Hud.PAD, y + Hud.TOP + i * 12, bw - Hud.PAD * 2, rows.get(i)[0], rows.get(i)[1], rows.get(i)[0].equals("XYZ"));
             }
         }
-        return out.toString();
-    }
 
-    private boolean hasMarker(String text) {
-        int i = 0;
-        while (i < text.length()) {
-            int cp = text.codePointAt(i);
-            i += Character.charCount(cp);
-            if (markers.contains(cp) || iconGlyphs && isPrivateUse(cp)) return true;
-        }
-        return false;
-    }
-
-    public static boolean isPrivateUse(int cp) {
-        return cp >= 0xE000 && cp <= 0xF8FF || cp >= 0xF0000 && cp <= 0xFFFFD || cp >= 0x100000 && cp <= 0x10FFFD;
-    }
-
-    static Set<Integer> parseMarkers(String raw) {
-        Set<Integer> out = new HashSet<>();
-        for (String token : raw.split("[,\\s]+")) {
-            if (token.isEmpty()) continue;
-            Matcher m = CODEPOINT.matcher(token);
-            if (m.matches()) {
-                int cp = Integer.parseInt(m.group(1), 16);
-                if (Character.isValidCodePoint(cp)) out.add(cp);
-            } else {
-                token.codePoints().forEach(out::add);
+        private List<String[]> buildRows(Minecraft mc) {
+            List<String[]> rows = new ArrayList<>(4);
+            var p = mc.player;
+            rows.add(new String[]{"XYZ", decimals.on()
+                    ? String.format(Locale.ROOT, "%.1f  %.1f  %.1f", p.getX(), p.getY(), p.getZ())
+                    : String.format(Locale.ROOT, "%d  %d  %d", p.getBlockX(), p.getBlockY(), p.getBlockZ())});
+            if (dimension.on()) {
+                String path = p.level().dimension().identifier().getPath();
+                String name = path.equals("overworld") ? "Overworld" : path.equals("the_nether") ? "Nether" : path.equals("the_end") ? "The End" : path;
+                rows.add(new String[]{"World", name});
             }
+            if (chunk.on()) {
+                rows.add(new String[]{"Chunk", (p.getBlockX() >> 4) + ", " + (p.getBlockZ() >> 4) + "   (" + (p.getBlockX() & 15) + ", " + (p.getBlockZ() & 15) + ")"});
+            }
+            if (other.on()) {
+                String path = p.level().dimension().identifier().getPath();
+                boolean nether = path.equals("the_nether");
+                double ox = nether ? p.getX() * 8.0 : p.getX() / 8.0;
+                double oz = nether ? p.getZ() * 8.0 : p.getZ() / 8.0;
+                rows.add(new String[]{nether ? "Overworld" : "Nether", String.format(Locale.ROOT, "%.0f, %.0f", ox, oz)});
+            }
+            return rows;
         }
-        return out;
     }
 
-    private static Set<String> parseNames(String raw) {
-        Set<String> out = new HashSet<>();
-        for (String part : raw.split("[,\\s]+")) {
-            if (!part.isEmpty()) out.add(part.toLowerCase(Locale.ROOT));
+    public static final class ThemeStudio extends Module {
+        private final Setting.Pick theme = add(new Setting.Pick("Theme", "A named palette applied to the panel, the HUD and the module list.", com.zlorbie788.zeus.ui.Themes.IDS[0], com.zlorbie788.zeus.ui.Themes.ids(), com.zlorbie788.zeus.ui.Themes.labels()));
+        private final Setting.Num tint = add(new Setting.Num("Surface tint", "How far the theme colour reaches into the HUD and panel backgrounds.", 55, 0, 100, 5, "%"));
+        private final Setting.Bool glow = add(new Setting.Bool("Accent glow", "Soft glow behind accent bars, stripes and panels.", true));
+        private final Setting.Action reset = add(new Setting.Action("Reset to default", "Storm blue, balanced tint and glow on.", this::reset));
+
+        private boolean syncing;
+
+        public ThemeStudio() {
+            super("themestudio", "Theme Studio", "Switch between named palettes and set how far the theme reaches into the HUD.", Category.INTERFACE);
+            anywhere();
+            theme.onChange(this::apply);
+            tint.onChange(this::apply);
+            glow.onChange(this::apply);
         }
-        return out;
-    }
 
-    private static String withoutName(String text, String name) {
-        String lowerText = text.toLowerCase(Locale.ROOT);
-        String lowerName = name.toLowerCase(Locale.ROOT);
-        if (!lowerText.contains(lowerName)) return text;
-        StringBuilder out = new StringBuilder(text.length());
-        int from = 0;
-        for (int at = lowerText.indexOf(lowerName); at >= 0; at = lowerText.indexOf(lowerName, from)) {
-            out.append(text, from, at).append(' ');
-            from = at + lowerName.length();
+        private void apply() {
+            if (syncing) return;
+            syncing = true;
+            try {
+                com.zlorbie788.zeus.ui.UiSettings.ACCENT.set(theme.index());
+                com.zlorbie788.zeus.ui.UiSettings.THEME_TINT.set(tint.get());
+                com.zlorbie788.zeus.ui.UiSettings.HUD_GLOW.set(glow.on());
+            } finally {
+                syncing = false;
+            }
+            Zeus.markDirty();
         }
-        return out.append(text, from, text.length()).toString();
-    }
 
-    private static String capitalize(String word) {
-        String trimmed = word.trim();
-        return trimmed.isEmpty() ? "Staff" : trimmed.substring(0, 1).toUpperCase(Locale.ROOT) + trimmed.substring(1);
-    }
+        private void reset() {
+            syncing = true;
+            try {
+                theme.set(0);
+                tint.set(55);
+                glow.set(true);
+            } finally {
+                syncing = false;
+            }
+            apply();
+        }
 
-    private static Map<Integer, Character> smallCaps() {
-        int[] codepoints = {0x1D00, 0x0299, 0x1D04, 0x1D05, 0x1D07, 0xA730, 0x0262, 0x029C, 0x026A, 0x1D0A, 0x1D0B, 0x029F, 0x1D0D, 0x0274, 0x1D0F, 0x1D18, 0xA7AF, 0x0280, 0xA731, 0x1D1B, 0x1D1C, 0x1D20, 0x1D21, 0x028F, 0x1D22};
-        String letters = "abcdefghijklmnopqrstuvwyz";
-        Map<Integer, Character> map = new HashMap<>();
-        for (int i = 0; i < codepoints.length; i++) map.put(codepoints[i], letters.charAt(i));
-        return Map.copyOf(map);
+        @Override
+        protected void onTick(Minecraft mc) {
+            if (theme.index() != com.zlorbie788.zeus.ui.UiSettings.ACCENT.index()) theme.set(com.zlorbie788.zeus.ui.UiSettings.ACCENT.index());
+            if (Math.abs(tint.get() - com.zlorbie788.zeus.ui.UiSettings.THEME_TINT.get()) > 0.001) tint.set(com.zlorbie788.zeus.ui.UiSettings.THEME_TINT.get());
+            if (glow.on() != com.zlorbie788.zeus.ui.UiSettings.HUD_GLOW.on()) glow.set(com.zlorbie788.zeus.ui.UiSettings.HUD_GLOW.on());
+        }
     }
 }

@@ -1,257 +1,326 @@
-#!/usr/bin/env python3
-"""Renders the menu animations (the stone plates, the round buttons, the click flash) into sprite sheets.
+package com.zlorbie788.zeus.ui;
 
-    python3 tools/anim/make_plate.py src/main/resources/assets/zeus/textures/gui/anim
+import net.minecraft.client.gui.GuiGraphics;
+import org.joml.Matrix3x2f;
 
-All sheets are white with an alpha channel; the game tints them. The game only picks a frame and draws it.
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 
-  plate_glow.png / plate_core.png  24 frames of 512 x 96, 4 columns: two arcs that chase each other round the edge of a
-                                   plate 480 x 64 (rounded corners, 10 px). Drawn in three pieces (left end, middle, right end)
-                                   so any plate width works. Loops.
-  circ_glow.png / circ_core.png    24 frames of 160 x 160, 4 columns: two arcs that circle a round button (radius 56). Loops.
-  click.png                        16 frames of 512 x 256, 4 columns: shock waves and bolts from the middle of a click. Plays once.
-"""
-import math
-import os
-import random
-import sys
+public final class Rig {
 
-import numpy as np
-from PIL import Image, ImageDraw, ImageFilter
+    public static final int K = 4;
+    private static final float D = 90f;
+    private static final float LX = -0.40f, LY = -0.55f, LZ = -0.73f;
 
-SS = 3
+    public static final class T {
+        public final float[] r = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+        public float x, y, z;
 
+        public T() {
+        }
 
-def vnoise(n, step, rng):
-    pts = [rng.uniform(-1, 1) for _ in range(n // step + 3)]
-    out = np.zeros(n)
-    for i in range(n):
-        a = i / step
-        j = int(a)
-        f = a - j
-        f = f * f * (3 - 2 * f)
-        out[i] = pts[j] * (1 - f) + pts[j + 1] * f
-    return out
+        public T(T o) {
+            System.arraycopy(o.r, 0, r, 0, 9);
+            x = o.x;
+            y = o.y;
+            z = o.z;
+        }
 
+        public static T at(float x, float y, float z) {
+            T t = new T();
+            t.x = x;
+            t.y = y;
+            t.z = z;
+            return t;
+        }
 
-# ---------------------------------------------------------------- paths
+        public T then(T c) {
+            T o = new T();
+            float[] a = r;
+            float[] b = c.r;
+            for (int i = 0; i < 3; i++) {
+                for (int j = 0; j < 3; j++) o.r[i * 3 + j] = a[i * 3] * b[j] + a[i * 3 + 1] * b[3 + j] + a[i * 3 + 2] * b[6 + j];
+            }
+            o.x = a[0] * c.x + a[1] * c.y + a[2] * c.z + x;
+            o.y = a[3] * c.x + a[4] * c.y + a[5] * c.z + y;
+            o.z = a[6] * c.x + a[7] * c.y + a[8] * c.z + z;
+            return o;
+        }
 
-def plate_path(W, H, M, r):
-    """Points along the outline of a rounded rectangle, clockwise from the top left end of the top edge.
-    Returns (pts, normals, perimeter) sampled about every 1.5 px."""
-    x0, y0, x1, y1 = M, M, W - M, H - M
-    segs = []
-    def line(ax, ay, bx, by, nx, ny):
-        segs.append(("l", ax, ay, bx, by, nx, ny))
-    def arc(cx, cy, a0):
-        segs.append(("a", cx, cy, a0))
-    line(x0 + r, y0, x1 - r, y0, 0, -1)
-    arc(x1 - r, y0 + r, -90)
-    line(x1, y0 + r, x1, y1 - r, 1, 0)
-    arc(x1 - r, y1 - r, 0)
-    line(x1 - r, y1, x0 + r, y1, 0, 1)
-    arc(x0 + r, y1 - r, 90)
-    line(x0, y1 - r, x0, y0 + r, -1, 0)
-    arc(x0 + r, y0 + r, 180)
-    pts, nrm = [], []
-    for s in segs:
-        if s[0] == "l":
-            _, ax, ay, bx, by, nx, ny = s
-            L = math.hypot(bx - ax, by - ay)
-            n = max(1, int(L / 1.5))
-            for i in range(n):
-                f = i / n
-                pts.append((ax + (bx - ax) * f, ay + (by - ay) * f))
-                nrm.append((nx, ny))
-        else:
-            _, cx, cy, a0 = s
-            L = math.pi / 2 * r
-            n = max(2, int(L / 1.5))
-            for i in range(n):
-                a = math.radians(a0 + 90 * i / n)
-                pts.append((cx + math.cos(a) * r, cy + math.sin(a) * r))
-                nrm.append((math.cos(a), math.sin(a)))
-    return pts, nrm, len(pts)
+        public T worldRot(T rotation, float px, float py, float pz) {
+            T o = new T();
+            float[] a = rotation.r;
+            float[] b = r;
+            for (int i = 0; i < 3; i++) {
+                for (int j = 0; j < 3; j++) o.r[i * 3 + j] = a[i * 3] * b[j] + a[i * 3 + 1] * b[3 + j] + a[i * 3 + 2] * b[6 + j];
+            }
+            float dx = x - px, dy = y - py, dz = z - pz;
+            o.x = a[0] * dx + a[1] * dy + a[2] * dz + px;
+            o.y = a[3] * dx + a[4] * dy + a[5] * dz + py;
+            o.z = a[6] * dx + a[7] * dy + a[8] * dz + pz;
+            return o;
+        }
 
+        public T move(float dx, float dy, float dz) {
+            return then(at(dx, dy, dz));
+        }
 
-def circle_path(cx, cy, r):
-    n = int(2 * math.pi * r / 1.5)
-    pts, nrm = [], []
-    for i in range(n):
-        a = 2 * math.pi * i / n - math.pi / 2
-        pts.append((cx + math.cos(a) * r, cy + math.sin(a) * r))
-        nrm.append((math.cos(a), math.sin(a)))
-    return pts, nrm, n
+        public T rotX(float a) {
+            return then(rx(a));
+        }
 
+        public T rotY(float a) {
+            return then(ry(a));
+        }
 
-def bloom(shape, cx, cy, rad, power=1.0):
-    h, w = shape
-    yy, xx = np.mgrid[0:h, 0:w]
-    d2 = ((xx + 0.5) / SS - cx) ** 2 + ((yy + 0.5) / SS - cy) ** 2
-    return np.exp(-d2 / (rad * rad)) * power
+        public T rotZ(float a) {
+            return then(rz(a));
+        }
 
+        public float[] point(float lx, float ly, float lz) {
+            return new float[] {r[0] * lx + r[1] * ly + r[2] * lz + x, r[3] * lx + r[4] * ly + r[5] * lz + y, r[6] * lx + r[7] * ly + r[8] * lz + z};
+        }
 
-def run_frame(pts, nrm, n, W, H, f, frames, jag_amp, width_core, width_glow, trail_frac, heads=2, seed=0):
-    rng = random.Random(seed * 100003 + f * 7919)
-    gl = Image.new("L", (W * SS, H * SS), 0)
-    co = Image.new("L", (W * SS, H * SS), 0)
-    gd, cd = ImageDraw.Draw(gl), ImageDraw.Draw(co)
-    bl = np.zeros((H * SS, W * SS), dtype=np.float32)
-    trail = int(n * trail_frac)
-    noise = vnoise(n + 4, 7, rng) * 0.7 + vnoise(n + 4, 3, rng) * 0.45
-    for hd in range(heads):
-        head = int(((f / frames) + hd / heads) * n) % n
-        prev = None
-        for i in range(trail + 1):
-            q = i / trail                      # 0 tail .. 1 head
-            idx = (head - trail + i) % n
-            taper = math.sin(min(1.0, q * 1.12) * math.pi / 2)
-            off = noise[idx] * jag_amp * (0.35 + 0.65 * taper)
-            px = pts[idx][0] + nrm[idx][0] * off
-            py = pts[idx][1] + nrm[idx][1] * off
-            if prev is not None:
-                a = q ** 1.35
-                p0 = (prev[0] * SS, prev[1] * SS)
-                p1 = (px * SS, py * SS)
-                gd.line([p0, p1], fill=int(255 * a * 0.85), width=max(1, int(width_glow * (0.4 + 0.6 * q) * SS)))
-                cd.line([p0, p1], fill=int(255 * min(1.0, a * 1.15)), width=max(1, int(width_core * (0.45 + 0.55 * q) * SS)))
-            prev = (px, py)
-            # forks leaping outward off the channel
-            if q > 0.35 and i % 9 == 0 and rng.random() < 0.28:
-                reach = rng.uniform(7, 15)
-                side = rng.uniform(-6, 6)
-                fx = px + nrm[idx][0] * reach - nrm[idx][1] * side
-                fy = py + nrm[idx][1] * reach + nrm[idx][0] * side
-                mx, my = (px + fx) / 2 + rng.uniform(-2, 2), (py + fy) / 2 + rng.uniform(-2, 2)
-                for (a0, a1) in (((px, py), (mx, my)), ((mx, my), (fx, fy))):
-                    gd.line([(a0[0] * SS, a0[1] * SS), (a1[0] * SS, a1[1] * SS)], fill=int(255 * q * 0.7), width=int(3 * SS))
-                    cd.line([(a0[0] * SS, a0[1] * SS), (a1[0] * SS, a1[1] * SS)], fill=int(255 * q * 0.9), width=max(1, int(0.9 * SS)))
-        hx, hy = prev
-        bl += bloom(bl.shape, hx, hy, 9.5, 0.95).astype(np.float32)
-        # sparks around the head
-        for _ in range(5):
-            a = rng.uniform(0, 2 * math.pi)
-            d = rng.uniform(3, 12)
-            sx, sy = hx + math.cos(a) * d, hy + math.sin(a) * d
-            r = rng.uniform(0.5, 1.1)
-            cd.ellipse([(sx - r) * SS, (sy - r) * SS, (sx + r) * SS, (sy + r) * SS], fill=int(255 * rng.uniform(0.55, 1.0)))
-    gl = gl.filter(ImageFilter.GaussianBlur(2.6 * SS))
-    garr = np.asarray(gl, dtype=np.float32) / 255.0
-    garr = np.clip(garr * 2.1 + bl * 0.9, 0, 1)
-    carr = np.asarray(co, dtype=np.float32) / 255.0
-    cblur = np.asarray(co.filter(ImageFilter.GaussianBlur(0.9 * SS)), dtype=np.float32) / 255.0
-    carr = np.clip(np.maximum(carr, cblur * 0.9) + bloom(bl.shape, hx, hy, 3.2, 0.9) * 1.0, 0, 1)
-    def down(a):
-        a = a.reshape(H, SS, W, SS).mean(axis=(1, 3))
-        return (np.clip(a, 0, 1) * 255 + 0.5).astype(np.uint8)
-    return down(garr), down(carr)
+        public static T rx(float a) {
+            T t = new T();
+            float c = (float) Math.cos(a), s = (float) Math.sin(a);
+            t.r[4] = c;
+            t.r[5] = -s;
+            t.r[7] = s;
+            t.r[8] = c;
+            return t;
+        }
 
+        public static T ry(float a) {
+            T t = new T();
+            float c = (float) Math.cos(a), s = (float) Math.sin(a);
+            t.r[0] = c;
+            t.r[2] = s;
+            t.r[6] = -s;
+            t.r[8] = c;
+            return t;
+        }
 
-def to_sheet(frames_list, W, H, cols):
-    n = len(frames_list)
-    rows = (n + cols - 1) // cols
-    out = np.zeros((rows * H, cols * W, 4), dtype=np.uint8)
-    out[..., :3] = 255
-    for i, a in enumerate(frames_list):
-        r, c = divmod(i, cols)
-        out[r * H:(r + 1) * H, c * W:(c + 1) * W, 3] = a
-    return Image.fromarray(out, "RGBA")
+        public static T rz(float a) {
+            T t = new T();
+            float c = (float) Math.cos(a), s = (float) Math.sin(a);
+            t.r[0] = c;
+            t.r[1] = -s;
+            t.r[3] = s;
+            t.r[4] = c;
+            return t;
+        }
+    }
 
+    public static final class Ctx {
+        public float alpha = 1f;
+        public float shade = 1f;
 
-def make_plate(dest):
-    W, H, M, R, FR = 512, 96, 16, 10, 24
-    pts, nrm, n = plate_path(W, H, M, R)
-    g, c = [], []
-    for f in range(FR):
-        a, b = run_frame(pts, nrm, n, W, H, f, FR, 2.4, 1.5, 6.0, 0.30, 2, 1)
-        g.append(a)
-        c.append(b)
-    to_sheet(g, W, H, 4).save(os.path.join(dest, "plate_glow.png"), optimize=True)
-    to_sheet(c, W, H, 4).save(os.path.join(dest, "plate_core.png"), optimize=True)
+        public float nx, ny, nz;
 
+        public float glint;
 
-def make_circ(dest):
-    W = H = 160
-    FR = 24
-    pts, nrm, n = circle_path(80, 80, 56)
-    g, c = [], []
-    for f in range(FR):
-        a, b = run_frame(pts, nrm, n, W, H, f, FR, 2.0, 1.6, 6.0, 0.30, 2, 2)
-        g.append(a)
-        c.append(b)
-    to_sheet(g, W, H, 4).save(os.path.join(dest, "circ_glow.png"), optimize=True)
-    to_sheet(c, W, H, 4).save(os.path.join(dest, "circ_core.png"), optimize=True)
+        public int col(int argb) {
+            int a = Math.round(((argb >>> 24) & 255) * alpha);
+            if (a <= 0) return 0;
+            int r = Math.min(255, Math.round(((argb >> 16) & 255) * shade));
+            int g = Math.min(255, Math.round(((argb >> 8) & 255) * shade));
+            int b = Math.min(255, Math.round((argb & 255) * shade));
+            return (a << 24) | (r << 16) | (g << 8) | b;
+        }
 
+        public int raw(int argb, float k) {
+            int a = Math.round(((argb >>> 24) & 255) * alpha * k);
+            return a <= 0 ? 0 : (Math.min(255, a) << 24) | (argb & 0xFFFFFF);
+        }
+    }
 
-def bolt_path(x0, y0, x1, y1, rng, levels=5, amp=0.18):
-    pts = [(x0, y0), (x1, y1)]
-    a = math.hypot(x1 - x0, y1 - y0) * amp
-    for _ in range(levels):
-        nxt = [pts[0]]
-        for (ax, ay), (bx, by) in zip(pts[:-1], pts[1:]):
-            mx, my = (ax + bx) / 2, (ay + by) / 2
-            dx, dy = bx - ax, by - ay
-            L = math.hypot(dx, dy) or 1.0
-            o = rng.uniform(-1, 1) * a
-            nxt.append((mx - dy / L * o, my + dx / L * o))
-            nxt.append((bx, by))
-        pts = nxt
-        a *= 0.55
-    return pts
+    public interface Painter {
 
+        void paint(GuiGraphics g, Ctx c, int face, int w, int h);
+    }
 
-def make_click(dest):
-    W, H, FR = 512, 256, 16
-    cx, cy = W / 2, H / 2
-    rng = random.Random(4242)
-    # nine bolts, fixed for the whole animation, flickering by drawing different parts of them per frame
-    bolts = []
-    for i in range(9):
-        ang = i / 9 * 2 * math.pi + rng.uniform(-0.25, 0.25)
-        reach = rng.uniform(0.55, 0.95)
-        ex = cx + math.cos(ang) * reach * W * 0.5
-        ey = cy + math.sin(ang) * reach * H * 0.5
-        sx = cx + math.cos(ang) * 30
-        sy = cy + math.sin(ang) * 10
-        bolts.append(bolt_path(sx, sy, ex, ey, rng))
-    frames = []
-    for f in range(FR):
-        p = f / (FR - 1)
-        im = Image.new("L", (W * SS, H * SS), 0)
-        d = ImageDraw.Draw(im)
-        fl = p / 0.16 if p < 0.16 else (1 - (p - 0.16) / 0.84) ** 2.2
-        # shock waves
-        for r in range(2):
-            q = (p - r * 0.10) / 0.62
-            if 0 < q < 1:
-                e = 1 - (1 - q) ** 2
-                rx = e * W * 0.47 * (1 - 0.18 * r)
-                ry = rx * 0.55
-                a = (1 - q) ** 2
-                wd = max(1.0, 5.0 - 3.5 * q)
-                d.ellipse([(cx - rx) * SS, (cy - ry) * SS, (cx + rx) * SS, (cy + ry) * SS], outline=int(255 * 0.8 * a), width=max(1, int(wd * SS)))
-        # bolts grow quickly, then fade
-        grow = min(1.0, p / 0.22)
-        fade = max(0.0, 1 - p * 1.15)
-        jit = random.Random(900 + f // 2)
-        for pts in bolts:
-            k = max(2, int(len(pts) * grow))
-            seg = pts[:k]
-            for a0, a1 in zip(seg[:-1], seg[1:]):
-                jx, jy = jit.uniform(-0.8, 0.8), jit.uniform(-0.8, 0.8)
-                d.line([((a0[0] + jx) * SS, (a0[1] + jy) * SS), ((a1[0] + jx) * SS, (a1[1] + jy) * SS)], fill=int(255 * fade), width=max(1, int((1.5 + 0.6 * (1 - p)) * SS)))
-        arr = np.asarray(im, dtype=np.float32) / 255.0
-        glow = np.asarray(im.filter(ImageFilter.GaussianBlur(3.2 * SS)), dtype=np.float32) / 255.0
-        arr = np.clip(arr + glow * 1.5 + bloom(arr.shape, cx, cy, 70, 0.55 * fl) + bloom(arr.shape, cx, cy, 24, 0.9 * fl), 0, 1)
-        a = arr.reshape(H, SS, W, SS).mean(axis=(1, 3))
-        frames.append((np.clip(a, 0, 1) * 255 + 0.5).astype(np.uint8))
-    to_sheet(frames, W, H, 4).save(os.path.join(dest, "click.png"), optimize=True)
+    private static final class Face {
+        float cx, cy, cz, ux, uy, vx, vy, nx, ny, nz, alphaScale, bias;
+        int w, h, id;
+        Painter p;
+    }
 
+    private final List<Face> faces = new ArrayList<>();
+    private final Ctx ctx = new Ctx();
+    private float alpha = 1f;
 
-if __name__ == "__main__":
-    dest = sys.argv[1] if len(sys.argv) > 1 else "src/main/resources/assets/zeus/textures/gui/anim"
-    os.makedirs(dest, exist_ok=True)
-    make_plate(dest)
-    make_circ(dest)
-    make_click(dest)
-    print("ok")
+    public void clear() {
+        faces.clear();
+    }
+
+    public void alpha(float a) {
+        alpha = a;
+    }
+
+    private float light = 1f;
+
+    /** World light on the whole rig, 0..1 (1: as painted). */
+    public void light(float l) {
+        light = Math.max(0f, Math.min(1f, l));
+    }
+
+    public int size() {
+        return faces.size();
+    }
+
+    public void box(T t, float cx, float cy, float cz, float sx, float sy, float sz, Painter p, boolean twoSided) {
+        box(t, cx, cy, cz, sx, sy, sz, p, twoSided, 0f);
+    }
+
+    public void box(T t, float cx, float cy, float cz, float sx, float sy, float sz, Painter p, boolean twoSided, float bias) {
+        float[] c = t.point(cx, cy, cz);
+        float[] r = t.r;
+        float[] ex = {r[0], r[3], r[6]};
+        float[] ey = {r[1], r[4], r[7]};
+        float[] ez = {r[2], r[5], r[8]};
+        for (int f = 0; f < 6; f++) {
+            float[] n;
+            float[] u;
+            float[] v;
+            float half;
+            int w;
+            int h;
+            switch (f) {
+                case 0 -> {
+                    n = ex;
+                    u = ez;
+                    v = ey;
+                    half = sx / 2;
+                    w = px(sz);
+                    h = px(sy);
+                }
+                case 1 -> {
+                    n = neg(ex);
+                    u = neg(ez);
+                    v = ey;
+                    half = sx / 2;
+                    w = px(sz);
+                    h = px(sy);
+                }
+                case 2 -> {
+                    n = ey;
+                    u = ex;
+                    v = ez;
+                    half = sy / 2;
+                    w = px(sx);
+                    h = px(sz);
+                }
+                case 3 -> {
+                    n = neg(ey);
+                    u = ex;
+                    v = neg(ez);
+                    half = sy / 2;
+                    w = px(sx);
+                    h = px(sz);
+                }
+                case 4 -> {
+                    n = ez;
+                    u = neg(ex);
+                    v = ey;
+                    half = sz / 2;
+                    w = px(sx);
+                    h = px(sy);
+                }
+                default -> {
+                    n = neg(ez);
+                    u = ex;
+                    v = ey;
+                    half = sz / 2;
+                    w = px(sx);
+                    h = px(sy);
+                }
+            }
+            float fx = c[0] + n[0] * half, fy = c[1] + n[1] * half, fz = c[2] + n[2] * half;
+            float toEye = n[0] * (0f - fx) + n[1] * (0f - fy) + n[2] * (-D - fz);
+            if (toEye <= 0f && !twoSided) continue;
+            Face fc = new Face();
+            fc.cx = fx;
+            fc.cy = fy;
+            fc.cz = fz;
+            boolean back = toEye <= 0f;
+            fc.ux = u[0];
+            fc.uy = u[1];
+            fc.vx = v[0];
+            fc.vy = v[1];
+            fc.nx = back ? -n[0] : n[0];
+            fc.ny = back ? -n[1] : n[1];
+            fc.nz = back ? -n[2] : n[2];
+            fc.w = w;
+            fc.h = h;
+            fc.id = f;
+            fc.p = p;
+            fc.alphaScale = alpha;
+            fc.bias = bias;
+            faces.add(fc);
+        }
+    }
+
+    private static float[] neg(float[] a) {
+        return new float[] {-a[0], -a[1], -a[2]};
+    }
+
+    private int px(float units) {
+        return Math.max(1, Math.round(units * K));
+    }
+
+    public void flush(GuiGraphics g, float unit) {
+        faces.sort(Comparator.comparingDouble((Face f) -> -(f.cz + f.bias)));
+        for (Face f : faces) {
+            float z = Math.max(-D * 0.7f, Math.min(D * 6f, f.cz));
+            float s = unit * D / (D + z);
+            float per = s / K;
+            float ux = f.ux * per, uy = f.uy * per, vx = f.vx * per, vy = f.vy * per;
+            float cx = f.cx * s;
+            float cy = f.cy * s;
+            float ox = cx - ux * f.w / 2f - vx * f.h / 2f;
+            float oy = cy - uy * f.w / 2f - vy * f.h / 2f;
+            float lam = Math.max(0f, f.nx * LX + f.ny * LY + f.nz * LZ);
+            ctx.shade = (0.70f + 0.42f * lam) * light;
+            ctx.alpha = f.alphaScale;
+            ctx.nx = f.nx;
+            ctx.ny = f.ny;
+            ctx.nz = f.nz;
+            ctx.glint = frac(0.5f + f.nx * 0.9f - f.ny * 0.6f);
+            g.pose().pushMatrix();
+            g.pose().translate(ox, oy);
+            g.pose().mul(new Matrix3x2f(ux, uy, vx, vy, 0f, 0f));
+            f.p.paint(g, ctx, f.id, f.w, f.h);
+            g.pose().popMatrix();
+        }
+        faces.clear();
+    }
+
+    public float[] extent() {
+        float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
+        for (Face f : faces) {
+            float k = D / (D + f.cz);
+            float wu = f.w / (float) K, hu = f.h / (float) K;
+            for (int i = 0; i < 4; i++) {
+                float su = (i & 1) == 0 ? -0.5f : 0.5f, sv = (i & 2) == 0 ? -0.5f : 0.5f;
+                float x = (f.cx + f.ux * wu * su + f.vx * hu * sv) * k;
+                float y = (f.cy + f.uy * wu * su + f.vy * hu * sv) * k;
+                x0 = Math.min(x0, x);
+                x1 = Math.max(x1, x);
+                y0 = Math.min(y0, y);
+                y1 = Math.max(y1, y);
+            }
+        }
+        return faces.isEmpty() ? new float[4] : new float[] {x0, y0, x1, y1};
+    }
+
+    public static float[] project(float x, float y, float z, float unit) {
+        float k = unit * D / (D + z);
+        return new float[] {x * k, y * k};
+    }
+
+    private static float frac(float x) {
+        return x - (float) Math.floor(x);
+    }
+}

@@ -1,192 +1,170 @@
-package com.zlorbie788.zeus.ui;
+package com.zlorbie788.zeus.mods;
 
-import net.minecraft.client.gui.GuiGraphics;
+import com.zlorbie788.zeus.core.Category;
+import com.zlorbie788.zeus.core.Env;
+import com.zlorbie788.zeus.core.Module;
+import com.zlorbie788.zeus.core.Setting;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
-/**
- * The lightning of the menu's stone plates.
- *
- * <p><b>Hover</b>: two live arcs run round the edge of the plate, one chasing the other. Each is a jagged channel that is
- * redrawn from fresh noise about sixteen times a second (so it crackles), tapers from a white-hot head to a faint tail, and has
- * a halo, a body and a core. The head carries a bloom, a small lens glint and a few sparks, little forks leap off the channel
- * now and then, and the stone under the head is lit by it.
- *
- * <p><b>Click</b>: a flash goes through the whole menu: the plate lights white, a shock wave leaves it, bolts fly out to the
- * edges of the screen and the picture is washed in pale blue light that fades; the next screen opens in the middle of it.
- */
-final class PlateFx {
-    private PlateFx() {}
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 
-    private static final int BLUE = 0xFF5C9CFF;
-    private static final int DEEP = 0xFF2A5CFF;
-    private static final int ICE = 0xFFCFE2FF;
+public final class TunnelMiner extends Module {
+    private final Setting.Bool autoAdvance = add(new Setting.Bool(
+            "Auto advance", "Walk forward through the cleared tunnel. Turn it off to mine while standing still.", false));
+    private final Setting.Num speed = add(new Setting.Num(
+            "Walking speed", "Maximum horizontal movement per tick while auto advance is enabled.", 0.075, 0.025, 0.14, 0.005, " blocks/tick"));
+    private final Setting.Num reach = add(new Setting.Num(
+            "Mining reach", "Maximum distance to the next tunnel blocks. Actual game/server reach still applies.", 4.2, 2.5, 4.5, 0.1, " blocks"));
+    private final Setting.Bool pauseOnDamage = add(new Setting.Bool(
+            "Pause when hurt", "Stops mining and movement briefly after taking damage.", true));
+    private final Setting.Action stop = add(new Setting.Action(
+            "Emergency stop", "Immediately disables the miner and releases its movement control.", () -> setEnabled(false)));
 
-    /** Smooth value noise in -1..1. */
-    private static float vn(float x, int seed) {
-        int i = (int) Math.floor(x);
-        float f = x - i;
-        f = f * f * (3f - 2f * f);
-        float a = Lightning.hash(i, seed) * 2f - 1f;
-        float b = Lightning.hash(i + 1, seed) * 2f - 1f;
-        return a + (b - a) * f;
+    private String status = "Off";
+    private final Setting.Info statusInfo = add(new Setting.Info("Miner status", () -> List.of(status)));
+    private Direction heading = Direction.SOUTH;
+    private int damagePause;
+    private int mineCooldown;
+    private float previousHealth = -1;
+    private boolean movedLastTick;
+
+    public TunnelMiner() {
+        super("tunnelminer", "Tunnel Miner", "Clears a safe one-wide, two-high tunnel in the direction you face. It mines with the normal hold-to-break, so it also works on a server.", Category.WORLD);
     }
 
-    /** A point on the rectangle's outline {@code p} pixels from the top left corner, going clockwise; the last two are the outward direction. */
-    private static void onOutline(float x, float y, float w, float h, float p, float[] out) {
-        float per = 2f * (w + h);
-        p = ((p % per) + per) % per;
-        if (p < w) {
-            out[0] = x + p; out[1] = y; out[2] = 0f; out[3] = -1f;
-            return;
-        }
-        p -= w;
-        if (p < h) {
-            out[0] = x + w; out[1] = y + p; out[2] = 1f; out[3] = 0f;
-            return;
-        }
-        p -= h;
-        if (p < w) {
-            out[0] = x + w - p; out[1] = y + h; out[2] = 0f; out[3] = 1f;
-            return;
-        }
-        p -= w;
-        out[0] = x; out[1] = y + h - p; out[2] = -1f; out[3] = 0f;
+    @Override
+    protected void onEnable() {
+        damagePause = 0;
+        mineCooldown = 0;
+        previousHealth = -1;
+        movedLastTick = false;
+        status = "Ready";
     }
 
-    /** The arcs that run round a plate while the pointer is on it. {@code s} is 0 to 1, how strongly it is lit. */
-    static void hover(GuiGraphics g, int x, int y, int w, int h, float t, float s, float u) {
-        if (s <= 0.02f) return;
-        if (!Perf.fast() && Anim.menuReady()) {
-            // rendered offline: two crackling arcs chase each other round the edge (see tools/anim/make_plate.py)
-            Draw.rrectLine(g, x - 1, y - 1, w + 2, h + 2, 3, Draw.rgba(0xFF8EB8FF, 0.30f * s));
-            Anim.plate(g, x, y, w, h, t, BLUE, ICE, Math.min(1f, s));
+    @Override
+    protected void onTick(Minecraft mc) {
+        if (mc.player == null || mc.level == null || mc.gameMode == null) {
+            releaseMovement(mc);
+            status = "No world";
             return;
         }
-        boolean fast = Perf.fast();
-        float per = 2f * (w + h);
-        float k = Math.max(0.7f, u);
-        float width = Math.max(0.55f, 0.62f * k);
-        int heads = fast ? 1 : 2;
-        float[] c = new float[4];
-        float[] hc = new float[4];
-        // the whole edge glows a little, so the shape of the plate always reads
-        Draw.rrectLine(g, x - 1, y - 1, w + 2, h + 2, 3, Draw.rgba(0xFF8EB8FF, 0.30f * s));
+        if (mc.screen != null) {
+            releaseMovement(mc);
+            status = "Paused while a screen is open";
+            return;
+        }
 
-        for (int hd = 0; hd < heads; hd++) {
-            float speed = 0.34f + 0.05f * hd;
-            float pos = ((t * speed + hd * 0.5f) % 1f) * per;          // the head, in pixels along the outline
-            float trail = per * (0.30f - 0.05f * hd);
-            int step = fast ? 6 : 3;                                    // pixels between two points of the channel
-            int n = Math.max(6, Math.round(trail / step));
-            int slot = (int) Math.floor(t * 16f);
-            float jag = 3.4f * k;
-            float prevX = 0f;
-            float prevY = 0f;
-            boolean have = false;
-            for (int i = 0; i <= n; i++) {
-                float f = i / (float) n;                                 // 0 = tail, 1 = head
-                onOutline(x, y, w, h, pos - trail * (1f - f), c);
-                // sideways jag: two octaves of noise that slide with time, redrawn from fresh noise every slot
-                float along = (pos - trail * (1f - f)) * 0.045f;
-                float off = (0.70f * vn(along * 1.0f + slot * 3.1f, 11 + hd) + 0.45f * vn(along * 2.9f + slot * 7.7f, 23 + hd)) * jag;
-                float taper = (float) Math.sin(Math.min(1f, f * 1.12f) * 1.5708f);   // thin tail, full body
-                off *= 0.35f + 0.65f * taper;
-                float px = c[0] + c[2] * off;
-                float py = c[1] + c[3] * off;
-                if (have) {
-                    float a = s * (float) Math.pow(f, 1.35);
-                    Lightning.seg(g, prevX, prevY, px, py, Math.min(1f, a), BLUE, DEEP, width * (0.55f + 0.45f * f), fast ? 2 : 3);
-                }
-                prevX = px;
-                prevY = py;
-                have = true;
-                if (i == n) {
-                    hc[0] = px; hc[1] = py; hc[2] = c[2]; hc[3] = c[3];
-                }
-                // forks leaping off the channel, outward, a few times a second
-                if (!fast && i > n / 3 && i % 5 == 0 && Lightning.hash(slot * 31 + i, 70 + hd) > 0.80f) {
-                    float reach = (9f + 14f * Lightning.hash(slot, i + 71)) * k;
-                    float side = (Lightning.hash(slot * 7 + i, 72) - 0.5f) * 12f * k;
-                    float fx = px + c[2] * reach - c[3] * side;
-                    float fy = py + c[3] * reach + c[2] * side;
-                    Lightning.bolt(g, px, py, fx, fy, 1f, slot * 13 + i, s * f * 0.9f, BLUE, DEEP, width * 0.7f, 1, 0.6f, 0f, 3);
-                }
+        Player player = mc.player;
+        float health = player.getHealth();
+        if (previousHealth >= 0 && health < previousHealth && pauseOnDamage.on()) damagePause = 40;
+        previousHealth = health;
+        if (damagePause > 0) {
+            damagePause--;
+            releaseMovement(mc);
+            status = "Paused after damage · " + damagePause / 20.0 + "s";
+            return;
+        }
+        if (mineCooldown > 0) mineCooldown--;
+
+        heading = cardinal(player.getYRot());
+        BlockPos feet = player.blockPosition();
+        BlockPos front = feet.relative(heading, 1);
+        List<BlockPos> targets = new ArrayList<>(2);
+        targets.add(front);
+        targets.add(front.above());
+
+        int broken = 0;
+        for (BlockPos pos : targets) {
+            BlockState state = mc.level.getBlockState(pos);
+            if (state.isAir()) continue;
+            if (!safeToMine(mc, pos, state)) {
+                releaseMovement(mc);
+                status = "Stopped at protected or hazardous block · " + pos.getX() + " " + pos.getY() + " " + pos.getZ();
+                return;
             }
-            // the head: a bloom, a white core and a glint
-            float hx = hc[0];
-            float hy = hc[1];
-            float flick = 0.82f + 0.18f * (float) Math.sin(t * 41f + hd * 2f);
-            Lightning.bloom(g, hx, hy, 9f * k + 5f, 0xFF9CC4FF, 0.85f * s * flick);
-            Lightning.bloom(g, hx, hy, 3.2f * k + 1.8f, 0xFFFFFFFF, 0.95f * s * flick);
-            if (!fast) {
-                Lightning.streak(g, hx, hy, 14f * k, 0xFFBFD8FF, 0.8f * s * flick);
-                Lightning.sparks(g, hx, hy, 5, 12f * k, t, 90 + hd, BLUE, s);
-                // the stone under the head is lit by it: a soft wash that follows it, kept inside the plate
-                int r = Math.max(6, Math.round(h * 0.85f));
-                int wx0 = Math.max(x, Math.round(hx) - r);
-                int wx1 = Math.min(x + w, Math.round(hx) + r);
-                for (int cxp = wx0; cxp < wx1; cxp += 2) {
-                    float d = 1f - Math.abs(cxp - hx) / r;
-                    if (d <= 0f) continue;
-                    g.fill(cxp, y + 1, Math.min(cxp + 2, x + w), y + h - 1, Draw.rgba(0xFF7CA8FF, 0.075f * d * d * s));
-                }
-            }
-        }
-        // small, short-lived flickers all along the edge, between the two arcs
-        if (!fast) Thunder.outline(g, x, y, w, h, t, s * 0.55f, k, 0.30f);
-    }
-
-    /**
-     * The flash of a click. {@code p} runs 0 to 1 over the whole effect; (cx, cy) is the middle of what was clicked and
-     * (bx, by, bw, bh) its box. The whole screen is lit, so the flash goes through the menu and not just the plate.
-     */
-    static void click(GuiGraphics g, float cx, float cy, int bx, int by, int bw, int bh, float u, float p, int sw, int sh, int seed) {
-        if (p <= 0f || p >= 1f) return;
-        float k = Math.max(0.7f, u);
-        // the flash: very quick up, then a long fall
-        float f = p < 0.16f ? p / 0.16f : (float) Math.pow(1f - (p - 0.16f) / 0.84f, 2.2);
-        // the object itself goes white-hot
-        g.fill(bx, by, bx + bw, by + bh, Draw.rgba(0xFFEAF2FF, 0.80f * f));
-        Lightning.bloom(g, cx, cy, Math.max(sw, sh) * (0.25f + 0.55f * p), 0xFF9CC4FF, 0.55f * f);
-        Lightning.bloom(g, cx, cy, bh * 1.8f + 18f * k, 0xFFFFFFFF, 0.75f * f);
-        g.fill(0, 0, sw, sh, Draw.rgba(0xFFC8DCFF, 0.42f * f));
-
-        if (Anim.menuReady()) {
-            // shock waves and bolts: rendered offline, played here
-            Anim.click(g, cx, cy, Math.max(sw, sh) * 0.62f, p, 0xFFDCE8FF, 0.95f);
-            return;
-        }
-
-        // two shock waves
-        for (int r = 0; r < 2; r++) {
-            float q = (p - r * 0.10f) / 0.62f;
-            if (q <= 0f || q >= 1f) continue;
-            float e = 1f - (1f - q) * (1f - q);
-            float rad = e * Math.max(sw, sh) * 0.62f * (1f - 0.18f * r);
-            float a = (1f - q) * (1f - q);
-            int segs = 72;
-            float px = cx + rad;
-            float py = cy;
-            for (int i = 1; i <= segs; i++) {
-                float an = i * 6.2832f / segs;
-                float x2 = cx + (float) Math.cos(an) * rad;
-                float y2 = cy + (float) Math.sin(an) * rad * 0.62f;   // the wave is wider than tall, like the plates
-                if (x2 > -40 && x2 < sw + 40) Draw.line(g, px, py, x2, y2, Math.max(1f, (3.4f - 2.2f * q) * k), Draw.rgba(0xFFDCE8FF, 0.65f * a));
-                px = x2;
-                py = y2;
+            if (player.getEyePosition().distanceTo(Vec3.atCenterOf(pos)) > reach.get()) continue;
+            if (mineCooldown == 0) {
+                mc.gameMode.startDestroyBlock(pos, Direction.UP);
+                mc.gameMode.continueDestroyBlock(pos, Direction.UP);
+                if (mc.level.getBlockState(pos).isAir()) broken++;
             }
         }
 
-        // bolts from the plate out to the sides and corners of the screen
-        float grow = Math.min(1f, p / 0.20f);
-        float fade = Math.max(0f, 1f - p * 1.15f);
-        for (int i = 0; i < 9; i++) {
-            float ang = (i / 9f) * 6.2832f + Lightning.hash(seed, i) * 0.5f;
-            float len = Math.max(sw, sh) * (0.35f + 0.5f * Lightning.hash(seed, i + 20));
-            float ex = cx + (float) Math.cos(ang) * len;
-            float ey = cy + (float) Math.sin(ang) * len * 0.8f;
-            float sx = Math.max(bx, Math.min(bx + bw, cx + (float) Math.cos(ang) * bw * 0.4f));
-            float sy = cy + (float) Math.sin(ang) * bh * 0.5f;
-            Lightning.bolt(g, sx, sy, ex, ey, grow, seed * 11 + i + (p > 0.3f ? 5 : 0), fade, 0xFF8EC8FF, 0xFFD6E6FF, Math.max(1.0f, 1.1f * k), 1, 0.8f, 0f, 3);
+        BlockPos next = feet.relative(heading, 1);
+        BlockState lower = mc.level.getBlockState(next);
+        BlockState upper = mc.level.getBlockState(next.above());
+        BlockState floor = mc.level.getBlockState(next.below());
+        boolean passageClear = lower.isAir() && upper.isAir()
+                && lower.getFluidState().isEmpty() && upper.getFluidState().isEmpty()
+                && !floor.isAir() && floor.getFluidState().isEmpty();
+
+        if (broken > 0) mineCooldown = 2;
+        if (autoAdvance.on() && passageClear && !mc.options.keyDown.isDown()
+                && !mc.options.keyLeft.isDown() && !mc.options.keyRight.isDown()) {
+            double yaw = Math.toRadians(player.getYRot());
+            double dx = -Math.sin(yaw) * speed.get();
+            double dz = Math.cos(yaw) * speed.get();
+            AABB movedBox = player.getBoundingBox().move(dx, 0, dz);
+            if (mc.level.noCollision(player, movedBox)) {
+                Vec3 old = player.getDeltaMovement();
+                player.setDeltaMovement(dx, old.y, dz);
+                movedLastTick = true;
+            } else {
+                releaseMovement(mc);
+                status = "Auto advance blocked by collision";
+                return;
+            }
+        } else {
+            releaseMovement(mc);
         }
+
+        status = String.format(Locale.ROOT, "%s · heading %s · cleared %d block(s) · %s",
+                autoAdvance.on() ? "Running" : "Mining in place", heading.getName(), broken,
+                passageClear ? "path clear" : "waiting for passage");
+    }
+
+    private static Direction cardinal(float yaw) {
+        int quadrant = Math.floorMod(Math.round(yaw / 90.0f), 4);
+        return switch (quadrant) {
+            case 0 -> Direction.SOUTH;
+            case 1 -> Direction.WEST;
+            case 2 -> Direction.NORTH;
+            default -> Direction.EAST;
+        };
+    }
+
+    private static boolean safeToMine(Minecraft mc, BlockPos pos, BlockState state) {
+        if (state.getFluidState() != null && !state.getFluidState().isEmpty()) return false;
+        if (state.hasBlockEntity()) return false;
+        if (state.getDestroySpeed(mc.level, pos) < 0) return false;
+        String id = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath();
+        return !id.equals("bedrock") && !id.equals("barrier") && !id.equals("end_portal_frame")
+                && !id.equals("reinforced_deepslate") && !id.contains("command_block");
+    }
+
+    private void releaseMovement(Minecraft mc) {
+        if (!movedLastTick || mc.player == null) return;
+        Vec3 old = mc.player.getDeltaMovement();
+        mc.player.setDeltaMovement(0, old.y, 0);
+        movedLastTick = false;
+    }
+
+    @Override
+    protected void onDisable() {
+        releaseMovement(Minecraft.getInstance());
+        status = "Off";
+    }
+
+    @Override
+    public String info() {
+        return enabled() ? status : null;
     }
 }

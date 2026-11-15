@@ -1,167 +1,143 @@
 package com.zlorbie788.zeus.core;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
+import net.minecraft.client.Minecraft;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Locale;
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
 
-/**
- * What you use most. Three small lists kept with your settings: the modules you starred (favourites), the ones you switched
- * on most recently, and how many times you have switched each one on. They only ever live on your computer, in zeus.json.
- * The module lists use them for "Favourites", "Recently used" and the "Most used first" order.
- */
-public final class Usage {
-    private Usage() {}
+public final class Env {
+    private Env() {}
 
-    public static final int SORT_DEFAULT = 0;
-    public static final int SORT_USED = 1;
-    public static final int SORT_NAME = 2;
-    private static final int RECENT_MAX = 8;
-
-    /**
-     * The modules people reach for most, best guess first, used to order the list before you have a history of your own.
-     * Your own switch-on counts then take over, with this order breaking ties. The website uses the same order.
-     */
-    public static final String[] POPULAR = {
-            "flight", "speed", "xray", "fullbright", "esp", "freecam", "zoom", "nametags", "waypoints", "killaura",
-            "autototem", "autoeat", "autotool", "nofall", "autosprint", "suspicious", "basefinder", "storageesp", "blockesp", "scaffold",
-            "fastplace", "fastbreak", "step", "triggerbot", "aimassist", "reach", "autoclicker", "crystalaura", "autoarmor", "hitboxes",
-            "chestmemory", "jesus", "spider", "safewalk", "antiafk", "autofish", "itemesp", "holeesp", "lightoverlay", "trajectories",
-            "breadcrumbs", "timechanger", "tunnelbasefinder", "mediabasefinder", "caveesp", "spawneresp", "baseclues", "keystrokes", "modulelist", "infohud",
-            "armorhud", "potionhud", "targethud", "radar", "compass", "watermark", "highjump", "longjump", "airjump", "antiknockback",
-            "autoweapon", "bowaimbot", "bowspam", "surround", "holefiller", "elytraboost", "elytrawaypoint", "freelook", "lowhealth", "targetesp",
-            "weatherchanger", "aurora", "chunkborders", "blockoutline", "nuker", "treebot", "tunnelminer", "autoreplenish", "durabilityalert", "coordsnapper", "screenshottweaks",
-            "autosell", "auction_house_tweaks", "antivanish", "staffhud", "threatradar", "friends", "knife"
-    };
-
-    private static final Map<String, Integer> RANK = new HashMap<>();
-    static {
-        for (int i = 0; i < POPULAR.length; i++) RANK.put(POPULAR[i], i);
+    public static Minecraft mc() {
+        return Minecraft.getInstance();
     }
 
-    private static final Set<String> FAVOURITES = new LinkedHashSet<>();
-    private static final List<String> RECENT = new ArrayList<>();
-    private static final Map<String, Integer> COUNT = new HashMap<>();
-
-    /** Where this module sits in the built-in order (0 is the most used); modules not in it come after all that are. */
-    public static int rank(String id) {
-        return RANK.getOrDefault(id, POPULAR.length + 1);
+    public static boolean inWorld() {
+        Minecraft mc = Minecraft.getInstance();
+        return mc.level != null && mc.player != null;
     }
 
-    public static boolean favourite(Module m) {
-        return FAVOURITES.contains(m.id);
+    public static boolean local() {
+        Minecraft mc = Minecraft.getInstance();
+        return mc.level != null && mc.player != null && mc.getSingleplayerServer() != null;
     }
 
-    public static void toggleFavourite(Module m) {
-        if (!FAVOURITES.remove(m.id)) FAVOURITES.add(m.id);
-        Zeus.markDirty();
+    public static net.minecraft.world.level.chunk.LevelChunk chunk(Minecraft mc, int cx, int cz) {
+        if (mc.level == null || !mc.level.hasChunk(cx, cz)) return null;
+        net.minecraft.world.level.chunk.LevelChunk c = mc.level.getChunk(cx, cz);
+        return c == null || c instanceof net.minecraft.world.level.chunk.EmptyLevelChunk ? null : c;
     }
 
-    public static int favouriteCount() {
-        return FAVOURITES.size();
+    public static java.util.List<net.minecraft.world.entity.Entity> entities(Minecraft mc, double range) {
+        if (mc.level == null || mc.player == null) return java.util.List.of();
+        double x = mc.player.getX();
+        double y = mc.player.getY();
+        double z = mc.player.getZ();
+        return mc.level.getEntities((net.minecraft.world.entity.Entity) null, new net.minecraft.world.phys.AABB(x - range, y - range, z - range, x + range, y + range, z + range));
     }
 
-    /** Your starred modules, in the order you starred them. */
-    public static List<Module> favourites() {
-        List<Module> out = new ArrayList<>();
-        for (String id : FAVOURITES) {
-            Module m = Zeus.get(id);
-            if (m != null) out.add(m);
+    private record Kept(String attribute, double value, String op) {}
+
+    private static final Map<String, Kept> ATTRIBUTES = new LinkedHashMap<>();
+    private static final Map<String, Integer> EFFECTS = new LinkedHashMap<>();
+    private static int ticks;
+
+    private static net.minecraft.core.Holder<net.minecraft.world.entity.ai.attributes.Attribute> attr(String name) {
+        return switch (name) {
+            case "movement_speed" -> net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED;
+            case "jump_strength" -> net.minecraft.world.entity.ai.attributes.Attributes.JUMP_STRENGTH;
+            case "step_height" -> net.minecraft.world.entity.ai.attributes.Attributes.STEP_HEIGHT;
+            case "gravity" -> net.minecraft.world.entity.ai.attributes.Attributes.GRAVITY;
+            case "block_break_speed" -> net.minecraft.world.entity.ai.attributes.Attributes.BLOCK_BREAK_SPEED;
+            case "block_interaction_range" -> net.minecraft.world.entity.ai.attributes.Attributes.BLOCK_INTERACTION_RANGE;
+            case "entity_interaction_range" -> net.minecraft.world.entity.ai.attributes.Attributes.ENTITY_INTERACTION_RANGE;
+            case "scale" -> net.minecraft.world.entity.ai.attributes.Attributes.SCALE;
+            default -> null;
+        };
+    }
+
+    private static net.minecraft.resources.Identifier modId(String key) {
+        return net.minecraft.resources.Identifier.fromNamespaceAndPath("zeus", key);
+    }
+
+    private static net.minecraft.world.entity.ai.attributes.AttributeModifier.Operation operation(String op) {
+        return switch (op) {
+            case "add_multiplied_base" -> net.minecraft.world.entity.ai.attributes.AttributeModifier.Operation.ADD_MULTIPLIED_BASE;
+            case "add_multiplied_total" -> net.minecraft.world.entity.ai.attributes.AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL;
+            default -> net.minecraft.world.entity.ai.attributes.AttributeModifier.Operation.ADD_VALUE;
+        };
+    }
+
+    private static void put(String key, Kept k) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null) return;
+        var holder = attr(k.attribute());
+        if (holder == null) return;
+        var inst = mc.player.getAttribute(holder);
+        if (inst == null) return;
+        var id = modId(key);
+        var old = inst.getModifier(id);
+        if (old != null && Math.abs(old.amount() - k.value()) < 1e-9) return;
+        inst.removeModifier(id);
+        inst.addTransientModifier(new net.minecraft.world.entity.ai.attributes.AttributeModifier(id, k.value(), operation(k.op())));
+    }
+
+    public static void attribute(String attribute, String key, double value, String op) {
+        Kept k = new Kept(attribute, value, op);
+        ATTRIBUTES.put(key, k);
+        put(key, k);
+    }
+
+    public static void attributeOff(String attribute, String key) {
+        ATTRIBUTES.remove(key);
+        Minecraft mc = Minecraft.getInstance();
+        var holder = attr(attribute);
+        if (holder == null || mc.player == null) return;
+        var inst = mc.player.getAttribute(holder);
+        if (inst != null) inst.removeModifier(modId(key));
+    }
+
+    private static net.minecraft.core.Holder<net.minecraft.world.effect.MobEffect> fx(String name) {
+        return switch (name) {
+            case "night_vision" -> net.minecraft.world.effect.MobEffects.NIGHT_VISION;
+            default -> null;
+        };
+    }
+
+    private static void giveEffect(String effect, int amplifier) {
+        Minecraft mc = Minecraft.getInstance();
+        var holder = fx(effect);
+        if (holder == null || mc.player == null) return;
+        mc.player.addEffect(new net.minecraft.world.effect.MobEffectInstance(holder, 600, amplifier, true, false, false));
+    }
+
+    public static void effect(String effect, int amplifier) {
+        EFFECTS.put(effect, amplifier);
+        giveEffect(effect, amplifier);
+    }
+
+    public static void effectOff(String effect) {
+        EFFECTS.remove(effect);
+        Minecraft mc = Minecraft.getInstance();
+        var holder = fx(effect);
+        if (holder == null || mc.player == null) return;
+        mc.player.removeEffect(holder);
+    }
+
+    public static void tick() {
+        if (!inWorld()) return;
+        ticks++;
+        if (ticks % 4 == 0) {
+            for (Map.Entry<String, Kept> e : ATTRIBUTES.entrySet()) put(e.getKey(), e.getValue());
         }
-        return out;
-    }
-
-    /** The modules you switched on most recently, newest first. */
-    public static List<Module> recent() {
-        List<Module> out = new ArrayList<>();
-        for (String id : RECENT) {
-            Module m = Zeus.get(id);
-            if (m != null && m.toggleable()) out.add(m);
+        if (ticks % 200 == 0) {
+            for (Map.Entry<String, Integer> e : EFFECTS.entrySet()) giveEffect(e.getKey(), e.getValue());
         }
-        return out;
     }
 
-    public static int count(Module m) {
-        return COUNT.getOrDefault(m.id, 0);
-    }
-
-    /** Called when you switch a module on. */
-    public static void used(Module m) {
-        if (!m.toggleable()) return;
-        COUNT.merge(m.id, 1, Integer::sum);
-        RECENT.remove(m.id);
-        RECENT.add(0, m.id);
-        while (RECENT.size() > RECENT_MAX) RECENT.remove(RECENT.size() - 1);
-        Zeus.markDirty();
-    }
-
-    /** How much a module is wanted near the top: your own switch-ons first, the built-in order for the rest. */
-    public static int score(Module m) {
-        return Math.min(500, count(m)) * 1000 + Math.max(0, POPULAR.length + 2 - rank(m.id));
-    }
-
-    /** A copy of {@code in} in the order the "Sort" setting asks for. */
-    public static List<Module> sorted(List<Module> in, int mode) {
-        if (mode == SORT_DEFAULT || in.size() < 2) return in;
-        List<Module> out = new ArrayList<>(in);
-        if (mode == SORT_NAME) out.sort(Comparator.comparing((Module m) -> m.name.toLowerCase(Locale.ROOT)));
-        else out.sort((a, b) -> {
-            int c = Integer.compare(score(b), score(a));
-            return c != 0 ? c : a.name.compareToIgnoreCase(b.name);
-        });
-        return out;
-    }
-
-    // ------------------------------------------------------------ saving
-
-    public static void save(JsonObject root) {
-        JsonObject o = new JsonObject();
-        JsonArray fav = new JsonArray();
-        for (String id : FAVOURITES) fav.add(id);
-        o.add("favourites", fav);
-        JsonArray rec = new JsonArray();
-        for (String id : RECENT) rec.add(id);
-        o.add("recent", rec);
-        JsonObject counts = new JsonObject();
-        for (Map.Entry<String, Integer> e : COUNT.entrySet()) if (e.getValue() > 0) counts.addProperty(e.getKey(), e.getValue());
-        o.add("counts", counts);
-        root.add("usage", o);
-    }
-
-    public static void load(JsonObject root) {
-        FAVOURITES.clear();
-        RECENT.clear();
-        COUNT.clear();
-        if (root == null || !root.has("usage") || !root.get("usage").isJsonObject()) return;
-        JsonObject o = root.getAsJsonObject("usage");
-        try {
-            if (o.has("favourites") && o.get("favourites").isJsonArray()) {
-                for (JsonElement e : o.getAsJsonArray("favourites")) if (e.isJsonPrimitive()) FAVOURITES.add(e.getAsString());
-            }
-            if (o.has("recent") && o.get("recent").isJsonArray()) {
-                for (JsonElement e : o.getAsJsonArray("recent")) {
-                    if (e.isJsonPrimitive() && RECENT.size() < RECENT_MAX) RECENT.add(e.getAsString());
-                }
-            }
-            if (o.has("counts") && o.get("counts").isJsonObject()) {
-                for (Map.Entry<String, JsonElement> e : o.getAsJsonObject("counts").entrySet()) {
-                    try {
-                        COUNT.put(e.getKey(), Math.max(0, e.getValue().getAsInt()));
-                    } catch (RuntimeException ignored) {
-                        // one bad count should not lose the rest
-                    }
-                }
-            }
-        } catch (RuntimeException e) {
-            Zeus.LOG.warn("Could not read the favourites and usage; starting them empty", e);
-        }
+    public static void reset() {
+        ATTRIBUTES.clear();
+        EFFECTS.clear();
+        ticks = 0;
     }
 }

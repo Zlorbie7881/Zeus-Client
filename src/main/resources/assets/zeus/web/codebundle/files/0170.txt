@@ -1,311 +1,318 @@
-package com.zlorbie788.zeus.render;
+package com.zlorbie788.zeus.mods;
 
-import net.minecraft.client.Camera;
+import com.zlorbie788.zeus.core.Category;
+import com.zlorbie788.zeus.core.Module;
+import com.zlorbie788.zeus.core.Setting;
+import com.zlorbie788.zeus.core.Zeus;
+import com.zlorbie788.zeus.ui.Accent;
+import com.zlorbie788.zeus.ui.Draw;
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.phys.Vec3;
-import org.joml.Vector3fc;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.multiplayer.PlayerInfo;
 
-/**
- * Turns points in the world into points on the screen, so boxes, lines and labels can be drawn over everything (through
- * walls too).
- *
- * <p>It reads the game's own camera rather than your player: the same camera the picture is drawn from. That is why
- * overlays sit on the right spot in third person (where the camera is behind you), while freecam flies (the camera is
- * somewhere else entirely) and even when the view is tilted. The field of view comes from the renderer for the current
- * frame, so zooming, sprinting (which widens the view a little) and FOV effects all line up.</p>
- */
-public final class Projector {
-    private Projector() {}
+import java.util.Locale;
 
-    private static double ex, ey, ez;
-    private static double fx, fy, fz, rx, ry, rz, ux, uy, uz;
-    private static double tanY;
-    private static double aspect;
-    private static int sw;
-    private static int sh;
-    private static boolean ready;
+public final class NetPanels {
+    private NetPanels() {}
 
-    /** The field of view the renderer uses this frame, handed over by the game (see GameRendererMixin). */
-    private static volatile float liveFov;
-    private static volatile long liveFovAt;
-    private static volatile boolean hookSeen;
-
-    /** True once the renderer has handed over a field of view at least once, so the zoom knows its hook is in place. */
-    public static boolean hookSeen() {
-        return hookSeen;
+    private static int pingColour(int ms) {
+        return Accent.ping(ms);
     }
 
-    /** Called by the renderer for every frame it computes a field of view. */
-    public static void offerFov(float fov) {
-        if (fov >= 1f && fov <= 179f) {
-            liveFov = fov;
-            liveFovAt = System.currentTimeMillis();
-            hookSeen = true;
+    public static final class NetInfo extends Module {
+        private final Setting.Choice corner = Hud.corner(this, 0);
+        private final Setting.Bool graph = add(new Setting.Bool("Graph", "A bar for every sample of the last while, coloured by how good the ping was.", true));
+        private final Setting.Num seconds = add(new Setting.Num("Memory", "How many seconds the graph and the average cover.", 60, 15, 180, 5, " s")).showIf(() -> this.graph.on());
+        private final Setting.Bool spread = add(new Setting.Bool("Lowest, average, highest", "The range of the ping over the memory.", true));
+        private final Setting.Bool jitter = add(new Setting.Bool("Jitter", "How much the ping jumps around. High jitter feels like lag even when the ping is low.", true));
+        private final Setting.Bool warn = add(new Setting.Bool("Warn when it is bad", "Tints the box red when the ping is over 250 ms or very jumpy.", true));
+        private final int[] ring = new int[180];
+        private int count;
+        private int head;
+        private int ticks;
+
+        public NetInfo() {
+            super("netinfo", "Net Info", "Your ping, how steady it is and a graph of the last minute.", Category.PANELS);
+            anywhere();
         }
-    }
 
-    /** The field of view actually used this frame: the renderer's own number when it just gave one, the option otherwise. */
-    public static double fov(Minecraft mc) {
-        long now = System.currentTimeMillis();
-        float live = liveFov;
-        if (live > 0f && now - liveFovAt < 500L) return live;
-        return mc.options.fov().get();
-    }
+        @Override
+        protected void onEnable() {
+            count = 0;
+            head = 0;
+        }
 
-    /** Reads the camera for this frame. Call once per frame before projecting. */
-    public static boolean prepare(Minecraft mc, float partial, int screenW, int screenH) {
-        ready = false;
-        Stroke.frame(mc.getFrameTimeNs());
-        if (mc.player == null || screenW <= 0 || screenH <= 0) return false;
-        boolean camPos = CameraControl.overridingPosition();
-        boolean camLook = CameraControl.overridingLook();
-        if (camPos || camLook) {
-            // Freecam and Free Look move the game's camera too; read it like any other frame, and only fall back to the
-            // module's own numbers if the camera has not been placed yet.
-            Camera cam = mc.gameRenderer.getMainCamera();
-            if (cam != null && cam.isInitialized()) {
-                Vec3 p = cam.position();
-                read(p.x, p.y, p.z, cam.forwardVector(), cam.upVector(), cam.leftVector());
-            } else {
-                double[] e = camPos ? CameraControl.eye(partial) : new double[] {
-                        mc.player.getEyePosition(partial).x, mc.player.getEyePosition(partial).y, mc.player.getEyePosition(partial).z};
-                double yawDeg = camLook ? CameraControl.yaw(partial) : mc.player.getViewYRot(partial);
-                double pitchDeg = camLook ? CameraControl.pitch(partial) : mc.player.getViewXRot(partial);
-                readAngles(e[0], e[1], e[2], yawDeg, pitchDeg);
+        private int ping(Minecraft mc) {
+            try {
+                if (mc.getConnection() != null && mc.player != null) {
+                    PlayerInfo info = mc.getConnection().getPlayerInfo(mc.player.getUUID());
+                    if (info != null) return Math.max(0, info.getLatency());
+                }
+            } catch (RuntimeException ignored) {
             }
-        } else {
-            Camera cam = mc.gameRenderer.getMainCamera();
-            if (cam != null && cam.isInitialized()) {
-                Vec3 p = cam.position();
-                read(p.x, p.y, p.z, cam.forwardVector(), cam.upVector(), cam.leftVector());
-            } else {
-                Vec3 eye = mc.player.getEyePosition(partial);
-                readAngles(eye.x, eye.y, eye.z, mc.player.getViewYRot(partial), mc.player.getViewXRot(partial));
+            return -1;
+        }
+
+        @Override
+        protected void onTick(Minecraft mc) {
+            if (++ticks % 20 != 0) return;
+            int p = ping(mc);
+            if (p < 0) return;
+            ring[head] = p;
+            head = (head + 1) % ring.length;
+            if (count < ring.length) count++;
+        }
+
+        @Override
+        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            if (mc.player == null) return;
+            int n = Math.min(count, seconds.i());
+            int now = n == 0 ? Math.max(0, ping(mc)) : ring[(head - 1 + ring.length) % ring.length];
+            int lo = Integer.MAX_VALUE;
+            int hi = 0;
+            long sum = 0;
+            for (int i = 0; i < n; i++) {
+                int v = ring[(head - 1 - i + ring.length * 2) % ring.length];
+                lo = Math.min(lo, v);
+                hi = Math.max(hi, v);
+                sum += v;
+            }
+            int avg = n == 0 ? now : (int) (sum / n);
+            double var = 0;
+            for (int i = 0; i < n; i++) {
+                double d = ring[(head - 1 - i + ring.length * 2) % ring.length] - avg;
+                var += d * d;
+            }
+            int jit = n < 2 ? 0 : (int) Math.round(Math.sqrt(var / n));
+            if (n == 0) lo = now;
+
+            int rows = 1 + (spread.on() ? 1 : 0) + (jitter.on() ? 1 : 0);
+            int gw = graph.on() ? 60 : 0;
+            int bw = Math.max(Math.max(gw + Hud.PAD * 2, 100), Hud.captionWidth("Ping") + Hud.PAD * 2 + 20);
+            int bh = rows * 12 + Hud.TOP + 3 + (graph.on() ? 20 : 0);
+            int[] at = Hud.place(corner.index(), bw, bh, w, h);
+            Hud.panel(g, at[0], at[1], bw, bh);
+            if (warn.on() && (now > 250 || jit > 80)) g.fill(at[0] + 2, at[1], at[0] + bw, at[1] + bh, Draw.rgba(0xFFFF3B4D, 0.14f));
+            Hud.header(g, at[0], at[1], bw, "Ping", null, pingColour(now));
+            int y = at[1] + Hud.TOP;
+            Hud.row(g, at[0] + Hud.PAD, y, bw - Hud.PAD * 2, "Now", now + " ms", pingColour(now));
+            y += 12;
+            if (spread.on()) {
+                Hud.row(g, at[0] + Hud.PAD, y, bw - Hud.PAD * 2, "Low / avg / high", lo + "/" + avg + "/" + hi, Accent.TEXT);
+                y += 12;
+            }
+            if (jitter.on()) {
+                Hud.row(g, at[0] + Hud.PAD, y, bw - Hud.PAD * 2, "Jitter", "±" + jit + " ms", jit > 60 ? Accent.HIGH : Accent.TEXT);
+                y += 12;
+            }
+            if (graph.on()) {
+                int gx = at[0] + Hud.PAD;
+                int gy = at[1] + bh - 5;
+                int gwid = bw - 14;
+                int shown = Math.min(n, gwid / 2);
+                int top = Math.max(100, hi);
+                for (int i = 0; i < shown; i++) {
+                    int v = ring[(head - 1 - i + ring.length * 2) % ring.length];
+                    int bar = Math.max(1, Math.round(14f * Math.min(1f, v / (float) top)));
+                    int x = gx + gwid - (i + 1) * 2;
+                    g.fill(x, gy - bar, x + 1, gy, Draw.rgba(pingColour(v), 0.9f));
+                }
+                g.fill(gx, gy, gx + gwid, gy + 1, Draw.rgba(Accent.LINE, 1f));
             }
         }
-        double fov = fov(mc);
-        tanY = Math.tan(Math.toRadians(fov) / 2.0);
-        if (tanY < 1e-4) tanY = 1e-4;
-        sw = screenW;
-        sh = screenH;
-        aspect = screenW / (double) screenH;
-        ready = true;
-        return true;
-    }
 
-    private static void read(double px, double py, double pz, Vector3fc f, Vector3fc up, Vector3fc left) {
-        ex = px;
-        ey = py;
-        ez = pz;
-        // the camera's own axes, so a tilted camera (spectator, freecam, damage roll) still projects true
-        fx = f.x();
-        fy = f.y();
-        fz = f.z();
-        ux = up.x();
-        uy = up.y();
-        uz = up.z();
-        // "left" is the camera's left; the screen's right is the opposite
-        rx = -left.x();
-        ry = -left.y();
-        rz = -left.z();
-        norm();
-    }
-
-    private static void readAngles(double px, double py, double pz, double yawDeg, double pitchDeg) {
-        ex = px;
-        ey = py;
-        ez = pz;
-        double yaw = Math.toRadians(yawDeg);
-        double pitch = Math.toRadians(pitchDeg);
-        double cp = Math.cos(pitch);
-        fx = -Math.sin(yaw) * cp;
-        fy = -Math.sin(pitch);
-        fz = Math.cos(yaw) * cp;
-        rx = -Math.cos(yaw);
-        ry = 0;
-        rz = -Math.sin(yaw);
-        ux = ry * fz - rz * fy;
-        uy = rz * fx - rx * fz;
-        uz = rx * fy - ry * fx;
-        norm();
-    }
-
-    /** Guards against a degenerate basis (a camera that has not been placed yet) so nothing divides by zero. */
-    private static void norm() {
-        double fl = Math.sqrt(fx * fx + fy * fy + fz * fz);
-        if (fl < 1e-6) {
-            fx = 0;
-            fy = 0;
-            fz = 1;
-        } else {
-            fx /= fl;
-            fy /= fl;
-            fz /= fl;
-        }
-        double rl = Math.sqrt(rx * rx + ry * ry + rz * rz);
-        if (rl < 1e-6) {
-            rx = 1;
-            ry = 0;
-            rz = 0;
-        } else {
-            rx /= rl;
-            ry /= rl;
-            rz /= rl;
-        }
-        double ul = Math.sqrt(ux * ux + uy * uy + uz * uz);
-        if (ul < 1e-6) {
-            ux = 0;
-            uy = 1;
-            uz = 0;
-        } else {
-            ux /= ul;
-            uy /= ul;
-            uz /= ul;
+        @Override
+        public String info() {
+            return count == 0 ? null : ring[(head - 1 + ring.length) % ring.length] + " ms";
         }
     }
 
-    public static double eyeX() {
-        return ex;
-    }
+    public static final class Session extends Module {
+        private final Setting.Choice corner = Hud.corner(this, 2);
+        private final Setting.Bool time = add(new Setting.Bool("Time played", "How long since you joined this world or server.", true));
+        private final Setting.Bool distance = add(new Setting.Bool("Distance", "How far you have travelled (flat distance, teleports are not counted).", true));
+        private final Setting.Bool speed = add(new Setting.Bool("Speed", "Your speed now and your top speed in blocks per second.", true));
+        private final Setting.Bool pos = add(new Setting.Bool("Blocks per minute", "Your average travel speed over the last minute.", false));
+        private long joined;
+        private double dist;
+        private double top;
+        private double lastX;
+        private double lastZ;
+        private boolean have;
+        private double now;
+        private final double[] minute = new double[60];
+        private int mi;
+        private int ticks;
+        private double secDist;
+        private Object lastLevel;
 
-    public static double eyeY() {
-        return ey;
-    }
-
-    public static double eyeZ() {
-        return ez;
-    }
-
-    /**
-     * The direction (a unit vector, in world axes) of the ray through a screen point, the opposite of {@link #project}. False
-     * when the camera has not been read yet.
-     */
-    public static boolean ray(float sx, float sy, double[] out) {
-        if (!ready) return false;
-        double cx = (sx - sw / 2.0) / (sw / 2.0) * tanY * aspect;
-        double cy = (sh / 2.0 - sy) / (sh / 2.0) * tanY;
-        double dx = fx + rx * cx + ux * cy;
-        double dy = fy + ry * cx + uy * cy;
-        double dz = fz + rz * cx + uz * cy;
-        double l = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        if (l < 1e-9) return false;
-        out[0] = dx / l;
-        out[1] = dy / l;
-        out[2] = dz / l;
-        return true;
-    }
-
-    /** Depth of a point in front of the camera (negative: behind). */
-    public static double depth(double x, double y, double z) {
-        return (x - ex) * fx + (y - ey) * fy + (z - ez) * fz;
-    }
-
-    /** Projects a point; fills out[0], out[1] with GUI coordinates and returns false if it is behind the camera. */
-    public static boolean project(double x, double y, double z, float[] out) {
-        if (!ready) return false;
-        double dx = x - ex;
-        double dy = y - ey;
-        double dz = z - ez;
-        double cz = dx * fx + dy * fy + dz * fz;
-        if (cz < 0.05) return false;
-        double cx = dx * rx + dy * ry + dz * rz;
-        double cy = dx * ux + dy * uy + dz * uz;
-        out[0] = (float) (sw / 2.0 + (cx / cz) / (tanY * aspect) * sw / 2.0);
-        out[1] = (float) (sh / 2.0 - (cy / cz) / tanY * sh / 2.0);
-        return true;
-    }
-
-    /**
-     * Projects a line between two world points, cut at the near plane so lines that pass behind the camera still draw.
-     * Returns false if nothing is in front.
-     */
-    public static boolean projectLine(double x1, double y1, double z1, double x2, double y2, double z2, float[] out) {
-        double d1 = depth(x1, y1, z1);
-        double d2 = depth(x2, y2, z2);
-        double near = 0.1;
-        if (d1 < near && d2 < near) return false;
-        if (d1 < near) {
-            double t = (near - d1) / (d2 - d1);
-            x1 += (x2 - x1) * t;
-            y1 += (y2 - y1) * t;
-            z1 += (z2 - z1) * t;
-        } else if (d2 < near) {
-            double t = (near - d2) / (d1 - d2);
-            x2 += (x1 - x2) * t;
-            y2 += (y1 - y2) * t;
-            z2 += (z1 - z2) * t;
+        public Session() {
+            super("session", "Session", "Time played, distance travelled and your top speed since you joined.", Category.PANELS);
+            anywhere();
         }
-        float[] a = new float[2];
-        float[] b = new float[2];
-        if (!project(x1, y1, z1, a) || !project(x2, y2, z2, b)) return false;
-        out[0] = a[0];
-        out[1] = a[1];
-        out[2] = b[0];
-        out[3] = b[1];
-        return true;
-    }
 
-    /**
-     * Where a world point is on the screen, for a tracer. A point in front of the view gives its real place (return 0). A
-     * point off to the side, above, below or behind the camera gives the spot on the edge of the screen it lies towards
-     * (return 1), so a line to it still points the right way.
-     */
-    public static int screenPoint(double x, double y, double z, float margin, float[] out) {
-        lastBehind = false;
-        if (!ready) return -1;
-        double dx = x - ex;
-        double dy = y - ey;
-        double dz = z - ez;
-        double cz = dx * fx + dy * fy + dz * fz;
-        double cx = dx * rx + dy * ry + dz * rz;
-        double cy = dx * ux + dy * uy + dz * uz;
-        double px;
-        double py;
-        if (cz > 0.05) {
-            px = sw / 2.0 + (cx / cz) / (tanY * aspect) * sw / 2.0;
-            py = sh / 2.0 - (cy / cz) / tanY * sh / 2.0;
-            if (px >= margin && px <= sw - margin && py >= margin && py <= sh - margin) {
-                out[0] = (float) px;
-                out[1] = (float) py;
-                return 0;
+        @Override
+        protected void onEnable() {
+            reset();
+        }
+
+        private void reset() {
+            joined = System.currentTimeMillis();
+            dist = 0;
+            top = 0;
+            have = false;
+            java.util.Arrays.fill(minute, 0);
+        }
+
+        @Override
+        protected void onTick(Minecraft mc) {
+            if (mc.player == null || mc.level == null) return;
+            if (mc.level != lastLevel) {
+                lastLevel = mc.level;
+                if (joined == 0 || System.currentTimeMillis() - joined > 2000) reset();
             }
-        } else {
-            // behind the camera: point the way you would turn to face it (a target behind you on the right is on the right).
-            // Straight behind there is no side to prefer, so the direction eases to "right" as the target nears that line;
-            // that keeps the arrow from flipping from side to side with every small movement.
-            double m = Math.hypot(cx, cy);
-            double len3 = Math.sqrt(cx * cx + cy * cy + cz * cz);
-            double q = len3 < 1e-9 ? 0.0 : Math.min(1.0, (m / len3) / 0.30);
-            double s = q * q * (3.0 - 2.0 * q);
-            double dirX = m > 1e-9 ? cx / m : 0.0;
-            double dirY = m > 1e-9 ? -cy / m : 0.0;
-            px = sw / 2.0 + (dirX * s + (1.0 - s)) * 1000.0;
-            py = sh / 2.0 + (dirY * s) * 1000.0;
-            lastBehind = true;
+            double x = mc.player.getX();
+            double z = mc.player.getZ();
+            if (have) {
+                double d = Math.hypot(x - lastX, z - lastZ);
+                if (d < 12) {
+                    dist += d;
+                    secDist += d;
+                    now = d * 20.0;
+                    top = Math.max(top, now);
+                }
+            }
+            lastX = x;
+            lastZ = z;
+            have = true;
+            if (++ticks % 20 == 0) {
+                minute[mi] = secDist;
+                mi = (mi + 1) % minute.length;
+                secDist = 0;
+            }
         }
-        double vx = px - sw / 2.0;
-        double vy = py - sh / 2.0;
-        if (Math.abs(vx) < 1e-6 && Math.abs(vy) < 1e-6) vy = 1;
-        double hx = sw / 2.0 - margin;
-        double hy = sh / 2.0 - margin;
-        double k = Math.min(hx / Math.max(1e-6, Math.abs(vx)), hy / Math.max(1e-6, Math.abs(vy)));
-        out[0] = (float) (sw / 2.0 + vx * k);
-        out[1] = (float) (sh / 2.0 + vy * k);
-        return 1;
+
+        @Override
+        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            if (mc.player == null) return;
+            java.util.List<String[]> rows = new java.util.ArrayList<>();
+            if (time.on()) {
+                long s = (System.currentTimeMillis() - joined) / 1000;
+                rows.add(new String[] {"Time", s >= 3600 ? String.format(Locale.ROOT, "%dh %02dm", s / 3600, s % 3600 / 60) : String.format(Locale.ROOT, "%dm %02ds", s / 60, s % 60)});
+            }
+            if (distance.on()) rows.add(new String[] {"Distance", dist >= 1000 ? String.format(Locale.ROOT, "%.2f km", dist / 1000) : Math.round(dist) + " m"});
+            if (speed.on()) {
+                rows.add(new String[] {"Speed", String.format(Locale.ROOT, "%.1f b/s", now)});
+                rows.add(new String[] {"Top speed", String.format(Locale.ROOT, "%.1f b/s", top)});
+            }
+            if (pos.on()) {
+                double sum = 0;
+                for (double v : minute) sum += v;
+                rows.add(new String[] {"Per minute", Math.round(sum) + " m"});
+            }
+            if (rows.isEmpty()) return;
+            int bw = Hud.captionWidth("Session") + Hud.PAD * 2;
+            for (String[] r : rows) bw = Math.max(bw, Draw.width(r[0]) + Draw.width(r[1]) + Hud.PAD * 2 + 14);
+            int bh = rows.size() * 12 + Hud.TOP + 3;
+            int[] at = Hud.place(corner.index(), bw, bh, w, h);
+            Hud.panel(g, at[0], at[1], bw, bh);
+            Hud.header(g, at[0], at[1], bw, "Session", null, Hud.accent());
+            for (int i = 0; i < rows.size(); i++) {
+                int y = at[1] + Hud.TOP + i * 12;
+                Hud.row(g, at[0] + Hud.PAD, y, bw - Hud.PAD * 2, rows.get(i)[0], rows.get(i)[1], Accent.TEXT);
+            }
+        }
     }
 
-    private static boolean lastBehind;
+    private static final java.util.Map<String, Integer> POPS = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.Map<String, Long> LAST_POP = new java.util.concurrent.ConcurrentHashMap<>();
+    private static volatile boolean popsOn;
 
-    /** True when the last {@link #screenPoint} call was for a point behind the camera. */
-    public static boolean lastBehind() {
-        return lastBehind;
+    public static void totemPopped(net.minecraft.world.entity.Entity e) {
+        if (!popsOn || e == null) return;
+        String name = e.getName().getString();
+        POPS.merge(name, 1, Integer::sum);
+        LAST_POP.put(name, System.currentTimeMillis());
     }
 
-    public static int width() {
-        return sw;
-    }
+    public static final class PopCounter extends Module {
+        private final Setting.Choice corner = Hud.corner(this, 1);
+        private final Setting.Num rows = add(new Setting.Num("Players listed", "How many players are listed, most pops first.", 5, 1, 10, 1, ""));
+        private final Setting.Bool onlyNear = add(new Setting.Bool("Only players near you", "Hides players that are not in your view distance any more.", false));
+        private final Setting.Bool chat = add(new Setting.Bool("Message when it happens", "A short pop-up each time someone pops a totem.", false));
+        private final Setting.Num fadeAfter = add(new Setting.Num("Forget after", "A player drops off the list this many minutes after their last pop. 0 keeps everyone.", 10, 0, 60, 1, " min"));
+        private int lastTotal;
 
-    public static int height() {
-        return sh;
+        public PopCounter() {
+            super("popcounter", "Pop Counter", "Counts totem pops per player, so you can see who is nearly out of totems.", Category.PANELS);
+            anywhere();
+        }
+
+        @Override
+        protected void onEnable() {
+            popsOn = true;
+            POPS.clear();
+            LAST_POP.clear();
+            lastTotal = 0;
+        }
+
+        @Override
+        protected void onDisable() {
+            popsOn = false;
+        }
+
+        @Override
+        protected void onTick(Minecraft mc) {
+            int total = 0;
+            for (int v : POPS.values()) total += v;
+            if (chat.on() && total > lastTotal) {
+                String who = "";
+                long best = 0;
+                for (var e : LAST_POP.entrySet()) if (e.getValue() > best) {
+                    best = e.getValue();
+                    who = e.getKey();
+                }
+                Zeus.toast(who + " popped a totem (" + POPS.getOrDefault(who, 0) + ")", true);
+            }
+            lastTotal = total;
+            if (fadeAfter.i() > 0) {
+                long cut = System.currentTimeMillis() - fadeAfter.i() * 60_000L;
+                LAST_POP.entrySet().removeIf(e -> {
+                    if (e.getValue() < cut) {
+                        POPS.remove(e.getKey());
+                        return true;
+                    }
+                    return false;
+                });
+            }
+        }
+
+        @Override
+        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            if (mc.player == null || mc.level == null) return;
+            java.util.List<java.util.Map.Entry<String, Integer>> list = new java.util.ArrayList<>(POPS.entrySet());
+            if (onlyNear.on()) {
+                java.util.Set<String> near = new java.util.HashSet<>();
+                for (var p : mc.level.players()) near.add(p.getName().getString());
+                list.removeIf(e -> !near.contains(e.getKey()));
+            }
+            if (list.isEmpty()) return;
+            list.sort((a, b) -> Integer.compare(b.getValue(), a.getValue()));
+            int n = Math.min(rows.i(), list.size());
+            int bw = 70;
+            for (int i = 0; i < n; i++) bw = Math.max(bw, Draw.width(list.get(i).getKey()) + 34);
+            int bh = n * 11 + 17;
+            int[] at = Hud.place(corner.index(), bw, bh, w, h);
+            Hud.panel(g, at[0], at[1], bw, bh);
+            Draw.text(g, "Totem pops", at[0] + 7, at[1] + 4, Accent.FAINT);
+            for (int i = 0; i < n; i++) {
+                int y = at[1] + 15 + i * 11;
+                var e = list.get(i);
+                boolean me = e.getKey().equals(mc.player.getName().getString());
+                Draw.text(g, e.getKey(), at[0] + 7, y, me ? com.zlorbie788.zeus.mods.Hud.accent() : Accent.TEXT);
+                int c = e.getValue();
+                Draw.textRight(g, Integer.toString(c), at[0] + bw - 5, y, c >= 4 ? Accent.BAD : c >= 2 ? Accent.WARN : Accent.TEXT);
+            }
+        }
     }
 }

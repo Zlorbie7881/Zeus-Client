@@ -1,198 +1,190 @@
-package com.zlorbie788.zeus.ui;
+package com.zlorbie788.zeus.mods;
 
+import com.zlorbie788.zeus.ui.Accent;
+import com.zlorbie788.zeus.core.Category;
+import com.zlorbie788.zeus.core.Module;
+import com.zlorbie788.zeus.core.Names;
+import com.zlorbie788.zeus.core.Setting;
+import com.zlorbie788.zeus.core.Zeus;
+import com.zlorbie788.zeus.render.EspKit;
+import com.zlorbie788.zeus.ui.Draw;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.input.KeyEvent;
-import net.minecraft.client.input.MouseButtonEvent;
-import net.minecraft.network.chat.Component;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
 
-/**
- * The knife gallery: every knife on the left, every finish of the chosen knife on the right, and a big preview. Each picture is
- * drawn by the same code that draws the knife in your hand, so a finish looks here exactly as it will in the game. A click
- * changes the setting at once, so there is no save step.
- */
-public final class KnifePickerScreen extends Screen {
-    /** Receives the knife and finish that were chosen. */
-    public interface Chosen {
-        void pick(int knife, int finish);
-    }
+public final class Sense {
+    private Sense() {}
 
-    private final Screen parent;
-    private final Chosen chosen;
-    private final int[] finishOf;      // the finish last used with each knife
-    private int knife;
-    private int px, py, pw, ph;
+    public record Rated(UUID id, String name, Threat.Result result, double dist, String gear, boolean spectator) {}
 
-    public KnifePickerScreen(Screen parent, int knife, int[] finishes, Chosen chosen) {
-        super(Component.literal("Knife gallery"));
-        this.parent = parent;
-        this.chosen = chosen;
-        this.finishOf = finishes.clone();
-        this.knife = Math.max(0, Math.min(KnifeArt.allKnives().length - 1, knife));
-    }
+    private static final Map<UUID, double[]> LAST = new HashMap<>();
+    private static List<Rated> cache = List.of();
+    private static long cacheAt;
+    private static int cacheRange;
 
-    @Override
-    public boolean isPauseScreen() {
-        return false;
-    }
+    private static final int[] LEVEL_COLORS = {Accent.OK, Accent.WARN, 0xFFFFA24D, 0xFFFF4D5E};
 
-    @Override
-    public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-        // drawn in render
-    }
-
-    @Override
-    public void onClose() {
-        minecraft.setScreen(parent);
-    }
-
-    private static final int KCOLS = 5;
-    private static final int FCOLS = 5;
-
-    private int gridTop() {
-        return py + 30;
-    }
-
-    private int gridH() {
-        return ph - 30 - 26;
-    }
-
-    private int leftW() {
-        return Math.min(250, (pw - 36) * 55 / 100);
-    }
-
-    private int kTileW() {
-        return (leftW() - (KCOLS - 1) * 3) / KCOLS;
-    }
-
-    private int kTileH() {
-        int rows = (KnifeArt.allKnives().length + KCOLS - 1) / KCOLS;
-        return Math.max(20, Math.min(46, (gridH() - (rows - 1) * 3) / rows));
-    }
-
-    private int rightX() {
-        return px + 12 + leftW() + 12;
-    }
-
-    private int rightW() {
-        return px + pw - 12 - rightX();
-    }
-
-    private int previewH() {
-        return Math.max(50, gridH() * 44 / 100);
-    }
-
-    private int fTileW() {
-        return (rightW() - (FCOLS - 1) * 3) / FCOLS;
-    }
-
-    private int fTileH() {
-        int rows = (KnifeArt.finishNames(knife).length + FCOLS - 1) / FCOLS;
-        return Math.max(18, Math.min(34, (gridH() - previewH() - 24 - (rows - 1) * 3) / rows));
-    }
-
-    private void layout() {
-        pw = Math.min(width - 16, 460);
-        ph = Math.min(height - 16, 272);
-        px = (width - pw) / 2;
-        py = (height - ph) / 2;
-    }
-
-    @Override
-    public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-        layout();
-        float time = (System.nanoTime() % 3_600_000_000_000L) / 1e9f;
-        String[] knives = KnifeArt.allKnives();
-        String[] fins = KnifeArt.finishNames(knife);
-        g.fill(0, 0, width, height, 0xB0030610);
-        Draw.shadow(g, px, py, pw, ph, 8, 10, 0.5f);
-        Draw.rrect(g, px, py, pw, ph, 8, 0xF2070C1A, 0xF2050914);
-        Draw.rrectLine(g, px, py, pw, ph, 8, 0xFF234A8A);
-        Draw.bold(g, "ZEUS / KNIFE GALLERY", px + 12, py + 10, 0xFFE9F1FF);
-        Draw.textRight(g, "The same art the game draws", px + pw - 12, py + 10, 0xFF8EA2CC);
-
-        // the knives
-        int tw = kTileW(), th = kTileH(), gx = px + 12, gy = gridTop();
-        for (int i = 0; i < knives.length; i++) {
-            int x = gx + (i % KCOLS) * (tw + 3), y = gy + (i / KCOLS) * (th + 3);
-            boolean on = i == knife, hot = mouseX >= x && mouseX < x + tw && mouseY >= y && mouseY < y + th;
-            Draw.rrect(g, x, y, tw, th, 4, on ? 0xFF14306A : hot ? 0xFF10224A : 0xFF0A1530);
-            Draw.rrectLine(g, x, y, tw, th, 4, on ? 0xFF5CA8FF : 0xFF1E3A70);
-            KnifeArt.showcase(g, i, Math.min(finishOf[i], KnifeArt.finishNames(i).length - 1), x + 2, y + 2, tw - 4, th - 4, time, false);
-            if (hot) {
-                Draw.textCenter(g, Draw.fit(knives[i], tw * 3), x + tw / 2, y + th + 4 > gy + gridH() ? y - 10 : y + th - 9, 0xFFFFFFFF);
+    public static List<Rated> scan(Minecraft mc, int range) {
+        long now = System.nanoTime();
+        if (now - cacheAt < 120_000_000L && range <= cacheRange) return cache;
+        if (mc.player == null || mc.level == null) return List.of();
+        List<Rated> out = new ArrayList<>();
+        Map<UUID, double[]> seen = new HashMap<>();
+        Player me = mc.player;
+        for (var p : mc.level.players()) {
+            if (p == me || !p.isAlive()) continue;
+            double dist = Math.sqrt(me.distanceToSqr(p));
+            if (dist > range) continue;
+            double[] prev = LAST.get(p.getUUID());
+            double closing = 0;
+            if (prev != null) {
+                double dt = (now - (long) prev[1]) / 1e9;
+                if (dt > 0.05) closing = prev[2] * 0.5 + 0.5 * (prev[0] - dist) / dt;
+                else closing = prev[2];
             }
+            seen.put(p.getUUID(), new double[] {dist, now, closing});
+            int armor = 0;
+            boolean elytra = false;
+            for (EquipmentSlot s : new EquipmentSlot[] {EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
+                ItemStack st = p.getItemBySlot(s);
+                armor += Gear.armorRank(st);
+                if (s == EquipmentSlot.CHEST && Names.item(st).equals("elytra")) elytra = true;
+            }
+            String main = Names.item(p.getMainHandItem());
+            String off = Names.item(p.getOffhandItem());
+            var look = p.getLookAngle();
+            double dx = me.getX() - p.getX();
+            double dy = me.getY() + 1 - (p.getY() + 1.6);
+            double dz = me.getZ() - p.getZ();
+            double len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            boolean aimed = len > 0.1 && (look.x * dx + look.y * dy + look.z * dz) / len > 0.97;
+            Threat.Result r = Threat.rate(new Threat.Input(armor, main, off, dist, closing, aimed, p.getHealth(), p.getMaxHealth(), p.isInvisible(), elytra));
+            out.add(new Rated(p.getUUID(), p.getName().getString(), r, dist, gearWord(armor, main, off), p.isSpectator()));
+        }
+        LAST.clear();
+        LAST.putAll(seen);
+        out.sort((a, b) -> Integer.compare(b.result.score(), a.result.score()));
+        cache = out;
+        cacheAt = now;
+        cacheRange = range;
+        return out;
+    }
+
+    static String gearWord(int armor, String main, String off) {
+        String a = armor >= 240 ? "netherite" : armor >= 170 ? "diamond+" : armor >= 100 ? "iron" : armor > 0 ? "light" : "no armor";
+        String w = main.isEmpty() || main.equals("air") ? "" : main.replace('_', ' ');
+        return w.isEmpty() ? a : a + ", " + w;
+    }
+
+    public static final class ThreatRadar extends Module {
+        private final Setting.Choice corner = Hud.corner(this, 3);
+        private final Setting.Num range = add(new Setting.Num("Range", "How far away players are rated.", 64, 16, 160, 8, " blocks"));
+        private final Setting.Num most = add(new Setting.Num("Most rows", "The most dangerous are kept.", 5, 2, 10, 1, ""));
+        private final Setting.Choice from = add(new Setting.Choice("Show from", "Players rated below this are not listed.", 0, Threat.LEVELS));
+        private final Setting.Bool reasons = add(new Setting.Bool("Show reasons", "A line under each name that says why it is rated like that.", true));
+        private final Setting.Bool alert = add(new Setting.Bool("Warn when someone becomes a danger", "One message when a player first reaches Danger.", true));
+        private final Setting.Bool spectators = add(new Setting.Bool("Include spectators", "Spectators cannot fight you, so they are left out unless this is on.", false));
+        private final Setting.Num scale = add(new Setting.Num("Size", "The size of the box.", 100, 70, 160, 5, " %"));
+        private final Setting.Num opacity = add(new Setting.Num("Background", "How solid the box is.", 88, 30, 100, 5, " %"));
+        private final Map<UUID, Long> warned = new HashMap<>();
+        private List<Rated> shown = List.of();
+
+        public ThreatRadar() {
+            super("threatradar", "Threat Radar", "Rates the players around you by how dangerous they are, from their gear, weapon, distance and aim.", Category.PANELS);
+            anywhere();
         }
 
-        // the big preview and the finishes
-        int rx = rightX(), rw = rightW(), pvh = previewH();
-        int fin = Math.min(finishOf[knife], fins.length - 1);
-        Draw.rrect(g, rx, gy, rw, pvh, 6, 0xFF08122A);
-        Draw.rrectLine(g, rx, gy, rw, pvh, 6, 0xFF234A8A);
-        KnifeArt.showcase(g, knife, fin, rx + 4, gy + 4, rw - 8, pvh - 8, time, true);
-        Draw.bold(g, knives[knife].toUpperCase(Locale.ROOT), rx + 4, gy + pvh + 4, 0xFFE9F1FF);
-        Draw.textRight(g, fins[fin], rx + rw, gy + pvh + 4, 0xFF8CC4FF);
-        int fw = fTileW(), fh = fTileH(), fy0 = gy + pvh + 18;
-        for (int i = 0; i < fins.length; i++) {
-            int x = rx + (i % FCOLS) * (fw + 3), y = fy0 + (i / FCOLS) * (fh + 3);
-            boolean on = i == fin, hot = mouseX >= x && mouseX < x + fw && mouseY >= y && mouseY < y + fh;
-            Draw.rrect(g, x, y, fw, fh, 4, on ? 0xFF14306A : hot ? 0xFF10224A : 0xFF0A1530);
-            Draw.rrectLine(g, x, y, fw, fh, 4, on ? 0xFF5CA8FF : 0xFF1E3A70);
-            KnifeArt.showcase(g, knife, i, x + 2, y + 2, fw - 4, fh - 4, time, false);
-            if (hot) Draw.textCenter(g, Draw.fit(fins[i], 120), x + fw / 2, y - 10, 0xFFFFFFFF);
+        @Override
+        protected void onEnable() {
+            warned.clear();
+            shown = List.of();
         }
-        Draw.text(g, "Click a knife, then a finish. Esc closes.", px + 12, py + ph - 18, 0xFF8EA2CC);
-        int bx = px + pw - 12 - 56, by = py + ph - 20;
-        boolean hotDone = mouseX >= bx && mouseX < bx + 56 && mouseY >= by - 2 && mouseY < by + 16;
-        Draw.rrect(g, bx, by - 2, 56, 18, 5, hotDone ? 0xFF1E4C9A : 0xFF14306A);
-        Draw.boldCenter(g, "Done", bx + 28, by + 2, 0xFFE9F1FF);
-    }
 
-    @Override
-    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        layout();
-        double x = event.x();
-        double y = event.y();
-        if (event.button() == 0) {
-            int bx = px + pw - 12 - 56, by = py + ph - 20;
-            if (x >= bx && x < bx + 56 && y >= by - 2 && y < by + 16) {
-                onClose();
-                return true;
+        @Override
+        protected void onTick(Minecraft mc) {
+            List<Rated> all = scan(mc, range.i());
+            List<Rated> out = new ArrayList<>();
+            for (Rated r : all) {
+                if (r.spectator && !spectators.on()) continue;
+                if (r.result.score() < from.index() * 25) continue;
+                out.add(r);
+                if (alert.on() && r.result.score() >= 75) {
+                    long now = System.currentTimeMillis();
+                    Long last = warned.get(r.id);
+                    if (last == null || now - last > 45_000) {
+                        warned.put(r.id, now);
+                        Zeus.toast("Danger: " + r.name + " (" + r.result.score() + ", " + Math.round(r.dist) + "m): " + String.join(", ", r.result.reasons().stream().limit(2).toList()), false);
+                    }
+                }
             }
-            int tw = kTileW(), th = kTileH(), gx = px + 12, gy = gridTop();
-            int n = KnifeArt.allKnives().length;
+            shown = out;
+        }
+
+        @Override
+        public String info() {
+            return shown.isEmpty() ? null : Integer.toString(shown.get(0).result.score());
+        }
+
+        @Override
+        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            List<Rated> list = shown;
+            if (list.isEmpty()) return;
+            float sc = scale.f() / 100f;
+            int n = Math.min(list.size(), most.i());
+            boolean why = reasons.on();
+            int rh = Math.round((why ? 24 : 15) * sc);
+            String title = "Threats · " + list.size();
+            int bw = Draw.widthBoldS(title, sc) + Math.round(24 * sc);
             for (int i = 0; i < n; i++) {
-                int tx = gx + (i % KCOLS) * (tw + 3), ty = gy + (i / KCOLS) * (th + 3);
-                if (x >= tx && x < tx + tw && y >= ty && y < ty + th) {
-                    knife = i;
-                    chosen.pick(knife, finishOf[knife]);
-                    return true;
-                }
+                Rated r = list.get(i);
+                int rw = Draw.widthS(r.name, sc) + Draw.widthS(r.result.level() + " " + r.result.score() + "  " + Math.round(r.dist) + "m", sc) + Math.round(34 * sc);
+                if (why) rw = Math.max(rw, Math.min(Draw.widthS(r.gear + " · " + String.join(", ", r.result.reasons()), sc * 0.8f) + Math.round(16 * sc), Math.round(260 * sc)));
+                bw = Math.max(bw, rw);
             }
-            int rx = rightX(), fw = fTileW(), fh = fTileH(), fy0 = gy + previewH() + 18;
-            int fn = KnifeArt.finishNames(knife).length;
-            for (int i = 0; i < fn; i++) {
-                int tx = rx + (i % FCOLS) * (fw + 3), ty = fy0 + (i / FCOLS) * (fh + 3);
-                if (x >= tx && x < tx + fw && y >= ty && y < ty + fh) {
-                    if (knife >= 2) for (int q = 2; q < finishOf.length; q++) finishOf[q] = i;   // the straight knives share one finish
-                    else finishOf[knife] = i;
-                    chosen.pick(knife, i);
-                    return true;
+            bw = Math.min(bw, Math.round(280 * sc));
+            int head = Math.round(20 * sc);
+            int bh = head + n * rh + 4;
+            int[] at = Hud.place(corner.index(), bw, bh, w, h);
+            float bg = opacity.f() / 100f;
+            int top = LEVEL_COLORS[indexOf(list.get(0).result.level())];
+            Hud.panel(g, at[0], at[1], bw, bh);
+            Draw.rrectLine(g, at[0], at[1], bw, bh, 7, Draw.rgba(top, 0.6f));
+            Draw.boldS(g, title, at[0] + Math.round(8 * sc), at[1] + Math.round(6 * sc), 0xFFFFFFFF, sc);
+            g.fill(at[0] + 8, at[1] + head - 2, at[0] + bw - 8, at[1] + head - 1, Draw.rgba(top, 0.4f));
+            int y = at[1] + head + 1;
+            for (int i = 0; i < n; i++) {
+                Rated r = list.get(i);
+                int col = LEVEL_COLORS[indexOf(r.result.level())];
+                int x = at[0] + Math.round(8 * sc);
+                int ty = y + Math.round(2 * sc);
+                g.fill(x - 4, y + 1, x - 2, y + rh - Math.round(3 * sc), Draw.rgba(col, 0.9f));
+                Draw.textS(g, r.name, x, ty, 0xFFFFFFFF, sc);
+                String right = r.result.level() + " " + r.result.score() + "  " + Math.round(r.dist) + "m";
+                Draw.textRightS(g, right, at[0] + bw - Math.round(8 * sc), ty, col, sc);
+                if (why) {
+                    String line = r.gear + (r.result.reasons().isEmpty() ? "" : " · " + String.join(", ", r.result.reasons()));
+                    int max = bw - Math.round(16 * sc);
+                    String t = line;
+                    while (t.length() > 4 && Draw.widthS(t, sc * 0.8f) > max) t = t.substring(0, t.length() - 2);
+                    Draw.textS(g, t.equals(line) ? t : t + "…", x, ty + Math.round(10 * sc), 0xFF8B97B3, sc * 0.8f);
                 }
+                y += rh;
             }
         }
-        return super.mouseClicked(event, doubleClick);
+
+        private static int indexOf(String level) {
+            for (int i = 0; i < Threat.LEVELS.length; i++) if (Threat.LEVELS[i].equals(level)) return i;
+            return 0;
+        }
     }
 
-    @Override
-    public boolean keyPressed(KeyEvent event) {
-        int key = event.key();
-        if (key == 256 || key == 257 || key == 335) {
-            onClose();
-            return true;
-        }
-        return super.keyPressed(event);
-    }
 }

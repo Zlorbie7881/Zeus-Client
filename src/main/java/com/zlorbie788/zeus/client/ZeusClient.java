@@ -50,10 +50,39 @@ public class ZeusClient implements ClientModInitializer {
         pendingHudEditor = true;
     }
 
+    /** The name of the key that opens the Zeus menu, as the player sees it ("Right Shift"). */
+    public static String menuKeyName() {
+        if (OPEN == null || OPEN.isUnbound()) return "Right Shift";
+        return OPEN.getTranslatedKeyMessage().getString();
+    }
+
+    /** Sets the key that opens the Zeus menu and saves it with the game's own key binds. */
+    public static void setMenuKey(InputConstants.Key key) {
+        if (OPEN == null) return;
+        OPEN.setKey(key);
+        KeyMapping.resetMapping();
+        Minecraft.getInstance().options.save();
+    }
+
+    private static boolean menuKeyChecked;
+
+    /** Zeus used to open on Z; the menu now opens on Right Shift. Players still on the old default move over once. */
+    private static void moveMenuKeyOnce(Minecraft mc) {
+        if (menuKeyChecked || OPEN == null || mc.options == null) return;
+        menuKeyChecked = true;
+        if (UiSettings.MENU_KEY_MOVED.on()) return;
+        UiSettings.MENU_KEY_MOVED.set(true);
+        if ("key.keyboard.z".equals(OPEN.saveString())) {
+            setMenuKey(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_RIGHT_SHIFT));
+            Zeus.LOG.info("The Zeus menu key moved from Z to Right Shift; change it in Zeus settings or on the keybinds keyboard");
+        }
+        Zeus.save();
+    }
+
     @Override
     public void onInitializeClient() {
         UiSettings.touch();
-        OPEN = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.zeus.open", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_Z, CATEGORY));
+        OPEN = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.zeus.open", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_RIGHT_SHIFT, CATEGORY));
         TRICK = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.zeus.trick", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_R, CATEGORY));
         TRICK_NEXT = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.zeus.trick_next", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, CATEGORY));
         SPEAR_LUNGE = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.zeus.spear_lunge", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, CATEGORY));
@@ -102,7 +131,7 @@ public class ZeusClient implements ClientModInitializer {
                 Zeus.LOG.error("Zeus could not finish saving while the game closed", t);
             }
         });
-        Zeus.LOG.info("Zeus {} loaded. Press Z in a world (or type /zeus) to open the panel.", Zeus.VERSION);
+        Zeus.LOG.info("Zeus {} loaded. Press Right Shift in a world (or type /zeus) to open the panel.", Zeus.VERSION);
     }
 
     private static long lastTickError;
@@ -153,6 +182,7 @@ public class ZeusClient implements ClientModInitializer {
             if (mc.level != null) mc.setScreen(new com.zlorbie788.zeus.ui.HudEditorScreen(null));
             else Zeus.toast("Open a world before editing the HUD", false);
         }
+        moveMenuKeyOnce(mc);
         if (mc.screen == null && mc.level != null) {
             while (OPEN.consumeClick()) mc.setScreen(ZeusScreen.make(null));
             while (TRICK.consumeClick()) com.zlorbie788.zeus.mods.KnifeSwing.pressTrick();

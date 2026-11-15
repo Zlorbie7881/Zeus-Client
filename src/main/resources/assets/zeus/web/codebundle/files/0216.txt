@@ -1,55 +1,72 @@
-package com.zlorbie788.zeus.ui;
+package com.zlorbie788.zeus.render;
 
-import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
-import net.fabricmc.fabric.api.client.screen.v1.Screens;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.gui.screens.TitleScreen;
-import net.minecraft.network.chat.Component;
+import com.zlorbie788.zeus.ui.Draw;
+import net.minecraft.client.gui.GuiGraphics;
 
-/**
- * The Z button: a small button with the Zeus logo in the corner of every title screen that is not the Zeus menu (the game's
- * own, or one another mod draws). Each click opens the Zeus menu, whatever the menu switch says, so there is always a way back.
- */
-public final class ZButton {
-    private ZButton() {}
+public final class Wire {
+    private Wire() {}
 
-    private static final int SIZE = 24;
+    private static final int[][] EDGES = {
+            {0, 1}, {1, 3}, {3, 2}, {2, 0}, {4, 5}, {5, 7}, {7, 6}, {6, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
 
-    public static void register() {
-        ScreenEvents.AFTER_INIT.register((mc, screen, w, h) -> {
-            if (screen instanceof TitleScreen) attach(mc, screen);
-        });
+    private static final float[] LINE = new float[4];
+
+    public static void line(GuiGraphics g, double x1, double y1, double z1, double x2, double y2, double z2, float thick, int color, boolean halo) {
+        if (!Projector.projectLine(x1, y1, z1, x2, y2, z2, LINE)) return;
+        if (halo && !com.zlorbie788.zeus.ui.Perf.gameFast()) Stroke.keyline(g, LINE[0], LINE[1], LINE[2], LINE[3], thick, 0.45f * (color >>> 24) / 255f);
+        Stroke.soft(g, LINE[0], LINE[1], LINE[2], LINE[3], thick, color);
     }
 
-    private static void attach(Minecraft mc, Screen screen) {
-        try {
-            Screens.getButtons(screen).add(Button.builder(Component.literal(""), b -> open(mc)).bounds(6, 6, SIZE, SIZE).build());
-            ScreenEvents.afterRender(screen).register((s, g, mx, my, dt) -> draw(g, mx, my));
-        } catch (RuntimeException | LinkageError e) {
-            com.zlorbie788.zeus.core.Zeus.LOG.warn("The Z button could not be added to the title screen", e);
+    private static final double[] CX = new double[8];
+    private static final double[] CY = new double[8];
+    private static final double[] CZ = new double[8];
+
+    public static void box(GuiGraphics g, double x1, double y1, double z1, double x2, double y2, double z2, float thick, int color, boolean halo) {
+        int i = 0;
+        for (int xi = 0; xi < 2; xi++) {
+            for (int yi = 0; yi < 2; yi++) {
+                for (int zi = 0; zi < 2; zi++) {
+                    CX[i] = xi == 0 ? x1 : x2;
+                    CY[i] = yi == 0 ? y1 : y2;
+                    CZ[i] = zi == 0 ? z1 : z2;
+                    i++;
+                }
+            }
+        }
+        boolean keys = halo && !com.zlorbie788.zeus.ui.Perf.gameFast();
+        float ka = 0.45f * (color >>> 24) / 255f;
+        for (int[] e : EDGES) {
+            if (Projector.projectLine(CX[e[0]], CY[e[0]], CZ[e[0]], CX[e[1]], CY[e[1]], CZ[e[1]], LINE)) {
+                if (keys) Stroke.keyline(g, LINE[0], LINE[1], LINE[2], LINE[3], thick, ka);
+                Stroke.soft(g, LINE[0], LINE[1], LINE[2], LINE[3], thick, color);
+            }
         }
     }
 
-    static void open(Minecraft mc) {
-        try {
-            mc.setScreen(new ZeusTitleScreen());
-        } catch (RuntimeException e) {
-            com.zlorbie788.zeus.core.Zeus.LOG.warn("The Zeus menu could not be opened", e);
-        }
+    public static void floor(GuiGraphics g, double x, double y, double z, double size, float thick, int color) {
+        line(g, x, y, z, x + size, y, z, thick, color, true);
+        line(g, x + size, y, z, x + size, y, z + size, thick, color, true);
+        line(g, x + size, y, z + size, x, y, z + size, thick, color, true);
+        line(g, x, y, z + size, x, y, z, thick, color, true);
     }
 
-    private static void draw(net.minecraft.client.gui.GuiGraphics g, int mx, int my) {
-        boolean hot = mx >= 6 && mx < 6 + SIZE && my >= 6 && my < 6 + SIZE;
-        // an opaque tile first, so whatever another mod painted on the button is covered
-        Draw.rrect(g, 6, 6, SIZE, SIZE, 5, hot ? 0xFF0F2A5E : 0xFF081330);
-        Draw.rrectLine(g, 6, 6, SIZE, SIZE, 5, hot ? 0xFF5AA2FF : 0xFF2358B8);
-        if (hot) Draw.glow(g, 6, 6, SIZE, SIZE, 5, 0xFF2F86FF, 3, 0.25f);
-        int gs = Tex.guiScale();
-        int inner = SIZE - 6;
-        Tex.Img logo = Tex.fitted("zbutton", "textures/gui/logo_z.png", inner * gs, inner * gs, false, 0, 0);
-        if (logo != null) logo.draw(g, 6 + 3, 6 + 3, inner, inner, 0xFFFFFFFF);
-        else Draw.boldCenter(g, "Z", 6 + SIZE / 2, 6 + 8, 0xFF8CC4FF);
+    public static float[] bounds(double x1, double y1, double z1, double x2, double y2, double z2) {
+        float[] t = new float[2];
+        float minX = Float.MAX_VALUE;
+        float minY = Float.MAX_VALUE;
+        float maxX = -Float.MAX_VALUE;
+        float maxY = -Float.MAX_VALUE;
+        for (int xi = 0; xi < 2; xi++) {
+            for (int yi = 0; yi < 2; yi++) {
+                for (int zi = 0; zi < 2; zi++) {
+                    if (!Projector.project(xi == 0 ? x1 : x2, yi == 0 ? y1 : y2, zi == 0 ? z1 : z2, t)) return null;
+                    minX = Math.min(minX, t[0]);
+                    maxX = Math.max(maxX, t[0]);
+                    minY = Math.min(minY, t[1]);
+                    maxY = Math.max(maxY, t[1]);
+                }
+            }
+        }
+        return new float[] {minX, minY, maxX, maxY};
     }
 }

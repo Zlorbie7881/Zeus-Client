@@ -23,7 +23,8 @@ public final class ZeusTitleScreen extends Screen {
     private static final float PLATE_X = 490f;
     private static final float PLATE_W = 382f;
     private static final float PLATE_H = 48f;
-    private static final float[] PLATE_Y = {300f, 356f, 412f, 468f, 524f, 580f, 636f};
+    // six plates with room between them (Realms moved to the round buttons)
+    private static final float[] PLATE_Y = {304f, 371.6f, 439.2f, 506.8f, 574.4f, 642f};
 
     // the logo is 85% of its old size so seven buttons fit above the version line
     private static final float LOGO_X = 527.6f;
@@ -34,20 +35,20 @@ public final class ZeusTitleScreen extends Screen {
     private static final float MEDAL_CY = 123.4f;
     private static final float MEDAL_R = 104.6f;
 
-    private static final float[][] ICON = {{120f, 714f}, {211f, 714f}, {302f, 714f}, {393f, 714f}};
+    private static final float[][] ICON = {{62f, 716f}, {136f, 716f}, {210f, 716f}, {284f, 716f}, {358f, 716f}, {432f, 716f}};
 
     private static final String DISCORD = "https://discord.gg/znrj2TfCP8";
-    private static final float ICON_R = 34f;
-    private static final float ICON_PIC = 37f;
-    private static final String[] NAMES = {"singleplayer", "multiplayer", "customs", "crates", "settings", "realms", "exit"};
+    private static final float ICON_R = 30f;
+    private static final float ICON_PIC = 32.6f;
+    private static final String[] NAMES = {"singleplayer", "multiplayer", "customs", "crates", "settings", "exit"};
     /** The Zeus Crates plate glows gold even when idle, so it is found. */
     private static final int CRATES = 3;
-    private static final String[] ICON_NAMES = {"language", "accessibility", "settings", "discord"};
+    private static final String[] ICON_NAMES = {"language", "accessibility", "settings", "realms", "info", "discord"};
 
-    private static final int[] ICON_FRAMES = {24, 24, 0, 0};
+    private static final int[] ICON_FRAMES = {24, 24, 0, 0, 12, 0};
     private static final float CLICK_LENGTH = 0.34f;
     private static final float CLICK_GO = 0.25f;
-    private static final String[] ICON_TIPS = {"Language", "Accessibility", "Zeus Settings", "Join the Discord"};
+    private static final String[] ICON_TIPS = {"Language", "Accessibility", "Zeus Settings", "Realms", "About Zeus", "Join the Discord"};
 
     private static final int PIC_W = 1920;
     private static final int PIC_H = 1080;
@@ -60,21 +61,21 @@ public final class ZeusTitleScreen extends Screen {
 
     private final long born = com.zlorbie788.zeus.core.Clock.nanoTime();
     private final float[] glow = new float[7];
-    private final float[] iconGlow = new float[5];
+    private final float[] iconGlow = new float[6];
     private final float[] plateSpring = new float[7];
     private final float[] plateVel = new float[7];
     private final float[] plateMag = new float[7];
     private final float[] enterAt = new float[7];
     private final float[] enterX = new float[7];
     private final boolean[] platePrev = new boolean[7];
-    private final float[] iconSpring = new float[5];
-    private final float[] iconVel = new float[5];
-    private final float[] iconEnter = new float[5];
-    private final boolean[] iconPrev = new boolean[5];
+    private final float[] iconSpring = new float[6];
+    private final float[] iconVel = new float[6];
+    private final float[] iconEnter = new float[6];
+    private final boolean[] iconPrev = new boolean[6];
     private final int[] shineBand = new int[2];
     private int soundPlate = -1;
     private int soundIcon = -1;
-    private final float[] iconPhase = new float[4];
+    private final float[] iconPhase = new float[6];
 
     private int clickKind = -1;
     private int clickIdx = -1;
@@ -120,7 +121,7 @@ public final class ZeusTitleScreen extends Screen {
             MenuStorm.warm(width, height, c[0], gs, canvasPx(c[0], gs, CLOUD_W));
             MenuSnow.warm(height, gs);
             int ipw = Math.min(222, Math.round(2 * ICON_PIC * u * gs));
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < ICON_NAMES.length; i++) {
                 if (ICON_FRAMES[i] > 0) Tex.fitted("menu_anim_" + ICON_NAMES[i], "textures/gui/menu/icon_anim_" + ICON_NAMES[i] + ".png", ipw * ICON_FRAMES[i], ipw, false, 0, 0);
             }
             Tex.fitted("menu_logo", "textures/gui/menu/logo.png", Math.round(LOGO_W * u * gs), Math.round(LOGO_H * u * gs), false, 0, 0);
@@ -947,7 +948,6 @@ public final class ZeusTitleScreen extends Screen {
                 case 2 -> minecraft.setScreen(new ZeusScreen(this));
                 case 3 -> minecraft.setScreen(new CratesScreen(this));
                 case 4 -> minecraft.setScreen(new OptionsScreen(this, minecraft.options));
-                case 5 -> minecraft.setScreen(new RealmsMainScreen(this));
                 default -> minecraft.stop();
             }
         } catch (RuntimeException e) {
@@ -961,7 +961,9 @@ public final class ZeusTitleScreen extends Screen {
                 case 0 -> minecraft.setScreen(new LanguageSelectScreen(this, minecraft.options, minecraft.getLanguageManager()));
                 case 1 -> minecraft.setScreen(new AccessibilityOptionsScreen(this, minecraft.options));
                 case 2 -> minecraft.setScreen(new ZeusScreen(this));
-                case 3 -> {
+                case 3 -> minecraft.setScreen(new RealmsMainScreen(this));
+                case 4 -> minecraft.setScreen(new ZeusAboutScreen(this));
+                case 5 -> {
                     net.minecraft.util.Util.getPlatform().openUri(DISCORD);
                     Zeus.toast("Opening Discord", true);
                 }

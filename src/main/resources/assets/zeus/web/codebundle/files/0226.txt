@@ -1,133 +1,130 @@
-Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: fonts-inter
-Upstream-Contact: The Inter Project Authors <rasmus@notion.se>
-Source: https://github.com/rsms/inter
-Files-Excluded: docs/font-files/*.woff* docs/lab docs/samples
+package com.zlorbie788.zeus.ui;
 
-Files: *
-Copyright: 2016-2023 The Inter Project Authors <rasmus@notion.se>
-License: OFL-1.1 and Apache-2.0
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.zlorbie788.zeus.core.Zeus;
+import net.minecraft.client.gui.GuiGraphics;
 
-License: OFL-1.1
- PREAMBLE
- The goals of the Open Font License (OFL) are to stimulate worldwide
- development of collaborative font projects, to support the font
- creation efforts of academic and linguistic communities, and to
- provide a free and open framework in which fonts may be shared and
- improved in partnership with others.
- .
- The OFL allows the licensed fonts to be used, studied, modified and
- redistributed freely as long as they are not sold by themselves. The
- fonts, including any derivative works, can be bundled, embedded,
- redistributed and/or sold with any software provided that any
- reserved names are not used by derivative works. The fonts and
- derivatives, however, cannot be released under any other type of
- license. The requirement for fonts to remain under this license
- does not apply to any document created using the fonts or their
- derivatives.
- .
- DEFINITIONS
- Font Software refers to the set of files released by the
- Copyright Holder(s) under this license and clearly marked as such.
- This may include source files, build scripts and documentation.
- .
- Reserved Font Name refers to any names specified as such after
- the copyright statement(s).
- .
- Original Version refers to the collection of Font Software
- components as distributed by the Copyright Holder(s).
- .
- Modified Version refers to any derivative made by adding to,
- deleting, or substituting in part or in whole any of the components
- of the Original Version, by changing formats or by porting the Font
- Software to a new environment.
- .
- Author refers to any designer, engineer, programmer, technical
- writer or other person who contributed to the Font Software.
- .
- PERMISSION & CONDITIONS
- Permission is hereby granted, free of charge, to any person
- obtaining a copy of the Font Software, to use, study, copy, merge,
- embed, modify, redistribute, and sell modified and unmodified copies
- of the Font Software, subject to the following conditions:
- .
- 1) Neither the Font Software nor any of its individual components,
-    in Original or Modified Versions, may be sold by itself.
- .
- 2) Original or Modified Versions of the Font Software may be bundled,
-    redistributed and/or sold with any software, provided that each
-    copy contains the above copyright notice and this license. These
-    can be included either as stand-alone text files, human-readable
-    headers or in the appropriate machine-readable metadata fields
-    within text or binary files as long as those fields can be easily
-    viewed by the user.
- .
- 3) No Modified Version of the Font Software may use the Reserved Font
-    Name(s) unless explicit written permission is granted by the
-    corresponding Copyright Holder. This restriction only applies to
-    the primary font name as presented to the users.
- .
- 4) The name(s) of the Copyright Holder(s) or the Author(s) of the
-    Font Software shall not be used to promote, endorse or advertise
-    any Modified Version, except to acknowledge the contribution(s)
-    of the Copyright Holder(s) and the Author(s) or with their
-    explicit written permission.
- .
- 5) The Font Software, modified or unmodified, in part or in whole,
-    must be distributed entirely under this license, and must not be
-    distributed under any other license. The requirement for fonts to
-    remain under this license does not apply to any document created
-    using the Font Software.
- .
- TERMINATION
- This license becomes null and void if any of the above conditions
- are not met.
- .
- DISCLAIMER
- THE FONT SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND,
- EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
- MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
- OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL
- THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- LIABILITY, INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR
- CONSEQUENTIAL DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR
- OTHERWISE, ARISING FROM, OUT OF THE USE OR INABILITY TO USE THE FONT
- SOFTWARE OR FROM OTHER DEALINGS IN THE FONT SOFTWARE.
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
 
-License: Apache-2.0
- Licensed to the Apache Software Foundation (ASF) under one or more
- contributor license agreements.  See the NOTICE file distributed with
- this work for additional information regarding copyright ownership.
- The ASF licenses this file to You under the Apache License, Version 2.0
- (the "License"); you may not use this file except in compliance with
- the License.  You may obtain a copy of the License at
- .
-      https://www.apache.org/licenses/LICENSE-2.0
- .
- Unless required by applicable law or agreed to in writing, software
- distributed under the License is distributed on an "AS IS" BASIS,
- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- See the License for the specific language governing permissions and
- limitations under the License.
- .
- On Debian systems, the full text of the Apache Software License version 2 can
- be found in the file `/usr/share/common-licenses/Apache-2.0'.
+public final class GreekFont {
+    private GreekFont() {}
 
-Files: debian/*
-Copyright: 2019-2023 Gürkan Myczko <tar@debian.org>
-License: GPL-2+
- This package is free software; you can redistribute it and/or modify
- it under the terms of the GNU General Public License as published by
- the Free Software Foundation; either version 2 of the License, or
- (at your option) any later version.
- .
- This package is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details.
- .
- You should have received a copy of the GNU General Public License
- along with this program. If not, see <https://www.gnu.org/licenses/>
- .
- On Debian systems, the complete text of the GNU General
- Public License version 2 can be found in "/usr/share/common-licenses/GPL-2".
+    private static final String PICTURE = "textures/gui/menu/greek.png";
+    private static boolean tried;
+    private static boolean ok;
+    private static int cap = 128;
+    private static int row = 190;
+    private static int base = 158;
+    private static int pad = 14;
+    private static int space = 59;
+    private static int gap = 27;
+    private static int total;
+    private static final Map<Character, int[]> GLYPHS = new HashMap<>();
+
+    private static void load() {
+        if (tried) return;
+        tried = true;
+        try (InputStream in = GreekFont.class.getResourceAsStream("/assets/zeus/textures/gui/menu/greek.json")) {
+            if (in == null) return;
+            JsonObject o = JsonParser.parseReader(new InputStreamReader(in, StandardCharsets.UTF_8)).getAsJsonObject();
+            cap = o.get("cap").getAsInt();
+            row = o.get("row").getAsInt();
+            base = o.get("base").getAsInt();
+            pad = o.get("pad").getAsInt();
+            space = o.get("space").getAsInt();
+            gap = o.get("gap").getAsInt();
+            JsonObject g = o.getAsJsonObject("g");
+            for (Map.Entry<String, com.google.gson.JsonElement> e : g.entrySet()) {
+                JsonArray a = e.getValue().getAsJsonArray();
+                GLYPHS.put(e.getKey().charAt(0), new int[] {a.get(0).getAsInt(), a.get(1).getAsInt(), a.get(2).getAsInt()});
+                total = Math.max(total, a.get(0).getAsInt() + a.get(1).getAsInt());
+            }
+            ok = !GLYPHS.isEmpty();
+        } catch (Exception | LinkageError e) {
+            Zeus.LOG.warn("The Zeus lettering could not be read; the game's font is used instead", e);
+        }
+    }
+
+    public static boolean available() {
+        load();
+        return ok;
+    }
+
+    public static boolean supports(String text) {
+        if (!available()) return false;
+        for (int i = 0; i < text.length(); i++) {
+            char c = Character.toUpperCase(text.charAt(i));
+            if (c != ' ' && !GLYPHS.containsKey(c)) return false;
+        }
+        return true;
+    }
+
+    public static int width(String text, int capHeight) {
+        if (!available()) return Draw.width(text);
+        float s = capHeight / (float) cap;
+        float x = 0f;
+        String t = text.toUpperCase(Locale.ROOT);
+        for (int i = 0; i < t.length(); i++) {
+            char c = t.charAt(i);
+            if (c == ' ') {
+                x += space;
+                continue;
+            }
+            int[] g = GLYPHS.get(c);
+            if (g == null) continue;
+            x += g[2] + (i < t.length() - 1 ? gap : 0);
+        }
+        return Math.round(x * s);
+    }
+
+    public static void draw(GuiGraphics g, String text, int x, int y, int capHeight, int tint, boolean shadow) {
+        if (!available()) {
+            Draw.text(g, text, x, y, tint);
+            return;
+        }
+        int gs = Tex.guiScale();
+        float s = capHeight / (float) cap;
+        float px = s * gs;
+        int tw = Math.max(1, Math.round(total * px));
+        int th = Math.max(1, Math.round(row * px));
+        Tex.Img img = Tex.fitted("greek_" + th, PICTURE, tw, th, false, 0, 0);
+        if (img == null) {
+            Draw.text(g, text, x, y, tint);
+            return;
+        }
+        String t = text.toUpperCase(Locale.ROOT);
+        float cx = x;
+        int topPad = base - cap;
+        int dy = y - Math.round(topPad * s);
+        int dh = Math.round(row * s);
+        for (int i = 0; i < t.length(); i++) {
+            char c = t.charAt(i);
+            if (c == ' ') {
+                cx += space * s;
+                continue;
+            }
+            int[] gl = GLYPHS.get(c);
+            if (gl == null) continue;
+            int dx = Math.round(cx - pad * s);
+            int dw = Math.round(gl[1] * s);
+            int sx = Math.round(gl[0] * px);
+            int sw = Math.min(img.w - sx, Math.round(gl[1] * px));
+            if (sw > 0 && dw > 0) {
+                if (shadow) img.drawPart(g, dx + 1, dy + 1, dw, dh, sx, 0, sw, th, Draw.rgba(0xFF000000, Math.min(1f, Draw.a(tint) / 255f * 0.75f)));
+                img.drawPart(g, dx, dy, dw, dh, sx, 0, sw, th, tint);
+            }
+            cx += (gl[2] + gap) * s;
+        }
+    }
+
+    public static void drawCentered(GuiGraphics g, String text, int cx, int y, int capHeight, int tint, boolean shadow) {
+        draw(g, text, cx - width(text, capHeight) / 2, y, capHeight, tint, shadow);
+    }
+}

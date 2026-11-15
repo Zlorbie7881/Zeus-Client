@@ -411,7 +411,7 @@
   }
   function moduleAnswer0(mm, intent) {
     var m = mm.m, cat = mm.cat;
-    var where = "Press Z in a world, open the " + cat + " category and find " + m.name + ".";
+    var where = "Press Right Shift in a world, open the " + cat + " category and find " + m.name + ".";
     var sec = sectionForCat(m.category);
     var links = [modLink(mm)];
     if (sec) links.push({ label: "Guide: " + sec.title, href: "/help#" + sec.id });
@@ -639,7 +639,7 @@
       return A(["The first entry in the timeline is v" + f.version + " – " + f.title + ": " + f.text], { links: [{ label: "Update timeline", href: "/information#timeline" }], src: "Timeline" });
     }
     if (!one && /\b(turn|switch|toggle|shut|disable|stop)\b/.test(s) && /\boff\b/.test(s) && /\b(module|modules|hack|hacks|feature|features|it|zeus|everything|all)\b/.test(s) && !/\b(hud|widget|panel|website|site|control)\b/.test(s))
-      return A([oneOf("off1", ["Click the module's switch again to turn it off. To stop everything at once press the Panic button or type /zeus panic.", "Flip its switch off in the panel (Z). One command does it too: /zeus off followed by the module id, and /zeus panic switches every module off together."])],
+      return A([oneOf("off1", ["Click the module's switch again to turn it off. To stop everything at once press the Panic button or type /zeus panic.", "Flip its switch off in the panel (Right Shift). One command does it too: /zeus off followed by the module id, and /zeus panic switches every module off together."])],
         { links: [{ label: "Commands", href: "/tutorial" }], src: "Guide", chips: ["What is the panic button?", "How do I turn a module on?", "How do I see which modules are on?"] });
     if (!one && /\b(hide|remove|disable|turn off|switch off|get rid of|stop showing|take away)\b/.test(s) && /\b(hud|widgets?|overlay)\b/.test(s)) {
       var hh = exactFaq("How do I hide a HUD widget?");
@@ -850,25 +850,25 @@
     var setLine = ns ? ns + " setting" + (ns === 1 ? "" : "s") + ", for example " + listNames(sn) : "";
     if (intent === "what") {
       if (n === 1) {
-        var ul = ["Where: press Z, open " + cat + " and find " + m.name + ".", "Use: click its switch to turn it on, or click the row to tune it first."];
+        var ul = ["Where: press Right Shift, open " + cat + " and find " + m.name + ".", "Use: click its switch to turn it on, or click the row to tune it first."];
         if (ns) ul.push("Settings: " + setLine + ".");
         if (m.hud) ul.push("HUD: it has a card you can place with /zeus hud.");
         a.p = [m.name + " is a " + cat + " module. " + d]; a.ul = ul;
       } else {
-        a.p = [d + " That is " + m.name + ", in the " + cat + " category.", "Press Z, go to " + cat + " and flip its switch." + (ns ? " It has " + setLine + ", all on the same row." : " It has no settings, so that is all there is to it.") + (m.hud ? " Its HUD card can be moved in the HUD editor." : "")];
+        a.p = [d + " That is " + m.name + ", in the " + cat + " category.", "Press Right Shift, go to " + cat + " and flip its switch." + (ns ? " It has " + setLine + ", all on the same row." : " It has no settings, so that is all there is to it.") + (m.hud ? " Its HUD card can be moved in the HUD editor." : "")];
         a.ul = [];
       }
     } else if (intent === "use") {
       var head = a.p[0];
-      if (n === 1) { a.p = [head, "Quick start: Z, then " + cat + ", then switch " + m.name + " on. Click its row first if you want to tune it. The Panic button or /zeus panic switches everything off again."]; a.ol = []; }
-      else { a.p = [head]; a.ol = ["Press Z and open the " + cat + " category.", "Flip the switch on " + m.name + ". It is running as soon as the switch is lit.", "To adjust it, click its row. To stop it, flip the switch again or press Panic."]; }
+      if (n === 1) { a.p = [head, "Quick start: Right Shift, then " + cat + ", then switch " + m.name + " on. Click its row first if you want to tune it. The Panic button or /zeus panic switches everything off again."]; a.ol = []; }
+      else { a.p = [head]; a.ol = ["Press Right Shift and open the " + cat + " category.", "Flip the switch on " + m.name + ". It is running as soon as the switch is lit.", "To adjust it, click its row. To stop it, flip the switch again or press Panic."]; }
     } else if (intent === "bind") {
       var head2 = a.p[0];
-      if (n === 1) { a.p = [head2, "Press Z, open " + cat + ", click the " + m.name + " row (not its switch) and then the key chip that says None. Press the key you want. Backspace clears it."]; a.ol = []; }
-      else { a.p = [head2, "Binding takes three clicks:"]; a.ol = ["Press Z and open " + cat + ".", "Click the " + m.name + " row to open its settings.", "Click the key chip and press a key. Backspace removes the bind."]; }
+      if (n === 1) { a.p = [head2, "Press Right Shift, open " + cat + ", click the " + m.name + " row (not its switch) and then the key chip that says None. Press the key you want. Backspace clears it."]; a.ol = []; }
+      else { a.p = [head2, "Binding takes three clicks:"]; a.ol = ["Press Right Shift and open " + cat + ".", "Click the " + m.name + " row to open its settings.", "Click the key chip and press a key. Backspace removes the bind."]; }
     } else if (intent === "where") {
-      if (n === 1) a.p = [m.name + " is under " + cat + " in the Zeus panel (press Z).", d];
-      else a.p = ["Press Z and look in " + cat + ". " + m.name + " is there. " + d];
+      if (n === 1) a.p = [m.name + " is under " + cat + " in the Zeus panel (press Right Shift).", d];
+      else a.p = ["Press Right Shift and look in " + cat + ". " + m.name + " is there. " + d];
     } else if (intent === "settings") {
       if (a.p.length > 1 && ns) a.p[1] = n === 1 ? "Here is what you can adjust in " + m.name + (a.ul.length < ns ? " (the first " + a.ul.length + ")" : "") + ":" : m.name + " exposes " + ns + " setting" + (ns === 1 ? "" : "s") + (a.ul.length < ns ? ", the first " + a.ul.length + " are:" : ":");
     } else if (intent === "safe") {

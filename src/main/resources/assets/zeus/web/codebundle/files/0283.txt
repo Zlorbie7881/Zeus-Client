@@ -1,176 +1,133 @@
-"""Makes the sounds of the Zeus main menu (all synthesised, nothing sampled):
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: fonts-inter
+Upstream-Contact: The Inter Project Authors <rasmus@notion.se>
+Source: https://github.com/rsms/inter
+Files-Excluded: docs/font-files/*.woff* docs/lab docs/samples
 
-  menu_rumble.ogg   0.9 s soft low thunder swell, played when the pointer reaches a stone plate (mono)
-  menu_crack.ogg    0.8 s sharp electric crack with a low thump and a crackling tail, played on a click (mono)
-  menu_wind.ogg     8 s of wind that joins its own end without a seam, so the game can loop it (stereo)
-  menu_rain.ogg     8 s of soft rain, built the same way (stereo)
+Files: *
+Copyright: 2016-2023 The Inter Project Authors <rasmus@notion.se>
+License: OFL-1.1 and Apache-2.0
 
-Usage: python3 tools/menu_sounds.py <output folder>      (needs numpy and ffmpeg with libvorbis)
-"""
-import sys, os, subprocess, wave
-import numpy as np
+License: OFL-1.1
+ PREAMBLE
+ The goals of the Open Font License (OFL) are to stimulate worldwide
+ development of collaborative font projects, to support the font
+ creation efforts of academic and linguistic communities, and to
+ provide a free and open framework in which fonts may be shared and
+ improved in partnership with others.
+ .
+ The OFL allows the licensed fonts to be used, studied, modified and
+ redistributed freely as long as they are not sold by themselves. The
+ fonts, including any derivative works, can be bundled, embedded,
+ redistributed and/or sold with any software provided that any
+ reserved names are not used by derivative works. The fonts and
+ derivatives, however, cannot be released under any other type of
+ license. The requirement for fonts to remain under this license
+ does not apply to any document created using the fonts or their
+ derivatives.
+ .
+ DEFINITIONS
+ Font Software refers to the set of files released by the
+ Copyright Holder(s) under this license and clearly marked as such.
+ This may include source files, build scripts and documentation.
+ .
+ Reserved Font Name refers to any names specified as such after
+ the copyright statement(s).
+ .
+ Original Version refers to the collection of Font Software
+ components as distributed by the Copyright Holder(s).
+ .
+ Modified Version refers to any derivative made by adding to,
+ deleting, or substituting in part or in whole any of the components
+ of the Original Version, by changing formats or by porting the Font
+ Software to a new environment.
+ .
+ Author refers to any designer, engineer, programmer, technical
+ writer or other person who contributed to the Font Software.
+ .
+ PERMISSION & CONDITIONS
+ Permission is hereby granted, free of charge, to any person
+ obtaining a copy of the Font Software, to use, study, copy, merge,
+ embed, modify, redistribute, and sell modified and unmodified copies
+ of the Font Software, subject to the following conditions:
+ .
+ 1) Neither the Font Software nor any of its individual components,
+    in Original or Modified Versions, may be sold by itself.
+ .
+ 2) Original or Modified Versions of the Font Software may be bundled,
+    redistributed and/or sold with any software, provided that each
+    copy contains the above copyright notice and this license. These
+    can be included either as stand-alone text files, human-readable
+    headers or in the appropriate machine-readable metadata fields
+    within text or binary files as long as those fields can be easily
+    viewed by the user.
+ .
+ 3) No Modified Version of the Font Software may use the Reserved Font
+    Name(s) unless explicit written permission is granted by the
+    corresponding Copyright Holder. This restriction only applies to
+    the primary font name as presented to the users.
+ .
+ 4) The name(s) of the Copyright Holder(s) or the Author(s) of the
+    Font Software shall not be used to promote, endorse or advertise
+    any Modified Version, except to acknowledge the contribution(s)
+    of the Copyright Holder(s) and the Author(s) or with their
+    explicit written permission.
+ .
+ 5) The Font Software, modified or unmodified, in part or in whole,
+    must be distributed entirely under this license, and must not be
+    distributed under any other license. The requirement for fonts to
+    remain under this license does not apply to any document created
+    using the Font Software.
+ .
+ TERMINATION
+ This license becomes null and void if any of the above conditions
+ are not met.
+ .
+ DISCLAIMER
+ THE FONT SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND,
+ EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+ MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+ OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL
+ THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR
+ CONSEQUENTIAL DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+ OTHERWISE, ARISING FROM, OUT OF THE USE OR INABILITY TO USE THE FONT
+ SOFTWARE OR FROM OTHER DEALINGS IN THE FONT SOFTWARE.
 
-SR = 44100
-RNG = np.random.default_rng(7)
+License: Apache-2.0
+ Licensed to the Apache Software Foundation (ASF) under one or more
+ contributor license agreements.  See the NOTICE file distributed with
+ this work for additional information regarding copyright ownership.
+ The ASF licenses this file to You under the Apache License, Version 2.0
+ (the "License"); you may not use this file except in compliance with
+ the License.  You may obtain a copy of the License at
+ .
+      https://www.apache.org/licenses/LICENSE-2.0
+ .
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ .
+ On Debian systems, the full text of the Apache Software License version 2 can
+ be found in the file `/usr/share/common-licenses/Apache-2.0'.
 
-
-def lowpass(x, fc):
-    """One-pole low-pass, applied twice for a steeper edge."""
-    a = np.exp(-2 * np.pi * fc / SR)
-    for _ in range(2):
-        y = np.empty_like(x)
-        acc = 0.0
-        for i in range(len(x)):
-            acc = (1 - a) * x[i] + a * acc
-            y[i] = acc
-        x = y
-    return x
-
-
-def fast_lowpass(x, fc):
-    """FFT brick-wall with a soft edge, quick for long noise."""
-    n = len(x)
-    spec = np.fft.rfft(x)
-    f = np.fft.rfftfreq(n, 1 / SR)
-    spec *= 1.0 / (1.0 + (f / fc) ** 4)
-    return np.fft.irfft(spec, n)
-
-
-def fast_highpass(x, fc):
-    n = len(x)
-    spec = np.fft.rfft(x)
-    f = np.fft.rfftfreq(n, 1 / SR)
-    spec *= 1.0 - 1.0 / (1.0 + (f / fc) ** 4)
-    return np.fft.irfft(spec, n)
-
-
-def bandpass(x, lo, hi):
-    return fast_lowpass(fast_highpass(x, lo), hi)
-
-
-def norm(x, peak):
-    return x / (np.max(np.abs(x)) + 1e-9) * peak
-
-
-def rumble():
-    n = int(0.9 * SR)
-    t = np.arange(n) / SR
-    noise = fast_lowpass(RNG.standard_normal(n), 140)
-    noise2 = fast_lowpass(RNG.standard_normal(n), 420) * 0.35
-    body = noise + noise2
-    # a slow swell: rises over 0.3 s and trails away
-    env = np.minimum(1, t / 0.28) ** 1.6 * np.exp(-np.maximum(0, t - 0.28) * 3.4)
-    sub = np.sin(2 * np.pi * (46 + 10 * np.exp(-t * 3)) * t) * 0.55
-    y = (body * 1.0 + sub) * env
-    y[:200] *= np.linspace(0, 1, 200)
-    y[-400:] *= np.linspace(1, 0, 400)
-    return norm(y, 0.55)
-
-
-def crack():
-    n = int(0.8 * SR)
-    t = np.arange(n) / SR
-    # the crack: a very short burst of bright noise
-    bright = fast_highpass(RNG.standard_normal(n), 1800) * np.exp(-t * 95)
-    mid = bandpass(RNG.standard_normal(n), 300, 3200) * np.exp(-t * 26) * 0.7
-    # the thump under it
-    thump = np.sin(2 * np.pi * (78 * np.exp(-t * 7) + 38) * t) * np.exp(-t * 9) * 0.95
-    # the crackling tail: a few clicks that thin out
-    tail = np.zeros(n)
-    for _ in range(46):
-        pos = int(RNG.exponential(0.16) * SR + 0.02 * SR)
-        if pos < n - 600:
-            amp = RNG.uniform(0.15, 0.6) * np.exp(-pos / SR * 4.5)
-            k = RNG.integers(14, 80)
-            burst = RNG.standard_normal(k) * np.hanning(k)
-            tail[pos:pos + k] += burst * amp
-    tail = fast_highpass(tail, 900)
-    # a short wash behind it
-    wash = fast_lowpass(RNG.standard_normal(n), 2400) * np.exp(-t * 7) * 0.22
-    y = bright * 1.1 + mid + thump + tail * 1.4 + wash
-    y[:60] *= np.linspace(0, 1, 60)
-    y[-600:] *= np.linspace(1, 0, 600)
-    return norm(y, 0.85)
-
-
-def wrap_loop(x, fade):
-    """Turns a piece of noise that is {fade} samples longer than wanted into a loop with no seam: the extra samples are mixed
-    into the start with an equal-power cross-fade, so the end flows straight into the start (the game loops the file itself)."""
-    n = len(x) - fade
-    w = np.linspace(0, np.pi / 2, fade)
-    out = x[:n].copy()
-    out[:fade] = x[:fade] * np.sin(w) + x[n:n + fade] * np.cos(w)
-    return out
-
-
-def slow_noise(n, rate, seed):
-    r = np.random.default_rng(seed)
-    pts = r.standard_normal(int(n / SR * rate) + 3)
-    xs = np.linspace(0, len(pts) - 3, n)
-    i = xs.astype(int)
-    f = xs - i
-    f = f * f * (3 - 2 * f)
-    return pts[i] + (pts[i + 1] - pts[i]) * f
-
-
-def wind():
-    fade = int(0.8 * SR)
-    n = 8 * SR + fade
-    out = []
-    for ch in range(2):
-        base = RNG.standard_normal(n)
-        low = bandpass(base, 90, 420)
-        hi = bandpass(RNG.standard_normal(n), 500, 1700)
-        gust = np.clip(0.55 + 0.45 * slow_noise(n, 0.32, 3 + ch), 0.05, 1.6)
-        gust2 = np.clip(0.6 + 0.4 * slow_noise(n, 0.9, 11 + ch), 0.1, 1.5)
-        y = low * gust + hi * 0.45 * gust * gust2
-        out.append(y)
-    y = np.stack([wrap_loop(c, fade) for c in out], 1)
-    return norm(y, 0.5)
-
-
-def rain():
-    fade = int(0.8 * SR)
-    n = 8 * SR + fade
-    out = []
-    for ch in range(2):
-        hiss = bandpass(RNG.standard_normal(n), 2200, 9500)
-        body = bandpass(RNG.standard_normal(n), 600, 2200) * 0.5
-        density = np.clip(0.75 + 0.25 * slow_noise(n, 0.5, 21 + ch), 0.3, 1.2)
-        drops = np.zeros(n)
-        for _ in range(int(8 * 70)):
-            pos = RNG.integers(0, n - 400)
-            k = RNG.integers(20, 150)
-            burst = RNG.standard_normal(k) * np.exp(-np.arange(k) / (k * 0.28))
-            drops[pos:pos + k] += burst * RNG.uniform(0.1, 0.6)
-        drops = fast_highpass(drops, 1800)
-        y = (hiss * 0.8 + body) * density + drops * 0.55
-        out.append(y)
-    y = np.stack([wrap_loop(c, fade) for c in out], 1)
-    return norm(y, 0.5)
-
-
-def write_ogg(path, data):
-    wav = path[:-4] + ".wav"
-    pcm = (np.clip(data, -1, 1) * 32767).astype(np.int16)
-    ch = 1 if pcm.ndim == 1 else pcm.shape[1]
-    with wave.open(wav, "wb") as w:
-        w.setnchannels(ch)
-        w.setsampwidth(2)
-        w.setframerate(SR)
-        w.writeframes(pcm.tobytes())
-    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", wav, "-c:a", "libvorbis", "-q:a", "4", path], check=True)
-    os.remove(wav)
-
-
-def main(out):
-    os.makedirs(out, exist_ok=True)
-    write_ogg(os.path.join(out, "menu_rumble.ogg"), rumble())
-    write_ogg(os.path.join(out, "menu_crack.ogg"), crack())
-    write_ogg(os.path.join(out, "menu_wind.ogg"), wind())
-    write_ogg(os.path.join(out, "menu_rain.ogg"), rain())
-    print("menu sounds written to", out)
-
-
-if __name__ == "__main__":
-    main(sys.argv[1])
+Files: debian/*
+Copyright: 2019-2023 Gürkan Myczko <tar@debian.org>
+License: GPL-2+
+ This package is free software; you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation; either version 2 of the License, or
+ (at your option) any later version.
+ .
+ This package is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+ .
+ You should have received a copy of the GNU General Public License
+ along with this program. If not, see <https://www.gnu.org/licenses/>
+ .
+ On Debian systems, the complete text of the GNU General
+ Public License version 2 can be found in "/usr/share/common-licenses/GPL-2".

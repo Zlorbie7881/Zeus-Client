@@ -1,41 +1,60 @@
-#!/usr/bin/env python3
-"""Builds the 3D knives: meshes and animations for all 20 knives.
-    python3 tools/knives/make_knives.py
-Writes  src/main/resources/assets/zeus/web/knives3d.json        (detailed, for the website)
-        src/main/resources/assets/zeus/knives/knives_lo.json    (light, for the game: fewer segments, no fuller)"""
-import json, os, sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import models, moves
-from geom import export
+package com.zlorbie788.zeus.ui;
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
-RES = os.path.join(ROOT, "src", "main", "resources", "assets", "zeus")
+import java.util.Locale;
 
+public final class Themes {
+    private Themes() {}
 
-def make(lod):
-    out = []
-    for k in models.build(lod):
-        parts, hl, tip = k["build"]
-        kind = "butterfly" if k["id"] == 0 else "karambit" if k["id"] == 1 else "straight"
-        grip_y = {"Butterfly knife": -5.0, "Karambit": 5.5}.get(k["name"], round(hl * 0.5, 2))
-        anims = moves.build(k["name"], grip_y, tip, hl)
-        ps = []
-        for p in parts:
-            ps.append({"n": p["n"], "p": [round(c, 2) for c in p["p"]], "par": p["par"], "meshes": [export(m) for m in p["meshes"]]})
-        hero = k["id"] < 2
-        out.append({"id": k["id"], "name": k["name"], "kind": kind, "grip": [0, grip_y, 0], "tip": round(tip, 2), "parts": ps, "anims": anims if (lod or hero) else {}})
-    return {"v": 1, "knives": out}
+    public record Palette(String name, int main, int second, int tint) {}
 
+    private static final Palette[] SETS = {
+            new Palette("Storm blue", 0xFF3DB8FF, 0xFF7B6BFF, 0xFF0E1A2E),
+            new Palette("Violet", 0xFF9A6BFF, 0xFFFF6BD6, 0xFF1A1230),
+            new Palette("Gold", 0xFFFFC23D, 0xFFFF7A3D, 0xFF241A0B),
+            new Palette("Emerald", 0xFF3DE0A0, 0xFF3DB8FF, 0xFF0B221B),
+            new Palette("Crimson", 0xFFFF4D6D, 0xFFFF9A3D, 0xFF240E14),
+            new Palette("Glacier", 0xFF9BE7FF, 0xFF5AA9FF, 0xFF0B1B26),
+            new Palette("Magma", 0xFFFF7A45, Accent.WARN, 0xFF251108),
+            new Palette("Orchid", 0xFFE48BFF, 0xFF8B7BFF, 0xFF1D1024),
+            new Palette("Slate", 0xFFC7D2E8, 0xFF8E9BBC, 0xFF151A24),
+    };
 
-def main():
-    for lod, path in ((1, os.path.join(RES, "web", "knives3d.json")), (0, os.path.join(RES, "knives", "knives_lo.json"))):
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        d = make(lod)
-        s = json.dumps(d, separators=(",", ":"))
-        open(path, "w").write(s)
-        tris = [sum(len(m["f"]) // 3 for p in k["parts"] for m in p["meshes"]) for k in d["knives"]]
-        print(os.path.relpath(path, ROOT), "%.0f KB" % (len(s) / 1024), "triangles min %d max %d total %d" % (min(tris), max(tris), sum(tris)))
+    public static final int RAINBOW = 5;
 
+    public static final String[] LABELS = {
+            "Storm blue", "Violet", "Gold", "Emerald", "Crimson", "Rainbow", "Glacier", "Magma", "Orchid", "Slate"
+    };
 
-if __name__ == "__main__":
-    main()
+    public static final String[] IDS = {
+            "storm", "violet", "gold", "emerald", "crimson", "rainbow", "glacier", "magma", "orchid", "slate"
+    };
+
+    public static int count() {
+        return SETS.length;
+    }
+
+    public static Palette get(int paletteIndex) {
+        return SETS[Math.max(0, Math.min(SETS.length - 1, paletteIndex))];
+    }
+
+    public static int paletteFor(int optionIndex) {
+        int mapped = optionIndex < RAINBOW ? optionIndex : optionIndex - 1;
+        return Math.max(0, Math.min(SETS.length - 1, mapped));
+    }
+
+    public static boolean rainbow(int optionIndex) {
+        return optionIndex == RAINBOW;
+    }
+
+    public static String[] ids() {
+        return IDS.clone();
+    }
+
+    public static String[] labels() {
+        return LABELS.clone();
+    }
+
+    static String label(int paletteIndex) {
+        return get(paletteIndex).name().toUpperCase(Locale.ROOT);
+    }
+}

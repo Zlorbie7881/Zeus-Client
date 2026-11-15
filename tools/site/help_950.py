@@ -58,8 +58,8 @@ NEW = [
 
 ALTS = {
  "What is Zeus Client?": [
-  "Zeus Client is a Fabric mod for Minecraft Java 1.21.11 with about 170 modules: combat helpers, movement, ESP and other visuals, base finders and everyday utilities. You run it from a storm-themed panel opened with Z, place its widgets with a HUD editor and can optionally use the website's control center.",
-  "Zeus is a Fabric mod for Minecraft 1.21.11 with about 170 modules: combat, movement, ESP, base finding, automation and utilities. You open it with Z. It also has profiles and a HUD editor. It is a client-side cheat client, meant for your own worlds or servers that allow it.",
+  "Zeus Client is a Fabric mod for Minecraft Java 1.21.11 with about 170 modules: combat helpers, movement, ESP and other visuals, base finders and everyday utilities. You run it from a storm-themed panel opened with Right Shift, place its widgets with a HUD editor and can optionally use the website's control center.",
+  "Zeus is a Fabric mod for Minecraft 1.21.11 with about 170 modules: combat, movement, ESP, base finding, automation and utilities. You open it with Right Shift. It also has profiles and a HUD editor. It is a client-side cheat client, meant for your own worlds or servers that allow it.",
  ],
  "Is Zeus a cheat client?": [
   "Yes, and it says so openly. Zeus has combat, movement, ESP and base-finding modules, which many servers forbid. It is best used in your own worlds or on servers whose rules allow it.",
@@ -94,8 +94,8 @@ ALTS = {
   "It is free. Paying for a copy means you were scammed, and the Discord is the place to report it.",
  ],
  "How do I install Zeus?": [
-  {"p": ["Four steps:"], "ol": ["Install Java 21 and the Fabric Loader for 1.21.11.", "Put the Fabric API jar for 1.21.11 into .minecraft/mods.", "Put the Zeus jar (not the -sources one) into the same folder.", "Start the Fabric profile and press Z in a world."], "extra": "The Download page has the same steps with more detail."},
-  "You need Java 21, Fabric Loader for 1.21.11 and Fabric API. Drop the Fabric API jar and the Zeus jar into your mods folder, launch the Fabric profile, then press Z in a world to open the menu.",
+  {"p": ["Four steps:"], "ol": ["Install Java 21 and the Fabric Loader for 1.21.11.", "Put the Fabric API jar for 1.21.11 into .minecraft/mods.", "Put the Zeus jar (not the -sources one) into the same folder.", "Start the Fabric profile and press Right Shift in a world."], "extra": "The Download page has the same steps with more detail."},
+  "You need Java 21, Fabric Loader for 1.21.11 and Fabric API. Drop the Fabric API jar and the Zeus jar into your mods folder, launch the Fabric profile, then press Right Shift in a world to open the menu.",
  ],
  "What is Fabric and do I need Fabric API?": [
   "Fabric is the mod loader Zeus runs on, and Fabric API is a library Fabric mods rely on. Zeus needs both, in their 1.21.11 versions.",
@@ -106,15 +106,15 @@ ALTS = {
   "Java 21 or later. If the game says your Java is too old, install a Java 21 build or let the official launcher use its bundled one.",
  ],
  "How do I open the Zeus menu?": [
-  "Press Z in a world, or type /zeus. You can change the key in Minecraft's Controls under the Zeus category.",
-  "In a world press Z. If another mod uses that key, rebind it in Controls or just type /zeus in chat.",
+  "Press Right Shift in a world, or type /zeus. You can change the key in Minecraft's Controls under the Zeus category.",
+  "In a world press Right Shift. If another mod uses that key, rebind it in Controls or just type /zeus in chat.",
  ],
- "The Z key does nothing": [
-  "Probably another mod uses Z. Rebind the Zeus key in Controls, or type /zeus in chat to open the panel.",
-  "Check Controls for a conflict on Z. Until you fix it, /zeus in chat opens the same panel.",
+ "The Right Shift key does nothing": [
+  "Probably another mod uses Right Shift. Rebind the Zeus key in Controls, or type /zeus in chat to open the panel.",
+  "Check Controls for a conflict on Right Shift. Until you fix it, /zeus in chat opens the same panel.",
  ],
  "How do I turn a module on?": [
-  "Open the panel with Z, find the module (search helps) and click its switch. Click the rest of the row for its settings. /zeus on <module> works too.",
+  "Open the panel with Right Shift, find the module (search helps) and click its switch. Click the rest of the row for its settings. /zeus on <module> works too.",
   {"p": ["Three ways:"], "ul": ["Click the module's switch in the panel.", "Type /zeus on <module> or /zeus toggle <module>.", "Bind it to a key in its settings and press that key."]},
  ],
  "How do I switch everything off quickly?": [

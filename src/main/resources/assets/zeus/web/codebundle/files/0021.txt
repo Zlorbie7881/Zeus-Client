@@ -1,134 +1,98 @@
 package com.zlorbie788.zeus.core;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
-
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
-
-import java.util.Locale;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.item.ItemStack;
 
 /**
- * A description of every module and every setting as JSON: names, descriptions, kinds, ranges and starting values. It holds no
- * live values and nothing about the player, so the website can show it publicly. The same text is saved as features.json for
- * the copy of the website you publish.
+ * Enemy armour, read straight out of what the server already sends. Equipment packets carry the full
+ * item stack, damage component included, so another player's durability is not a guess: the server
+ * re-sends the stack every time a piece loses a point, and this reads that copy.
  */
-public final class FeatureCatalog {
-    private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
+public final class Armor {
+    private Armor() {}
 
-    private FeatureCatalog() {}
+    public static final EquipmentSlot[] SLOTS = {
+            EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET
+    };
 
-    public static String json() {
-        JsonObject root = new JsonObject();
-        JsonArray cats = new JsonArray();
-        for (Category c : Category.values()) {
-            JsonObject o = new JsonObject();
-            o.addProperty("id", c.name());
-            o.addProperty("label", c.label);
-            o.addProperty("color", String.format(Locale.ROOT, "#%06X", c.color & 0xFFFFFF));
-            cats.add(o);
-        }
-        JsonArray mods = new JsonArray();
-        for (Module m : Zeus.all()) {
-            if (!m.toggleable()) continue;
-            JsonObject o = new JsonObject();
-            o.addProperty("id", m.id);
-            o.addProperty("name", m.name);
-            o.addProperty("description", m.desc);
-            o.addProperty("category", m.category.name());
-            o.addProperty("rank", Usage.rank(m.id));
-            o.addProperty("weight", m.isLight() ? "heavy" : "light");
-            addCost(o, m);
-            if (m.defaultOn()) o.addProperty("defaultOn", true);
-            if (!m.aliases().isEmpty()) {
-                JsonArray al = new JsonArray();
-                for (String x : m.aliases()) al.add(x);
-                o.add("aliases", al);
-            }
-            if (m.isHudWidget()) o.addProperty("hud", true);
-            JsonArray sets = new JsonArray();
-            for (Setting s : m.settings()) {
-                JsonObject so = describe(s);
-                if (so != null) sets.add(so);
-            }
-            if (sets.size() > 0) o.add("settings", sets);
-            mods.add(o);
-        }
-        root.add("categories", cats);
-        root.add("modules", mods);
-        return GSON.toJson(root);
+    /** Remaining durability as a fraction of the piece's maximum, or -1 when nothing is worn there. */
+    public static float left(ItemStack s) {
+        if (s == null || s.isEmpty()) return -1f;
+        int max = s.getMaxDamage();
+        if (max <= 0) return 1f;
+        int dmg = s.getDamageValue();
+        return Math.max(0f, Math.min(1f, 1f - (float) dmg / max));
     }
 
-    /** True when the module's own class (not the empty one in Module) defines this method. */
-    private static boolean declares(Module m, String name, Class<?>... args) {
-        for (Class<?> c = m.getClass(); c != null && c != Module.class; c = c.getSuperclass()) {
-            try {
-                c.getDeclaredMethod(name, args);
-                return true;
-            } catch (NoSuchMethodException e) {
-                // look one class up
+    /** Points of durability left before the piece breaks, or -1 when nothing is worn there. */
+    public static int remaining(ItemStack s) {
+        if (s == null || s.isEmpty()) return -1;
+        int max = s.getMaxDamage();
+        if (max <= 0) return Integer.MAX_VALUE;
+        return Math.max(0, max - s.getDamageValue());
+    }
+
+    public static String letter(EquipmentSlot s) {
+        return switch (s) {
+            case HEAD -> "H";
+            case CHEST -> "C";
+            case LEGS -> "L";
+            default -> "B";
+        };
+    }
+
+    public static String piece(EquipmentSlot s) {
+        return switch (s) {
+            case HEAD -> "Helmet";
+            case CHEST -> "Chestplate";
+            case LEGS -> "Leggings";
+            default -> "Boots";
+        };
+    }
+
+    /** The worn piece closest to breaking, or null when the target wears no armour. */
+    public static EquipmentSlot weakest(LivingEntity e) {
+        EquipmentSlot worst = null;
+        float f = 2f;
+        for (EquipmentSlot s : SLOTS) {
+            float v = left(e.getItemBySlot(s));
+            if (v >= 0 && v < f) {
+                f = v;
+                worst = s;
             }
         }
-        return false;
+        return worst;
     }
 
     /**
-     * A rough cost for the website, worked out from what the module does every frame: 1 almost nothing, 2 low, 3 medium, 4 high,
-     * 5 very high. It is an estimate from the code, not a measurement. In the game the real, measured cost is shown in the list.
+     * The hotbar slot that hits for the least damage. This is what drains armour fastest: a landed hit
+     * takes {@code max(1, damage / 4)} durability off every worn piece, so twenty soft hits cost twenty
+     * points per piece while twenty full-swing sword hits also cost twenty, for five times the health.
+     * Soft and fast beats hard and slow when the goal is the armour and not the player.
      */
-    private static void addCost(JsonObject o, Module m) {
-        boolean tick = declares(m, "onTick", Minecraft.class);
-        boolean hud = declares(m, "onHud", GuiGraphics.class, Minecraft.class, float.class, int.class, int.class);
-        boolean world = declares(m, "onHudWorld", GuiGraphics.class, Minecraft.class, float.class, int.class, int.class);
-        boolean scan = m.isLight();
-        int score = (tick ? 1 : 0) + (hud ? 1 : 0) + (world ? 3 : 0) + (scan ? 3 : 0);
-        int tier = score == 0 ? 1 : score <= 2 ? 2 : score <= 4 ? 3 : score <= 6 ? 4 : 5;
-        o.addProperty("cost", tier);
-        JsonArray runs = new JsonArray();
-        if (tick) runs.add("tick");
-        if (hud) runs.add("hud");
-        if (world) runs.add("world");
-        if (scan) runs.add("scan");
-        o.add("runs", runs);
-    }
-
-    private static JsonObject describe(Setting s) {
-        if (s instanceof Setting.Secret || s.name == null || s.name.isBlank()) return null;
-        JsonObject o = new JsonObject();
-        o.addProperty("name", s.name);
-        if (s.desc != null && !s.desc.isBlank()) o.addProperty("desc", s.desc);
-        if (s instanceof Setting.Bool b) {
-            o.addProperty("type", "switch");
-            o.addProperty("default", b.initial());
-        } else if (s instanceof Setting.Num n) {
-            o.addProperty("type", "slider");
-            o.addProperty("min", n.min);
-            o.addProperty("max", n.max);
-            o.addProperty("step", n.step);
-            if (n.unit != null && !n.unit.isEmpty()) o.addProperty("unit", n.unit.trim());
-            o.addProperty("default", n.initial());
-        } else if (s instanceof Setting.Choice c) {
-            o.addProperty("type", "choice");
-            JsonArray opts = new JsonArray();
-            for (String x : c.options) opts.add(x);
-            o.add("options", opts);
-            o.addProperty("default", c.initialOption());
-        } else if (s instanceof Setting.Pick p) {
-            o.addProperty("type", "pick");
-            JsonArray opts = new JsonArray();
-            for (String x : p.labels) opts.add(x);
-            o.add("options", opts);
-        } else if (s instanceof Setting.Text) {
-            o.addProperty("type", "text");
-        } else if (s instanceof Setting.Action) {
-            o.addProperty("type", "button");
-        } else if (s instanceof Setting.Info) {
-            o.addProperty("type", "info");
-        } else {
-            o.addProperty("type", "other");
+    public static int softestSlot() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null) return -1;
+        int best = -1;
+        double bestDmg = Double.MAX_VALUE;
+        for (int i = 0; i < 9; i++) {
+            ItemStack s = mc.player.getInventory().getItem(i);
+            double dmg = 1.0; // an empty hand hits for one
+            if (!s.isEmpty()) {
+                double[] bonus = {0};
+            s.forEachModifier(EquipmentSlot.MAINHAND, (attr, mod) -> {
+                    if (attr.value() == Attributes.ATTACK_DAMAGE.value()) bonus[0] += mod.amount();
+                });
+                dmg = 1.0 + bonus[0];
+            }
+            if (dmg < bestDmg) {
+                bestDmg = dmg;
+                best = i;
+            }
         }
-        return o;
+        return best;
     }
 }

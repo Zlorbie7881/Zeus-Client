@@ -1,39 +1,50 @@
-"""Draws the website's thunder cursor (img/cursor.png and img/cursor-link.png). Prints the hotspot of each."""
-import math, os, sys
-from PIL import Image, ImageDraw, ImageFilter
+package com.zlorbie788.zeus.ui;
 
-out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), "..", "src/main/resources/assets/zeus/web/img")
-S = 8            # supersampling
-N = 32
-BOLT = [(14.5, 1.5), (4.5, 13.2), (10.6, 13.2), (8.6, 22.5), (19.8, 9.6), (13.4, 9.6), (17.6, 1.5)]
+import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
+import net.fabricmc.fabric.api.client.screen.v1.Screens;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.network.chat.Component;
 
-def poly(scale, rot, cx, cy):
-    pts = []
-    for x, y in BOLT:
-        x -= 12; y -= 12
-        a = math.radians(rot)
-        rx = x * math.cos(a) - y * math.sin(a)
-        ry = x * math.sin(a) + y * math.cos(a)
-        pts.append((cx + rx * scale, cy + ry * scale))
-    return pts
+public final class ZButton {
+    private ZButton() {}
 
-def make(name, scale, fill, edge, glow):
-    big = N * S
-    pts = poly(scale * S, 0, big / 2, big / 2)
-    g = Image.new("RGBA", (big, big), (0, 0, 0, 0))
-    ImageDraw.Draw(g).polygon(pts, fill=glow)
-    g = g.filter(ImageFilter.GaussianBlur(S * 1.6))
-    b = Image.new("RGBA", (big, big), (0, 0, 0, 0))
-    d = ImageDraw.Draw(b)
-    d.polygon(pts, fill=edge)
-    # inner highlight: shrink toward the centroid
-    cx = sum(p[0] for p in pts) / len(pts); cy = sum(p[1] for p in pts) / len(pts)
-    inner = [(cx + (x - cx) * 0.62, cy + (y - cy) * 0.62) for x, y in pts]
-    d.polygon(inner, fill=fill)
-    img = Image.alpha_composite(g, b).resize((N, N), Image.LANCZOS)
-    img.save(os.path.join(out, name))
-    tip = min(pts, key=lambda p: p[1] * 3 + p[0])
-    print(name, "hotspot", round(tip[0] / S), round(tip[1] / S))
+    private static final int SIZE = 24;
 
-make("cursor.png", 1.2, (225, 242, 255, 255), (38, 126, 255, 255), (60, 140, 255, 150))
-make("cursor-link.png", 1.28, (255, 247, 205, 255), (255, 176, 36, 255), (255, 190, 60, 170))
+    public static void register() {
+        ScreenEvents.AFTER_INIT.register((mc, screen, w, h) -> {
+            if (screen instanceof TitleScreen) attach(mc, screen);
+        });
+    }
+
+    private static void attach(Minecraft mc, Screen screen) {
+        try {
+            Screens.getButtons(screen).add(Button.builder(Component.literal(""), b -> open(mc)).bounds(6, 6, SIZE, SIZE).build());
+            ScreenEvents.afterRender(screen).register((s, g, mx, my, dt) -> draw(g, mx, my));
+        } catch (RuntimeException | LinkageError e) {
+            com.zlorbie788.zeus.core.Zeus.LOG.warn("The Z button could not be added to the title screen", e);
+        }
+    }
+
+    static void open(Minecraft mc) {
+        try {
+            mc.setScreen(new ZeusTitleScreen());
+        } catch (RuntimeException e) {
+            com.zlorbie788.zeus.core.Zeus.LOG.warn("The Zeus menu could not be opened", e);
+        }
+    }
+
+    private static void draw(net.minecraft.client.gui.GuiGraphics g, int mx, int my) {
+        boolean hot = mx >= 6 && mx < 6 + SIZE && my >= 6 && my < 6 + SIZE;
+        Draw.rrect(g, 6, 6, SIZE, SIZE, 5, hot ? 0xFF0F2A5E : 0xFF081330);
+        Draw.rrectLine(g, 6, 6, SIZE, SIZE, 5, hot ? 0xFF5AA2FF : 0xFF2358B8);
+        if (hot) Draw.glow(g, 6, 6, SIZE, SIZE, 5, 0xFF2F86FF, 3, 0.25f);
+        int gs = Tex.guiScale();
+        int inner = SIZE - 6;
+        Tex.Img logo = Tex.fitted("zbutton", "textures/gui/logo_z.png", inner * gs, inner * gs, false, 0, 0);
+        if (logo != null) logo.draw(g, 6 + 3, 6 + 3, inner, inner, 0xFFFFFFFF);
+        else Draw.boldCenter(g, "Z", 6 + SIZE / 2, 6 + 8, 0xFF8CC4FF);
+    }
+}

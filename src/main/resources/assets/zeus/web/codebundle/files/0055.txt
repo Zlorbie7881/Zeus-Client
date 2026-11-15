@@ -1,17 +1,20 @@
 package com.zlorbie788.zeus.mixin;
 
-import com.zlorbie788.zeus.ui.ZeusMenu;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.screens.Screen;
+import com.zlorbie788.zeus.mods.AutomationPlus;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.MoverType;
+import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 
-/** Every screen the game opens passes here; the game's title screen is swapped for the Zeus menu (see {@link ZeusMenu}). */
-@Mixin(Minecraft.class)
-public abstract class MinecraftScreenMixin {
-    @ModifyVariable(method = "setScreen", at = @At("HEAD"), argsOnly = true, require = 0)
-    private Screen zeus$menu(Screen screen) {
-        return ZeusMenu.swap(screen);
+@Mixin(Entity.class)
+public abstract class EntityMoveMixin {
+    @ModifyVariable(method = "move", at = @At("HEAD"), argsOnly = true, require = 1)
+    private Vec3 zeus$boatNoclipDrive(Vec3 movement, MoverType type) {
+        AutomationPlus.BoatNoClip noclip = AutomationPlus.BoatNoClip.getActive();
+        if (noclip == null) return movement;
+        if (type != MoverType.SELF) return movement;
+        return noclip.drive((Entity) (Object) this, movement);
     }
 }

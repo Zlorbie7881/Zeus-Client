@@ -11,7 +11,7 @@ so ribs, bevels and engraving catch the light. Body and lid are saved apart so t
 
   python3 tools/crates/make_crates.py
 
-writes textures/crates/<id>_body_<w>.png and <id>_lid_<w>.png for w in 512, 256, 128.
+writes textures/crates/<id>_body_<w>.png and <id>_lid_<w>.png at 512 (the client makes 256 and 128 from it).
 """
 import math
 import os
@@ -363,7 +363,7 @@ def save(crate_id, col, alpha):
     cut = SEAM
     parts = {"lid": full.crop((0, 0, W, cut)), "body": full.crop((0, cut, W, H))}
     for name, im in parts.items():
-        for w in (512, 256, 128):
+        for w in (512,):  # 256 and 128 are made from 512 by the client (Tex.derived)
             h = round(im.height * w / W)
             small = np.asarray(im.resize((w, h), Image.LANCZOS)).astype(np.float32) / 255.0
             a = small[..., 3:4]

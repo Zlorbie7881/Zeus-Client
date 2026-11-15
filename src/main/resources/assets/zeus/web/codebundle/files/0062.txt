@@ -1,26 +1,27 @@
 package com.zlorbie788.zeus.mixin;
 
-import com.zlorbie788.zeus.mods.Scoreboards;
-import com.zlorbie788.zeus.mods.StreamerPrivacy;
-import net.minecraft.world.scores.DisplaySlot;
-import net.minecraft.world.scores.Objective;
-import net.minecraft.world.scores.Scoreboard;
+import com.zlorbie788.zeus.render.Projector;
+import net.minecraft.client.Camera;
+import net.minecraft.client.renderer.GameRenderer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/**
- * The game asks the scoreboard which objective belongs in each corner of the screen. While Hide Scoreboard (or Fake
- * Scoreboard) is on, the answer for the sidebar is "none", so the game has nothing to draw there. The server's data itself is
- * untouched, and nothing is sent back to the server.
- */
-@Mixin(Scoreboard.class)
-public abstract class ScoreboardMixin {
-    @Inject(method = "getDisplayObjective", at = @At("RETURN"), cancellable = true, require = 0)
-    private void zeus$hideSidebar(DisplaySlot slot, CallbackInfoReturnable<Objective> cir) {
-        if (slot != null && cir.getReturnValue() != null && (Scoreboards.hiding() || StreamerPrivacy.hideSidebar()) && slot.getSerializedName().startsWith("sidebar")) {
-            cir.setReturnValue(null);
+@Mixin(value = GameRenderer.class, priority = 1500)
+public abstract class GameRendererMixin {
+    @Inject(method = "getFov", at = @At("RETURN"), require = 0)
+    private void zeus$fov(Camera camera, float partial, boolean useFovSetting, CallbackInfoReturnable<Float> cir) {
+        try {
+            if (!useFovSetting) return;
+            float fov = cir.getReturnValueF();
+            float z = com.zlorbie788.zeus.mods.Extras.Zoom.factorNow();
+            if (z > 1.001f) {
+                fov = (float) Math.toDegrees(2.0 * Math.atan(Math.tan(Math.toRadians(fov) / 2.0) / z));
+                cir.setReturnValue(fov);
+            }
+            Projector.offerFov(fov);
+        } catch (RuntimeException ignored) {
         }
     }
 }

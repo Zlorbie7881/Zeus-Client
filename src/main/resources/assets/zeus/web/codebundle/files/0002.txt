@@ -1,12 +1,30 @@
-NOTICE (legal, not shown in the game or on the website)
+# New: Chroma knives
+Six secret knives, one in every crate. About 1 in 400 opens.
 
-Parts of Zeus (the Goliath region table, the staff-name matching rules and the media-account
-finding flow, and the look of the tracers and of the flat chunk marking: the Y=63 tiles with a
-rounded edge, their grow and shrink, and the tracer to the middle of each area) were derived from "Anubis Client 1.0" by Horus and 4ldenz, which is published under
-the GNU General Public License version 3 (https://github.com/4ldenz/Anubis-client).
+- Galaxy karambit, Molten Core M9, Prism Shard, Gilded Phoenix, Stardust butterfly, Spectrum kunai
+- Chroma and Olympian blades glow
+- Butterfly knives now flip like real ones: blade and handles swing round the pins
+- Chroma drops get their own rainbow reveal
+- New crate cases: the latches click and the lid swings open
+- Knives sit in your hand and dim in the dark
 
-The GPL-3.0 therefore applies to Zeus as a whole when it is distributed. If you pass Zeus on, keep
-this notice and the LICENSE file and make the corresponding source code available.
+# New: keybinds keyboard
+Keybinds are now a full virtual keyboard. Click a key, pick modules from the list, done.
 
-To distribute Zeus WITHOUT these obligations, the derived parts must first be removed or rewritten
-from a description of the behaviour alone, by someone who has not read the original source.
+- Several modules on one key toggle together
+- Press a key on your real keyboard to jump to it
+- Open it with /zeus keybinds
+
+# Zeus Crates
+Open crates from the main menu and unbox HD knives.
+
+- A crate takes 3 keys, a key costs 10 tokens
+- New DAILY tab: 3 quests a day for tokens
+- Daily streak: play 3 minutes a day for bonus tokens
+- Divine or better guaranteed every 25 opens
+- Got a promo code? Use the Redeem tab
+
+# Zeus AI
+Coming soon!
+
+~ Join the Discord for promo codes and news

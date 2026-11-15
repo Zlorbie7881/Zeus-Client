@@ -1,21 +1,21 @@
 package com.zlorbie788.zeus.mixin;
 
-import com.zlorbie788.zeus.ui.ZeusBackdrop;
-import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.screens.Screen;
+import com.zlorbie788.zeus.render.CameraControl;
+import net.minecraft.client.KeyMapping;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/**
- * The background every screen of the game draws behind itself. Outside a world (server list, world list, options, the
- * disconnect and error screens) Zeus draws the sky of its menu there instead of the game's panorama (see {@link ZeusBackdrop}).
- */
-@Mixin(Screen.class)
-public abstract class ScreenBackgroundMixin {
-    @Inject(method = "renderBackground", at = @At("HEAD"), cancellable = true, require = 0)
-    private void zeus$background(GuiGraphics graphics, int mouseX, int mouseY, float partialTick, CallbackInfo ci) {
-        if (ZeusBackdrop.draw((Screen) (Object) this, graphics)) ci.cancel();
+@Mixin(KeyMapping.class)
+public abstract class KeyMappingMixin {
+    @Inject(method = "isDown", at = @At("RETURN"), cancellable = true, require = 0)
+    private void zeus$down(CallbackInfoReturnable<Boolean> cir) {
+        if (CameraControl.freezing()) cir.setReturnValue(CameraControl.filterDown((KeyMapping) (Object) this, cir.getReturnValue()));
+    }
+
+    @Inject(method = "consumeClick", at = @At("RETURN"), cancellable = true, require = 0)
+    private void zeus$click(CallbackInfoReturnable<Boolean> cir) {
+        if (CameraControl.freezing()) cir.setReturnValue(CameraControl.filterClick((KeyMapping) (Object) this, cir.getReturnValue()));
     }
 }

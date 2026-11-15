@@ -1,238 +1,385 @@
-"""Tiny solid-mesh toolkit for the Zeus knives. Every part is a closed solid with outward winding, so the game can cull back faces.
-Units are centimetres. A knife stands on +Y (the butt at y=0, the tip at +Y); the edge faces +X; the flat sides face +-Z."""
-import math
-import numpy as np
+package com.zlorbie788.zeus.ui;
 
+import com.mojang.blaze3d.platform.NativeImage;
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.textures.FilterMode;
+import com.zlorbie788.zeus.core.Zeus;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.texture.DynamicTexture;
+import net.minecraft.resources.Identifier;
 
-class Mesh:
-    def __init__(self, mat="blade"):
-        self.mat = mat
-        self.v = []      # (x,y,z)
-        self.uv = []     # (u,v)
-        self.f = []      # (a,b,c)
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.HashMap;
+import java.util.Map;
 
-    def add(self, p, uv=(0, 0)):
-        self.v.append(tuple(float(c) for c in p))
-        self.uv.append((float(uv[0]), float(uv[1])))
-        return len(self.v) - 1
+public final class Tex {
+    private Tex() {
+    }
 
-    def tri(self, a, b, c):
-        if a != b and b != c and a != c:
-            self.f.append((a, b, c))
+    static {
+        javax.imageio.ImageIO.setUseCache(false);
+    }
 
-    def quad(self, a, b, c, d):
-        self.tri(a, b, c)
-        self.tri(a, c, d)
+    public static final class Img {
+        public final Identifier id;
+        public final int w;
+        public final int h;
+        private final DynamicTexture tex;
 
-    def merge(self, o):
-        base = len(self.v)
-        self.v += o.v
-        self.uv += o.uv
-        self.f += [(a + base, b + base, c + base) for a, b, c in o.f]
-        return self
+        Img(Identifier id, DynamicTexture tex, int w, int h) {
+            this.id = id;
+            this.tex = tex;
+            this.w = w;
+            this.h = h;
+        }
 
-    def volume(self):
-        v = np.array(self.v)
-        s = 0.0
-        for a, b, c in self.f:
-            s += np.dot(v[a], np.cross(v[b], v[c]))
-        return s / 6.0
+        public void draw(GuiGraphics g, int x, int y, int dw, int dh, int tint) {
+            g.blit(RenderPipelines.GUI_TEXTURED, id, x, y, 0f, 0f, dw, dh, w, h, w, h, tint);
+        }
 
-    def orient(self):
-        """Make the winding outward (positive volume)."""
-        if self.volume() < 0:
-            self.f = [(a, c, b) for a, b, c in self.f]
-        return self
+        public void drawPart(GuiGraphics g, int x, int y, int dw, int dh, int sx, int sy, int sw, int sh, int tint) {
+            g.blit(RenderPipelines.GUI_TEXTURED, id, x, y, (float) sx, (float) sy, dw, dh, sw, sh, w, h, tint);
+        }
 
-    def moved(self, dx=0, dy=0, dz=0):
-        m = Mesh(self.mat)
-        m.v = [(x + dx, y + dy, z + dz) for x, y, z in self.v]
-        m.uv = list(self.uv)
-        m.f = list(self.f)
-        return m
+        public void put(int[] argb) {
+            writePixels(tex.getPixels(), argb, w, h);
+            tex.upload();
+        }
 
-    def transform(self, R=None, t=(0, 0, 0)):
-        R = np.eye(3) if R is None else np.array(R)
-        m = Mesh(self.mat)
-        m.v = [tuple(R @ np.array(p) + np.array(t)) for p in self.v]
-        m.uv = list(self.uv)
-        m.f = list(self.f)
-        return m
+        public void putRows(int[] argb, int y0, int y1) {
+            y0 = Math.max(0, y0);
+            y1 = Math.min(h, y1);
+            if (y1 <= y0) return;
+            writeRows(tex.getPixels(), argb, w, y0, y1);
+            tex.upload();
+        }
 
-    def mirrored_z(self):
-        m = Mesh(self.mat)
-        m.v = [(x, y, -z) for x, y, z in self.v]
-        m.uv = list(self.uv)
-        m.f = [(a, c, b) for a, b, c in self.f]
-        return m
+        public void release() {
+            PENDING.add(new Object[] {this, System.nanoTime()});
+        }
 
+        void free() {
+            boolean managed = false;
+            try {
+                Minecraft.getInstance().getTextureManager().release(id);
+                managed = true;
+            } catch (RuntimeException ignored) {
+            }
+            if (!managed) {
+                try {
+                    tex.close();
+                } catch (RuntimeException ignored) {
+                }
+            }
+        }
+    }
 
-def rotz(deg):
-    a = math.radians(deg)
-    c, s = math.cos(a), math.sin(a)
-    return np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
+    private static final Map<String, Img> CACHE = new HashMap<>();
+    private static final java.util.List<Object[]> PENDING = new java.util.ArrayList<>();
 
+    private static void flush(boolean all) {
+        if (PENDING.isEmpty()) return;
+        long now = System.nanoTime();
+        java.util.Iterator<Object[]> it = PENDING.iterator();
+        while (it.hasNext()) {
+            Object[] p = it.next();
+            if (all || now - (Long) p[1] > 1_000_000_000L) {
+                ((Img) p[0]).free();
+                it.remove();
+            }
+        }
+    }
+    private static int counter;
+    private static int order = -1;
 
-def rotx(deg):
-    a = math.radians(deg)
-    c, s = math.cos(a), math.sin(a)
-    return np.array([[1, 0, 0], [0, c, -s], [0, s, c]])
+    private static boolean abgr() {
+        if (order < 0) {
+            order = 0;
+            try {
+                BufferedImage probe = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+                probe.setRGB(0, 0, 0xFFFF0000);
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                javax.imageio.ImageIO.write(probe, "png", out);
+                try (NativeImage img = NativeImage.read(NativeImage.Format.RGBA, new ByteArrayInputStream(out.toByteArray()))) {
+                    int v = img.getPixel(0, 0);
+                    if ((v & 255) > ((v >> 16) & 255)) order = 1;
+                }
+            } catch (IOException | RuntimeException ignored) {
+            }
+        }
+        return order == 1;
+    }
 
+    static void writePixels(NativeImage img, int[] argb, int w, int h) {
+        writeRows(img, argb, w, 0, h);
+    }
 
-def roty(deg):
-    a = math.radians(deg)
-    c, s = math.cos(a), math.sin(a)
-    return np.array([[c, 0, s], [0, 1, 0], [-s, 0, c]])
+    static void writeRows(NativeImage img, int[] argb, int w, int y0, int y1) {
+        boolean swap = abgr();
+        int ww = Math.min(w, img.getWidth());
+        int hh = Math.min(y1, img.getHeight());
+        for (int y = y0; y < hh; y++) {
+            int row = y * w;
+            for (int x = 0; x < ww; x++) {
+                int c = argb[row + x];
+                if (swap) c = (c & 0xFF00FF00) | ((c >> 16) & 0xFF) | ((c & 0xFF) << 16);
+                img.setPixel(x, y, c);
+            }
+        }
+    }
 
+    private static final class Smooth extends DynamicTexture {
+        Smooth(java.util.function.Supplier<String> label, NativeImage image) {
+            super(label, image);
+            this.sampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
+        }
+    }
 
-def loft(stations, uvs=None, mat="blade", cap_start=True, cap_end=True):
-    """stations: list of rings (lists of 3D points, all rings the same length) or a single point (a list of one point).
-    Rings are joined with quads. The ring order decides the winding; orient() fixes it afterwards."""
-    m = Mesh(mat)
-    idx = []
-    for i, ring in enumerate(stations):
-        row = []
-        for j, p in enumerate(ring):
-            uv = uvs[i][j] if uvs else (i / max(1, len(stations) - 1), j / max(1, len(ring)))
-            row.append(m.add(p, uv))
-        idx.append(row)
-    for i in range(len(idx) - 1):
-        a, b = idx[i], idx[i + 1]
-        if len(a) == 1 and len(b) == 1:
-            continue
-        if len(b) == 1:
-            for j in range(len(a)):
-                m.tri(a[j], a[(j + 1) % len(a)], b[0])
-        elif len(a) == 1:
-            for j in range(len(b)):
-                m.tri(a[0], b[(j + 1) % len(b)], b[j])
-        else:
-            n = len(a)
-            for j in range(n):
-                k = (j + 1) % n
-                m.quad(a[j], a[k], b[k], b[j])
-    for ring_idx, cap in ((idx[0], cap_start), (idx[-1], cap_end)):
-        if cap and len(ring_idx) > 2:
-            pts = np.array([m.v[i] for i in ring_idx])
-            c = m.add(pts.mean(axis=0), (0.5, 0.5))
-            for j in range(len(ring_idx)):
-                m.tri(ring_idx[j], ring_idx[(j + 1) % len(ring_idx)], c)
-    return m.orient()
+    private static Img register(String key, NativeImage image) {
+        return register(key, image, false);
+    }
 
+    private static Img register(String key, NativeImage image, boolean smooth) {
+        flush(false);
+        int n = ++counter;
+        Identifier id = Identifier.fromNamespaceAndPath("zeus", "dyn/" + n);
+        DynamicTexture tex = smooth ? new Smooth(() -> "zeus_" + n, image) : new DynamicTexture(() -> "zeus_" + n, image);
+        Minecraft.getInstance().getTextureManager().register(id, tex);
+        return new Img(id, tex, image.getWidth(), image.getHeight());
+    }
 
-def box(cx, cy, cz, sx, sy, sz, mat="guard", taper=1.0):
-    """Axis-aligned box centred at (cx, cy, cz). taper scales the +y end in x and z."""
-    hx, hy, hz = sx / 2, sy / 2, sz / 2
-    lo = [(-hx, -hy, -hz), (hx, -hy, -hz), (hx, -hy, hz), (-hx, -hy, hz)]
-    hi = [(-hx * taper, hy, -hz * taper), (hx * taper, hy, -hz * taper), (hx * taper, hy, hz * taper), (-hx * taper, hy, hz * taper)]
-    pts = [[(cx + x, cy + y, cz + z) for x, y, z in lo], [(cx + x, cy + y, cz + z) for x, y, z in hi]]
-    return loft(pts, mat=mat)
+    public static Img resource(String path) {
+        Img have = CACHE.get(path);
+        if (have != null) return have;
+        try (InputStream in = Tex.class.getResourceAsStream("/assets/zeus/" + path)) {
+            if (in == null) return null;
+            NativeImage image = NativeImage.read(NativeImage.Format.RGBA, in);
+            Img img = register(path, image);
+            CACHE.put(path, img);
+            return img;
+        } catch (IOException | RuntimeException e) {
+            Zeus.LOG.warn("Could not load picture {}", path, e);
+            return null;
+        }
+    }
 
+    public static Img sprite(String path) {
+        String key = "smooth:" + path;
+        Img have = CACHE.get(key);
+        if (have != null) return have;
+        try (InputStream in = Tex.class.getResourceAsStream("/assets/zeus/" + path)) {
+            NativeImage image = in != null ? NativeImage.read(NativeImage.Format.RGBA, in) : derived(path);
+            if (image == null) return null;
+            Img img = register(key, image, true);
+            CACHE.put(key, img);
+            return img;
+        } catch (IOException | RuntimeException e) {
+            Zeus.LOG.warn("Could not load picture {}", path, e);
+            return null;
+        }
+    }
 
-def rrect(w, t, r, n=2):
-    """A rounded rectangle section (half width w, half thickness t, corner radius r) as (x, z) points."""
-    r = min(r, w * 0.95, t * 0.95)
-    pts = []
-    corners = [(w - r, t - r, 0), (-(w - r), t - r, 90), (-(w - r), -(t - r), 180), (w - r, -(t - r), 270)]
-    for cx, cz, a0 in corners:
-        for k in range(n + 1):
-            a = math.radians(a0 + 90 * k / n)
-            pts.append((cx + r * math.cos(a), cz + r * math.sin(a)))
-    return pts
+    /** Missed lookups of pictures that are not shipped and cannot be made from another one. */
+    private static final java.util.Set<String> NOT_DERIVED = new java.util.HashSet<>();
 
+    /**
+     * Smaller copies of some pictures are not shipped (it keeps the jar small); they are made here from the next
+     * size up, exactly as the tools made them: a 2 x 2 box average of every channel. Knife sheets: level 2 from
+     * level 1 (the light rows keep their 2/255 marker alpha and their clear border rows). Crates: 256 and 128
+     * from 512.
+     */
+    private static NativeImage derived(String path) {
+        if (NOT_DERIVED.contains(path)) return null;
+        NativeImage out = null;
+        try {
+            if (path.startsWith("textures/knives/hd/") && path.endsWith("_2.png")) {
+                NativeImage src = read(path.substring(0, path.length() - 6) + "_1.png");
+                if (src != null) {
+                    try (src) {
+                        out = half(src, 7);
+                    }
+                }
+            } else if (path.startsWith("textures/crates/") && (path.endsWith("_256.png") || path.endsWith("_128.png"))) {
+                NativeImage src = read(path.substring(0, path.lastIndexOf('_')) + "_512.png");
+                if (src != null) {
+                    try (src) {
+                        if (path.endsWith("_256.png")) out = half(src, 0);
+                        else {
+                            try (NativeImage mid = half(src, 0)) {
+                                out = half(mid, 0);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (IOException | RuntimeException e) {
+            Zeus.LOG.warn("Could not make picture {}", path, e);
+        }
+        if (out == null) NOT_DERIVED.add(path);
+        return out;
+    }
 
-def ellipse(rx, rz, n=8):
-    return [(rx * math.cos(2 * math.pi * k / n), rz * math.sin(2 * math.pi * k / n)) for k in range(n)]
+    private static NativeImage read(String path) throws IOException {
+        try (InputStream in = Tex.class.getResourceAsStream("/assets/zeus/" + path)) {
+            return in == null ? null : NativeImage.read(NativeImage.Format.RGBA, in);
+        }
+    }
 
+    /**
+     * Half size by 2 x 2 box average. With cells > 0 the picture is a knife sheet of that many rows of cells:
+     * a cell whose alpha never goes above 2 is a light cell, which keeps alpha 2 wherever it has any light and
+     * clear top and bottom rows.
+     */
+    private static NativeImage half(NativeImage src, int cells) {
+        int sw = src.getWidth(), sh = src.getHeight();
+        int w = Math.max(1, sw / 2), h = Math.max(1, sh / 2);
+        int[] in = new int[sw * sh];
+        for (int y = 0; y < sh; y++) {
+            for (int x = 0; x < sw; x++) in[y * sw + x] = src.getPixel(x, y);
+        }
+        boolean[] light = new boolean[Math.max(1, cells)];
+        int sch = cells > 0 ? sh / cells : sh;
+        if (cells > 0) {
+            for (int c = 0; c < cells; c++) {
+                int max = 0;
+                for (int i = c * sch * sw; i < (c + 1) * sch * sw; i++) max = Math.max(max, in[i] >>> 24);
+                light[c] = max > 0 && max <= 2;
+            }
+        }
+        int ch = cells > 0 ? h / cells : h;
+        NativeImage out = new NativeImage(w, h, false);
+        for (int y = 0; y < h; y++) {
+            int r0 = (2 * y) * sw, r1 = Math.min(2 * y + 1, sh - 1) * sw;
+            int cell = cells > 0 ? Math.min(cells - 1, y / ch) : 0;
+            int inCell = cells > 0 ? y - cell * ch : -1;
+            for (int x = 0; x < w; x++) {
+                int x1 = Math.min(2 * x + 1, sw - 1);
+                int p0 = in[r0 + 2 * x], p1 = in[r0 + x1], p2 = in[r1 + 2 * x], p3 = in[r1 + x1];
+                int v = 0;
+                for (int sft = 0; sft < 32; sft += 8) {
+                    int sum = ((p0 >>> sft) & 255) + ((p1 >>> sft) & 255) + ((p2 >>> sft) & 255) + ((p3 >>> sft) & 255);
+                    v |= ((sum + 2) >> 2) << sft;
+                }
+                if (cells > 0 && light[cell]) {
+                    boolean any = ((p0 | p1 | p2 | p3) >>> 24) != 0;
+                    int a = any && inCell >= 2 && inCell < ch - 2 ? 2 : 0;
+                    v = (v & 0x00FFFFFF) | (a << 24);
+                }
+                out.setPixel(x, y, v);
+            }
+        }
+        return out;
+    }
 
-def sweep_y(y0, y1, section_fn, steps, mat="handle", x=0.0, z=0.0, cap=True):
-    """Sweep a section along +Y. section_fn(t) gives the (x, z) points for t in 0..1."""
-    stations, uvs = [], []
-    for i in range(steps + 1):
-        t = i / steps
-        y = y0 + (y1 - y0) * t
-        pts = section_fn(t)
-        stations.append([(x + px, y, z + pz) for px, pz in pts])
-        uvs.append([(t, j / len(pts)) for j in range(len(pts))])
-    return loft(stations, uvs, mat=mat, cap_start=cap, cap_end=cap)
+    public static BufferedImage image(String path) {
+        try (InputStream in = Tex.class.getResourceAsStream("/assets/zeus/" + path)) {
+            if (in == null) return null;
+            return javax.imageio.ImageIO.read(in);
+        } catch (IOException | RuntimeException e) {
+            Zeus.LOG.warn("Could not read picture {}", path, e);
+            return null;
+        }
+    }
 
+    public static Img fitted(String key, String path, int w, int h, boolean cover, float anchorX, float anchorY) {
+        w = Math.max(1, w);
+        h = Math.max(1, h);
+        Img have = CACHE.get(key);
+        if (have != null && have.w == w && have.h == h) return have;
+        BufferedImage src = image(path);
+        if (src == null) return null;
+        BufferedImage out = scale(src, w, h, cover, anchorX, anchorY);
+        return made(key, out.getRGB(0, 0, w, h, null, 0, w), w, h);
+    }
 
-def cylinder(c, r, h, axis="z", n=10, mat="pin"):
-    cx, cy, cz = c
-    ring = [(r * math.cos(2 * math.pi * k / n), r * math.sin(2 * math.pi * k / n)) for k in range(n)]
-    if axis == "z":
-        s = [[(cx + a, cy + b, cz - h / 2) for a, b in ring], [(cx + a, cy + b, cz + h / 2) for a, b in ring]]
-    elif axis == "x":
-        s = [[(cx - h / 2, cy + a, cz + b) for a, b in ring], [(cx + h / 2, cy + a, cz + b) for a, b in ring]]
-    else:
-        s = [[(cx + a, cy - h / 2, cz + b) for a, b in ring], [(cx + a, cy + h / 2, cz + b) for a, b in ring]]
-    return loft(s, mat=mat)
+    static BufferedImage scale(BufferedImage src, int w, int h, boolean cover, float ax, float ay) {
+        double sx = w / (double) src.getWidth();
+        double sy = h / (double) src.getHeight();
+        int tw = w;
+        int th = h;
+        if (cover) {
+            double s = Math.max(sx, sy);
+            tw = (int) Math.ceil(src.getWidth() * s);
+            th = (int) Math.ceil(src.getHeight() * s);
+        }
+        BufferedImage cur = new BufferedImage(src.getWidth(), src.getHeight(), BufferedImage.TYPE_INT_ARGB);
+        java.awt.Graphics2D g0 = cur.createGraphics();
+        g0.drawImage(src, 0, 0, null);
+        g0.dispose();
+        while (cur.getWidth() >= tw * 2 || cur.getHeight() >= th * 2) {
+            int nw = Math.max(tw, cur.getWidth() >= tw * 2 ? cur.getWidth() / 2 : cur.getWidth());
+            int nh = Math.max(th, cur.getHeight() >= th * 2 ? cur.getHeight() / 2 : cur.getHeight());
+            BufferedImage next = new BufferedImage(nw, nh, BufferedImage.TYPE_INT_ARGB);
+            java.awt.Graphics2D g1 = next.createGraphics();
+            g1.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g1.drawImage(cur, 0, 0, nw, nh, null);
+            g1.dispose();
+            cur = next;
+        }
+        BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        java.awt.Graphics2D g2 = out.createGraphics();
+        g2.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+        g2.setRenderingHint(java.awt.RenderingHints.KEY_RENDERING, java.awt.RenderingHints.VALUE_RENDER_QUALITY);
+        int ox = Math.round((w - tw) * Math.max(0f, Math.min(1f, ax)));
+        int oy = Math.round((h - th) * Math.max(0f, Math.min(1f, ay)));
+        g2.drawImage(cur, ox, oy, tw, th, null);
+        g2.dispose();
+        return out;
+    }
 
+    public static Img blank(int w, int h) {
+        return register("blank", new NativeImage(w, h, true));
+    }
 
-def torus(c, R, r, n=14, m=6, mat="handle"):
-    """A ring in the XY plane."""
-    cx, cy, cz = c
-    st = []
-    for i in range(n):
-        a = 2 * math.pi * i / n
-        ca, sa = math.cos(a), math.sin(a)
-        ring = []
-        for j in range(m):
-            b = 2 * math.pi * j / m
-            rr = R + r * math.cos(b)
-            ring.append((cx + rr * ca, cy + rr * sa, cz + r * math.sin(b)))
-        st.append(ring)
-    # close the loop: join last to first
-    msh = Mesh(mat)
-    idx = []
-    for i, ring in enumerate(st):
-        idx.append([msh.add(p, (i / n, j / m)) for j, p in enumerate(ring)])
-    for i in range(n):
-        a, b = idx[i], idx[(i + 1) % n]
-        for j in range(m):
-            k = (j + 1) % m
-            msh.quad(a[j], a[k], b[k], b[j])
-    return msh.orient()
+    public static Img made(String key, int[] argb, int w, int h) {
+        Img have = CACHE.get(key);
+        if (have != null && have.w == w && have.h == h) return have;
+        if (have != null) have.release();
+        Img img = blank(w, h);
+        img.put(argb);
+        CACHE.put(key, img);
+        return img;
+    }
 
+    /** Like made, but sampled smoothly (linear filtering): for shapes drawn at any size. */
+    public static Img madeSmooth(String key, int[] argb, int w, int h) {
+        Img have = CACHE.get(key);
+        if (have != null && have.w == w && have.h == h) return have;
+        if (have != null) have.release();
+        Img img = register(key, new NativeImage(w, h, true), true);
+        img.put(argb);
+        CACHE.put(key, img);
+        return img;
+    }
 
-def sphere(c, r, n=8, mat="guard", sy=1.0):
-    cx, cy, cz = c
-    st = [[(cx, cy - r * sy, cz)]]
-    for i in range(1, n):
-        a = math.pi * i / n
-        rr = r * math.sin(a)
-        st.append([(cx + rr * math.cos(2 * math.pi * k / (n * 2)), cy - r * sy * math.cos(a), cz + rr * math.sin(2 * math.pi * k / (n * 2))) for k in range(n * 2)])
-    st.append([(cx, cy + r * sy, cz)])
-    return loft(st, mat=mat, cap_start=False, cap_end=False)
+    public static Img cached(String key) {
+        return CACHE.get(key);
+    }
 
+    public static byte[] bytes(String path) {
+        try (InputStream in = Tex.class.getResourceAsStream("/assets/zeus/" + path)) {
+            return in == null ? null : in.readAllBytes();
+        } catch (IOException e) {
+            return null;
+        }
+    }
 
-def round_to(v, d=2):
-    return round(float(v), d)
+    public static int guiScale() {
+        try {
+            return Math.max(1, (int) Minecraft.getInstance().getWindow().getGuiScale());
+        } catch (RuntimeException e) {
+            return 2;
+        }
+    }
 
-
-def export(m):
-    """Compact form for JSON: flat vertex list, flat uv list, flat index list."""
-    out = {"m": m.mat,
-           "v": [round_to(c) for p in m.v for c in p],
-           "u": [round_to(c, 3) for p in m.uv for c in p],
-           "f": [i for t in m.f for i in t]}
-    return out
-
-
-def arc_sweep(y0, length, deg, section_fn, steps, mat="handle", cap=True):
-    """Sweep a section along a gentle arc starting at (0, y0) going up (+Y) and bending towards +X when deg > 0."""
-    k = math.radians(deg) / length if length else 0.0
-    stations, uvs = [], []
-    for i in range(steps + 1):
-        t = i / steps
-        sarc = t * length
-        th = k * sarc
-        if abs(k) > 1e-6:
-            cx, cy = (1 - math.cos(th)) / k, math.sin(th) / k
-        else:
-            cx, cy = 0.0, sarc
-        N = (math.cos(th), -math.sin(th))
-        pts = section_fn(t)
-        stations.append([(cx + N[0] * px, y0 + cy + N[1] * px, pz) for px, pz in pts])
-        uvs.append([(t, j / len(pts)) for j in range(len(pts))])
-    return loft(stations, uvs, mat=mat, cap_start=cap, cap_end=cap)
+    public static void releaseAll() {
+        for (Img i : CACHE.values()) i.release();
+        CACHE.clear();
+    }
+}

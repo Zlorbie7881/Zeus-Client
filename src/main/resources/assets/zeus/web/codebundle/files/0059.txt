@@ -1,27 +1,18 @@
 package com.zlorbie788.zeus.mixin;
 
-import com.zlorbie788.zeus.ui.ZeusSkins;
-import net.minecraft.client.gui.screens.PauseScreen;
+import com.zlorbie788.zeus.mods.Friends;
+import net.minecraft.client.renderer.entity.LivingEntityRenderer;
+import net.minecraft.world.entity.LivingEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Redirect;
-import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.network.chat.Component;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/** Makes room for the Zeus logo above the pause menu's buttons once they are laid out. */
-@Mixin(PauseScreen.class)
-public abstract class PauseTitleMixin {
-    @Inject(method = "init", at = @At("TAIL"), require = 0)
-    private void zeus$init(CallbackInfo ci) {
-        ZeusSkins.pauseInit((PauseScreen) (Object) this);
-    }
-
-    /** The game draws "Game Menu" itself at the top; with the logo there it is left out. */
-    @Redirect(method = "render", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/GuiGraphics;drawCenteredString(Lnet/minecraft/client/gui/Font;Lnet/minecraft/network/chat/Component;III)V"), require = 0)
-    private void zeus$title(GuiGraphics g, Font font, Component text, int x, int y, int color) {
-        if (!ZeusSkins.hidesTitle((PauseScreen) (Object) this)) g.drawCenteredString(font, text, x, y, color);
+@Mixin(LivingEntityRenderer.class)
+public abstract class FriendTagMixin {
+    @Inject(method = "shouldShowName(Lnet/minecraft/world/entity/LivingEntity;D)Z", at = @At("RETURN"), cancellable = true, require = 0)
+    private void zeus$friendTag(LivingEntity entity, double distanceSq, CallbackInfoReturnable<Boolean> cir) {
+        if (cir.getReturnValue() && (Friends.hideNameTag(entity)
+                || com.zlorbie788.zeus.mods.NameTags.hideVanilla(entity))) cir.setReturnValue(false);
     }
 }

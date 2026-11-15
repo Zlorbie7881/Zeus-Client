@@ -1,1655 +1,1736 @@
 package com.zlorbie788.zeus.mods;
-
 import com.zlorbie788.zeus.core.Category;
-import com.zlorbie788.zeus.core.Env;
 import com.zlorbie788.zeus.core.Module;
 import com.zlorbie788.zeus.core.Setting;
 import com.zlorbie788.zeus.core.Zeus;
-import com.zlorbie788.zeus.render.Projector;
-import com.zlorbie788.zeus.ui.Accent;
-import com.zlorbie788.zeus.render.ChunkLook;
+import com.zlorbie788.zeus.ui.ArmArt;
 import com.zlorbie788.zeus.ui.Draw;
+import com.zlorbie788.zeus.ui.KnifeArt;
+import com.zlorbie788.zeus.ui.KnifeHD;
+import com.zlorbie788.zeus.ui.KnifeHDGui;
+import com.zlorbie788.zeus.ui.KnifeMesh;
+import com.zlorbie788.zeus.ui.KnifePickerScreen;
+import com.zlorbie788.zeus.ui.Lightning;
+import com.zlorbie788.zeus.ui.Perf;
+import com.zlorbie788.zeus.ui.Rig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.core.Direction;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.chunk.LevelChunk;
-import net.minecraft.world.level.chunk.LevelChunkSection;
-
+import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Random;
 
-/**
- * Finds chunks that look built by someone. Every loaded chunk is scored by the blocks that almost never occur on their
- * own (storage, workstations, redstone, lights, metal blocks, glass, concrete and so on) plus item frames, armor stands and
- * minecarts with chests. Naturally generated structures (villages, mineshafts, strongholds, bastions and the like) are
- * recognised from their signature blocks, named, and left out of the red list unless there are clear signs of a base
- * inside them. Neighbouring flagged chunks are merged into one find with a centre, a size, a depth and a direction.
- */
-public class SuspiciousChunks extends Module {
-    private static final String[] GROUPS = {"storage", "workstations", "redstone", "lighting", "metal blocks", "building"};
-    private static final String[] STRUCTS = {"Mineshaft", "Stronghold", "Bastion", "Nether fortress", "Ancient city", "End city", "Ocean monument", "Trial chambers", "Village", "Temple", "Mansion", "Dungeon"};
-    /** How many marker points a chunk needs to count as that structure. */
-    private static final int[] STRUCT_MIN = {18, 12, 24, 30, 5, 12, 24, 8, 16, 14, 70, 9};
-    private static final String[] DIRS = {"E", "SE", "S", "SW", "W", "NW", "N", "NE"};
+public final class KnifeSwing extends Module {
+    private static final int OPEN = 0;
+    private static final int FAN = 1;
+    private static final int SHOW = 2;
+    private static final int WHIRL = 3;
+    private static final int ROLL = 4;
+    private static final int ROLL_BACK = 5;
+    private static final int TWIRL = 6;
+    private static final int GUN = 7;
+    private static final int AERIAL = 8;
+    private static final int CLOSE = 9;
+    private static final int SLASHING = 10;
+    private static final int RSPIN = 11;
+    private static final int RREV = 12;
+    private static final int RFLURRY = 13;
+    private static final int RPIN = 14;
+    private static final int KFLIP = 15;
+    private static final int KAERIAL = 16;
+    private static final int KSHOW = 17;
+    private static final int KSLASH = 18;
+    private static final int KTRIPLE = 19;
+    private static final int KCATCH = 20;
+    private static final int KEIGHT = 21;
+    private static final int KFLIPY = 22;
+    private static final int KSLASH3 = 23;
+    private static final int KSNAP = 24;
+    private static final int KHYPER = 25;
+    private static final int KJUGGLE = 26;
+    private static final int SFAN = 27;
+    private static final int HWHIRL = 28;
+    private static final int FRENZY = 29;
+    private static final int KORBIT = 30;
+    private static final int KCROSS = 31;
+    private static final int KDOUBLE = 32;
+    private static final int KSTORM = 33;
+    private static final int HELI = 34;
+    private static final int BDOUBLE = 35;
+    private static final int LATCH = 36;
+    private static final int CASCADE = 37;
+    private static final int INSPECT = 38;
+    private static final int SB_DRAW = 39;
+    private static final int SB_ROLL = 40;
+    private static final int SB_FAN = 41;
+    private static final int SB_ZEN = 42;
+    private static final int SB_AERIAL = 43;
+    private static final int SB_INSPECT = 44;
+    private static final int SK_DRAW = 45;
+    private static final int SK_INSPECT = 46;
+    private static final int SK_FLIP = 47;
+    private static final int SK_SPIN = 48;
+    private static final int SK_PIN = 49;
+    private static final int SK_TOSS = 50;
+    // tricks made for the heavy HD tactical knives (any straight knife can play them)
+    private static final int T_INSPECT = 51;
+    private static final int T_REVERSE = 52;
+    private static final int T_ROLL = 53;
+    private static final int T_XCUT = 54;
+    private static final String[] CLIP_NAME = {"draw", "inspect2", "fan", "zen", "aerial", "inspect", "draw", "inspect", "inspect2", "spin", "pinwheel", "toss"};
+    private static final float[] CLIP_D = {1.35f, 3.4f, 3.2f, 3.0f, 2.6f, 3.9f, 1.3f, 3.5f, 3.0f, 2.2f, 3.0f, 2.8f};
 
-    private final Setting.Choice sensitivity;
-    private final Setting.Choice scanPace;
-    private final Setting.Num range;
-    private final Setting.Bool scanMultiplayer = add(new Setting.Bool("Scan loaded multiplayer chunks", "Allow scanning only chunk data your client has already received and loaded. No hidden or unloaded chunks are queried; this can use extra CPU on busy servers.", false));
-    private final Setting.Choice where;
-    private final Setting.Choice natural;
-    private final Setting.Bool entities;
-    private final Setting.Bool growthEvidence;
-    private final Setting.Bool clearance;
-    private final Setting.Bool minedGeodeScan;
-    private final Setting.Num minCluster;
-    private final Setting.Bool radar;
-    private final Setting.Choice corner;
-    private final Setting.Num mapSize;
-    private final Setting.Bool remember;
-    private final Setting.Bool raid;
-    private final Setting.Choice mapDetail;
-    private final Setting.Num tile;
-    private final Setting.Choice markerStyle;
-    private final Setting.Num lineWidth;
-    private final Setting.Choice lineColor;
-    private final Setting.Bool tracer;
-    private final Setting.Bool maybe;
-    private final Setting.Bool world;
-    private final Setting.Num markerRange;
-    private final Setting.Bool alert;
-    private final Setting.Bool activity;
-    private final Setting.Num activityMin;
-    private final Setting.Choice activityMemory;
-    private final Setting.Bool activityRing;
-    private final Setting.Bool useActivity;
-    private final Setting.Info list;
-    private final Setting.Info geodeList;
-    private final Setting.Action rescan;
+    private static final float BASE = 1.3f;
+    private static final float[] MOVE_TIME = {0.55f, 1.05f, 1.7f, 1.15f, 1.0f, 1.0f, 1.2f, 1.1f, 1.6f, 0.5f, 0.72f,
+        0.9f, 0.9f, 1.6f, 1.15f, 0.95f, 1.35f, 1.35f, 0.7f,
+        1.2f, 0.85f, 1.6f, 0.95f, 1.15f, 1.35f, 1.7f, 1.9f,
+        0.95f, 1.1f, 1.3f,
+        1.5f, 1.4f, 1.9f, 1.5f, 1.5f, 2.0f, 1.1f, 3.0f, 3.2f,
+        1.35f * 1.3f, 3.4f * 1.3f, 3.2f * 1.3f, 3.0f * 1.3f, 2.6f * 1.3f, 3.9f * 1.3f, 1.3f * 1.3f, 3.5f * 1.3f, 3.0f * 1.3f, 2.2f * 1.3f, 3.0f * 1.3f, 2.8f * 1.3f,
+        3.4f, 1.75f, 1.45f, 1.05f};
+    public static final String[] TRICKS = {"Chaos combo", "Flick open", "Fan", "Showcase", "Handle whirl", "Rollover", "Reverse rollover", "Twirl", "Gunslinger", "Aerial toss", "Snap shut", "Speed fan", "Hyper whirl", "Flip frenzy", "Helicopter", "Double toss", "Latch flip", "Cascade", "Inspect", "Studio draw", "Studio rollover", "Studio fan", "Studio zen", "Studio aerial toss", "Studio inspect", "Random"};
+    private static final int[][] SCRIPT = {
+        {FAN, SFAN, SHOW, HWHIRL, ROLL, HELI, TWIRL, FRENZY, GUN, BDOUBLE, ROLL_BACK, CASCADE, CLOSE},
+        {OPEN}, {FAN}, {SHOW}, {WHIRL}, {ROLL}, {ROLL_BACK}, {TWIRL}, {GUN}, {AERIAL}, {CLOSE}, {SFAN}, {HWHIRL}, {FRENZY},
+        {HELI}, {BDOUBLE}, {LATCH}, {CASCADE}, {INSPECT},
+        {SB_DRAW}, {SB_ROLL}, {SB_FAN}, {SB_ZEN}, {SB_AERIAL}, {SB_INSPECT}
+    };
+    public static final String[] KTRICKS = {"Chaos combo", "Ring spin", "Reverse spin", "Ring flurry", "Pinwheel", "Backflip", "Toss and catch", "Showcase", "Slash",
+        "Triple spin", "Catch flip", "Figure eight", "Side flip", "Slash combo", "Spin stop", "Hyper spin", "Juggle", "Wrist orbit", "Cross spin", "Double toss", "Ring storm", "Inspect", "Studio draw", "Studio ring spin", "Studio back flip", "Studio pinwheel", "Studio toss", "Studio inspect",
+        "Tactical inspect", "Reverse grip flip", "Thumb roll", "X cut", "Random"};
+    private static final int[][] KSCRIPT = {
+        {KSHOW, RSPIN, KORBIT, KTRIPLE, KEIGHT, KCROSS, RFLURRY, KFLIP, KDOUBLE, KSNAP, KHYPER},
+        {RSPIN}, {RREV}, {RFLURRY}, {RPIN}, {KFLIP}, {KAERIAL}, {KSHOW}, {KSLASH},
+        {KTRIPLE}, {KCATCH}, {KEIGHT}, {KFLIPY}, {KSLASH3}, {KSNAP}, {KHYPER}, {KJUGGLE}, {KORBIT}, {KCROSS}, {KDOUBLE}, {KSTORM}, {INSPECT},
+        {SK_DRAW}, {SK_SPIN}, {SK_FLIP}, {SK_PIN}, {SK_TOSS}, {SK_INSPECT},
+        {T_INSPECT}, {T_REVERSE}, {T_ROLL}, {T_XCUT}
+    };
+    private static KnifeSwing self;
+    private long drewAt;
+    private long frames;
+    private long enabledAt;
+    private boolean warned;
+    private static final String[] TYPES = types();
+    /** Only the HD knives can be chosen; the old pixel designs remain inside as the fallback drawing. */
+    private static String[] types() {
+        String[] st = KnifeArt.straightNames();
+        String[] hd = new String[KnifeArt.HD_COUNT];
+        System.arraycopy(st, st.length - KnifeArt.HD_COUNT, hd, 0, KnifeArt.HD_COUNT);
+        return hd;
+    }
+    /** Knife kinds inside the renderer: 0 butterfly, 1 karambit, 2.. straight models; the HD knives are the last of those. */
+    private static final int FIRST_HD = 2 + KnifeArt.SMODELS.length - KnifeArt.HD_COUNT;
+    private static final String[] SECTIONS = {"Knife & hand", "Position", "Tricks", "Effects"};
+    private final Setting.Choice section = add(new Setting.Choice("Show settings for", "The knife settings are split into four pages so you only see what you are changing.", 0, SECTIONS));
+    private final Setting.Action switchKnife = add(new Setting.Action("Switch knife", "Opens a window with every HD knife and a live 3D preview of each. Click one to hold it.", this::openGallery)
+            .primary(() -> "Holding " + shortKnife() + "  ·  " + com.zlorbie788.zeus.core.Crates.ownedCount() + "/" + KnifeArt.HD_COUNT + " knives unlocked"))
+            .showIf(() -> section.index() == 0);
 
-    /** {weight * 10, group, structure + 1 (0 = none), marker weight, tell (1/0)} per block. */
-    private static final ConcurrentHashMap<Block, int[]> WEIGHT = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<Block, String> GROWTH_KIND = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<Block, Integer> GEODE_KIND = new ConcurrentHashMap<>();
+    private String shortKnife() {
+        String n = type == null ? "" : TYPES[ownedHd()];
+        return n.replace(" · ", " ");
+    }
+    private final Setting.Choice type = add(new Setting.Choice("HD knife", "Which HD knife you hold: Tactical, Karambit, M9 Bayonet, Butterfly, Huntsman, Bowie, Skeleton, Ursus or Stiletto, each in several skins.", 0, TYPES)).showIf(() -> false);
 
-    /** The score of one chunk. */
-    private static final class Score {
-        double total;
-        double tell;
-        double ents;
-        double strong;
-        double mid;
-        double weak;
-        int strongCount;
-        final double[] groups = new double[GROUPS.length];
-        final int[] markers = new int[STRUCTS.length];
-        final int[] under = new int[STRUCTS.length];
-        int minY = Integer.MAX_VALUE;
-        int maxY = Integer.MIN_VALUE;
-        double ySum;
-        int yCount;
-        long at;
-        boolean flagged;
-        int structure = -1;
-        int structPts;
-        final int[] roles = new int[BaseBrain.ROLES];
-        long foot;
-        int[] clues;
-        final List<Long> keys = new ArrayList<>();
-        double underground;
-        int items;
-        int grownPlants;
-        int youngPlants;
-        int growthKinds;
-        /** Under-grown plants in this chunk (see Clearance): proof nobody has been here. */
-        int owed;
-        int owedKinds;
-        /** How many of the 8 chunks around it are untouched too. */
-        int clearRing;
-        int tunnelRuns;
-        int verticalShafts;
-        BaseBrain.Verdict verdict;
+    /** The renderer's knife kind for the chosen HD knife. */
+    private int kind() {
+        return FIRST_HD + ownedHd();
     }
 
-    /** Several flagged chunks that touch each other. */
-    private static final class Find {
-        double cx;
-        double cz;
-        int chunks;
-        double total;
-        int minY = Integer.MAX_VALUE;
-        int maxY = Integer.MIN_VALUE;
-        double tell;
-        int strongCount;
-        final double[] groups = new double[GROUPS.length];
-        final List<long[]> cells = new ArrayList<>();
-        String structure;
-        BaseBrain.Verdict verdict;
-        Ledger.Entry entry;
-        int fires;
-        int items;
-        int tunnelRuns;
-        int verticalShafts;
+    /** The chosen knife if it has been unlocked from a crate, otherwise the starter karambit. */
+    private int ownedHd() {
+        int i = type.index();
+        return com.zlorbie788.zeus.core.Crates.ownsHd(i) ? i : com.zlorbie788.zeus.core.Crates.starterHd();
     }
 
-    private final Map<Long, Score> chunks = new HashMap<>();
-    private final Map<Long, GeodeHint> geodeHints = new HashMap<>();
-    private final Map<Long, Double> entScore = new HashMap<>();
-    private final Map<Long, Integer> itemCount = new HashMap<>();
-    /** Per chunk: ender pearls, name-tagged mobs, villagers, the biggest herd of one kind. */
-    private final Map<Long, int[]> clueMap = new HashMap<>();
-    private boolean hub;
-    private long lastLearn;
-    private long lastLedger;
-    private final Set<Long> announced = new HashSet<>();
-    private List<Find> finds = new ArrayList<>();
-    private List<long[]> queue = new ArrayList<>();
-    /** Next scan candidate. Avoids ArrayList.remove(0), which shifts the whole queue for every chunk. */
-    private int queueIndex;
-    private int tick;
-
-    public SuspiciousChunks() {
-        this("suspicious", "Suspicious Chunks", "Finds chunks that look built by someone: bases, farms, hidden rooms. Names natural structures.", 2, 1);
+    /** The HD knife currently in hand, for the crates screen. */
+    public static int heldHd() {
+        return self == null ? com.zlorbie788.zeus.core.Crates.starterHd() : self.ownedHd();
     }
 
-    /** {@code level} is the starting sensitivity (0 low, 1 medium, 2 high) and {@code smallest} the smallest find in chunks. */
-    protected SuspiciousChunks(String id, String name, String desc, int level, int smallest) {
-        this(id, name, desc, level, smallest, 0);
+    /** Holds an owned HD knife (from the crates screen) and turns the knife module on. */
+    public static void equipHd(int hd) {
+        if (self == null || !com.zlorbie788.zeus.core.Crates.ownsHd(hd)) return;
+        self.setKind(FIRST_HD + hd);
+        if (!self.enabled()) self.setEnabled(true);
     }
 
-    /** Variant constructor lets focused scanners choose a default vertical region. */
-    protected SuspiciousChunks(String id, String name, String desc, int level, int smallest, int defaultWhere) {
-        super(id, name, desc, Category.SCANNER);
-        light();
-        hudCard();
-        this.sensitivity = add(new Setting.Choice("How sure to be", "How much has to be in a chunk before it is flagged. Medium finds a small hut with a bed, a chest and a furnace. High finds even a bed and a chest. Very high flags anything a player could have placed.", level, "Low", "Medium", "High", "Very high"));
-        this.scanPace = add(new Setting.Choice("Scan pace", "Fast uses less frame time; Thorough spends more time processing the queue each tick. This changes scan throughput, not the scoring rules.", 0, "Fast", "Balanced", "Thorough"));
-        this.range = add(new Setting.Num("Scan distance", "How many chunks around you are checked. Only chunks your game has loaded can be scanned, so more than your render distance does nothing.", 14, 3, 20, 1, " chunks"));
-        this.where = add(new Setting.Choice("Where", "Look everywhere, only underground (hidden bases) or only above the surface.", defaultWhere, "Everywhere", "Underground only", "Above ground only"));
-        this.natural = add(new Setting.Choice("Natural structures", "Villages, mineshafts, bastions and so on are named. Hide them from the list, show them in blue, or treat them like any other chunk.", 1, "Hide", "Show in blue", "Flag like the rest"));
-        this.entities = add(new Setting.Bool("Count entities", "Item frames, armor stands, paintings and minecarts with chests add to the score.", true));
-        this.growthEvidence = add(new Setting.Bool("Farm growth evidence", "Uses mature/immature crop patterns as a small supporting clue. Crop fields never flag a chunk by themselves.", true));
-        this.clearance = add(new Setting.Bool("No-growth proof", "Crops that are ripe, kelp that reaches the top, tall cane, long vines: plants grow whether or not anybody watches. A chunk loaded for hours whose plants are still short was never ticked with a player in it, so a base cannot be hidden by building it to look natural. Chunks surrounded by untouched ones are flagged as a cleared area. This is evidence of the opposite kind from everything else here, and it is the one anti-xray servers cannot fake, because they would have to grow the plants for real.", true));
-        this.minedGeodeScan = add(new Setting.Bool("Detect mined geodes", "Finds loaded geodes with many exposed budding blocks but very few remaining crystals. This is a separate exploration clue, not a base score.", true));
-        this.minCluster = add(new Setting.Num("Smallest find size", "Ignore finds made of fewer chunks than this. 1 keeps one-chunk huts.", smallest, 1, 6, 1, " chunks"));
-        this.radar = add(new Setting.Bool("Map", "A map of the chunks around you. Flagged chunks are numbered, nearest first, and coloured by what was found in them.", true));
-        this.corner = Hud.corner(this, 3).showIf(() -> this.radar.on());
-        this.mapDetail = add(new Setting.Choice("Map detail", "Full: title, coordinates, nearest find and legend. Compact: just the grid and one line. Tiny: only the grid.", 0, "Full", "Compact", "Tiny")).showIf(() -> this.radar.on());
-        this.mapSize = add(new Setting.Num("Map size", "How many chunks it shows each way from you.", 7, 2, 10, 1, " chunks")).showIf(() -> this.radar.on());
-        this.tile = add(new Setting.Num("Tile size", "The size of one chunk on the map.", 11, 4, 18, 1, " px")).showIf(() -> this.radar.on());
-        this.maybe = add(new Setting.Bool("Show near misses", "Chunks that almost made it (20 % or more, but under the cut-off) are tinted amber on the map and listed on the card, so you can see what Zeus is unsure about.", true));
-        this.tracer = add(new Setting.Bool("Line to the nearest find", "A line on the screen that points at the nearest find.", true));
-        this.world = add(new Setting.Bool("Markers in the world", "Marks flagged chunks the way Anubis does: a flat translucent tile on the Y=63 plane, an edge round the outside of each group, and a tracer to the middle of each area. Likely mined geodes are purple.", true));
-        this.markerRange = add(new Setting.Num("Marker range", "Flagged chunks closer than this get a tile.", 6, 1, 16, 1, " chunks")).showIf(() -> this.world.on());
-        this.alert = add(new Setting.Bool("Alert", "A message when a new find shows up.", true));
-        this.activity = add(new Setting.Bool("Watch for activity", "Counts the blocks that change far from you (somebody digging, building, filling chests) and points at chunks where it is happening right now, even when no base shows there yet. Your own work and water, lava, leaves and crops are not counted.", true));
-        this.activityMin = add(new Setting.Num("Activity needs", "How many weighted block changes make a chunk count as active. Lower finds more, but also single stray changes.", 6, 2, 40, 1, "")).showIf(() -> this.activity.on());
-        this.activityMemory = add(new Setting.Choice("Activity memory", "How quickly old block-change evidence fades. Short is responsive; long is better for slow building or mining.", 1, "15 seconds", "30 seconds", "60 seconds", "120 seconds")).showIf(() -> this.activity.on());
-        this.useActivity = add(new Setting.Bool("Activity counts as evidence", "A chunk that already shows signs of a player (beds, storage, player-made blocks) is judged more likely a base while others are changing blocks in it.", true)).showIf(() -> this.activity.on());
-        this.activityRing = add(new Setting.Bool("Pulse active chunks on the map", "A pulsing ring on the map around chunks where someone is working.", true)).showIf(() -> this.activity.on());
-        this.markerStyle = add(new Setting.Choice("Outline", "Top edge: only the top of the find is outlined, so the whole chunk is not boxed in. Top edge + posts adds short corner posts. Full frame is the old curtain.", 0, "Top edge", "Top edge + posts", "Full frame")).showIf(() -> false);
-        this.lineWidth = add(new Setting.Num("Outline width", "Thickness of the outline.", 1.6, 0.8, 4.0, 0.2, "")).showIf(() -> false);
-        this.lineColor = add(new Setting.Choice("Tile colour", "Automatic: the Anubis red (purple for a mined geode). Or pick one.", 0, com.zlorbie788.zeus.render.EspKit.COLOR_NAMES)).showIf(() -> this.world.on());
-        this.remember = add(new Setting.Bool("Remember bases", "Keeps a list of the bases found on each server (config/zeus-bases.json) so it can tell later whether one was raided.", true));
-        this.raid = add(new Setting.Bool("Raid check", "Compares a base with what it looked like last time, and looks for fire and scattered items, to tell whether it was raided.", true));
-        add(new Setting.Action("Not a base (nearest find)", "Tell Zeus the nearest find is not a base. It is never flagged again and Zeus gets a little stricter on this server.", () -> answer(false)));
-        add(new Setting.Action("This is a base (nearest find)", "Tell Zeus the nearest find is a base. It stays flagged and Zeus gets a little more willing on this server.", () -> answer(true)));
-        add(new Setting.Action("Save finds as waypoints", "Adds a waypoint for every flagged find (the nearest ten) that has none yet, named after what it is. They show through walls with the Waypoints module.", this::waypointFinds));
-        add(new Setting.Action("Copy report", "Copies what Zeus sees in the best chunks (counts, structure, confidence) so you can paste it into a message when a base is not found.", this::copyReport));
-        add(new Setting.Info("What you taught it", this::taught));
-        add(new Setting.Action("Forget what I taught it", "Removes every answer you gave, on every server.", () -> {
-            Feedback.forgetAll();
-            Zeus.toast("Forgot your answers", true);
-        }));
-        add(new Setting.Action("Forget saved bases", "Empties the list of remembered bases.", Ledger::forgetAll));
-        this.list = add(new Setting.Info("Finds", this::describe));
-        this.geodeList = add(new Setting.Info("Mined geode clues", this::geodeLines));
-        add(new Setting.Info("Activity right now", this::activityLines));
-        add(new Setting.Info("The chunk you are in", this::here));
-        this.rescan = add(new Setting.Action("Scan again", "Forgets everything and scans the area from scratch.", this::reset));
+    private void setKind(int kind) {
+        if (kind >= FIRST_HD && !com.zlorbie788.zeus.core.Crates.ownsHd(kind - FIRST_HD)) return;
+        if (kind >= FIRST_HD && kind - FIRST_HD != type.index()) {
+            type.set(kind - FIRST_HD);
+            drawRise = 1f;          // the new knife rises into the hand
+        }
+    }
+    private final Setting.Choice sfinish = add(new Setting.Choice("Knife finish", "The paint of the straight knives: steel, Fade, Slaughter, Doppler, Case hardened and so on.", 0, KnifeArt.SFINISHES)).showIf(() -> false);
+    private final Setting.Choice when = add(new Setting.Choice("When it shows", "Choose when the knife overlay replaces the first-person hand: empty hand, both hands empty, always, or whenever you hold any sword.", 0, "Empty hand", "Both hands empty", "Always", "Replace any sword")).showIf(() -> section.index() == 0);
+    private final Setting.Bool hideHand = add(new Setting.Bool("Hide the game's own hand", "Hides the game's arm and held item while the knife is in your hand, so the two do not overlap.", true)).showIf(() -> section.index() == 0);
+        private final Setting.Choice trick = add(new Setting.Choice("Tsuki / Butterfly (Butterfly)", "Plays the Tsuki / Butterfly animation: the trick key or right click plays it, and the knife changes to Butterfly to match. The repeat count is shown in its display.", 0, TRICKS)).showIf(() -> section.index() == 2 && bfly());
+        private final Setting.Choice ktrick = add(new Setting.Choice("Trick", "Plays the Tsuki animation on a karambit and other knives. The knife changes to a karambit-style version to match the animation. The repeat count is shown in its display.", 0, KTRICKS)).showIf(() -> section.index() == 2 && !bfly());
+        private final Setting.Bool rightClick = add(new Setting.Bool("Keyboard & mouse trick", "The keyboard makes this Tsuki / Butterfly. Pick the Tsuki key in Controls and choose the animation. The move that is already in there decides which animation happens.", true)).showIf(() -> section.index() == 2);
+    private final Setting.Bool slash = add(new Setting.Bool("Slash when I attack", "The knife cuts across the screen when you attack.", true)).showIf(() -> section.index() == 2);
+    private final Setting.Bool hold = add(new Setting.Bool("Always in hand", "The knife stays in your hand between tricks. Off: it only shows while it moves.", true)).showIf(() -> section.index() == 2);
+    private final Setting.Bool auto = add(new Setting.Bool("Keep doing tricks", "Plays a trick by itself every few seconds.", false)).showIf(() -> section.index() == 2);
+    private final Setting.Choice preset = add(new Setting.Choice("Butterfly colours", "The colours of the butterfly knife's handles and blade.", 0, KnifeArt.PRESETS)).showIf(() -> false);
+    private final Setting.Choice kcolor = add(new Setting.Choice("Karambit colours", "The colours of the karambit. Voidbloom is the dark purple one with the glowing magenta blade.", 0, KnifeArt.KPRESETS)).showIf(() -> false);
+    private final Setting.Choice kcurve = add(new Setting.Choice("Karambit blade", "How the karambit's blade curves: the claw of the video, a wide hook or a long talon.", 0, KnifeArt.KCURVES)).showIf(() -> false);
+    private final Setting.Choice shape = add(new Setting.Choice("Blade shape", "The shape of the butterfly knife's blade.", 0, KnifeArt.SHAPES)).showIf(() -> false);
+    private final Setting.Choice finish = add(new Setting.Choice("Blade finish", "Overrides the blade colours of the chosen butterfly knife.", 0, KnifeArt.FINISHES)).showIf(() -> false);
+    private final Setting.Choice design = add(new Setting.Choice("Handle design", "Slotted has the long slot and slanted teeth of the knife in the video.", 0, KnifeArt.DESIGNS)).showIf(() -> false);
+    private final Setting.Choice hand = add(new Setting.Choice("Hand", "My skin: the arm wears your own skin, like the game's own hand. The others are painted.", 0, ArmArt.LOOKS)).showIf(() -> section.index() == 0);
+    private final Setting.Choice place = add(new Setting.Choice("Place", "Where on the screen. Bottom left is the left hand.", 0, "Bottom right", "Bottom left", "Centre")).showIf(() -> section.index() == 1);
+    private final Setting.Bool showFingers = add(new Setting.Bool("Show fingers", "Draws the blocky fingers and thumb on the handle. Off: only the arm and the knife.", true)).showIf(() -> section.index() == 0);
+    private final Setting.Num size = add(new Setting.Num("Size", "How big the hand and knife are.", 1.0, 0.5, 2.5, 0.1, "x")).showIf(() -> section.index() == 1);
+    private final Setting.Num height = add(new Setting.Num("Hand height", "How high the hand holding the knife sits, measured up from the bottom of the screen. Every knife type is placed so its grip lands here.", 30, 5, 70, 1, "%")).showIf(() -> section.index() == 1);
+    private final Setting.Num inset = add(new Setting.Num("Hand distance from edge", "How far in from the side of the screen the hand sits.", 22, 5, 50, 1, "%")).showIf(() -> section.index() == 1);
+    private final Setting.Num speed = add(new Setting.Num("Speed", "How fast the tricks play.", 1.0, 0.5, 2.0, 0.1, "x")).showIf(() -> section.index() == 2);
+    private final Setting.Num spins = add(new Setting.Num("Rollovers", "How many times the knife turns in a rollover.", 2, 1, 4, 1, "")).showIf(() -> section.index() == 2);
+    private final Setting.Bool sway = add(new Setting.Bool("Sway with the camera", "The hand lags behind when you turn, like the game's own.", true)).showIf(() -> section.index() == 1);
+    private final Setting.Bool handLight = add(new Setting.Bool("Light on the hand", "The knife throws a little of its colour on the hand when it flashes and spins.", true)).showIf(() -> section.index() == 0);
+    private final Setting.Bool safeDraw = add(new Setting.Bool("Safe draw", "Always uses the flat pixel knives, which draw on every setup. Turn it off to try the 3D models.", true)).showIf(() -> false);
+    private final Setting.Info status = add(new Setting.Info("Knife", this::lines)).showIf(() -> section.index() == 0);
+    private final Setting.Bool model3d = add(new Setting.Bool("3D knife models", "Draws the knives as real 3D models (a few hundred triangles each, flat shaded, cheap). Off: the classic pixel knives. Falls back to the pixel knives by itself if a model cannot be loaded.", false)).showIf(() -> false);
+    private final Setting.Bool trail = add(new Setting.Bool("Light trail", "A fading trail behind the blade.", true)).showIf(() -> section.index() == 3);
+    private final Setting.Bool blur = add(new Setting.Bool("Motion blur", "Ghost images of the knife while it moves fast.", true)).showIf(() -> section.index() == 3);
+    private final Setting.Bool sparks = add(new Setting.Bool("Sparks and flash", "A flash and a few sparks when it locks open and when it cuts.", true)).showIf(() -> section.index() == 3);
+    private final Setting.Num trailStrength = add(new Setting.Num("Trail strength", "Opacity of the blade trail. Set to 0% to keep trails enabled but invisible, or lower it for a cleaner look.", 100, 0, 150, 5, "%")).showIf(() -> section.index() == 3 && trail.on());
+    private final Setting.Num ghostStrength = add(new Setting.Num("Ghost opacity", "Opacity of the motion-blur ghost knives. Lower values make fast tricks less busy.", 100, 0, 150, 5, "%")).showIf(() -> section.index() == 3 && blur.on());
+    private final Setting.Num flashStrength = add(new Setting.Num("Flash intensity", "Strength of the impact bloom and sparks. Lower it for a subtler knife effect.", 100, 0, 150, 5, "%")).showIf(() -> section.index() == 3 && sparks.on());
+    private final Setting.Action showNow = add(new Setting.Action("Show it now", "Draws the knife for four seconds whatever your hand is doing, so you can check the knife and its trick without emptying your hand.", () -> previewUntil = com.zlorbie788.zeus.core.Clock.millis() + 4000L)).showIf(() -> section.index() == 0);
+    private final Setting.Action[] play = new Setting.Action[TRICKS.length];
+    private final Setting.Action[] kplay = new Setting.Action[KTRICKS.length];
+    private int lastType;
+    private final ArrayDeque<Integer> queue = new ArrayDeque<>();
+    private final List<int[]> line = new ArrayList<>();
+    private float[] lineStart = new float[0];
+    private float lineTotal;
+    private long start;
+    private long enter;
+    private boolean isOpen;
+    private boolean wasDown;
+
+    private long previewUntil;
+
+    private boolean meshBroken;
+    private boolean wasUse;
+    private long autoAt;
+    private final Random rnd = new Random();
+    private int lastRandom = -1;
+    private boolean want;
+    private float vis;
+    private long lastFrame;
+    private float swayX;
+    private float swayY;
+    private float lastYaw = Float.NaN;
+    private float lastPitch;
+    private final Rig rig = new Rig();
+    private final Rig ghost = new Rig();
+
+    private final ArrayDeque<float[]> tipTrail = new ArrayDeque<>();
+
+    private final List<Rig.T> ghostAt = new ArrayList<>();
+    private final List<float[]> ghostAngle = new ArrayList<>();
+    private final List<Long> ghostWhen = new ArrayList<>();
+    public KnifeSwing() {
+        super("knife", "Knives", "An HD tactical knife in your own hand: lit high-resolution 3D models with spins, flips and inspects. Shows when your hand is empty by default, and right click or the trick key plays a trick.", Category.RENDER);
+        self = this;
+        add(new Setting.Action("Play the chosen trick", "Plays the trick picked above right now, even with something in your hand.", () -> {
+            previewUntil = com.zlorbie788.zeus.core.Clock.millis() + 4000L;
+            perform(ktrick.index());
+        })).showIf(() -> section.index() == 2);
     }
 
-    private List<String> taught() {
-        Brain.Ctx c = Brain.ctx();
-        int no = Feedback.count(c.server, c.dim, false);
-        int yes = Feedback.count(c.server, c.dim, true);
-        double b = Feedback.bias(c.server);
-        if (no + yes == 0 && b == 0) return List.of("Nothing yet. Stand near a find and use the two buttons above.");
-        return List.of(no + " chunks marked not a base, " + yes + " marked a base here.",
-                String.format(Locale.ROOT, "Cut-off on this server: %+.1f points.", b));
+    private Setting.Choice finishFor(int t) {
+        return t == 0 ? preset : t == 1 ? kcolor : sfinish;
     }
-
-    /** The user says whether the nearest find is a base. */
-    private void answer(boolean isBase) {
+    private void openGallery() {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || finds.isEmpty()) {
-            Zeus.toast("No find to answer about", false);
-            return;
-        }
-        Find best = null;
-        double bd = Double.MAX_VALUE;
-        for (Find f : finds) {
-            double d = Math.hypot(f.cx - mc.player.getX(), f.cz - mc.player.getZ());
-            if (d < bd) {
-                bd = d;
-                best = f;
-            }
-        }
-        Brain.Ctx c = Brain.ctx();
-        long[][] cells = best.cells.toArray(new long[0][]);
-        if (isBase) Feedback.confirm(c.server, c.dim, cells);
-        else Feedback.dismiss(c.server, c.dim, cells);
-        Zeus.toast((isBase ? "Remembered as a base" : "Never flagged again") + ": " + Math.round(best.cx) + ", " + Math.round(best.cz), true);
-        rebuild(mc);
+        int n = KnifeArt.allKnives().length;
+        int[] fins = new int[n];
+        for (int i = 0; i < n; i++) fins[i] = finishFor(i).index();
+        mc.setScreen(new KnifePickerScreen(mc.screen, kind(), fins, (k, f) -> setKind(k)));
     }
+    private static final String[] INSPECT_STYLES = {
+        "a slow turn with a tilt, so the flat of the blade and then the spine face you",
+        "a flip end over end to show the front, then a sweep round to show the edge",
+        "a short toss, a catch with a recoil and one turn to show it",
+        "a fast turn about the handle, then the blade rocked from side to side",
+        "a turn into a reverse grip, a small stab and a turn back",
+        "a loose wrist roll that ends in a full turn"};
 
-    private final Set<Long> activeAnnounced = new HashSet<>();
-
-    /** Separate exploration clue: likely harvested geodes are never counted as player bases. */
-    private record GeodeHint(int shell, int budding, int crystals, int exposedBudding) {}
-
-    private void waypointFinds() {
-        Minecraft mc = Minecraft.getInstance();
-        Extras.Waypoints wp = Zeus.get(Extras.Waypoints.class);
-        if (mc.player == null || wp == null || finds.isEmpty()) {
-            Zeus.toast(wp == null ? "Waypoints is not available" : "No finds to save yet", false);
-            return;
-        }
-        List<Find> sorted = new ArrayList<>(finds);
-        sorted.sort((a, b) -> Double.compare(dist(a, mc), dist(b, mc)));
-        int added = 0;
-        for (int i = 0; i < Math.min(10, sorted.size()); i++) {
-            Find f = sorted.get(i);
-            double y = f.minY == Integer.MAX_VALUE ? mc.player.getY() : (f.minY + f.maxY) / 2.0;
-            if (wp.addAt(f.verdict.type + " " + f.verdict.confidence + "%", f.cx, y, f.cz)) added++;
-        }
-        Zeus.toast(added == 0 ? "Every find already has a waypoint" : "Saved " + added + " waypoint" + (added == 1 ? "" : "s"), true);
-    }
-
-    private List<String> activityLines() {
-        List<String> out = new ArrayList<>();
-        Minecraft mc = Minecraft.getInstance();
-        if (!enabled() || !activity.on() || mc.player == null) return List.of(activity.on() ? "Switch the module on." : "Switched off in the settings.");
-        List<long[]> hot = Activity.hot(activityMin.i());
-        for (int i = 0; i < Math.min(4, hot.size()); i++) {
-            long[] h = hot.get(i);
-            double x = h[0] * 16 + 8;
-            double z = h[1] * 16 + 8;
-            out.add(String.format(Locale.ROOT, "Active   %d, %d   %dm %s   (%.1f changes)", Math.round(x), Math.round(z),
-                    Math.round(Math.hypot(x - mc.player.getX(), z - mc.player.getZ())), direction(x - mc.player.getX(), z - mc.player.getZ()), h[2] / 10.0));
-        }
-        if (out.isEmpty()) out.add("Quiet. Nobody is changing blocks within reach of your game.");
+    public static String inspectText(int id) {
+        String st = INSPECT_STYLES[id % 6];
+        String out = st.substring(0, 1).toUpperCase() + st.substring(1) + ".";
+        if (id >= 12) out += " Done with two turns instead of one.";
+        if ((id / 6) % 2 == 1) out += " Turns the other way round.";
         return out;
     }
 
-    private void watchActivity(Minecraft mc) {
-        if (!activity.on()) return;
-        List<long[]> hot = Activity.hot(activityMin.i());
-        Set<Long> now = new HashSet<>();
-        for (long[] h : hot) {
-            long k = key((int) h[0], (int) h[1]);
-            now.add(k);
-            if (activeAnnounced.add(k) && alert.on()) {
-                double x = h[0] * 16 + 8;
-                double z = h[1] * 16 + 8;
-                Zeus.toast("Activity at " + Math.round(x) + ", " + Math.round(z) + " (" + Math.round(Math.hypot(x - mc.player.getX(), z - mc.player.getZ())) + "m): someone is changing blocks there", true);
+    public static void pressTrick() {
+        if (self != null && self.enabled()) self.perform(self.curTrick());
+    }
+
+    public static void nextTrick() {
+        if (self != null && self.enabled()) {
+            if (self.karambit()) {
+                int n = (self.ktrick.index() + 1) % KTRICKS.length;
+                self.ktrick.set(n);
+                Zeus.toast("Trick: " + KTRICKS[n], true);
+            } else {
+                int n = (self.trick.index() + 1) % TRICKS.length;
+                self.trick.set(n);
+                Zeus.toast("Trick: " + TRICKS[n], true);
             }
         }
-        activeAnnounced.retainAll(now);
     }
 
-    private void reset() {
-        activeAnnounced.clear();
-        chunks.clear();
-        geodeHints.clear();
-        entScore.clear();
-        announced.clear();
-        finds = new ArrayList<>();
+    /** Every knife but the butterflies plays the karambit-style tricks; a butterfly flips open like a real one. */
+    private boolean karambit() {
+        return kind() >= 1 && !bfly();
+    }
+
+    /** The held HD knife is a butterfly in pieces: its handles and blade turn round the pins. */
+    private boolean bfly() {
+        int h = hd();
+        return h >= 0 && com.zlorbie788.zeus.ui.KnifeHD.pieces(h) != null;
+    }
+
+    private java.util.List<String> lines() {
+        String name = TYPES[ownedHd()];
+        String mesh = karambit() ? KnifeArt.nameOf(key()) : "Butterfly knife";
+        boolean loaded = KnifeMesh.has(mesh);
+        String render = hd() >= 0 ? (KnifeHDGui.ready(hd()) ? "HD model: lit 3D, high resolution"
+                : KnifeHDGui.problem().isEmpty() ? "HD model missing, using pixels" : "HD model failed: " + KnifeHDGui.problem())
+                : !model3d.on() ? "pixel knife: pick an HD knife for the lit 3D look"
+                : loaded ? (safeDraw.on() ? "3D model ready (safe draw on)" : "3D model in use") : "3D mesh missing, using pixels";
+        String state = playing() ? "playing a trick" : (isOpen ? "open in hand" : "closed in hand");
+        return java.util.List.of(name, render, state, "Tricks: " + (karambit() ? KTRICKS.length : TRICKS.length) + " loaded");
+    }
+
+    /** The HD tactical knife in use, or -1. */
+    private int hd() {
+        return KnifeArt.hdType(kind());
+    }
+
+    private boolean ring() {
+        return kind() == 1;
+    }
+
+    private int key() {
+        return ring() ? kcurve.index() : kind() >= 2 ? 3 + (kind() - 2) : 0;
+    }
+    private float grip() {
+        return KnifeArt.gripOf(key());
+    }
+    private int curTrick() {
+        return karambit() ? ktrick.index() : trick.index();
+    }
+
+    public static boolean hidesHand() {
+        if (self == null || !self.enabled() || !self.hideHand.on() || self.vis <= 0.02f) return false;
+        return self.frames > 0 && com.zlorbie788.zeus.core.Clock.nanoTime() - self.drewAt < 250_000_000L;
+    }
+    private void perform(int id) {
+        int n = karambit() ? KTRICKS.length : TRICKS.length;
+        if (id == n - 1) {
+            int pick;
+            do {
+                pick = 1 + rnd.nextInt(n - 2);
+            } while (pick == lastRandom);
+            lastRandom = pick;
+            id = pick;
+            if (rnd.nextInt(5) == 0) id = 0;
+        }
+        if (playing()) {
+            if (queue.size() < 3) queue.add(id);
+            return;
+        }
+        launch(id);
+    }
+
+    private int studioOr(int m) {
+        if (m < SB_DRAW || m > SK_TOSS) return m;
+        String mesh = !model3d.on() || bfly() ? null : karambit() ? KnifeArt.nameOf(key()) : "Butterfly knife";
+        if (mesh != null && KnifeMesh.has(mesh) && KnifeMesh.hasClip(mesh, CLIP_NAME[m - SB_DRAW])) return m;
+        return switch (m) {
+            case SB_DRAW -> OPEN;
+            case SB_ROLL -> ROLL;
+            case SB_FAN -> FAN;
+            case SB_ZEN -> TWIRL;
+            case SB_AERIAL -> AERIAL;
+            case SB_INSPECT -> SHOW;
+            case SK_DRAW, SK_SPIN -> RSPIN;
+            case SK_FLIP -> KFLIP;
+            case SK_PIN -> RPIN;
+            case SK_TOSS -> KAERIAL;
+            default -> KSHOW;
+        };
+    }
+    private boolean playing() {
+        return !line.isEmpty() && secs() < lineTotal;
+    }
+
+    private void launch(int id) {
+        line.clear();
+        if (karambit()) {
+            for (int m : KSCRIPT[Math.max(0, Math.min(KSCRIPT.length - 1, id))]) line.add(new int[] {studioOr(m)});
+            begin();
+            return;
+        }
+        boolean open = isOpen;
+        for (int m : SCRIPT[id]) {
+            m = studioOr(m);
+            if (m == OPEN && open) continue;
+            if (m == CLOSE && !open) continue;
+            if ((m == LATCH || m == SB_DRAW) && open) {
+                line.add(new int[] {CLOSE});
+                open = false;
+            }
+            if (m != OPEN && m != CLOSE && !selfOpens(m) && !open) {
+                line.add(new int[] {OPEN});
+                open = true;
+            }
+            line.add(new int[] {m});
+            if (m == OPEN || m == LATCH || m == SB_DRAW) open = true;
+            if (m == CLOSE) open = false;
+        }
+        if (line.isEmpty()) line.add(new int[] {isOpen ? CLOSE : OPEN});
+        begin();
+    }
+    private void launchSlash() {
+        line.clear();
         queue.clear();
-        queueIndex = 0;
+        line.add(new int[] {karambit() ? KSLASH : SLASHING});
+        begin();
     }
-
-    private int queueRemaining() {
-        return Math.max(0, queue.size() - queueIndex);
+    private void begin() {
+        lineStart = new float[line.size()];
+        float t = 0;
+        for (int i = 0; i < line.size(); i++) {
+            lineStart[i] = t;
+            t += MOVE_TIME[line.get(i)[0]];
+        }
+        lineTotal = t;
+        start = com.zlorbie788.zeus.core.Clock.nanoTime();
+        carry = lastShown;
+        carryStart = null;
+        carryAt = com.zlorbie788.zeus.core.Clock.nanoTime();
     }
-
     @Override
     protected void onEnable() {
-        Activity.setCounting(activity.on());
-        Activity.setMemorySeconds(switch (activityMemory.index()) { case 0 -> 15; case 2 -> 60; case 3 -> 120; default -> 30; });
-        reset();
+        enter = com.zlorbie788.zeus.core.Clock.nanoTime();
+        queue.clear();
+        line.clear();
+        isOpen = false;
+        vis = 0f;
+        frames = 0;
+        drewAt = 0L;
+        enabledAt = com.zlorbie788.zeus.core.Clock.nanoTime();
+        warned = false;
+        lastFrame = 0;
+        lastYaw = Float.NaN;
+        lastType = kind();
+        meshBroken = false;
+        launch(1);
     }
-
-    @Override
-    protected void onDisable() {
-        Activity.setCounting(false);
-        reset();
-    }
-
-    /** How many blocks that no natural structure places (chests, hoppers, concrete...) a flagged chunk must hold. */
-    private int minStrong() {
-        return switch (sensitivity.index()) {
-            case 0 -> 6;
-            case 1 -> 3;
-            default -> 2;
-        };
-    }
-
-    /** A chunk that is not flagged but showed some evidence of a player. */
-    private boolean isMaybe(Score s) {
-        return maybe.on() && !s.flagged && s.verdict != null && s.verdict.confidence >= 20 && (s.structure < 0 || natural.index() == 2);
-    }
-
-    private List<String> nearMisses(Minecraft mc) {
-        List<String> out = new ArrayList<>();
-        if (!maybe.on() || mc.player == null) return out;
-        List<Map.Entry<Long, Score>> list = new ArrayList<>();
-        for (Map.Entry<Long, Score> e : chunks.entrySet()) if (isMaybe(e.getValue())) list.add(e);
-        list.sort((a, b) -> Integer.compare(b.getValue().verdict.confidence, a.getValue().verdict.confidence));
-        for (int i = 0; i < Math.min(3, list.size()); i++) {
-            Score s = list.get(i).getValue();
-            double x = kx(list.get(i).getKey()) * 16 + 8;
-            double z = kz(list.get(i).getKey()) * 16 + 8;
-            out.add(String.format(Locale.ROOT, "Maybe %d %%   %d, %d   %dm %s", s.verdict.confidence, Math.round(x), Math.round(z),
-                    Math.round(Math.hypot(x - mc.player.getX(), z - mc.player.getZ())), direction(x - mc.player.getX(), z - mc.player.getZ())));
-            out.add("    " + s.verdict.why());
-        }
-        return out;
-    }
-
-    /** Why the chunk under you is or is not flagged. The first thing to read when a base is not found. */
-    private List<String> here() {
-        List<String> out = new ArrayList<>();
-        Minecraft mc = Minecraft.getInstance();
-        if (!enabled() || mc.player == null) {
-            out.add("Switch the module on and stand in a world.");
-            return out;
-        }
-        int cx = mc.player.getBlockX() >> 4;
-        int cz = mc.player.getBlockZ() >> 4;
-        Score s = chunks.get(key(cx, cz));
-        if (s == null) {
-            out.add("This chunk has not been scanned yet (" + queueRemaining() + " waiting, " + chunks.size() + " done).");
-            return out;
-        }
-        double learned = Brain.learning() ? Brain.baseline().crowding : 0.08;
-        int cut = (int) Math.round(BaseBrain.cutoff(sensitivity.index(), learned) + Feedback.bias(Brain.ctx().server));
-        BaseBrain.Verdict v = s.verdict;
-        if (v == null) {
-            out.add("Judging...");
-            return out;
-        }
-        out.add(v.confidence + " % " + v.type.toLowerCase(Locale.ROOT) + ", needs " + cut + " %" + (s.flagged ? "  ·  FLAGGED" : "  ·  not flagged"));
-        out.add("Found here: " + s.roles[BaseBrain.R_BED] + " beds, " + s.roles[BaseBrain.R_CONTAINER] + " storage, " + s.roles[BaseBrain.R_WORK] + " workstations, "
-                + s.roles[BaseBrain.R_HOPPER] + " hoppers, " + s.roles[BaseBrain.R_LIGHT] + " lights, " + Long.bitCount(s.foot) + " kinds of player-made blocks"
-                + (s.clues == null ? "" : ", " + s.clues[0] + " pearls, " + s.clues[1] + " named mobs, " + s.clues[2] + " villagers, herd of " + s.clues[3]));
-        out.add(s.structure >= 0 ? "Looks like a natural structure: " + STRUCTS[s.structure] + ". Beds and chests count for less here." : "No natural structure here, so a bed, a chest or a furnace counts.");
-        if (!v.reasons.isEmpty()) out.add("Because: " + v.why());
-        if (!s.flagged && v.confidence < cut) out.add("Raise \"How sure to be\" to " + (sensitivity.index() >= 3 ? "its maximum (it is)" : "High or Very high") + " to flag it.");
-        return out;
-    }
-
-    private double threshold() {
-        return switch (sensitivity.index()) {
-            case 0 -> 140;
-            case 1 -> 60;
-            default -> 30;
-        };
-    }
-
-    // ------------------------------------------------------------------ the weights
-
-    private static int[] weigh(Block b) {
-        int[] w = WEIGHT.get(b);
-        if (w == null) {
-            String path;
-            try {
-                String id = BuiltInRegistries.BLOCK.getKey(b).toString();
-                path = id.substring(id.indexOf(':') + 1);
-            } catch (RuntimeException e) {
-                path = "";
-            }
-            int[] base = weighPath(path);
-            int[] m = markerOf(path);
-            w = new int[] {base[0], base[1], m[0], m[1], isTell(path) ? 1 : 0, strength(path), roleOf(path), footOf(path)};
-            WEIGHT.put(b, w);
-        }
-        return w;
-    }
-
-    /**
-     * How much a block says "a player was here": 2 for blocks that no natural structure places (or places only in a way the
-     * structure check handles), 1 for ordinary workstations and lights, 0 for everything that villages, ruins, mineshafts
-     * and the Nether also have. Blocks of strength 0 and 1 can only add a little to a chunk that already has strong ones.
-     */
-    static int strength(String p) {
-        if (p.isEmpty()) return 0;
-        if (isTell(p)) return 2;
-        if (p.equals("chest") || p.equals("trapped_chest") || p.equals("barrel") || p.endsWith("shulker_box")) return 2;
-        switch (p) {
-            case "dispenser", "dropper", "piston", "redstone_torch", "redstone_wall_torch", "lever", "target", "powered_rail", "detector_rail",
-                 "activator_rail", "end_rod", "sea_lantern", "glass", "tinted_glass", "bookshelf", "chiseled_bookshelf", "copper_block", "raw_gold_block",
-                 "raw_iron_block", "coal_block", "lectern", "smithing_table", "cartography_table", "fletching_table", "stonecutter", "grindstone", "loom":
-                return 2;
-            case "furnace", "blast_furnace", "smoker", "crafting_table", "anvil", "chipped_anvil", "damaged_anvil", "cauldron", "lantern", "soul_lantern",
-                 "campfire", "soul_campfire", "torch", "wall_torch", "soul_torch", "soul_wall_torch", "tnt", "redstone_wire", "jack_o_lantern":
-                return 1;
-            default:
-                break;
-        }
-        if (p.endsWith("_wool") || p.endsWith("_bed")) return 1;
-        return 0;
-    }
-
-    /** What a block means to the judge: a bed, a container, a light and so on (see {@link BaseBrain}). */
-    static int roleOf(String p) {
-        if (p.isEmpty()) return 0;
-        if (p.endsWith("_bed")) return BaseBrain.R_BED;
-        if (p.equals("hopper")) return BaseBrain.R_HOPPER;
-        if (p.contains("chest") || p.equals("barrel") || p.endsWith("shulker_box")) return BaseBrain.R_CONTAINER;
-        switch (p) {
-            case "torch", "wall_torch", "soul_torch", "soul_wall_torch", "lantern", "soul_lantern", "campfire", "soul_campfire", "sea_lantern", "glowstone", "redstone_lamp", "end_rod":
-                return BaseBrain.R_LIGHT;
-            case "diamond_block", "emerald_block", "gold_block", "netherite_block", "beacon":
-                return BaseBrain.R_VALUABLE;
-            case "furnace", "blast_furnace", "smoker", "crafting_table", "anvil", "chipped_anvil", "damaged_anvil", "enchanting_table", "brewing_stand", "smithing_table", "grindstone", "loom", "stonecutter", "cartography_table", "fletching_table", "lectern":
-                return BaseBrain.R_WORK;
-            case "fire", "soul_fire":
-                return BaseBrain.R_FIRE;
-            case "nether_portal":
-                return BaseBrain.R_PORTAL;
-            default:
-                return 0;
-        }
-    }
-
-    private static final ConcurrentHashMap<String, Integer> FOOT = new ConcurrentHashMap<>();
-
-    /** The kind of a player-made block ("door", "planks", "glass"...), 1 to 62, or 0 for blocks nature makes. Every colour of a thing is one kind. */
-    static int footOf(String p) {
-        if (p.isEmpty()) return 0;
-        String k;
-        if (p.endsWith("_bed")) k = "bed";
-        else if (p.equals("iron_door") || p.equals("iron_trapdoor")) k = "iron door";
-        else if (p.endsWith("_trapdoor")) k = "trapdoor";
-        else if (p.endsWith("_door")) k = "door";
-        else if (p.endsWith("_planks")) k = "planks";
-        else if (p.endsWith("_stairs")) k = "stairs";
-        else if (p.endsWith("_slab")) k = "slab";
-        else if (p.endsWith("_fence_gate")) k = "gate";
-        else if (p.endsWith("_fence")) k = "fence";
-        else if (p.endsWith("_wall") && !p.endsWith("wall_torch")) k = "wall";
-        else if (p.endsWith("_sign") || p.endsWith("_hanging_sign")) k = "sign";
-        else if (p.endsWith("glass") || p.endsWith("glass_pane")) k = "glass";
-        else if (p.endsWith("_wool")) k = "wool";
-        else if (p.endsWith("_carpet") && !p.startsWith("moss")) k = "carpet";
-        else if (p.endsWith("_concrete")) k = "concrete";
-        else if (p.endsWith("glazed_terracotta")) k = "glazed terracotta";
-        else if (p.endsWith("shulker_box")) k = "shulker";
-        else if (p.endsWith("_button")) k = "button";
-        else if (p.endsWith("_pressure_plate")) k = "plate";
-        else if (p.startsWith("stripped_")) k = "stripped log";
-        else if (p.endsWith("bricks") && !p.contains("nether") && !p.contains("mud") && !p.contains("end_stone") && !p.contains("deepslate") && !p.contains("blackstone") && !p.contains("tuff") && !p.contains("cracked") && !p.contains("mossy") && !p.contains("infested")) k = "bricks";
-        else switch (p) {
-            case "chest", "trapped_chest" -> k = "chest";
-            case "barrel" -> k = "barrel";
-            case "ender_chest" -> k = "ender chest";
-            case "furnace", "blast_furnace", "smoker" -> k = "furnace";
-            case "crafting_table" -> k = "crafting table";
-            case "anvil", "chipped_anvil", "damaged_anvil" -> k = "anvil";
-            case "enchanting_table", "brewing_stand", "smithing_table", "grindstone", "stonecutter", "loom", "cartography_table", "fletching_table", "lectern" -> k = "workstation";
-            case "bookshelf", "chiseled_bookshelf" -> k = "bookshelf";
-            case "ladder" -> k = "ladder";
-            case "scaffolding" -> k = "scaffolding";
-            case "cobblestone" -> k = "cobblestone";
-            case "torch", "wall_torch", "soul_torch", "soul_wall_torch", "lantern", "soul_lantern", "campfire", "soul_campfire", "sea_lantern", "glowstone", "redstone_lamp", "end_rod" -> k = "light";
-            case "hopper", "dispenser", "dropper", "piston", "sticky_piston", "observer", "repeater", "comparator", "redstone_torch", "redstone_wall_torch", "lever", "redstone_block", "target", "daylight_detector", "note_block", "jukebox" -> k = "redstone";
-            case "rail", "powered_rail", "detector_rail", "activator_rail" -> k = "rail";
-            case "tnt" -> k = "tnt";
-            case "iron_block", "gold_block", "diamond_block", "emerald_block", "netherite_block", "lapis_block", "copper_block", "beacon" -> k = "metal block";
-            case "item_frame", "painting", "flower_pot", "cauldron", "composter", "smooth_stone", "smooth_quartz", "quartz_block", "quartz_pillar", "polished_andesite", "polished_granite", "polished_diorite", "terracotta", "nether_portal" -> k = p;
-            default -> { return 0; }
-        }
-        return FOOT.computeIfAbsent(k, x -> Math.min(62, FOOT.size() + 1));
-    }
-
-    /** {structure + 1, points} for blocks that give a natural structure away. */
-    static int[] markerOf(String p) {
-        switch (p) {
-            case "rail", "cobweb": return new int[] {1, 1};
-            case "end_portal_frame": return new int[] {2, 12};
-            case "iron_bars", "cracked_stone_bricks", "mossy_stone_bricks", "infested_stone_bricks", "infested_cracked_stone_bricks": return new int[] {2, 1};
-            case "polished_blackstone_bricks", "gilded_blackstone", "cracked_polished_blackstone_bricks", "chiseled_polished_blackstone", "polished_blackstone_brick_stairs", "polished_blackstone_brick_slab", "polished_blackstone_brick_wall": return new int[] {3, 1};
-            case "nether_brick_fence", "nether_bricks", "red_nether_bricks", "nether_brick_stairs", "nether_wart": return new int[] {4, 1};
-            case "reinforced_deepslate", "sculk_shrieker", "sculk_sensor", "sculk_catalyst", "sculk": return new int[] {5, 2};
-            case "purpur_block", "purpur_pillar", "purpur_stairs", "purpur_slab", "end_stone_bricks": return new int[] {6, 1};
-            case "prismarine", "prismarine_bricks", "dark_prismarine", "wet_sponge": return new int[] {7, 1};
-            case "trial_spawner", "vault": return new int[] {8, 8};
-            case "tuff_bricks", "chiseled_tuff_bricks", "copper_grate", "chiseled_tuff", "waxed_copper_grate": return new int[] {8, 1};
-            case "dirt_path", "farmland": return new int[] {9, 1};
-            case "bell", "composter", "hay_block": return new int[] {9, 3};
-            case "lectern", "loom", "cartography_table", "fletching_table", "smithing_table", "grindstone", "stonecutter": return new int[] {9, 2};
-            case "chiseled_sandstone", "cut_sandstone", "mossy_cobblestone", "tripwire_hook", "tripwire": return new int[] {10, 1};
-            case "dark_oak_planks", "dark_oak_stairs", "dark_oak_door": return new int[] {11, 1};
-            case "spawner": return new int[] {12, 8};
-            default: break;
-        }
-        if (p.equals("oak_fence")) return new int[] {1, 1};
-        return new int[] {0, 0};
-    }
-
-    /** Blocks that nature and generated structures do not place, so finding them is a strong sign of a player. */
-    static boolean isTell(String p) {
-        return p.endsWith("_concrete") || p.endsWith("glazed_terracotta") || p.endsWith("stained_glass") || p.endsWith("stained_glass_pane")
-                || p.equals("beacon") || p.equals("netherite_block") || p.equals("diamond_block") || p.equals("emerald_block")
-                || p.equals("iron_block") || p.equals("lapis_block") || p.equals("redstone_block") || p.equals("hopper") || p.equals("comparator")
-                || p.equals("repeater") || p.equals("observer") || p.equals("redstone_lamp") || p.equals("daylight_detector") || p.equals("note_block")
-                || p.equals("sticky_piston") || p.equals("dropper") || p.equals("ender_chest") || p.equals("enchanting_table") || p.equals("lightning_rod") || p.equals("chiseled_quartz_block")
-                || p.equals("quartz_bricks") || p.equals("quartz_pillar") || p.equals("smooth_quartz")
-                || p.equals("iron_door") || p.equals("iron_trapdoor") || p.equals("player_head") || p.equals("player_wall_head") || p.equals("lodestone")
-                || p.equals("respawn_anchor") || p.equals("conduit") || p.equals("jukebox") || p.equals("slime_block") || p.equals("honey_block")
-                || p.equals("heavy_weighted_pressure_plate") || p.equals("light_weighted_pressure_plate") || p.equals("crafter") || p.equals("dragon_egg")
-                || p.equals("copper_bulb") || p.equals("calibrated_sculk_sensor") || p.equals("beehive");
-    }
-
-    static int[] weighPath(String p) {
-        if (p.isEmpty()) return new int[] {0, 0};
-        // storage
-        if (p.equals("ender_chest")) return new int[] {60, 0};
-        if (p.contains("chest") || p.endsWith("shulker_box") || p.equals("barrel")) return new int[] {40, 0};
-        // things only a player puts down
-        switch (p) {
-            case "lodestone", "respawn_anchor", "conduit", "jukebox", "crafter", "beehive", "copper_bulb", "calibrated_sculk_sensor":
-                return new int[] {50, 1};
-            case "iron_door", "iron_trapdoor":
-                return new int[] {30, 5};
-            case "player_head", "player_wall_head":
-                return new int[] {40, 5};
-            case "slime_block", "honey_block", "heavy_weighted_pressure_plate", "light_weighted_pressure_plate":
-                return new int[] {30, 2};
-            default:
-                break;
-        }
-        // workstations
-        switch (p) {
-            case "enchanting_table", "brewing_stand":
-                return new int[] {60, 1};
-            case "furnace", "blast_furnace", "smoker", "crafting_table", "anvil", "chipped_anvil", "damaged_anvil", "grindstone", "loom",
-                 "stonecutter", "smithing_table", "fletching_table", "cartography_table", "lectern", "cauldron":
-                return new int[] {30, 1};
-            default:
-                break;
-        }
-        // redstone
-        switch (p) {
-            case "hopper", "dispenser", "dropper", "repeater", "comparator", "daylight_detector", "redstone_block", "tnt":
-                return new int[] {50, 2};
-            case "observer", "piston", "sticky_piston", "redstone_lamp", "powered_rail", "detector_rail", "activator_rail":
-                return new int[] {40, 2};
-            case "lever", "note_block", "target", "redstone_wire", "redstone_torch", "redstone_wall_torch":
-                return new int[] {25, 2};
-            default:
-                break;
-        }
-        // lighting
-        switch (p) {
-            case "sea_lantern", "end_rod":
-                return new int[] {40, 3};
-            case "lantern", "soul_lantern", "campfire", "soul_campfire", "jack_o_lantern":
-                return new int[] {20, 3};
-            case "torch", "wall_torch", "soul_torch", "soul_wall_torch":
-                return new int[] {12, 3};
-            default:
-                break;
-        }
-        // metal and gem blocks
-        switch (p) {
-            case "beacon", "netherite_block":
-                return new int[] {300, 4};
-            case "diamond_block", "emerald_block":
-                return new int[] {120, 4};
-            case "gold_block", "iron_block", "lapis_block", "copper_block", "raw_gold_block", "raw_iron_block", "coal_block":
-                return new int[] {80, 4};
-            default:
-                break;
-        }
-        // building
-        if (p.equals("glass") || p.endsWith("_glass") || p.endsWith("glass_pane") || p.equals("tinted_glass")) return new int[] {25, 5};
-        if (p.endsWith("_concrete")) return new int[] {30, 5};
-        if (p.endsWith("glazed_terracotta")) return new int[] {40, 5};
-        if (p.endsWith("_wool")) return new int[] {20, 5};
-        if (p.endsWith("_carpet") && !p.startsWith("moss")) return new int[] {20, 5};
-        if (p.endsWith("_bed")) return new int[] {40, 5};
-        if (p.startsWith("stripped_")) return new int[] {30, 5};
-        if (p.equals("bookshelf") || p.equals("chiseled_bookshelf")) return new int[] {30, 5};
-        if (p.startsWith("quartz_") || p.equals("smooth_quartz") || p.equals("chiseled_quartz_block")) return new int[] {40, 5};
-        if (p.equals("smooth_quartz") || p.equals("smooth_stone") || p.startsWith("cut_copper") || p.startsWith("polished_") && !p.contains("basalt") && !p.contains("blackstone") && !p.contains("deepslate") && !p.contains("tuff")) return new int[] {15, 5};
-        if (p.endsWith("_door") || p.endsWith("trapdoor")) return new int[] {15, 5};
-        if (p.endsWith("_sign") || p.endsWith("_hanging_sign")) return new int[] {20, 5};
-        if (p.endsWith("_stairs") || p.endsWith("_slab") || p.endsWith("_fence") || p.endsWith("_fence_gate") || p.endsWith("_wall")) return new int[] {8, 5};
-        if (p.endsWith("_planks") || p.equals("bricks") || p.equals("stone_bricks") || p.equals("ladder")) return new int[] {6, 5};
-        return new int[] {0, 0};
-    }
-
-    // ------------------------------------------------------------------ the scan
-
-    private static long key(int cx, int cz) {
-        return ((long) cx << 32) | (cz & 0xFFFFFFFFL);
-    }
-
-    private static int kx(long k) {
-        return (int) (k >> 32);
-    }
-
-    private static int kz(long k) {
-        return (int) k;
-    }
-
     @Override
     protected void onTick(Minecraft mc) {
-        // Multiplayer scanning is opt-in and reads only chunks already loaded by the client.
-        // No packet tricks, chunk requests, or access to server-side/unloaded world data are used.
-        if (!Env.local() && !scanMultiplayer.on()) return;
-        if (mc.level == null || mc.player == null) return;
-        int pcx = mc.player.getBlockX() >> 4;
-        int pcz = mc.player.getBlockZ() >> 4;
-        int rc = range.i();
-        long now = System.currentTimeMillis();
-        Activity.setCounting(activity.on());
-        Activity.setMemorySeconds(switch (activityMemory.index()) { case 0 -> 15; case 2 -> 60; case 3 -> 120; default -> 30; });
-        if (tick % 10 == 5) watchActivity(mc);
-        if (tick++ % 20 == 0) {
-            queue = new ArrayList<>();
-            queueIndex = 0;
-            for (int dx = -rc; dx <= rc; dx++) {
-                for (int dz = -rc; dz <= rc; dz++) {
-                    Score s = chunks.get(key(pcx + dx, pcz + dz));
-                    // the area around you is checked again now and then, because you build and dig
-                    long age = now - (s == null ? 0 : s.at);
-                    long max = Math.abs(dx) <= 3 && Math.abs(dz) <= 3 ? 8000 : 90000;
-                    if (s == null || age > max) queue.add(new long[] {dx * dx + dz * dz, pcx + dx, pcz + dz});
-                }
-            }
-            queue.sort((a, b) -> Long.compare(a[0], b[0]));
-            final int fcx = pcx;
-            final int fcz = pcz;
-            chunks.keySet().removeIf(k -> Math.abs(kx(k) - fcx) > rc + 3 || Math.abs(kz(k) - fcz) > rc + 3);
-            geodeHints.keySet().removeIf(k -> Math.abs(kx(k) - fcx) > rc + 3 || Math.abs(kz(k) - fcz) > rc + 3);
-            entScore.keySet().removeIf(k -> Math.abs(kx(k) - fcx) > rc + 3 || Math.abs(kz(k) - fcz) > rc + 3);
-            scanEntities(mc, rc);
-            rebuild(mc);
-        }
-        long baseBudget = switch (scanPace.index()) {
-            case 0 -> 750_000L;
-            case 2 -> 3_000_000L;
-            default -> 1_500_000L;
-        };
-        long deadline = System.nanoTime() + Brain.budget(baseBudget);
-        boolean any = false;
-        while (queueIndex < queue.size() && System.nanoTime() < deadline) {
-            long[] c = queue.get(queueIndex++);
-            scan(mc, (int) c[1], (int) c[2], now);
-            any = true;
-        }
-        if (any && queueIndex >= queue.size()) {
+        if (kind() != lastType) {
+            lastType = kind();
             queue.clear();
-            queueIndex = 0;
-            rebuild(mc);
+            line.clear();
+            isOpen = false;
+            launch(1);
+        }
+        want = false;
+        if (mc.player != null && mc.screen == null && !mc.player.isSpectator()) {
+            boolean main = mc.player.getMainHandItem().isEmpty();
+            boolean off = mc.player.getOffhandItem().isEmpty();
+            want = switch (when.index()) {
+                case 3 -> net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(mc.player.getMainHandItem().getItem()).getPath().endsWith("_sword");
+                case 2 -> true;
+                case 1 -> main && off;
+                default -> main;
+            };
+        }
+        if (com.zlorbie788.zeus.core.Clock.millis() < previewUntil) want = true;
+        boolean active = want && vis > 0.5f;
+        boolean down = mc.screen == null && mc.options.keyAttack.isDown();
+        if (down && !wasDown && active && slash.on() && !(playing() && secs() < 0.3f)) launchSlash();
+        wasDown = down;
+        boolean use = mc.screen == null && mc.options.keyUse.isDown();
+        if (use && !wasUse && active && rightClick.on()) perform(curTrick());
+        wasUse = use;
+        if (!playing() && !line.isEmpty()) {
+            int last = line.get(line.size() - 1)[0];
+            isOpen = last != CLOSE;
+            line.clear();
+            if (!queue.isEmpty()) launch(queue.poll());
+        }
+        if (auto.on() && active && !playing() && com.zlorbie788.zeus.core.Clock.millis() - autoAt > 2500) {
+            autoAt = com.zlorbie788.zeus.core.Clock.millis();
+            perform((karambit() ? KTRICKS.length : TRICKS.length) - 1);
         }
     }
 
-    /** Focused scanners can add terrain-shape evidence without changing the general base scanner. */
-    protected boolean useTunnelGeometry() {
-        return false;
+    private float secs() {
+        if (start == 0) return 99f;
+        return (com.zlorbie788.zeus.core.Clock.nanoTime() - start) / 1e9f * speed.f() * BASE;
+    }
+    private static float c01(float x) {
+        return Math.max(0f, Math.min(1f, x));
+    }
+    private static float ease(float x) {
+        x = c01(x);
+        return x * x * (3f - 2f * x);
+    }
+    private static float easeIn(float x) {
+        x = c01(x);
+        return x * x * x;
     }
 
-    private static BlockState stateAt(LevelChunkSection[] sections, int minSectionY, int x, int y, int z) {
-        int sectionIndex = (y >> 4) - minSectionY;
-        if (sectionIndex < 0 || sectionIndex >= sections.length || sections[sectionIndex] == null) return null;
-        return sections[sectionIndex].getBlockState(x, y & 15, z);
+    private static float easeSmoother(float x) {
+        x = c01(x);
+        return x * x * x * (x * (x * 6f - 15f) + 10f);
     }
 
-    private static boolean air(LevelChunkSection[] sections, int minSectionY, int x, int y, int z) {
-        BlockState state = stateAt(sections, minSectionY, x, y, z);
-        return state == null || state.isAir();
+    private static float softStart(float x) {
+        x = c01(x);
+        return 0.5f * ease(x) + 0.5f * x;
+    }
+    private static float easeOutBack(float x) {
+        x = c01(x);
+        float c = 1.9f;
+        float y = x - 1f;
+        return 1f + (c + 1f) * y * y * y + c * y * y;
+    }
+    private static float bump(float x) {
+        return (float) Math.sin(c01(x) * Math.PI);
+    }
+    private static final float PI = (float) Math.PI;
+    private static final float TAU = (float) (Math.PI * 2.0);
+    private static final float GRIP = 8.6f;
+    private static final float ARM_L = 38f;
+    private static final float ARM_Z = 2.62f;
+    private static final float ARM_X = 0.35f;
+
+    private static final class Pose {
+        float flickZ, flickX, flickY;
+        float gx, gy, gz;
+        float kx, ky, kz;
+        float rx, ry, rz;
+        float gripY = GRIP;
+        float a, b, c;
+        float release;
+        float flash, rush;
+        float shake;
+        float armRoll = 0.38f;
+        String clip;
+        float clipT;
+    }
+    private float slideNow() {
+        return vis;
+    }
+    private static float lerp(float a, float b, float k) {
+        return a + (b - a) * k;
+    }
+    private static float wrapPi(float a) {
+        a = (a + PI) % TAU;
+        if (a < 0f) a += TAU;
+        return a - PI;
+    }
+    private static float lerpAng(float a, float b, float k) {
+        return a + wrapPi(b - a) * k;
     }
 
-    private static boolean solidDry(LevelChunkSection[] sections, int minSectionY, int x, int y, int z) {
-        BlockState state = stateAt(sections, minSectionY, x, y, z);
-        return state != null && !state.isAir() && state.getFluidState().isEmpty();
+    private static float spin(float x, float turns, float flick) {
+        x = c01(x);
+        float sg = Math.signum(turns);
+        float tot = turns * TAU;
+        float wind = 0.11f;
+        float settle = 0.15f;
+        float back = 0.30f * sg;
+        float over = 0.12f * sg;
+        if (x < wind) {
+            float u = x / wind;
+            return -back * (float) Math.sin(u * PI / 2f);
+        }
+        if (x < 1f - settle) {
+            float u = (x - wind) / (1f - wind - settle);
+            float even = easeSmoother(u);
+            float hard = 1f - (1f - u) * (1f - u) * (1f - u);
+            float f = lerp(even, hard, flick * easeSmoother(u / 0.18f));
+            return -back + (tot + over + back) * f;
+        }
+        float u = (x - (1f - settle)) / settle;
+        float d = 1f - u;
+        return tot + over * d * d * (float) Math.cos(u * PI * 1.15f);
+    }
+
+    private static float kick(float x, float at, float amp) {
+        if (x < at) return 0f;
+        float t = x - at;
+        return amp * (float) (Math.exp(-9.0 * t) * Math.sin(t * 40.0));
+    }
+
+    private static float let(float u) {
+        if (u <= 0f || u >= 1f) return 0f;
+        return easeSmoother(u / 0.13f) * (1f - easeSmoother((u - 0.87f) / 0.13f));
+    }
+
+    private static float arc(float u) {
+        u = c01(u);
+        return 4f * u * (1f - u);
+    }
+
+    private static Pose carryOver(Pose cur, Pose from, Pose startOf, float w) {
+        Pose p = mix(cur, cur, 0f);
+        if (w <= 0f) return p;
+        p.flickZ += w * (from.flickZ - startOf.flickZ);
+        p.flickX += w * (from.flickX - startOf.flickX);
+        p.flickY += w * (from.flickY - startOf.flickY);
+        p.gx += w * (from.gx - startOf.gx);
+        p.gy += w * (from.gy - startOf.gy);
+        p.gz += w * (from.gz - startOf.gz);
+        p.kx += w * (from.kx - startOf.kx);
+        p.ky += w * (from.ky - startOf.ky);
+        p.kz += w * (from.kz - startOf.kz);
+        p.rx += w * wrapPi(from.rx - startOf.rx);
+        p.ry += w * wrapPi(from.ry - startOf.ry);
+        p.rz += w * wrapPi(from.rz - startOf.rz);
+        p.gripY += w * (from.gripY - startOf.gripY);
+        p.a += w * wrapPi(from.a - startOf.a);
+        p.b += w * wrapPi(from.b - startOf.b);
+        p.c += w * (from.c - startOf.c);
+        p.release += w * (from.release - startOf.release);
+        return p;
+    }
+
+    private static Pose mix(Pose a, Pose b, float k) {
+        Pose p = new Pose();
+        p.flickZ = lerp(a.flickZ, b.flickZ, k);
+        p.flickX = lerp(a.flickX, b.flickX, k);
+        p.flickY = lerp(a.flickY, b.flickY, k);
+        p.gx = lerp(a.gx, b.gx, k);
+        p.gy = lerp(a.gy, b.gy, k);
+        p.gz = lerp(a.gz, b.gz, k);
+        p.kx = lerp(a.kx, b.kx, k);
+        p.ky = lerp(a.ky, b.ky, k);
+        p.kz = lerp(a.kz, b.kz, k);
+        p.rx = lerpAng(a.rx, b.rx, k);
+        p.ry = lerpAng(a.ry, b.ry, k);
+        p.rz = lerpAng(a.rz, b.rz, k);
+        p.gripY = lerp(a.gripY, b.gripY, k);
+        p.a = lerpAng(a.a, b.a, k);
+        p.b = lerpAng(a.b, b.b, k);
+        p.c = lerp(a.c, b.c, k);
+        p.release = lerp(a.release, b.release, k);
+        p.flash = lerp(a.flash, b.flash, k);
+        p.rush = lerp(a.rush, b.rush, k);
+        p.shake = lerp(a.shake, b.shake, k);
+        p.armRoll = lerp(a.armRoll, b.armRoll, k);
+        p.clip = k < 0.5f || b.clip == null ? a.clip : b.clip;
+        p.clipT = k < 0.5f || b.clip == null ? a.clipT : b.clipT;
+        return p;
+    }
+
+    private Pose idle(boolean open) {
+        Pose p = new Pose();
+        float idleT = (com.zlorbie788.zeus.core.Clock.nanoTime() % 20_000_000_000L) / 1e9f;
+        p.c = open ? PI : 0f;
+        if (karambit()) {
+            p.gripY = grip();
+            p.c = 0f;
+            p.rz += 0.05f * (float) Math.sin(idleT * 1.4);
+        }
+        p.flickZ += (float) Math.sin(idleT * 1.7) * 0.012f;
+        p.flickX += (float) Math.sin(idleT * 1.1) * 0.010f;
+        p.gy += (float) Math.sin(idleT * 1.3) * 0.28f;
+        p.gx += (float) Math.cos(idleT * 0.9) * 0.20f;
+        return p;
+    }
+
+    private static boolean selfOpens(int move) {
+        return move == OPEN || move == SLASHING || move == LATCH || move == SB_DRAW;
+    }
+
+    private Pose shown(float s, boolean running) {
+        Pose p = pose(s, running);
+        if (carry != null) {
+            float age = (com.zlorbie788.zeus.core.Clock.nanoTime() - carryAt) / 1e9f;
+            if (age < CARRY) {
+                if (carryStart == null) carryStart = p;
+                p = carryOver(p, carry, carryStart, 1f - easeSmoother(age / CARRY));
+            }
+            else carry = null;
+        }
+        lastShown = p;
+        return p;
+    }
+    private static final float CARRY = 0.14f;
+    private static final float BLEND = 0.10f;
+    private Pose carry;
+    private Pose carryStart;
+    private long carryAt;
+    private Pose lastShown;
+
+    private Pose pose(float s, boolean running) {
+        if (!running || line.isEmpty()) return idle(isOpen);
+        int idx = 0;
+        for (int i = 0; i < lineStart.length; i++) if (s >= lineStart[i]) idx = i;
+        int move = line.get(idx)[0];
+        float t = s - lineStart[idx];
+        float x = c01(t / MOVE_TIME[move]);
+        Pose p = movePose(move, x, t, startsOpen(idx));
+        if (t < BLEND) {
+            Pose before;
+            if (idx > 0) {
+                int pm = line.get(idx - 1)[0];
+                before = movePose(pm, 1f, MOVE_TIME[pm], startsOpen(idx - 1));
+            } else {
+                before = idle(selfOpens(move) ? false : startsOpen(0));
+            }
+            Pose first = movePose(move, 0f, 0f, startsOpen(idx));
+            p = carryOver(p, before, first, 1f - easeSmoother(t / BLEND));
+        }
+        if (idx == line.size() - 1) {
+            float left = MOVE_TIME[move] - t;
+            if (left < BLEND) {
+                Pose last = movePose(move, 1f, MOVE_TIME[move], startsOpen(idx));
+                p = carryOver(p, idle(move != CLOSE), last, easeSmoother(1f - left / BLEND));
+            }
+        }
+        return p;
+    }
+
+    private boolean startsOpen(int idx) {
+        int move = line.get(idx)[0];
+        if (selfOpens(move)) return false;
+        return idx == 0 ? isOpen : line.get(idx - 1)[0] != CLOSE;
+    }
+
+    private Pose movePose(int move, float x, float t, boolean startsOpen) {
+        Pose p = new Pose();
+        boolean kb = karambit();
+        p.c = kb ? 0f : startsOpen ? PI : 0f;
+        if (kb) p.gripY = grip();
+        if (move >= SB_DRAW && move <= SK_TOSS) {
+            int ci = move - SB_DRAW;
+            p.clip = CLIP_NAME[ci];
+            p.clipT = x * CLIP_D[ci];
+            p.release = Math.min(ease(x / 0.06f), 1f - ease((x - 0.94f) / 0.06f));
+            if (!kb) p.c = PI;
+            return p;
+        }
+        switch (move) {
+            case OPEN -> {
+                float o = x >= 0.62f ? 1f : easeOutBack(softStart(x / 0.62f));
+                setOpen(p, Math.min(1.05f, o));
+                p.flickZ = 0.10f * bump(x / 0.30f) - 0.16f * bump((x - 0.26f) / 0.46f) + kick(x, 0.62f, 0.05f);
+                p.flickX = -0.10f * bump((x - 0.26f) / 0.46f);
+                p.gy = -1.6f * bump((x - 0.28f) / 0.44f) + kick(x, 0.62f, 0.5f);
+                p.release = 0.2f * bump((x - 0.3f) / 0.4f);
+                p.rush = x > 0.18f && x < 0.62f ? 1f : 0f;
+                if (x > 0.58f && x < 0.92f) p.flash = 1f - (x - 0.58f) / 0.34f;
+            }
+            case FAN, SFAN -> {
+                float kf = move == SFAN ? 2.5f : 1f;
+                float ph = x * 2f * kf;
+                float f = ph % 1f;
+                float v = f < 0.42f ? 0.5f + 0.5f * (float) Math.cos(PI * f / 0.42f) : 0.5f - 0.5f * (float) Math.cos(PI * (f - 0.42f) / 0.58f);
+                setOpen(p, 0.05f + 0.95f * v);
+                p.flickZ = 0.10f * kf * (float) Math.sin(x * PI * 4.0 * kf);
+                p.flickX = 0.05f * (float) Math.sin(x * PI * 4.0 * kf + 1.2);
+                p.gx = 1.4f * kf * (float) Math.sin(x * PI * 4.0 * kf);
+                if (move == SFAN) p.shake = 0.35f;
+                p.gy = -0.8f * bump(x);
+                p.release = 0.12f;
+                p.rush = 0.85f;
+                if (x > 0.44f && x < 0.58f || x > 0.95f) p.flash = 0.65f;
+            }
+            case SHOW, KSHOW -> {
+                p.ry = 0.95f * (float) Math.sin(x * TAU);
+                p.rz = 0.12f * (float) Math.sin(x * TAU + 1.0);
+                p.rx = -0.10f * bump(x);
+                p.gy = -1.8f * bump(x);
+                p.flickX = -0.05f * bump(x);
+                p.flash = 0.35f * bump((x - 0.45f) / 0.2f);
+                if (kb) {
+                    p.rz += TAU * easeSmoother(c01((x - 0.30f) / 0.50f));
+                    p.flash = Math.max(p.flash, 0.55f * bump((x - 0.62f) / 0.2f));
+                }
+            }
+            case WHIRL, HWHIRL -> {
+                float in = ease(x / 0.14f);
+                float out = 1f - ease((x - 0.86f) / 0.14f);
+                p.gripY = GRIP - (GRIP - 1.4f) * Math.min(in, out);
+                float sp = spin(c01((x - 0.08f) / 0.80f), move == HWHIRL ? 5f : 2f, 0.45f);
+                if (move == HWHIRL) p.shake = 0.4f;
+                p.a = -sp;
+                p.b = sp;
+                p.release = 0.25f * Math.min(in, out);
+                p.rush = x > 0.12f && x < 0.9f ? 1f : 0f;
+                p.flickZ = 0.04f * (float) Math.sin(x * TAU * 2) + 0.04f * (float) Math.sin(sp);
+                p.gx = 0.7f * (float) Math.sin(sp * 0.5f) * Math.min(in, out);
+                p.gy = 0.5f * (float) Math.cos(sp * 0.5f) * Math.min(in, out) - 0.5f * bump(x);
+                if (x > 0.93f) p.flash = 0.5f;
+            }
+            case ROLL, ROLL_BACK -> {
+                float dir = move == ROLL ? 1f : -1f;
+                p.ry = dir * spin(x, spins.i(), 0.30f);
+                p.release = 0.35f * bump(x);
+                p.gy = -1.2f * bump(x) + kick(x, 0.86f, 0.5f);
+                p.rz = 0.08f * dir * bump(x) + 0.05f * (float) Math.sin(p.ry * 2f) * bump(x);
+                p.rush = x > 0.04f && x < 0.96f ? 1f : 0f;
+                if (x > 0.9f) p.flash = 0.5f;
+            }
+            case FRENZY -> {
+                p.rx = spin(x, 3f, 0.55f);
+                p.ry = spin(c01((x - 0.12f) / 0.78f), 1f, 0.2f);
+                p.rz = -0.4f * (float) Math.sin(x * TAU);
+                p.gy = -3.2f * bump(x) + kick(x, 0.9f, 0.7f);
+                p.gx = 2f * (float) Math.sin(x * TAU);
+                p.flickX = -0.14f * bump(x);
+                p.release = 0.8f * bump(x);
+                p.rush = x > 0.03f && x < 0.97f ? 1f : 0f;
+                p.shake = 0.3f * bump(x);
+                if (x > 0.92f) p.flash = 0.8f;
+            }
+            case TWIRL -> {
+                p.rz = -spin(x, 2f, 0.4f);
+                p.release = 0.75f * bump(x);
+                p.gx = 1.0f * bump(x) * (float) Math.cos(p.rz);
+                p.gy = -0.7f * bump(x) * (float) Math.sin(p.rz);
+                p.flickZ = 0.05f * bump(x);
+                p.rush = x > 0.04f && x < 0.96f ? 1f : 0f;
+                if (x > 0.93f) p.flash = 0.4f;
+            }
+            case GUN -> {
+                p.rx = spin(x, 2f, 0.5f);
+                p.rz = 0.30f * bump(x);
+                p.gy = -2.4f * bump(x) + 0.7f * bump(x / 0.16f) + kick(x, 0.88f, 0.8f);
+                p.flickX = -0.10f * bump(x);
+                p.release = 0.65f * bump(x);
+                p.rush = x > 0.04f && x < 0.96f ? 1f : 0f;
+                if (x > 0.93f) p.flash = 0.6f;
+            }
+            case AERIAL, KAERIAL -> {
+                float u = c01((x - 0.12f) / 0.72f);
+                float up = arc(u);
+                float wind = bump(x / 0.20f);
+                p.ky = (kb ? -26f : -34f) * up;
+                p.kx = -5f * up;
+                p.kz = -2f * up;
+                p.rz = -(kb ? 3f : 2f) * TAU * (0.12f * easeSmoother(u) + 0.88f * u);
+                p.rx = 0.9f * (float) Math.sin(u * TAU) * up;
+                p.gy = 2.2f * wind - 2.0f * bump((x - 0.80f) / 0.18f) + kick(x, 0.86f, 0.9f);
+                p.flickZ = -0.12f * wind + 0.10f * bump((x - 0.78f) / 0.2f);
+                p.flickX = 0.08f * wind;
+                p.release = Math.max(let(u), 0.2f * wind);
+                p.rush = up > 0.1f ? 1f : 0f;
+                if (x > 0.86f && x < 1f) p.flash = 1f - (x - 0.86f) / 0.14f;
+                if (x > 0.86f) p.shake = 0.35f * bump((x - 0.86f) / 0.14f);
+            }
+            case CLOSE -> {
+                setOpen(p, 1f - (0.5f * ease(x) + 0.5f * easeIn(x)));
+                p.flickZ = 0.12f * bump(x) + kick(x, 0.9f, 0.05f);
+                p.flickX = 0.06f * bump(x);
+                p.rush = x > 0f && x < 0.9f ? 1f : 0f;
+                if (x > 0.9f) p.flash = 0.4f * (1f - (x - 0.9f) / 0.1f);
+            }
+            case RSPIN, RREV -> {
+                float dir = move == RSPIN ? -1f : 1f;
+                float ang = dir * spin(x, 2f, 0.45f);
+                p.rz = ang;
+                p.ry = 0.16f * (float) Math.sin(ang * 2f) * bump(x);
+                spinHand(p, x);
+                p.gx = 0.8f * (float) Math.cos(ang) * bump(x);
+                p.gy = -0.6f * bump(x) - 0.7f * (float) Math.sin(ang) * bump(x) + kick(x, 0.88f, 0.6f);
+                p.flickZ = 0.05f * (float) Math.sin(x * PI * 2.0);
+                if (x > 0.9f) p.flash = 0.55f;
+            }
+            case RFLURRY -> {
+                float ph = x * 3f;
+                int seg = (int) Math.min(2f, ph);
+                float f = ph - seg;
+                float turns = seg == 0 ? -1f : seg == 1 ? 1f : -2f;
+                p.rz = (seg == 0 ? 0f : seg == 1 ? -TAU : 0f) + spin(f, turns, seg == 2 ? 0.2f : 0.7f);
+                spinHand(p, x);
+                p.gx = 0.9f * (float) Math.sin(x * TAU * 1.5);
+                p.gy = -0.6f * bump(f) + kick(f, 0.0f, 0.5f);
+                p.flickZ = 0.06f * (float) Math.sin(x * TAU * 3.0);
+                p.shake = seg == 2 ? 0.25f * bump(f) : 0f;
+                if (f > 0.9f) p.flash = 0.5f;
+            }
+            case RPIN -> {
+                float ang = -spin(x, 3f, 0.2f);
+                p.rz = ang;
+                p.ry = 0.2f * (float) Math.sin(ang);
+                spinHand(p, x);
+                p.gx = 2.6f * (float) Math.sin(x * TAU) * bump(x);
+                p.gy = -2.4f * (1f - (float) Math.cos(x * TAU)) * 0.5f + kick(x, 0.9f, 0.5f);
+                p.flickZ = 0.10f * (float) Math.sin(x * TAU * 2.0);
+                if (x > 0.92f) p.flash = 0.6f;
+            }
+            case KFLIP -> {
+                p.rx = spin(x, 2f, 0.5f);
+                p.rz = 0.30f * bump(x);
+                spinHand(p, x);
+                p.gy = -1.8f * bump(x) + 0.6f * bump(x / 0.16f) + kick(x, 0.88f, 0.7f);
+                p.flickX = -0.08f * bump(x);
+                if (x > 0.93f) p.flash = 0.6f;
+            }
+            case KTRIPLE -> {
+                float a = x < 0.5f ? -spin(x / 0.5f, 2f, 0.7f) : -2f * TAU - spin((x - 0.5f) / 0.5f, 1f, 0.15f);
+                p.rz = a;
+                p.ry = 0.14f * (float) Math.sin(a * 2f);
+                spinHand(p, x);
+                p.gy = -1.2f * bump(x) + kick(x, 0.5f, 0.5f);
+                p.flickZ = -0.12f * bump(x / 0.5f) + 0.1f * bump((x - 0.5f) / 0.5f);
+                p.shake = 0.35f * bump((x - 0.7f) / 0.3f);
+                if (x > 0.9f) p.flash = 0.8f;
+            }
+            case KCATCH -> {
+                float u = c01((x - 0.08f) / 0.76f);
+                float up = arc(u);
+                p.ky = -13f * up;
+                p.kx = -2f * up;
+                p.rz = -TAU * (0.15f * easeSmoother(u) + 0.85f * u);
+                p.rx = 0.7f * (float) Math.sin(u * TAU) * up;
+                p.release = Math.max(let(u), 0.3f);
+                p.gy = 1.4f * bump(x / 0.2f) - 1.6f * bump((x - 0.8f) / 0.2f) + kick(x, 0.84f, 0.8f);
+                p.rush = u > 0.05f && u < 0.95f ? 1f : 0f;
+                p.shake = 0.5f * bump((x - 0.84f) / 0.16f);
+                if (x > 0.84f) p.flash = 0.9f * (1f - (x - 0.84f) / 0.16f);
+            }
+            case KEIGHT -> {
+                float th = x * TAU * 1.5f;
+                float env = bump(x);
+                p.rz = 1.2f * TAU * (float) Math.sin(x * TAU);
+                spinHand(p, x);
+                p.gx = 5f * (float) Math.sin(th * 2f) * env;
+                p.gy = -3.5f * (float) Math.sin(th) * env;
+                p.ry = 0.2f * (float) Math.cos(th) * env;
+                p.flickZ = 0.12f * (float) Math.sin(th);
+                p.shake = 0.2f;
+                if (x > 0.92f) p.flash = 0.5f;
+            }
+            case KFLIPY -> {
+                p.ry = spin(x, 2f, 0.35f);
+                p.rz = 0.35f * (float) Math.sin(x * TAU);
+                p.release = 0.7f * bump(x);
+                p.rush = x > 0.04f && x < 0.96f ? 1f : 0f;
+                p.gy = -2f * bump(x) + kick(x, 0.88f, 0.6f);
+                p.flickX = -0.1f * bump(x);
+                if (x > 0.92f) p.flash = 0.7f;
+            }
+            case KSLASH3 -> {
+                float[] ax = {-17f, 11f, -15f};
+                float[] ay = {7f, -8f, -2f};
+                float[] az = {-1.5f, 1.7f, -0.3f};
+                float[] aq = {0f, 0f, 9f};
+                int sg = (int) Math.min(2f, x * 3f);
+                float f = x * 3f - sg;
+                float a = f < 0.3f ? -0.35f * ease(f / 0.3f) : f < 0.55f ? -0.35f + 1.35f * (0.55f * ease((f - 0.3f) / 0.25f) + 0.45f * easeIn((f - 0.3f) / 0.25f)) : 1f - ease((f - 0.55f) / 0.45f);
+                p.gx = ax[sg] * a;
+                p.gy = ay[sg] * a;
+                p.gz = aq[sg] * a;
+                p.rz = az[sg] * a;
+                p.flickZ = 0.22f * a * (sg == 1 ? -1f : 1f);
+                p.release = 0.5f * c01(a);
+                p.rush = f > 0.28f && f < 0.7f ? 1f : 0f;
+                p.shake = f > 0.5f && f < 0.7f ? 0.7f : 0f;
+                if (f > 0.5f && f < 0.66f) p.flash = 0.9f;
+            }
+            case KSNAP -> {
+                float a = -spin(x * 1.0f, 3f, 0.9f);
+                p.rz = a;
+                p.ry = 0.14f * (float) Math.sin(a * 2f) * bump(x);
+                spinHand(p, x);
+                p.gx = -1.2f * bump(x);
+                p.gy = -1.0f * bump(x) + kick(x, 0.84f, 1.0f);
+                p.shake = 0.7f * bump((x - 0.78f) / 0.22f);
+                p.flickZ = 0.1f * bump(x) - 0.12f * bump((x - 0.8f) / 0.2f);
+                if (x > 0.84f && x < 0.99f) p.flash = 1f - (x - 0.84f) / 0.15f;
+            }
+            case KHYPER -> {
+                float a = -spin(x, 6f, 0.15f);
+                p.rz = a;
+                p.ry = 0.12f * (float) Math.sin(a * 3f) * bump(x);
+                spinHand(p, x);
+                p.gy = -1.6f * bump(x) + 0.5f * (float) Math.sin(x * TAU * 6.0) * bump(x);
+                p.gx = 1.2f * (float) Math.sin(x * TAU * 5.0) * bump(x);
+                p.shake = 0.5f * bump(x);
+                p.flickZ = 0.1f * (float) Math.sin(x * TAU * 4.0);
+                if (x > 0.9f) p.flash = 1f;
+            }
+            case KJUGGLE -> {
+                float u1 = c01((x - 0.04f) / 0.38f);
+                float u2 = c01((x - 0.46f) / 0.5f);
+                float up1 = arc(u1);
+                float up2 = arc(u2);
+                p.ky = -11f * up1 - 21f * up2;
+                p.kx = -2f * up1 - 4f * up2;
+                p.rz = -TAU * (0.15f * easeSmoother(u1) + 0.85f * u1) - 2f * TAU * (0.15f * easeSmoother(u2) + 0.85f * u2);
+                p.rx = 0.5f * (float) Math.sin(x * TAU * 3.0) * (up1 + up2);
+                p.release = Math.max(Math.max(let(u1), let(u2)), 0.2f);
+                p.gy = 1.2f * bump(x / 0.1f) - 1.6f * bump((x - 0.43f) / 0.1f) - 1.8f * bump((x - 0.92f) / 0.08f) + kick(x, 0.43f, 0.5f) + kick(x, 0.94f, 0.7f);
+                p.rush = (up1 + up2) > 0.1f ? 1f : 0f;
+                if ((x > 0.4f && x < 0.48f) || x > 0.94f) p.flash = 0.8f;
+                if (x > 0.94f) p.shake = 0.6f;
+            }
+            case KORBIT -> {
+                float env = ease(x / 0.15f) * (1f - ease((x - 0.85f) / 0.15f));
+                float ang = -spin(x, 3f, 0.25f);
+                p.rz = ang;
+                p.ry = 0.30f * (float) Math.sin(ang);
+                p.rx = 0.22f * (float) Math.cos(ang);
+                spinHand(p, x);
+                p.gx = 4.2f * (float) Math.cos(ang - 0.6f) * env;
+                p.gy = -3.0f * (float) Math.sin(ang - 0.6f) * env - 1.0f * env;
+                p.flickZ = 0.10f * (float) Math.sin(ang);
+                p.shake = 0.15f * env;
+                if (x > 0.92f) p.flash = 0.6f;
+            }
+            case KCROSS -> {
+                float ang = -spin(x, 2f, 0.4f);
+                p.rz = ang;
+                p.rx = 0.95f * (float) Math.sin(ang * 0.5f) * bump(x);
+                p.ry = 0.55f * (float) Math.cos(ang) * bump(x);
+                spinHand(p, x);
+                p.gy = -1.4f * bump(x) + kick(x, 0.88f, 0.6f);
+                p.gx = 1.3f * (float) Math.sin(ang) * bump(x);
+                p.flickZ = 0.08f * (float) Math.sin(ang * 0.5f);
+                if (x > 0.92f) p.flash = 0.6f;
+            }
+            case KDOUBLE -> {
+                float u1 = c01((x - 0.05f) / 0.36f);
+                float u2 = c01((x - 0.50f) / 0.44f);
+                float up1 = arc(u1);
+                float up2 = arc(u2);
+                p.ky = -10f * up1 - 25f * up2;
+                p.kx = -2f * up1 - 4f * up2;
+                p.rz = -TAU * (0.2f * easeSmoother(u1) + 0.8f * u1) - 3f * TAU * (0.1f * easeSmoother(u2) + 0.9f * u2);
+                p.rx = TAU * easeSmoother(u1) + 0.6f * (float) Math.sin(u2 * TAU) * up2;
+                p.release = Math.max(Math.max(let(u1), let(u2)), 0.25f);
+                p.gy = 1.3f * bump(x / 0.1f) - 1.5f * bump((x - 0.42f) / 0.1f) + 1.0f * bump((x - 0.5f) / 0.08f) - 1.8f * bump((x - 0.94f) / 0.06f)
+                        + kick(x, 0.42f, 0.5f) + kick(x, 0.95f, 0.8f);
+                p.rush = (up1 + up2) > 0.1f ? 1f : 0f;
+                if ((x > 0.41f && x < 0.49f) || x > 0.94f) p.flash = 0.8f;
+                if (x > 0.95f) p.shake = 0.6f;
+            }
+            case KSTORM -> {
+                float a = -spin(x, 5f, 0.6f);
+                p.rz = a;
+                p.rx = 0.5f * (float) Math.sin(x * TAU * 2.0) * bump(x);
+                p.ry = 0.25f * (float) Math.sin(a * 2f) * bump(x);
+                spinHand(p, x);
+                p.gx = 1.8f * (float) Math.sin(x * TAU * 7.0) * bump(x);
+                p.gy = -2.0f * bump(x) + 0.8f * (float) Math.sin(x * TAU * 9.0) * bump(x);
+                p.shake = 0.65f * bump(x);
+                p.flickZ = 0.14f * (float) Math.sin(x * TAU * 5.0);
+                if ((x > 0.45f && x < 0.52f) || x > 0.92f) p.flash = 1f;
+            }
+            case INSPECT -> {
+                int id = kind();
+                int style = id % 6;
+                float dir = (id / 6) % 2 == 0 ? 1f : -1f;
+                float turns = id >= 12 ? 2f : 1f;
+                float env = bump(x);
+                p.gy = -1.8f * env;
+                p.flickX = -0.05f * env;
+                p.release = 0.3f * env;
+                p.rush = x > 0.06f && x < 0.94f ? 1f : 0f;
+                if (style == 0) {
+                    p.ry = dir * spin(c01((x - 0.10f) / 0.80f), turns, 0.2f);
+                    p.rx = -0.35f * env;
+                    p.rz = 0.15f * (float) Math.sin(x * TAU) * env;
+                } else if (style == 1) {
+                    p.rx = dir * spin(c01((x - 0.08f) / 0.42f), 1f, 0.5f);
+                    p.rz = dir * spin(c01((x - 0.56f) / 0.38f), turns, 0.3f);
+                } else if (style == 2) {
+                    float u = c01((x - 0.10f) / 0.55f);
+                    float up = arc(u);
+                    p.ky = -14f * up;
+                    p.rz = -dir * TAU * turns * easeSmoother(u);
+                    p.release = Math.max(let(u), 0.2f * env);
+                    p.gy += kick(x, 0.66f, 0.6f);
+                    p.ry = dir * spin(c01((x - 0.74f) / 0.22f), 1f, 0.2f);
+                } else if (style == 3) {
+                    p.rz = -dir * spin(c01((x - 0.10f) / 0.50f), turns, 0.4f);
+                    p.ry = x > 0.62f ? dir * 0.9f * (float) Math.sin((x - 0.62f) / 0.34f * TAU) : 0f;
+                } else if (style == 4) {
+                    p.rz = dir * PI * (easeSmoother(c01((x - 0.10f) / 0.25f)) - easeSmoother(c01((x - 0.60f) / 0.25f)));
+                    p.rx = 0.5f * dir * (float) Math.sin(c01((x - 0.35f) / 0.30f) * PI);
+                    p.gy += -2.0f * bump((x - 0.42f) / 0.16f);
+                } else {
+                    p.rz = dir * 0.6f * (float) Math.sin(x * TAU * 2f) * env;
+                    p.ry = dir * spin(c01((x - 0.40f) / 0.55f), turns, 0.1f);
+                }
+                p.flash = Math.max(0.5f * bump((x - 0.46f) / 0.12f), x > 0.92f ? 0.6f : 0f);
+            }
+            case HELI -> {
+                float ang = spin(x, 3f, 0.2f);
+                float env = bump(x);
+                p.ry = ang;
+                p.rz = 0.35f * env;
+                p.rx = 0.18f * (float) Math.sin(ang) * env;
+                float hs = spin(x, 2f, 0.2f);
+                p.a = -hs;
+                p.b = hs;
+                p.release = 0.6f * env;
+                p.gx = 1.8f * (float) Math.cos(ang) * env;
+                p.gy = -1.4f * env + 0.8f * (float) Math.sin(ang) * env + kick(x, 0.88f, 0.6f);
+                p.rush = x > 0.05f && x < 0.95f ? 1f : 0f;
+                p.shake = 0.25f * env;
+                if (x > 0.9f) p.flash = 0.7f;
+            }
+            case BDOUBLE -> {
+                float u1 = c01((x - 0.05f) / 0.36f);
+                float u2 = c01((x - 0.50f) / 0.44f);
+                float up1 = arc(u1);
+                float up2 = arc(u2);
+                p.ky = -16f * up1 - 32f * up2;
+                p.kx = -3f * up1 - 5f * up2;
+                p.rz = -TAU * (0.2f * easeSmoother(u1) + 0.8f * u1) - 2f * TAU * (0.1f * easeSmoother(u2) + 0.9f * u2);
+                p.rx = TAU * easeSmoother(u1) + 0.7f * (float) Math.sin(u2 * TAU) * up2;
+                p.a = -TAU * 2f * easeSmoother(u2);
+                p.b = TAU * 2f * easeSmoother(u2);
+                p.release = Math.max(Math.max(let(u1), let(u2)), 0.25f);
+                p.gy = 1.3f * bump(x / 0.1f) - 1.5f * bump((x - 0.42f) / 0.1f) + 1.0f * bump((x - 0.5f) / 0.08f) - 1.8f * bump((x - 0.94f) / 0.06f)
+                        + kick(x, 0.42f, 0.5f) + kick(x, 0.95f, 0.8f);
+                p.rush = (up1 + up2) > 0.1f ? 1f : 0f;
+                if ((x > 0.41f && x < 0.49f) || x > 0.94f) p.flash = 0.8f;
+                if (x > 0.95f) p.shake = 0.6f;
+            }
+            case LATCH -> {
+                float o = x >= 0.45f ? 1f : easeOutBack(softStart(x / 0.45f));
+                setOpen(p, Math.min(1.05f, o));
+                p.rz = -spin(x, 1f, 0.7f);
+                p.flickZ = 0.12f * bump(x / 0.35f) + kick(x, 0.45f, 0.06f);
+                p.gy = -1.8f * bump(x / 0.6f) + kick(x, 0.5f, 0.7f);
+                p.release = 0.6f * bump(x);
+                p.rush = x > 0.06f && x < 0.9f ? 1f : 0f;
+                if (x > 0.42f && x < 0.8f) p.flash = 1f - (x - 0.42f) / 0.38f;
+            }
+            case CASCADE -> {
+                if (x < 0.30f) return movePose(FAN, x / 0.30f, t, true);
+                if (x < 0.62f) return movePose(WHIRL, (x - 0.30f) / 0.32f, t, true);
+                return movePose(ROLL, (x - 0.62f) / 0.38f, t, true);
+            }
+            case T_INSPECT -> {
+                // raise it into the light, turn it edge on to show the spine and its thickness,
+                // over to the other face, then home; every hold lets the highlights travel
+                float[] ts = {0f, 0.12f, 0.30f, 0.44f, 0.60f, 0.78f, 1f};
+                p.ry = keys(x, ts, 0f, 0.40f, 1.50f, 1.50f, PI + 0.30f, PI + 0.30f, TAU);
+                p.rx = keys(x, ts, 0f, -0.28f, -0.12f, -0.18f, 0.22f, 0.18f, 0f);
+                p.rz = keys(x, ts, 0f, 0.30f, 0.45f, 0.42f, 0.22f, 0.12f, 0f);
+                p.gx = keys(x, ts, 0f, -7f, -8.5f, -8.5f, -7f, -5f, 0f);
+                p.gy = keys(x, ts, 0f, -5.5f, -6.5f, -6.5f, -5.5f, -3.5f, 0f);
+                p.flickZ = 0.06f * bump(x);
+                p.flash = 0.45f * bump((x - 0.58f) / 0.14f) + 0.30f * bump((x - 0.26f) / 0.10f);
+            }
+            case T_REVERSE -> {
+                // toss into a reverse grip (one and a half turns), a short stab, a half turn home
+                float u1 = c01(x / 0.42f), u3 = c01((x - 0.70f) / 0.30f);
+                p.rz = -3f * PI * easeSmoother(u1) - PI * easeSmoother(u3);
+                float up = arc(u1);
+                p.ky = -9f * up;
+                p.kx = -1.5f * up;
+                p.rx = 0.35f * (float) Math.sin(u1 * PI);
+                p.release = Math.max(let(u1), 0.15f * bump(u3));
+                float stab = bump((x - 0.44f) / 0.26f);
+                // lift the hand while the blade points down, so the reverse grip stays in view
+                float lift = keys(x, new float[] {0f, 0.30f, 0.42f, 0.72f, 0.88f, 1f}, 0f, 4f, 9f, 9f, 3f, 0f);
+                p.gy = -lift + 4.2f * stab + kick(x, 0.42f, 0.6f) + kick(x, 1f, 0.4f);
+                p.gx = -0.75f * lift;
+                p.gz = -1.5f * stab;
+                p.rush = (u1 > 0.04f && u1 < 0.96f) || (u3 > 0.04f && u3 < 0.96f) ? 1f : 0f;
+                p.shake = 0.45f * bump((x - 0.42f) / 0.08f);
+                p.flash = 0.9f * bump((x - 0.52f) / 0.10f);
+            }
+            case T_ROLL -> {
+                // two full rolls round the vertical, so both faces and both edges sweep past
+                p.ry = spin(x, 2f, 0.35f);
+                p.rz = 0.32f * (float) Math.sin(x * TAU) * bump(x);
+                p.rx = -0.18f * bump(x);
+                spinHand(p, x);
+                p.release = 0.25f * p.release;
+                p.gx = -2.5f * (float) Math.sin(x * TAU);
+                p.gy = -2.2f * bump(x) + kick(x, 0.9f, 0.4f);
+                float face = (float) Math.abs(Math.cos(p.ry));
+                p.flash = 0.55f * (float) Math.pow(face, 24.0) * bump(x);
+            }
+            case T_XCUT -> {
+                // a two stroke cross: down and in, back up and across
+                float[] ts = {0f, 0.14f, 0.34f, 0.46f, 0.66f, 0.82f, 1f};
+                p.gx = keys(x, ts, 0f, 1.5f, -16f, -13f, 3f, 1f, 0f);
+                p.gy = keys(x, ts, 0f, -6f, 2f, -6f, 3f, 1f, 0f);
+                p.rz = keys(x, ts, 0f, 0.40f, -0.85f, -0.55f, 0.55f, 0.15f, 0f);
+                p.flickZ = keys(x, ts, 0f, 0.16f, -0.50f, -0.32f, 0.20f, 0.05f, 0f);
+                p.flickY = 0.15f * bump((x - 0.14f) / 0.32f) - 0.15f * bump((x - 0.46f) / 0.30f);
+                p.rush = (x > 0.16f && x < 0.36f) || (x > 0.48f && x < 0.68f) ? 1f : 0f;
+                p.flash = 0.9f * bump((x - 0.28f) / 0.10f) + 0.9f * bump((x - 0.60f) / 0.10f);
+                p.shake = 0.3f * bump((x - 0.30f) / 0.08f) + 0.3f * bump((x - 0.62f) / 0.08f);
+            }
+            case KSLASH -> {
+                slashPose(p, t);
+                p.b = 0f;
+                p.c = 0f;
+                p.rz *= 2.2f;
+            }
+            default -> slashPose(p, t);
+        }
+        return p;
     }
 
     /**
-     * The terrain-shape part of the suspicious-chunk approach. It looks for
-     * enclosed, two-block-high horizontal passages and narrow vertical shafts in the
-     * already-loaded chunk. Geometry is only supporting evidence: caves alone never
-     * become a base, and no neighbouring/unloaded chunk is requested.
+     * Keyframed curve: values at the times ts (0..1), joined by Catmull-Rom splines, so a move
+     * flows through its key poses with no stop at each one, and eases at the ends.
      */
-    private static int[] tunnelGeometry(LevelChunk chunk, int cx, int cz, int surface) {
-        LevelChunkSection[] sections = chunk.getSections();
-        int minSectionY = chunk.getMinSectionY();
-        int minY = minSectionY << 4;
-        int maxY = minY + sections.length * 16 - 2;
-        int top = Math.min(maxY, surface - 3);
-        int bottom = minY + 2;
-        if (top <= bottom) return new int[] {0, 0};
-        int runs = 0;
-        int shafts = 0;
-
-        // Sample every second Y level to keep the scan bounded while covering deep tunnels.
-        for (int y = bottom; y <= top; y += 2) {
-            for (int z = 1; z < 15; z++) {
-                for (int x = 1; x < 15; x++) {
-                    // A three-cell horizontal passage, with floor, roof and side walls.
-                    if (x <= 12 && air(sections, minSectionY, x, y, z) && air(sections, minSectionY, x, y + 1, z)
-                            && air(sections, minSectionY, x + 1, y, z) && air(sections, minSectionY, x + 1, y + 1, z)
-                            && air(sections, minSectionY, x + 2, y, z) && air(sections, minSectionY, x + 2, y + 1, z)
-                            && solidDry(sections, minSectionY, x + 1, y - 1, z) && solidDry(sections, minSectionY, x + 1, y + 2, z)
-                            && solidDry(sections, minSectionY, x + 1, y, z - 1) && solidDry(sections, minSectionY, x + 1, y + 1, z - 1)
-                            && solidDry(sections, minSectionY, x + 1, y, z + 1) && solidDry(sections, minSectionY, x + 1, y + 1, z + 1)) {
-                        runs++;
-                    }
-                    if (z <= 12 && air(sections, minSectionY, x, y, z) && air(sections, minSectionY, x, y + 1, z)
-                            && air(sections, minSectionY, x, y, z + 1) && air(sections, minSectionY, x, y + 1, z + 1)
-                            && air(sections, minSectionY, x, y, z + 2) && air(sections, minSectionY, x, y + 1, z + 2)
-                            && solidDry(sections, minSectionY, x, y - 1, z + 1) && solidDry(sections, minSectionY, x, y + 2, z + 1)
-                            && solidDry(sections, minSectionY, x - 1, y, z + 1) && solidDry(sections, minSectionY, x - 1, y + 1, z + 1)
-                            && solidDry(sections, minSectionY, x + 1, y, z + 1) && solidDry(sections, minSectionY, x + 1, y + 1, z + 1)) {
-                        runs++;
-                    }
-                    // A narrow, enclosed vertical shaft (three or more air blocks).
-                    if (air(sections, minSectionY, x, y, z) && air(sections, minSectionY, x, y + 1, z) && air(sections, minSectionY, x, y + 2, z)
-                            && solidDry(sections, minSectionY, x - 1, y + 1, z) && solidDry(sections, minSectionY, x + 1, y + 1, z)
-                            && solidDry(sections, minSectionY, x, y + 1, z - 1) && solidDry(sections, minSectionY, x, y + 1, z + 1)) {
-                        shafts++;
-                    }
-                }
-            }
-        }
-        return new int[] {Math.min(32, runs), Math.min(12, shafts)};
+    private static float keys(float x, float[] ts, float... vs) {
+        int n = ts.length;
+        if (x <= ts[0]) return vs[0];
+        if (x >= ts[n - 1]) return vs[n - 1];
+        int i = 0;
+        while (i < n - 2 && x > ts[i + 1]) i++;
+        float t0 = ts[i], t1 = ts[i + 1], h = t1 - t0;
+        float u = (x - t0) / h, u2 = u * u, u3 = u2 * u;
+        float m0 = i == 0 ? 0f : (vs[i + 1] - vs[i - 1]) / (ts[i + 1] - ts[i - 1]) * h;
+        float m1 = i + 2 >= n ? 0f : (vs[i + 2] - vs[i]) / (ts[i + 2] - ts[i]) * h;
+        return (2 * u3 - 3 * u2 + 1) * vs[i] + (u3 - 2 * u2 + u) * m0 + (-2 * u3 + 3 * u2) * vs[i + 1] + (u3 - u2) * m1;
     }
 
-    private boolean yWanted(int y, int seaLevel) {
-        return switch (where.index()) {
-            case 1 -> y < seaLevel - 8;
-            case 2 -> y >= seaLevel - 8;
-            default -> true;
-        };
+    private static void spinHand(Pose p, float x) {
+        p.release = Math.min(ease(x / 0.10f), 1f - ease((x - 0.90f) / 0.10f));
+        p.rush = x > 0.03f && x < 0.97f ? 1f : 0f;
     }
-
-    /**
-     * Returns -1 for non-crops, 0 for an immature crop and 1 for a mature crop.
-     * This deliberately remains a weak signal: natural farms and villages are common.
-     */
-    private static String growthKind(Block block) {
-        return GROWTH_KIND.computeIfAbsent(block, b -> {
-            String path;
-            try { path = BuiltInRegistries.BLOCK.getKey(b).getPath(); }
-            catch (RuntimeException ex) { return ""; }
-            return path.equals("wheat") || path.equals("carrots") || path.equals("potatoes")
-                    || path.equals("beetroots") || path.equals("nether_wart") || path.equals("sweet_berry_bush")
-                    || path.equals("cave_vines") || path.equals("cave_vines_plant") || path.equals("cocoa")
-                    || path.equals("pumpkin_stem") || path.equals("melon_stem") || path.equals("bamboo")
-                    || path.equals("kelp") || path.equals("kelp_plant") || path.equals("bee_nest") || path.equals("beehive") ? path : "";
-        });
+    private static void setOpen(Pose p, float o) {
+        p.c = PI * o;
+        p.b = TAU * o;
     }
-
-    private static int growthStage(BlockState state, String path) {
-        if (path.isEmpty()) return -1;
-        for (var entry : state.getValues().entrySet()) {
-            String property = entry.getKey().getName();
-            String value = entry.getValue().toString();
-            if (property.equals("berries")) return Boolean.parseBoolean(value) ? 1 : 0;
-            if (property.equals("age") || property.equals("stage") || property.equals("honey_level")) {
-                try {
-                    int age = Integer.parseInt(value);
-                    int max = entry.getKey().getPossibleValues().size() - 1;
-                    return max >= 0 && age >= max ? 1 : 0;
-                } catch (NumberFormatException ignored) { return 0; }
-            }
-        }
-        return -1;
+    private void slashPose(Pose p, float s) {
+        float flick = easeOutBack(softStart(s / 0.17f));
+        setOpen(p, Math.min(1.04f, flick));
+        if (s > 0.17f) setOpen(p, 1f);
+        float cock = ease((s - 0.04f) / 0.14f);
+        float cut = 0.6f * ease((s - 0.17f) / 0.15f) + 0.4f * easeIn((s - 0.17f) / 0.15f);
+        float back = ease((s - 0.34f) / 0.34f);
+        float sweep = cock * (1f - cut);
+        float swing = cut * (1f - back);
+        p.flickZ = 0.32f * sweep - 0.55f * swing;
+        p.flickY = 0.15f * swing;
+        p.gx = 3f * sweep - 18f * swing;
+        p.gy = 4f * sweep - 8f * swing;
+        p.rz = -0.5f * swing;
+        p.release = 0.2f * swing;
+        p.flash = s > 0.27f && s < 0.42f ? 1f - (s - 0.27f) / 0.15f : 0f;
+        p.rush = (cut > 0.05f && cut < 0.99f && back < 0.2f ? 1f : 0f) + (s < 0.17f ? 0.6f : 0f);
     }
-
-    /** 1=shell, 2=budding amethyst, 3=bud/cluster, 4=amethyst block. */
-    private static int geodeKind(Block block) {
-        return GEODE_KIND.computeIfAbsent(block, b -> {
-            String path;
-            try { path = BuiltInRegistries.BLOCK.getKey(b).getPath(); }
-            catch (RuntimeException ex) { return 0; }
-            if (path.equals("calcite") || path.equals("smooth_basalt")) return 1;
-            if (path.equals("budding_amethyst")) return 2;
-            if (path.equals("small_amethyst_bud") || path.equals("medium_amethyst_bud")
-                    || path.equals("large_amethyst_bud") || path.equals("amethyst_cluster")) return 3;
-            if (path.equals("amethyst_block")) return 4;
-            return 0;
-        });
+    private static final class Frame {
+        Rig.T knife;
+        Rig.T arm;
+        Rig.T fist;
     }
-
-    private static boolean exposedBudding(Minecraft mc, BlockPos pos, int cx, int cz) {
-        int open = 0;
-        for (Direction direction : Direction.values()) {
-            BlockPos neighbour = pos.relative(direction);
-            // Stay inside this already-loaded chunk; do not request neighbouring chunks just to score a clue.
-            if ((neighbour.getX() >> 4) != cx || (neighbour.getZ() >> 4) != cz) continue;
-            if (mc.level.getBlockState(neighbour).isAir()) open++;
-        }
-        return open >= 2;
-    }
-
-    private List<String> geodeLines() {
-        if (!enabled()) return List.of("Switch the scanner on to inspect loaded chunks.");
-        if (!minedGeodeScan.on()) return List.of("Disabled in settings.");
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || geodeHints.isEmpty()) return List.of("No likely mined geodes in the scanned area.");
-        List<Map.Entry<Long, GeodeHint>> sorted = new ArrayList<>(geodeHints.entrySet());
-        sorted.sort((a, b) -> Double.compare(
-                Math.hypot(kx(a.getKey()) * 16 + 8 - mc.player.getX(), kz(a.getKey()) * 16 + 8 - mc.player.getZ()),
-                Math.hypot(kx(b.getKey()) * 16 + 8 - mc.player.getX(), kz(b.getKey()) * 16 + 8 - mc.player.getZ())));
-        List<String> out = new ArrayList<>();
-        for (int i = 0; i < Math.min(5, sorted.size()); i++) {
-            var entry = sorted.get(i);
-            GeodeHint h = entry.getValue();
-            int x = kx(entry.getKey()) * 16 + 8;
-            int z = kz(entry.getKey()) * 16 + 8;
-            int distance = (int) Math.round(Math.hypot(x - mc.player.getX(), z - mc.player.getZ()));
-            out.add(String.format(Locale.ROOT, "Likely mined geode   %d, %d   %dm   %d exposed budding / %d crystals", x, z, distance, h.exposedBudding(), h.crystals()));
-            out.add("    evidence: " + h.shell() + " calcite/basalt shell blocks, " + h.budding() + " budding amethyst");
-        }
-        return out;
-    }
-
-    private void scan(Minecraft mc, int cx, int cz, long now) {
-        LevelChunk chunk = Env.chunk(mc, cx, cz);
-        if (chunk == null) return;
-        Score s = new Score();
-        s.at = now;
-        LevelChunkSection[] sections = chunk.getSections();
-        int minY = chunk.getMinSectionY() << 4;
-        int sea = 63;
-        int surf = Brain.surface(mc, (cx << 4) + 8, (cz << 4) + 8);
-        double underW = 0;
-        double allW = 0;
-        double bestSection = 0;
-        Set<String> cropKinds = new HashSet<>();
-        int geodeShell = 0, geodeBudding = 0, geodeCrystals = 0, geodeExposed = 0;
-        for (int i = 0; i < sections.length; i++) {
-            LevelChunkSection sec = sections[i];
-            if (sec == null || sec.hasOnlyAir() || !sec.maybeHas(st -> {
-                int[] w = weigh(st.getBlock());
-                return w[0] > 0 || w[2] > 0 || w[6] > 0 || w[7] > 0
-                        || (growthEvidence.on() && !growthKind(st.getBlock()).isEmpty())
-                        || (minedGeodeScan.on() && geodeKind(st.getBlock()) != 0);
-            })) continue;
-            int by = minY + i * 16;
-            double here = 0;
-            for (int y = 0; y < 16; y++) {
-                boolean wanted = yWanted(by + y, sea);
-                for (int z = 0; z < 16; z++) {
-                    for (int x = 0; x < 16; x++) {
-                        BlockState state = sec.getBlockState(x, y, z);
-                        Block block = state.getBlock();
-                        int[] w = weigh(block);
-                        if (minedGeodeScan.on()) {
-                            int geode = geodeKind(block);
-                            if (geode == 1) geodeShell++;
-                            else if (geode == 2) {
-                                geodeBudding++;
-                                BlockPos pos = new BlockPos((cx << 4) + x, by + y, (cz << 4) + z);
-                                if (exposedBudding(mc, pos, cx, cz)) geodeExposed++;
-                            } else if (geode == 3) geodeCrystals++;
-                        }
-                        if (growthEvidence.on() && wanted) {
-                            String crop = growthKind(block);
-                            int stage = growthStage(state, crop);
-                            if (stage >= 0) {
-                                if (stage == 1) s.grownPlants++; else s.youngPlants++;
-                                cropKinds.add(crop);
-                            }
-                        }
-                        if (w[2] > 0) {
-                            s.markers[w[2] - 1] += w[3];
-                            if (surf != Integer.MIN_VALUE && by + y < surf - 8) s.under[w[2] - 1] += w[3];
-                        }
-                        if (w[7] > 0 && wanted) s.foot |= 1L << w[7];
-                        if (w[6] > 0 && wanted) {
-                            s.roles[w[6]]++;
-                            if ((w[6] == BaseBrain.R_BED || w[6] == BaseBrain.R_CONTAINER || w[6] == BaseBrain.R_VALUABLE) && s.keys.size() < 60) {
-                                s.keys.add(Ledger.pack((cx << 4) + x, by + y, (cz << 4) + z));
-                            }
-                        }
-                        if (w[0] == 0 || !wanted) continue;
-                        allW += w[0];
-                        if (surf != Integer.MIN_VALUE && by + y < surf - 6) underW += w[0];
-                        double v = w[0] / 10.0;
-                        here += v;
-                        if (w[5] == 2) {
-                            s.strong += v;
-                            s.strongCount++;
-                        } else if (w[5] == 1) {
-                            s.mid += v;
-                        } else {
-                            s.weak += v;
-                        }
-                        if (w[4] == 1) s.tell += v;
-                        s.groups[w[1]] += v;
-                        s.ySum += by + y;
-                        s.yCount++;
-                        if (by + y < s.minY) s.minY = by + y;
-                        if (by + y > s.maxY) s.maxY = by + y;
-                    }
-                }
-            }
-            bestSection = Math.max(bestSection, here);
-        }
-        s.growthKinds = cropKinds.size();
-        if (clearance.on()) {
-            Clearance.Result cr = Clearance.of(chunk);
-            s.owed = cr.owed();
-            s.owedKinds = cr.kinds();
-        }
-        if (useTunnelGeometry() && surf != Integer.MIN_VALUE) {
-            int[] geometry = tunnelGeometry(chunk, cx, cz, surf);
-            s.tunnelRuns = geometry[0];
-            s.verticalShafts = geometry[1];
-        }
-        long chunkKey = key(cx, cz);
-        if (minedGeodeScan.on() && geodeShell >= 10 && geodeBudding >= 4 && geodeExposed >= 3
-                && geodeCrystals <= Math.max(2, geodeBudding / 5)) {
-            geodeHints.put(chunkKey, new GeodeHint(geodeShell, geodeBudding, geodeCrystals, geodeExposed));
-        } else {
-            geodeHints.remove(chunkKey);
-        }
-        // ordinary blocks (planks, stairs, torches...) only add a little to a chunk that already holds blocks a player placed
-        s.total = s.strong + Math.min(s.mid, s.strong + 6) + Math.min(s.weak, s.strong * 0.5 + 3);
-        // growth-pattern clue: mature crop diversity supports an existing build signal,
-        // but is capped and cannot independently make a farm look like a hidden base.
-        if (growthEvidence.on() && s.strongCount > 0 && s.grownPlants > 0) {
-            double growth = Math.min(5.0, s.grownPlants * 0.12 + s.youngPlants * 0.015);
-            if (s.growthKinds >= 3) growth *= 1.2;
-            s.total += growth;
-        }
-        // Tunnel geometry is a low-weight corroborating signal, never a standalone base detector.
-        // Require existing player evidence (for example storage, lighting or distinctive blocks).
-        if (useTunnelGeometry() && (s.strongCount > 0 || s.tell > 0 || s.roles[BaseBrain.R_LIGHT] > 0)) {
-            s.total += Math.min(8.0, s.tunnelRuns * 0.35 + s.verticalShafts * 0.9);
-        }
-        // a chunk that is only one kind of thing (a field of lanterns) is less telling than one that mixes several kinds
-        int kinds = 0;
-        for (double g : s.groups) if (g >= 3) kinds++;
-        double adjusted = s.total * (kinds >= 3 ? 1.25 : kinds == 2 ? 1.0 : 0.7);
-        // a small, dense build in one spot is more telling than the same amount spread out
-        if (s.total > 0 && bestSection / s.total > 0.6 && s.total > threshold() * 0.4) adjusted *= 1.25;
-        s.total = adjusted;
-        s.underground = allW <= 0 ? 0 : surf == Integer.MIN_VALUE ? 0.3 : underW / allW;
-        if (s.strongCount == 0) s.total = Math.min(s.total, 8);
-        double bestRatio = 0;
-        for (int i = 0; i < STRUCTS.length; i++) {
-            // mineshafts, strongholds, ancient cities, trial chambers and dungeons are underground: fences or rails on the surface are a player's
-            boolean undergroundOnly = i == 0 || i == 1 || i == 4 || i == 7 || i == 11;
-            if (undergroundOnly && surf != Integer.MIN_VALUE && s.under[i] < s.markers[i] * 0.6) continue;
-            double ratio = s.markers[i] / (double) STRUCT_MIN[i];
-            if (ratio >= 1.0 && ratio > bestRatio) {
-                bestRatio = ratio;
-                s.structure = i;
-                s.structPts = s.markers[i];
-            }
-        }
-        chunks.put(key(cx, cz), s);
-    }
-
-    private void scanEntities(Minecraft mc, int rc) {
-        entScore.clear();
-        itemCount.clear();
-        clueMap.clear();
-        if (!entities.on()) return;
-        Map<Long, Map<String, Integer>> herds = new HashMap<>();
-        for (Entity e : Env.entities(mc, rc * 16)) {
-            double v;
-            EntityType<?> t = e.getType();
-            long ck = key(e.getBlockX() >> 4, e.getBlockZ() >> 4);
-            String tid = entityId(t);
-            int[] cl = clueMap.computeIfAbsent(ck, k -> new int[4]);
-            switch (tid) {
-                case "ender_pearl" -> cl[0]++;
-                case "villager", "wandering_trader" -> cl[2]++;
-                case "cow", "pig", "sheep", "chicken", "horse", "donkey", "mule", "llama", "goat", "rabbit", "mooshroom", "camel" ->
-                        herds.computeIfAbsent(ck, k -> new HashMap<>()).merge(tid, 1, Integer::sum);
-                default -> { }
-            }
-            if (e.hasCustomName() && !tid.equals("player") && !tid.equals("item") && !tid.equals("armor_stand") && !tid.endsWith("item_frame")) cl[1]++;
-            if (t == EntityType.ITEM) {
-                itemCount.merge(key(e.getBlockX() >> 4, e.getBlockZ() >> 4), 1, Integer::sum);
-                continue;
-            }
-            if (t == EntityType.ITEM_FRAME || t == EntityType.GLOW_ITEM_FRAME) v = 14;
-            else if (t == EntityType.ARMOR_STAND) v = 14;
-            else if (t == EntityType.CHEST_MINECART || t == EntityType.HOPPER_MINECART) v = 20;
-            else if (t == EntityType.PAINTING) v = 8;
-            else continue;
-            entScore.merge(ck, v, Double::sum);
-        }
-        for (Map.Entry<Long, Map<String, Integer>> h : herds.entrySet()) {
-            int most = 0;
-            for (int n : h.getValue().values()) most = Math.max(most, n);
-            clueMap.computeIfAbsent(h.getKey(), k -> new int[4])[3] = most;
-        }
-    }
-
-    private static String entityId(EntityType<?> t) {
-        try {
-            String id = net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(t).toString();
-            return id.substring(id.indexOf(':') + 1);
-        } catch (RuntimeException e) {
-            return "";
-        }
-    }
-
-    private void judgeAll(int mode, boolean hubMode, boolean nether) {
-        Map<Long, Double> ev = new HashMap<>();
-        for (Map.Entry<Long, Score> en : chunks.entrySet()) {
-            Score s = en.getValue();
-            BaseBrain.Features ft = features(s, mode == 2);
-            if (activity.on() && useActivity.on()) ft.activity = Activity.heat(kx(en.getKey()), kz(en.getKey()));
-            s.verdict = BaseBrain.judge(ft, hubMode, nether);
-            if (s.structure < 0 || mode == 2) ev.put(en.getKey(), Math.max(0, s.verdict.evidence - 0.5));
-        }
-        if (hubMode) return; // in a hub every neighbour looks built; that proves nothing
-        for (Map.Entry<Long, Score> en : chunks.entrySet()) {
-            long k = en.getKey();
-            double sum = 0;
-            for (int dx = -1; dx <= 1; dx++) {
-                for (int dz = -1; dz <= 1; dz++) {
-                    if (dx == 0 && dz == 0) continue;
-                    sum += ev.getOrDefault(key(kx(k) + dx, kz(k) + dz), 0.0);
-                }
-            }
-            BaseBrain.boost(en.getValue().verdict, sum);
-        }
-    }
-
-    /** Everything Zeus knows about the best chunks, as text, to paste into a message when something is not found. */
-    private void copyReport() {
-        Minecraft mc = Minecraft.getInstance();
-        StringBuilder b = new StringBuilder();
-        Brain.Ctx c = Brain.ctx();
-        b.append("Zeus ").append(name).append(" report: ").append(c.server).append(" / ").append(c.dim).append(", ").append(chunks.size()).append(" chunks scanned, ")
-                .append(queueRemaining()).append(" waiting, ").append(finds.size()).append(" finds, pace=").append(scanPace.value()).append(", cut-off ")
-                .append(Math.round(BaseBrain.cutoff(sensitivity.index(), Brain.learning() ? Brain.baseline().crowding : 0.08) + Feedback.bias(c.server))).append(" %, fps ").append(c.fps).append('\n');
-        List<Map.Entry<Long, Score>> all = new ArrayList<>(chunks.entrySet());
-        all.removeIf(e -> e.getValue().verdict == null);
-        all.sort((x, y) -> Integer.compare(y.getValue().verdict.confidence, x.getValue().verdict.confidence));
-        for (int i = 0; i < Math.min(12, all.size()); i++) {
-            Score s = all.get(i).getValue();
-            b.append(String.format(Locale.ROOT, "%d %% %s at %d,%d flagged=%b beds=%d storage=%d work=%d hoppers=%d lights=%d portal=%d kinds=%d tunnels=%d shafts=%d struct=%s | %s%n",
-                    s.verdict.confidence, s.verdict.type, kx(all.get(i).getKey()) * 16 + 8, kz(all.get(i).getKey()) * 16 + 8, s.flagged, s.roles[BaseBrain.R_BED], s.roles[BaseBrain.R_CONTAINER],
-                    s.roles[BaseBrain.R_WORK], s.roles[BaseBrain.R_HOPPER], s.roles[BaseBrain.R_LIGHT], s.roles[BaseBrain.R_PORTAL], Long.bitCount(s.foot), s.tunnelRuns, s.verticalShafts,
-                    s.structure >= 0 ? STRUCTS[s.structure] : "none", s.verdict.why()));
-        }
-        try {
-            mc.keyboardHandler.setClipboard(b.toString());
-            Zeus.toast("Report copied. Paste it into a message.", true);
-        } catch (RuntimeException e) {
-            Zeus.toast("Could not copy the report", false);
-        }
-    }
-
-    /** Decides which chunks are flagged and merges neighbours into finds. */
-    private void rebuild(Minecraft mc) {
-        int mode = natural.index();
-        boolean nether = Brain.ctx().dim.equals("nether");
-        // 1. judge every chunk on its own, then let the chunks around it vouch for it
-        for (Map.Entry<Long, Score> en : chunks.entrySet()) {
-            Score s = en.getValue();
-            s.ents = entScore.getOrDefault(en.getKey(), 0.0);
-            s.items = itemCount.getOrDefault(en.getKey(), 0);
-            s.clues = clueMap.get(en.getKey());
-            if (s.structure == 0) s.ents = 0; // minecarts in a mineshaft are normal
-        }
-        judgeAll(mode, false, nether);
-        // 2. how crowded with builds is this area? a spawn or a hub would flag half of itself
-        double learned = Brain.learning() ? Brain.baseline().crowding : 0.08;
-        int cut = BaseBrain.cutoff(sensitivity.index(), learned);
-        String fbServer = Brain.ctx().server;
-        String fbDim = Brain.ctx().dim;
-        int cutFb = (int) Math.round(cut + Feedback.bias(fbServer));
-        int first = 0;
-        for (Score s : chunks.values()) if (s.verdict.confidence >= cut) first++;
-        double crowding = chunks.isEmpty() ? 0 : first / (double) chunks.size();
-        hub = chunks.size() >= 30 && crowding > 0.3;
-        if (hub) judgeAll(mode, true, nether);
-        if (Brain.learning() && chunks.size() >= 40 && System.currentTimeMillis() - lastLearn > 10000) {
-            lastLearn = System.currentTimeMillis();
-            Brain.baseline().add(crowding);
-            Brain.learned();
-        }
-        // 2b. the opposite evidence: a chunk nobody ticked, sitting inside a ring of chunks nobody ticked
-        if (clearance.on() && mc.player != null && !hub) {
-            int pcx = mc.player.getBlockX() >> 4;
-            int pcz = mc.player.getBlockZ() >> 4;
-            for (Map.Entry<Long, Score> en : chunks.entrySet()) {
-                Score s = en.getValue();
-                if (s.verdict == null || s.owed > 0) continue;
-                int cx = kx(en.getKey());
-                int cz = kz(en.getKey());
-                // right around you every chunk ticks, so a hole there means nothing
-                if (Math.abs(cx - pcx) <= 4 && Math.abs(cz - pcz) <= 4) continue;
-                int ring = 0;
-                int kinds = 0;
-                for (int dx = -1; dx <= 1; dx++) {
-                    for (int dz = -1; dz <= 1; dz++) {
-                        if (dx == 0 && dz == 0) continue;
-                        Score n = chunks.get(key(cx + dx, cz + dz));
-                        if (n != null && n.owed >= 3) {
-                            ring++;
-                            kinds = Math.max(kinds, n.owedKinds);
-                        }
-                    }
-                }
-                if (ring < 5) continue;
-                s.clearRing = ring;
-                int conf = Math.min(90, 56 + ring * 3 + Math.min(8, kinds * 2));
-                if (conf <= s.verdict.confidence) continue;
-                s.verdict.confidence = conf;
-                s.verdict.type = "Cleared area";
-                s.verdict.reasons.clear();
-                s.verdict.reasons.add(ring + " of the 8 chunks around it are untouched");
-                s.verdict.reasons.add("its plants would have grown: nobody has been near");
-                if (s.verdict.evidence <= 0) s.verdict.evidence = ring;
-                if (s.minY == Integer.MAX_VALUE) {
-                    s.minY = Math.max(-64, mc.player.getBlockY() - 40);
-                    s.maxY = Math.min(320, mc.player.getBlockY() + 40);
-                }
-            }
-        }
-        for (Map.Entry<Long, Score> en : chunks.entrySet()) {
-            Score s = en.getValue();
-            int fx = kx(en.getKey());
-            int fz = kz(en.getKey());
-            boolean yes = Feedback.confirmed(fbServer, fbDim, fx, fz);
-            s.flagged = !Feedback.dismissed(fbServer, fbDim, fx, fz)
-                    && (yes || s.verdict.confidence >= cutFb && s.verdict.evidence > 0);
-        }
-        // 3. merge touching flagged chunks
-        List<Find> out = new ArrayList<>();
-        Set<Long> seen = new HashSet<>();
-        for (Map.Entry<Long, Score> en : chunks.entrySet()) {
-            long k = en.getKey();
-            if (!en.getValue().flagged || !seen.add(k)) continue;
-            Find f = new Find();
-            java.util.ArrayDeque<Long> todo = new java.util.ArrayDeque<>();
-            todo.add(k);
-            double wx = 0;
-            double wz = 0;
-            double ws = 0;
-            List<BaseBrain.Verdict> parts = new ArrayList<>();
-            while (!todo.isEmpty()) {
-                long c = todo.poll();
-                Score s = chunks.get(c);
-                f.chunks++;
-                f.cells.add(new long[] {kx(c), kz(c)});
-                parts.add(s.verdict);
-                double weight = Math.max(1.0, s.total + s.ents);
-                f.total += s.total + s.ents;
-                f.tell += s.tell;
-                f.strongCount += s.strongCount;
-                f.fires += s.roles[BaseBrain.R_FIRE];
-                f.items += s.items;
-                f.tunnelRuns += s.tunnelRuns;
-                f.verticalShafts += s.verticalShafts;
-                wx += (kx(c) * 16 + 8) * weight;
-                wz += (kz(c) * 16 + 8) * weight;
-                ws += weight;
-                if (s.minY < f.minY) f.minY = s.minY;
-                if (s.maxY > f.maxY) f.maxY = s.maxY;
-                for (int i = 0; i < f.groups.length; i++) f.groups[i] += s.groups[i];
-                if (s.structure >= 0 && f.structure == null) f.structure = STRUCTS[s.structure];
-                for (int dx = -1; dx <= 1; dx++) {
-                    for (int dz = -1; dz <= 1; dz++) {
-                        long n = key(kx(c) + dx, kz(c) + dz);
-                        Score ns = chunks.get(n);
-                        if (ns != null && ns.flagged && seen.add(n)) todo.add(n);
-                    }
-                }
-            }
-            f.cx = wx / ws;
-            f.cz = wz / ws;
-            f.verdict = BaseBrain.merge(parts);
-            // a find inside a village, mineshaft or other natural structure stays hidden when the player's blocks do not show clearly
-            if (mode == 0 && f.structure != null && f.verdict.confidence < cut + 12) continue;
-            if (f.chunks >= minCluster.i()) out.add(f);
-        }
-        finds = out;
-        if (remember.on() && Brain.learning() && System.currentTimeMillis() - lastLedger > 4000) {
-            lastLedger = System.currentTimeMillis();
-            String server = Brain.ctx().server + "|" + Brain.ctx().dim;
-            for (Find f : out) {
-                Set<Long> keys = new HashSet<>();
-                for (long[] c : f.cells) {
-                    Score s = chunks.get(key((int) c[0], (int) c[1]));
-                    if (s != null) keys.addAll(s.keys);
-                }
-                boolean weak = f.fires >= 3 || f.items >= 8;
-                f.entry = Ledger.observe(server, f.cx, f.cz, f.verdict.type, f.verdict.confidence, keys,
-                        pos -> chunks.containsKey(key(Ledger.ux(pos) >> 4, Ledger.uz(pos) >> 4)), weak && raid.on()).entry();
-            }
-        }
-        if (alert.on() && mc.player != null) {
-            for (Find f : out) {
-                long id = key((int) Math.floor(f.cx / 16), (int) Math.floor(f.cz / 16));
-                if (announced.add(id)) {
-                    Zeus.toast(name + ": " + f.verdict.type.toLowerCase(Locale.ROOT) + " (" + f.verdict.confidence + " %) at " + Math.round(f.cx) + ", " + Math.round(f.cz) + " (" + f.verdict.why() + ")", true);
-                    found(mc, f.cx, f.cz, f.chunks, f.minY, f.maxY, topGroup(f.groups), f.structure);
-                }
-            }
-        }
-    }
-
-    private BaseBrain.Features features(Score s, boolean ignoreNature) {
-        BaseBrain.Features f = new BaseBrain.Features();
-        f.total = s.total;
-        f.tell = s.tell;
-        f.strong = s.strongCount + (int) (s.ents / 14);
-        f.ents = s.ents;
-        System.arraycopy(s.groups, 0, f.groups, 0, f.groups.length);
-        System.arraycopy(s.roles, 0, f.roles, 0, f.roles.length);
-        f.underground = s.underground;
-        f.structure = ignoreNature ? -1 : s.structure;
-        f.structPoints = s.structPts;
-        f.items = s.items;
-        f.foot = Long.bitCount(s.foot);
-        int[] cl = s.clues;
-        if (cl != null) {
-            f.pearls = cl[0];
-            f.named = cl[1];
-            f.villagers = s.structure == 8 ? 0 : cl[2];
-            f.herd = cl[3];
-        }
+    private Frame frame(Pose p) {
+        boolean kb = karambit();
+        Rig.T r0 = ring() ? Rig.T.rz(0.40f).rotY(-0.45f).rotX(0.10f) : kb ? Rig.T.rz(PI - 0.50f).rotY(-0.45f).rotX(0.10f) : Rig.T.rz(-0.20f).rotY(-0.55f).rotX(0.12f);
+        Rig.T base = new Rig.T(r0);
+        float[] g = base.point(0f, p.gripY, 0f);
+        float[] pv = ring() ? new float[] {0f, 0f, 0f} : g;
+        Rig.T rt = Rig.T.rz(p.rz).then(Rig.T.rx(p.rx)).then(Rig.T.ry(p.ry));
+        Rig.T k = base.worldRot(rt, pv[0], pv[1], pv[2]);
+        k.x += g[0] + p.kx + p.gx;
+        k.y += g[1] + p.ky + p.gy;
+        k.z += g[2] + p.kz + p.gz;
+        Rig.T arm = Rig.T.rz(ARM_Z).rotX(ARM_X).rotY(p.armRoll);
+        arm.x = g[0] + p.gx;
+        arm.y = g[1] + p.gy;
+        arm.z = g[2] + p.gz;
+        Rig.T fist = new Rig.T(r0);
+        fist.x = arm.x;
+        fist.y = arm.y;
+        fist.z = arm.z;
+        float[] sh = arm.point(0f, -ARM_L, 0f);
+        Rig.T rf = Rig.T.rz(p.flickZ).then(Rig.T.rx(p.flickX)).then(Rig.T.ry(p.flickY));
+        Frame f = new Frame();
+        f.knife = k.worldRot(rf, sh[0], sh[1], sh[2]);
+        f.arm = arm.worldRot(rf, sh[0], sh[1], sh[2]);
+        f.fist = fist.worldRot(rf, sh[0], sh[1], sh[2]);
         return f;
-    }
-
-    /** A new find has appeared. Base Finder uses this to send the Discord message. */
-    protected void found(Minecraft mc, double x, double z, int chunks, int minY, int maxY, String kind, String structure) {
-        if (chunks >= 4) DiscordWebhook.bigBase(mc, x, z, chunks, minY, maxY, kind);
-    }
-
-    private static String findName(Find f) {
-        String base = f.chunks >= 4 ? "big base" : f.chunks >= 2 ? "base" : "build";
-        return f.structure != null ? base + " in a " + f.structure.toLowerCase(Locale.ROOT) : base;
-    }
-
-    private static String topGroup(double[] groups) {
-        int best = 0;
-        for (int i = 1; i < groups.length; i++) if (groups[i] > groups[best]) best = i;
-        return GROUPS[best];
-    }
-
-    // ------------------------------------------------------------------ what it shows
-
-    private static String direction(double dx, double dz) {
-        double a = Math.toDegrees(Math.atan2(dz, dx));
-        int i = (int) Math.round(((a % 360) + 360) % 360 / 45.0) % 8;
-        return DIRS[i];
-    }
-
-    private List<String> describe() {
-        List<String> out = new ArrayList<>();
-        Minecraft mc = Minecraft.getInstance();
-        if (!enabled()) {
-            out.add("Switch the module on to scan.");
-            return out;
-        }
-        if (mc.player == null) return out;
-        List<Find> sorted = new ArrayList<>(finds);
-        sorted.sort((a, b) -> Double.compare(dist(a, mc), dist(b, mc)));
-        for (int i = 0; i < Math.min(5, sorted.size()); i++) {
-            Find f = sorted.get(i);
-            String y = f.minY == Integer.MAX_VALUE ? "" : "   y " + f.minY + " to " + f.maxY;
-            String st = f.entry == null ? "" : "   " + f.entry.status;
-            out.add(String.format(Locale.ROOT, "%s %d %%   %d, %d   %dm %s%s%s", f.verdict.type, f.verdict.confidence, Math.round(f.cx), Math.round(f.cz), Math.round(dist(f, mc)),
-                    direction(f.cx - mc.player.getX(), f.cz - mc.player.getZ()), y, st));
-            out.add("    because: " + f.verdict.why() + (f.entry != null && !f.entry.detail.isEmpty() ? "  ·  " + f.entry.detail : ""));
-            if (useTunnelGeometry() && (f.tunnelRuns > 0 || f.verticalShafts > 0)) {
-                out.add("    tunnel shape: " + f.tunnelRuns + " enclosed passage samples, " + f.verticalShafts + " shaft samples (supporting evidence only)");
-            }
-        }
-        if (sorted.size() < 3) out.addAll(nearMisses(mc));
-        if (hub) out.add("This area is full of builds (spawn or hub), so only the clearest bases are flagged.");
-        if (natural.index() == 1) {
-            Map<String, int[]> seen = new java.util.TreeMap<>();
-            for (Map.Entry<Long, Score> e : chunks.entrySet()) {
-                Score s = e.getValue();
-                if (s.structure < 0 || s.flagged) continue;
-                seen.computeIfAbsent(STRUCTS[s.structure], k -> new int[1])[0]++;
-            }
-            for (Map.Entry<String, int[]> e : seen.entrySet()) out.add(e.getKey() + ": " + e.getValue()[0] + " chunk" + (e.getValue()[0] == 1 ? "" : "s") + " (natural)");
-        }
-        if (out.isEmpty()) out.add("Nothing flagged yet. " + chunks.size() + " chunks scanned.");
-        return out;
-    }
-
-    private static double dist(Find f, Minecraft mc) {
-        return Math.sqrt(sq(f.cx - mc.player.getX()) + sq(f.cz - mc.player.getZ()));
-    }
-
-    private static double sq(double v) {
-        return v * v;
-    }
-
-    @Override
-    public String info() {
-        return finds.isEmpty() ? null : Integer.toString(finds.size());
     }
 
     @Override
     protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
-        if (mc.player == null) return;
-        if (radar.on()) drawRadar(g, mc, w, h);
-    }
-
-    @Override
-    protected void onHudWorld(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
-        if (mc.player == null) return;
-        if (world.on() && Projector.prepare(mc, partial, w, h)) drawMarkers(g, mc, w, h);
-    }
-
-    // ------------------------------------------------------------------ the map
-
-    private static final int[] GROUP_COLORS = {0xFFFFC857, 0xFFB77BFF, 0xFFFF4D5E, 0xFFFF9F43, 0xFF4DD2FF, 0xFF5EE6A0, 0xFFFF7AB6};
-    private static final String[] GROUP_LABELS = {"Storage", "Workstations", "Redstone", "Lighting", "Metal blocks", "Building", "Frames and stands"};
-    private static final int NATURAL_COLOR = 0xFF4C86E8;
-
-    /** Which kind of thing a flagged chunk is mostly made of; the last index is item frames and the like. */
-    private static int groupOf(double[] groups) {
-        int best = -1;
-        double top = 0;
-        for (int i = 0; i < groups.length; i++) {
-            if (groups[i] > top) {
-                top = groups[i];
-                best = i;
-            }
+        if (mc.screen != null || !enabled() || mc.player == null) return;
+        long now = com.zlorbie788.zeus.core.Clock.nanoTime();
+        float dt = lastFrame == 0L ? 0.016f : Math.min(0.08f, (now - lastFrame) / 1e9f);
+        lastFrame = now;
+        vis += ((want ? 1f : 0f) - vis) * Math.min(1f, dt * 9f);
+        if (vis < 0.02f) {
+            tipTrail.clear();
+            ghostAt.clear();
+            ghostAngle.clear();
+            ghostWhen.clear();
+            return;
         }
-        return best < 0 ? GROUPS.length : best;
-    }
-
-    private static int[] anchorCell(Find f) {
-        long[] best = f.cells.get(0);
-        double bd = Double.MAX_VALUE;
-        for (long[] c : f.cells) {
-            double d = sq(c[0] * 16 + 8 - f.cx) + sq(c[1] * 16 + 8 - f.cz);
-            if (d < bd) {
-                bd = d;
-                best = c;
-            }
+        float sc = Math.max(0.5f, (float) size.f());
+        float unit = Math.max(0.6f, h / 540f * 5.6f * sc) * (0.62f + 0.38f * vis);
+        if (!Float.isFinite(sc) || !Float.isFinite(unit) || unit <= 0f || w <= 0 || h <= 0) return;
+        float yaw = mc.player.getYRot(), pitch = mc.player.getXRot();
+        if (!Float.isNaN(lastYaw)) {
+            float dy = wrap(yaw - lastYaw);
+            swayX += dy * 0.55f;
+            swayY += (pitch - lastPitch) * 0.42f;
         }
-        return new int[] {(int) best[0], (int) best[1]};
-    }
-
-    private void drawRadar(GuiGraphics g, Minecraft mc, int w, int h) {
-        int r = mapSize.i();
-        int n = 2 * r + 1;
-        int cell = tile.i();
-        int detail = mapDetail.index();
-        int gap = 1;
-        int pad = detail == 2 ? 5 : 8;
-        int gridW = n * cell;
-        int pcx = mc.player.getBlockX() >> 4;
-        int pcz = mc.player.getBlockZ() >> 4;
-
-        List<Find> sorted = new ArrayList<>(finds);
-        sorted.sort((a, b) -> Double.compare(dist(a, mc), dist(b, mc)));
-        Map<Long, Integer> numbers = new HashMap<>();
-        for (int i = 0; i < sorted.size() && i < 99; i++) {
-            int[] c = anchorCell(sorted.get(i));
-            if (Math.abs(c[0] - pcx) <= r && Math.abs(c[1] - pcz) <= r) numbers.put(key(c[0], c[1]), i + 1);
+        lastYaw = yaw;
+        lastPitch = pitch;
+        swayX *= 0.86f;
+        swayY *= 0.86f;
+        if (!sway.on()) {
+            swayX = 0f;
+            swayY = 0f;
         }
+        float lim = 7f * unit;
+        swayX = Math.max(-lim, Math.min(lim, swayX));
+        swayY = Math.max(-lim, Math.min(lim, swayY));
 
-        // what is on the map decides what the legend lists: nothing that is not there
-        boolean[] present = new boolean[GROUPS.length + 1];
-        boolean naturalShown = false;
-        boolean maybeShown = false;
-        for (int dz = -r; dz <= r; dz++) {
-            for (int dx = -r; dx <= r; dx++) {
-                Score s = chunks.get(key(pcx + dx, pcz + dz));
-                if (s == null) continue;
-                if (s.flagged) present[groupOf(s.groups)] = true;
-                else if (s.structure >= 0 && natural.index() == 1) naturalShown = true;
-                else if (isMaybe(s)) maybeShown = true;
-            }
+        boolean left = place.index() == 1;
+        float u = left ? -unit : unit;
+        // Anchor every knife type by its grip at rest, so a butterfly, a karambit and the HD knives all
+        // sit where the player asked instead of wherever each model's own offsets happen to put them.
+        float[] grip = restGrip(u);
+        float edge = (float) (inset.get() / 100.0) * w;
+        float targetX = place.index() == 2 ? w * 0.5f + 10f * unit : left ? edge : w - edge;
+        float targetY = h * (1f - (float) (height.get() / 100.0));
+        float x0 = targetX - grip[0];
+        float y0 = targetY - grip[1];
+
+        Pose p = shown(secs(), playing());
+        float[] moveOff = motion(mc, partial, unit, dt);
+        p.flickZ += moveOff[2];
+        Frame f = frame(p);
+        KnifeArt.Look look = lookFor();
+        look.fine = !Perf.gameFast();
+        look.mirror = left;
+        float fade = Math.min(1f, vis);
+        int hdKnife = hd();
+        boolean bf = bfly();
+        boolean mesh = hdKnife < 0 && meshReady();
+        int colour = Draw.rgba(look.glow, 0.85f * fade);
+
+        g.pose().pushMatrix();
+        g.pose().translate(x0 + swayX + moveOff[0], y0 + swayY + moveOff[1]);
+
+        float[] tip = tipOf(f, p);
+        float[] tp = onScreen(tip, u);
+        if (trail.on() && !still() && trailStrength.f() > 1 && p.rush > 0.05f) {
+            tipTrail.addLast(new float[] {tp[0], tp[1], now / 1e9f});
+        } else {
+            tipTrail.clear();
         }
-        List<Object[]> legend = new ArrayList<>();
-        for (int i = 0; i < present.length; i++) if (present[i]) legend.add(new Object[] {GROUP_LABELS[i], GROUP_COLORS[i]});
-        if (naturalShown) legend.add(new Object[] {"Natural structure", NATURAL_COLOR});
-        if (maybeShown) legend.add(new Object[] {"Unsure", 0xFFFFC857});
-
-        // legend rows, wrapped to the width of the map
-        List<List<Object[]>> rows = new ArrayList<>();
-        List<Object[]> cur = new ArrayList<>();
-        int used = 0;
-        for (Object[] e : legend) {
-            int iw = 10 + Draw.width((String) e[0]) + 8;
-            if (!cur.isEmpty() && used + iw > gridW) {
-                rows.add(cur);
-                cur = new ArrayList<>();
-                used = 0;
-            }
-            cur.add(e);
-            used += iw;
-        }
-        if (!cur.isEmpty()) rows.add(cur);
-
-        int header = detail == 2 ? 5 : 22;
-        int infoH = detail == 0 ? 24 : detail == 1 ? 12 : 0;
-        int legendH = detail != 0 || rows.isEmpty() ? 0 : 4 + rows.size() * 12;
-        int pw = gridW + pad * 2;
-        int ph = header + gridW + (detail == 2 ? 5 : 6 + infoH) + legendH + (detail == 2 ? 0 : 6);
-        int[] at = Hud.place(corner.index(), pw, ph, w, h);
-        int x = at[0];
-        int y = at[1];
-        int accent = Accent.main();
-
-        Draw.shadow(g, x, y, pw, ph, 8, 6, 0.4f);
-        Draw.rrect(g, x, y, pw, ph, 8, Draw.rgba(0xFF0E1424, 0.93f), Draw.rgba(0xFF0A0F1C, 0.93f));
-        Draw.rrectLine(g, x, y, pw, ph, 8, Draw.rgba(accent, 0.5f));
-        if (detail < 2) {
-            String count = finds.size() + (finds.size() == 1 ? " find" : " finds");
-            int cw = Draw.width(count);
-            Draw.bold(g, Draw.fit(name, pw - pad * 2 - cw - 8), x + pad, y + 7, 0xFFFFFFFF);
-            Draw.textRight(g, count, x + pw - pad, y + 7, finds.isEmpty() ? 0xFF6F7B95 : GROUP_COLORS[groupOf(sorted.get(0).groups)]);
-            g.fill(x + pad, y + 18, x + pw - pad, y + 19, Draw.rgba(accent, 0.35f));
-        }
-
-        int gx0 = x + pad;
-        int gy0 = y + header;
-        for (int dz = -r; dz <= r; dz++) {
-            for (int dx = -r; dx <= r; dx++) {
-                Score s = chunks.get(key(pcx + dx, pcz + dz));
-                int tx = gx0 + (dx + r) * cell;
-                int ty = gy0 + (dz + r) * cell;
-                int tw = cell - gap;
-                int color;
-                boolean lit = false;
-                if (s == null) {
-                    color = 0xFF151B2C;
-                } else if (s.flagged) {
-                    float k = (float) Math.min(1.0, (s.total + s.ents) / (threshold() * 2.5));
-                    int base = GROUP_COLORS[groupOf(s.groups)];
-                    color = Draw.mix(Draw.darken(base, 0.35f), base, 0.45f + 0.55f * k);
-                    lit = true;
-                } else if (s.structure >= 0 && natural.index() == 1) {
-                    color = Draw.darken(NATURAL_COLOR, 0.25f);
-                } else if (isMaybe(s)) {
-                    float k = Math.min(1f, s.verdict.confidence / 60f);
-                    color = Draw.mix(0xFF222C44, 0xFFFFC857, 0.25f + 0.45f * k);
-                } else {
-                    color = 0xFF222C44;
-                }
-                if (com.zlorbie788.zeus.ui.Perf.fast()) g.fill(tx, ty, tx + tw, ty + tw, color);
-                else Draw.rrect(g, tx, ty, tw, tw, 2, color);
-                if (lit) g.fill(tx + 2, ty, tx + tw - 2, ty + 1, Draw.rgba(0xFFFFFFFF, 0.28f));
-                if (activity.on() && activityRing.on() && Activity.heat(pcx + dx, pcz + dz) >= activityMin.i()) {
-                    float pulse = 0.55f + 0.45f * (float) Math.sin(System.nanoTime() / 1.8e8);
-                    Draw.rrectLine(g, tx - 1, ty - 1, tw + 2, tw + 2, 3, Draw.rgba(0xFFFF8F4D, pulse));
-                }
-                Integer num = numbers.get(key(pcx + dx, pcz + dz));
-                if (num != null) {
-                    String t = Integer.toString(num);
-                    if (Draw.width(t) <= tw) Draw.textCenter(g, t, tx + tw / 2, ty + (tw - 8) / 2, 0xFF0B1020);
-                }
-            }
-        }
-
-        // you: a red arrow that points the way you face
-        double fx = (mc.player.getX() / 16.0) - (pcx - r);
-        double fz = (mc.player.getZ() / 16.0) - (pcz - r);
-        float ax = gx0 + (float) (fx * cell);
-        float ay = gy0 + (float) (fz * cell);
-        float yaw = (float) Math.toRadians(mc.player.getYRot());
-        float dirx = (float) -Math.sin(yaw);
-        float diry = (float) Math.cos(yaw);
-        float len = cell * 0.78f;
-        float tipx = ax + dirx * len * 0.7f;
-        float tipy = ay + diry * len * 0.7f;
-        float bx = ax - dirx * len * 0.5f;
-        float by = ay - diry * len * 0.5f;
-        float px = -diry * len * 0.5f;
-        float py = dirx * len * 0.5f;
-        for (int k = -5; k <= 5; k++) {
-            float t = k / 5f;
-            Draw.line(g, tipx, tipy, bx + px * t, by + py * t, 1.4f, 0xFFFF3B47);
-        }
-        Draw.line(g, tipx, tipy, bx + px, by + py, 1f, 0xFFFFFFFF);
-        Draw.line(g, tipx, tipy, bx - px, by - py, 1f, 0xFFFFFFFF);
-
-        // the lines under the map
-        int iy = gy0 + gridW + 6;
-        if (detail == 0) {
-            String label = "Coordinate  ";
-            Draw.text(g, label, gx0, iy, Accent.DIM);
-            Draw.text(g, Draw.fit(mc.player.getBlockX() + "," + mc.player.getBlockZ(), gridW - Draw.width(label)), gx0 + Draw.width(label), iy, 0xFFFFFFFF);
-            iy += 12;
-        }
-        if (detail < 2) {
-            if (sorted.isEmpty()) {
-                Draw.text(g, Draw.fit("Nothing found yet", gridW), gx0, iy, Accent.DIM);
-            } else {
-                Find f = sorted.get(0);
-                String st = f.entry == null || "Intact".equals(f.entry.status) ? "" : " · " + f.entry.status;
-                String what = "#1  " + f.verdict.type + " " + f.verdict.confidence + " %" + st + " · " + Math.round(dist(f, mc)) + "m " + direction(f.cx - mc.player.getX(), f.cz - mc.player.getZ());
-                int tone = f.entry != null && ("Raided".equals(f.entry.status) || "Looted".equals(f.entry.status) || f.entry.status.startsWith("Possibly")) ? 0xFFFF7A6B : GROUP_COLORS[groupOf(f.groups)];
-                Draw.text(g, Draw.fit(what, gridW), gx0, iy, tone);
-            }
-        }
-
-        // the legend: only kinds that are on the map
-        int ly = gy0 + gridW + 6 + infoH + 2;
-        for (List<Object[]> row : rows) {
-            int lx = gx0;
-            for (Object[] e : row) {
-                Draw.rrect(g, lx, ly + 2, 6, 6, 2, (Integer) e[1]);
-                Draw.text(g, (String) e[0], lx + 10, ly, 0xFFB7C2DC);
-                lx += 10 + Draw.width((String) e[0]) + 8;
-            }
-            ly += 12;
-        }
-    }
-
-    private final Map<Long, ChunkLook.Area> areas = new HashMap<>();
-    private final Map<Long, ChunkLook.Area> geodeAreas = new HashMap<>();
-    private int markStamp;
-
-    private void drawMarkers(GuiGraphics g, Minecraft mc, int sw, int sh) {
-        double mr = markerRange.get() * 16;
-        int drawn = 0;
-        long now = System.currentTimeMillis();
-        markStamp++;
-        List<Find> sorted = new ArrayList<>(finds);
-        sorted.sort((a, b) -> Double.compare(dist(a, mc), dist(b, mc)));
-        boolean first = true;
-        for (Find f : sorted) {
-            if (drawn >= 8) break;
-            double dist = dist(f, mc);
-            if (dist > mr + f.chunks * 8) continue;
-            drawn++;
-            // the top of what was built there, used only to hang the label above the find
-            double top = (f.maxY == Integer.MIN_VALUE ? mc.player.getY() : f.maxY) + 2;
-            int fill = lineColor.index() <= 0 ? ChunkLook.FILL : (com.zlorbie788.zeus.render.EspKit.pick(lineColor, ChunkLook.FILL) & 0xFFFFFF) | 0x60000000;
-            int color = com.zlorbie788.zeus.render.EspKit.pick(lineColor, GROUP_COLORS[groupOf(f.groups)]);
-            ChunkLook.Area area = ChunkLook.area(areas, f.cells, fill, now);
-            if (area != null) {
-                area.stamp = markStamp;
-                ChunkLook.draw(g, area, area.scale(now), ChunkLook.PLANE);
-                if (tracer.on() && first) {
-                    // one tracer to the middle of every separate area, in the fill colour
-                    int tc = 0xFF000000 | (fill & 0xFFFFFF);
-                    for (double[] c : area.centres) {
-                        com.zlorbie788.zeus.render.EspKit.tracerLine(g, sw, sh, 0, c[0], ChunkLook.PLANE, c[1], tc, area.scale(now));
+        while (!tipTrail.isEmpty() && now / 1e9f - tipTrail.peekFirst()[2] > 0.20f) tipTrail.removeFirst();
+        if (tipTrail.size() > 1) {
+            float[] prev = null;
+            float total = Math.max(0.05f, trailStrength.f() / 100f);
+            for (float[] pt : tipTrail) {
+                if (prev != null) {
+                    float age = (float) (now / 1e9f - pt[2]);
+                    float k = Math.max(0f, 1f - age / 0.20f) * total;
+                    if (k > 0.02f) {
+                        Draw.line(g, prev[0], prev[1], pt[0], pt[1], Math.max(1f, u * 0.55f), Draw.rgba(look.glow, k * 0.85f + 0.05f));
                     }
                 }
-            }
-            first = false;
-            float[] p = new float[2];
-            if (Projector.project(f.cx, top + 1.5, f.cz, p)) {
-                String status = f.entry == null || "Intact".equals(f.entry.status) ? "" : " · " + f.entry.status;
-                boolean bad = f.entry != null && ("Raided".equals(f.entry.status) || "Looted".equals(f.entry.status) || f.entry.status.startsWith("Possibly"));
-                int tone = bad ? 0xFFFF7A6B : color;
-                String label = f.verdict.type + " " + f.verdict.confidence + " %" + status + "  " + Math.round(dist) + "m";
-                int tw = Draw.width(label);
-                int tx = Math.round(p[0]) - tw / 2;
-                int ty = Math.round(p[1]);
-                Draw.rrect(g, tx - 4, ty - 2, tw + 8, 12, 3, 0xD00A0F1C);
-                g.fill(tx - 4, ty + 9, tx + tw + 4, ty + 10, tone);
-                Draw.text(g, label, tx, ty, tone);
-                String why = f.entry != null && !f.entry.detail.isEmpty() ? f.entry.detail : f.verdict.why();
-                Draw.textCenter(g, Draw.fit(why, 220), Math.round(p[0]), ty + 13, Draw.rgba(tone, 0.8f));
+                prev = pt;
             }
         }
-        // likely mined geodes: one purple tile each
-        if (minedGeodeScan.on() && !geodeHints.isEmpty()) {
-            for (Map.Entry<Long, GeodeHint> en : geodeHints.entrySet()) {
-                int gx = kx(en.getKey());
-                int gz = kz(en.getKey());
-                if (Math.hypot(gx * 16 + 8 - mc.player.getX(), gz * 16 + 8 - mc.player.getZ()) > mr) continue;
-                List<long[]> one = new ArrayList<>();
-                one.add(new long[] {gx, gz});
-                ChunkLook.Area ga = ChunkLook.area(geodeAreas, one, ChunkLook.FILL_MINED, now);
-                if (ga == null) continue;
-                ga.stamp = markStamp;
-                ChunkLook.draw(g, ga, ga.scale(now), ChunkLook.PLANE);
+
+        if (blur.on() && !still() && ghostStrength.f() > 1 && p.rush > 0.05f) {
+            ghostAt.add(new Rig.T(f.knife));
+            ghostAngle.add(new float[] {p.a, p.b, p.c, p.clip == null ? -1f : 0f, p.clipT});
+            ghostWhen.add(now);
+        }
+        while (!ghostWhen.isEmpty() && (now - ghostWhen.get(0)) / 1e9f > 0.16f) {
+            ghostAt.remove(0);
+            ghostAngle.remove(0);
+            ghostWhen.remove(0);
+        }
+        while (ghostAt.size() > 5) {
+            ghostAt.remove(0);
+            ghostAngle.remove(0);
+            ghostWhen.remove(0);
+        }
+        // the world's light where the player stands dims the knife and the arm, like the game's own hand
+        lightNow += (worldLight(mc) - lightNow) * Math.min(1f, dt * 4f);
+        KnifeHD.ambient = lightNow;
+        rig.light(lightNow);
+        float ghostFade = Math.min(1f, ghostStrength.f() / 100f);
+        for (int i = 0; i < ghostAt.size(); i++) {
+            float[] a = ghostAngle.get(i);
+            float al = 0.20f * ghostFade * (1f - i / (float) Math.max(1, ghostAt.size())) * fade;
+            if (al < 0.02f) continue;
+            if (hdKnife >= 0 && (bf ? KnifeHDGui.drawButterfly(g, hdKnife, ghostAt.get(i), a[0], a[1], a[2], u, al, false)
+                    : KnifeHDGui.draw(g, hdKnife, ghostAt.get(i), u, al, false))) continue;
+            if (!mesh || !drawMesh(g, ghostAt.get(i), a[0], a[1], a[2], look, u, al)) pixelKnife(g, ghostAt.get(i), a[0], a[1], a[2], look, u, al);
+        }
+
+        rig.clear();
+        rig.alpha(fade);
+        ArmArt.Skin skin = ArmArt.skin(mc.player, hand.index(), handLight.on() ? glowOf(look, p) : 0);
+        float aw = ArmArt.armWidth(skin);
+        // The forearm always runs off the bottom of the screen: when the hand sits high, the arm grows longer.
+        Rig.Painter armPaint = ArmArt.arm(skin);
+        for (float len : new float[] {1.06f, 1.5f, 2.0f, 2.7f, 3.6f}) {
+            rig.clear();
+            rig.alpha(fade);
+            rig.box(f.arm, 0f, ARM_L * 0.03f - ARM_L * len / 2f, 0f, aw, ARM_L * len, 8f, armPaint, false, 40f);
+            float[] e = rig.extent();
+            float bottom = y0 + swayY + moveOff[1] + Math.max(e[3] * u, e[1] * u);
+            if (bottom >= h + 2f) break;
+        }
+        if (showFingers.on() && hdKnife < 0) {
+            if (karambit()) kFingers(f, p, skin);
+            else fingers(f, p, skin);
+        } else if (showFingers.on() && bf) {
+            fingers(f, p, skin);
+        }
+        rig.flush(g, u);
+
+        boolean knifeDrawn;
+        if (hdKnife >= 0) {
+            knifeDrawn = bf ? KnifeHDGui.drawButterfly(g, hdKnife, f.knife, p.a, p.b, p.c, u, fade, true)
+                    : KnifeHDGui.draw(g, hdKnife, f.knife, u, fade, true);
+        } else if (mesh && p.clip != null && KnifeMesh.hasClip(meshName(), p.clip)) {
+            try {
+                knifeDrawn = KnifeMesh.drawClip(g, meshName(), p.clip, p.clipT, f.knife, look, u, fade, Perf.gameFast());
+            } catch (Throwable t) {
+                meshBroken = true;
+                knifeDrawn = false;
+            }
+        } else if (mesh) {
+            knifeDrawn = drawMesh(g, f.knife, p.a, p.b, p.c, look, u, fade);
+        } else {
+            knifeDrawn = pixelKnife(g, f.knife, p.a, p.b, p.c, look, u, fade);
+        }
+        // fingers close round the HD knife's handle, in front of it; they open as a trick lets it go
+        if (knifeDrawn && hdKnife >= 0 && !bf && showFingers.on()) {
+            rig.clear();
+            hdFingers(f, p, skin, hdKnife, fade);
+            rig.flush(g, u);
+        }
+        KnifeHD.ambient = 1f;
+        if (knifeDrawn && hdKnife >= 0) {
+            KnifeHD.Model bm = bf ? KnifeHD.pieces(hdKnife).blade : KnifeHD.model(hdKnife);
+            Rig.T bt = bf ? KnifeHDGui.butterflyBlade(hdKnife, f.knife, p.a, p.b, p.c) : f.knife;
+            twinkle(g, bm, bt, u, dt, fade);
+        }
+        if (!knifeDrawn) knifeDrawn = pixelKnife(g, f.knife, p.a, p.b, p.c, look, u, fade);
+        if (!knifeDrawn) {
+            lastResort(g, f.knife, p.c, look, u, fade);
+            knifeDrawn = true;
+        }
+        if (knifeDrawn) {
+            drewAt = com.zlorbie788.zeus.core.Clock.nanoTime();
+            frames++;
+        } else if (!warned && com.zlorbie788.zeus.core.Clock.nanoTime() - enabledAt > 3_000_000_000L) {
+            warned = true;
+            com.zlorbie788.zeus.core.Zeus.toast("The knife is not drawing. Try Safe draw in Knife Swing.", false);
+        }
+
+        if (sparks.on() && !still() && p.flash > 0.01f) {
+            float s = Math.max(0.01f, Math.min(1f, p.flash) * Math.min(1f, flashStrength.f() / 100f));
+            int r = Math.round(26f * sc * (0.4f + s));
+            Draw.glow(g, Math.round(tp[0]) - r, Math.round(tp[1]) - r, r * 2, r * 2, r, Draw.rgba(look.glow, 0.55f * s * fade), r, 0.9f);
+            for (int i = 0; i < 3; i++) {
+                double ang = (now / 1e9 + i * 2.1) * 7.0;
+                float len = r * (0.55f + 0.45f * s);
+                Draw.line(g, tp[0], tp[1], tp[0] + (float) Math.cos(ang) * len, tp[1] + (float) Math.sin(ang) * len, Math.max(1f, u * 0.4f), colour);
             }
         }
-        // whatever stopped being flagged shrinks away instead of vanishing
-        shrinkAway(g, areas, now);
-        shrinkAway(g, geodeAreas, now);
+
+        g.pose().popMatrix();
     }
 
-    private void shrinkAway(GuiGraphics g, Map<Long, ChunkLook.Area> store, long now) {
-        if (store.isEmpty()) return;
-        var it = store.values().iterator();
-        while (it.hasNext()) {
-            ChunkLook.Area a = it.next();
-            if (a.stamp != markStamp) a.die(now);
-            if (a.gone(now)) {
+    // ------------------------------------------------------------------ body motion
+    private float landKick;
+    private float landVel;
+    private float sprintMix;
+    private float airLift;
+    private boolean wasGround = true;
+    private double lastVy;
+    private float drawRise = 1f;
+
+    /**
+     * How the hand moves with the body, on top of the trick pose: a walking bob in a figure of eight
+     * like the game's own hand, a forward lean and faster bob when sprinting, a lift while airborne, a
+     * springy dip on landing, a crouch drop and a rise into view when the knife is drawn.
+     * Returns screen offsets {dx, dy} and an extra roll.
+     */
+    private float[] motion(Minecraft mc, float partial, float unit, float dt) {
+        float dx = 0f, dy = 0f, roll = 0f;
+        var pl = mc.player;
+        if (pl == null || !sway.on()) return new float[] {0f, 0f, 0f};
+        try {
+            var st = pl.avatarState();
+            float walk = st.getInterpolatedWalkDistance(partial);
+            float bob = st.getInterpolatedBob(partial);
+            float ph = walk * (float) Math.PI;
+            dx += (float) Math.sin(ph) * bob * 18f * unit;
+            dy += -Math.abs((float) Math.cos(ph)) * bob * 24f * unit;
+            roll += (float) Math.sin(ph) * bob * 0.6f;
+        } catch (Throwable ignored) {
+        }
+        sprintMix += ((pl.isSprinting() ? 1f : 0f) - sprintMix) * Math.min(1f, dt * 6f);
+        dx += 1.6f * unit * sprintMix;
+        dy += 2.2f * unit * sprintMix;
+        roll += -0.07f * sprintMix;
+
+        boolean ground = pl.onGround();
+        double vy = pl.getDeltaMovement().y;
+        if (ground && !wasGround) {
+            // landing: a kick proportional to the fall speed, then a damped spring settles it
+            landVel += (float) Math.min(1.6, Math.max(0.25, -lastVy * 2.2));
+        }
+        wasGround = ground;
+        lastVy = vy;
+        float k = 90f, damp = 11f;
+        float acc = -k * landKick - damp * landVel;
+        landVel += acc * Math.min(dt, 0.05f);
+        landKick += landVel * Math.min(dt, 0.05f) * 6f;
+        landKick = Math.max(-1.5f, Math.min(1.5f, landKick));
+        dy += landKick * 9f * unit;
+
+        airLift += ((ground ? 0f : 1f) - airLift) * Math.min(1f, dt * 5f);
+        dy += -1.4f * unit * airLift * (float) Math.max(-1, Math.min(1, vy * 3));
+
+        dy += (pl.isCrouching() ? 2.5f : 0f) * unit;
+
+        // rise into view when the knife appears
+        drawRise += ((vis > 0.05f ? 0f : 1f) - drawRise) * Math.min(1f, dt * 7f);
+        dy += drawRise * drawRise * 14f * unit;
+        roll += drawRise * 0.35f;
+        return new float[] {dx, dy, roll};
+    }
+
+    /** Where the knife's grip sits on screen, relative to the hand anchor, with the knife at rest. */
+    private float[] restGrip(float u) {
+        Pose p = new Pose();
+        p.c = PI;
+        if (karambit()) {
+            p.gripY = grip();
+            p.c = 0f;
+        }
+        Frame f = frame(p);
+        return onScreen(new float[] {f.knife.x, f.knife.y, f.knife.z}, u);
+    }
+
+    private KnifeArt.Look lookFor() {
+        float time = (com.zlorbie788.zeus.core.Clock.nanoTime() % 60_000_000_000L) / 1e9f;
+        if (kind() == 0) return KnifeArt.look(preset.index(), shape.index(), finish.index(), design.index(), time);
+        if (kind() == 1) return KnifeArt.kLook(kcolor.index(), kcurve.index(), time);
+        KnifeArt.Look l = KnifeArt.sLook(sfinish.index(), kind() - 2, time);
+        int hd = hd();
+        KnifeHD.Model m = hd >= 0 ? KnifeHD.model(hd) : null;
+        if (m != null) {
+            l.glow = m.glow;
+            l.blade[0] = Draw.lighten(m.glow, 0.35f);
+            l.blade[1] = m.glow;
+            l.blade[2] = Draw.darken(m.glow, 0.45f);
+        }
+        return l;
+    }
+
+    private String meshName() {
+        if (!model3d.on()) return null;
+        return karambit() ? KnifeArt.nameOf(key()) : "Butterfly knife";
+    }
+
+    private boolean meshReady() {
+        if (safeDraw.on() || meshBroken) return false;
+        String name = meshName();
+        return name != null && KnifeMesh.has(name);
+    }
+
+    private boolean drawMesh(GuiGraphics g, Rig.T at, float a, float b, float c, KnifeArt.Look look, float unit, float alpha) {
+        try {
+            String name = meshName();
+            if (name == null) return false;
+            return KnifeMesh.draw(g, name, at, a, b, c, look, unit, alpha, Perf.gameFast());
+        } catch (Throwable t) {
+            meshBroken = true;
+            Zeus.LOG.warn("The 3D knife could not be drawn; using the pixel knife instead", t);
+            return false;
+        }
+    }
+
+    private boolean pixelKnife(GuiGraphics g, Rig.T at, float a, float b, float c, KnifeArt.Look look, float unit, float alpha) {
+        ghost.clear();
+        ghost.alpha(alpha);
+        if (karambit()) KnifeArt.buildKarambit(ghost, at, look);
+        else KnifeArt.build(ghost, at, a, b, c, look);
+        boolean any = ghost.size() > 0;
+        ghost.flush(g, unit);
+        return any;
+    }
+
+    private void lastResort(GuiGraphics g, Rig.T at, float c, KnifeArt.Look look, float unit, float alpha) {
+        float[] a = onScreen(at.point(0f, 0f, 0f), unit);
+        float[] b = onScreen(at.rotZ(c).point(0f, KnifeArt.BL, 0f), unit);
+        Draw.line(g, a[0], a[1], b[0], b[1], Math.max(2f, unit * 1.1f), Draw.rgba(look.blade[0], alpha));
+        Draw.line(g, a[0], a[1], a[0] + (b[0] - a[0]) * 0.45f, a[1] + (b[1] - a[1]) * 0.45f, Math.max(2f, unit * 1.1f), Draw.rgba(look.handle[0], alpha));
+    }
+
+    private static int glowOf(KnifeArt.Look look, Pose p) {
+        float k = 0.18f + 0.55f * Math.max(0f, Math.min(1f, p.flash)) + 0.25f * Math.max(0f, Math.min(1f, p.rush));
+        return (Math.round(255f * Math.min(1f, k)) << 24) | (look.glow & 0xFFFFFF);
+    }
+
+    private static float[] onScreen(float[] p, float unit) {
+        float k = unit * 90f / (90f + p[2]);
+        return new float[] {p[0] * k, p[1] * k};
+    }
+
+    private static float wrap(float deg) {
+        while (deg > 180f) deg -= 360f;
+        while (deg < -180f) deg += 360f;
+        return deg;
+    }
+
+    private float[] tipOf(Frame f, Pose p) {
+        if (bfly()) {
+            int h = hd();
+            return com.zlorbie788.zeus.ui.KnifeHD.tip(com.zlorbie788.zeus.ui.KnifeHD.pieces(h).blade, KnifeHDGui.butterflyBlade(h, f.knife, p.a, p.b, p.c));
+        }
+        return karambit() ? KnifeArt.kTip(f.knife, key()) : KnifeArt.tip(f.knife, p.c);
+    }
+
+    private float lightNow = 1f;
+    private final java.util.ArrayDeque<float[]> twinkles = new java.util.ArrayDeque<>();
+    private float twinkleDue;
+
+    /**
+     * Chroma blades shed tiny stars that drift up and fade, so they read as rare even in bright daylight, where a
+     * glow is hard to see. A few dozen screen-space points at most: next to nothing to draw.
+     */
+    private void twinkle(GuiGraphics g, KnifeHD.Model m, Rig.T k, float u, float dt, float fade) {
+        if (m == null || m.emissive() < 0.9f || still()) {
+            twinkles.clear();
+            return;
+        }
+        twinkleDue += dt * 9f;
+        while (twinkleDue >= 1f && twinkles.size() < 40) {
+            twinkleDue -= 1f;
+            float[] at = KnifeHD.along(m, k, 0.12f + 0.85f * rnd.nextFloat());
+            float sc = u * 90f / (90f + at[2]);
+            twinkles.add(new float[] {at[0] * sc, at[1] * sc, (rnd.nextFloat() - 0.5f) * 10f, -6f - rnd.nextFloat() * 14f,
+                    0f, 0.55f + rnd.nextFloat() * 0.7f, rnd.nextFloat()});
+        }
+        twinkleDue = Math.min(twinkleDue, 1f);
+        float au = Math.abs(u);
+        int star = Draw.lighten(m.glow, 0.55f);
+        for (java.util.Iterator<float[]> it = twinkles.iterator(); it.hasNext(); ) {
+            float[] q = it.next();
+            q[4] += dt;
+            if (q[4] >= q[5]) {
                 it.remove();
                 continue;
             }
-            if (a.dying()) ChunkLook.draw(g, a, a.scale(now), ChunkLook.PLANE);
+            q[0] += q[2] * dt;
+            q[1] += q[3] * dt;
+            float life = q[4] / q[5];
+            float a = (float) Math.sin(Math.PI * life) * fade;
+            int sz = Math.max(1, Math.round(au * (0.18f + 0.22f * q[6]) * (1f - 0.5f * life)));
+            int x = Math.round(q[0]), y = Math.round(q[1]);
+            int c = Draw.rgba(q[6] > 0.6f ? 0xFFFFFFFF : star, a);
+            g.fill(x - sz, y, x + sz + 1, y + 1, c);
+            g.fill(x, y - sz, x + 1, y + sz + 1, c);
+            if (sz > 1) Draw.glow(g, x - 1, y - 1, 2, 2, 1, m.glow, sz * 2, 0.35f * a * 3f / (sz * 2));
         }
     }
 
-    private static String capital(String s) {
-        return s.isEmpty() ? s : Character.toUpperCase(s.charAt(0)) + s.substring(1);
+    /** 0.3 in the dark up to 1 in full light, from the block and sky light at the player's eyes. */
+    private static float worldLight(Minecraft mc) {
+        if (mc.level == null || mc.player == null) return 1f;
+        if (mc.player.hasEffect(net.minecraft.world.effect.MobEffects.NIGHT_VISION)) return 1f;
+        net.minecraft.core.BlockPos pos = net.minecraft.core.BlockPos.containing(mc.player.getEyePosition());
+        int raw = mc.level.getRawBrightness(pos, mc.level.getSkyDarken());
+        float l = raw / 15f;
+        return 0.30f + 0.70f * l * (0.85f + 0.15f * l);
+    }
+
+    /**
+     * Four blocky fingers curled over the front of an HD knife's handle, and the thumb behind it, in the game's own
+     * blocky style. They belong to the fist, not the knife: when a trick spins or tosses the knife they open and let
+     * it go, and close round it again when it comes back.
+     */
+    private void hdFingers(Frame f, Pose p, ArmArt.Skin skin, int hd, float fade) {
+        KnifeHD.Model m = KnifeHD.model(hd);
+        if (m == null) return;
+        float rel = Math.max(0f, Math.min(1f, p.release));
+        // gone while the knife is away from the hand (tosses, flips)
+        float away = Math.abs(p.kx) + Math.abs(p.ky) + Math.abs(p.kz);
+        float a = fade * (1f - rel * 0.85f) * (1f - Math.min(1f, away / 3f));
+        if (a <= 0.03f) return;
+        rig.alpha(a);
+        float[] span = KnifeHD.handleSpan(m);
+        float len = span[1] - span[0];
+        float hw = 1.45f;                          // half the handle's width, in rig units
+        float fz = -(span[2] + 1.0f);              // in front of the handle's face
+        float fh = Math.max(1.6f, Math.min(2.3f, len * 0.13f));
+        // a closed fist right where the arm ends: fingers wider than the handle, so the knife sits in a hand
+        float y0 = span[0] + fh * 0.2f;
+        Rig.Painter paint = ArmArt.finger(skin);
+        for (int i = 0; i < 4; i++) {
+            float y = y0 + i * fh + fh / 2f;
+            float fw = 2f * hw + 1.8f - 0.25f * i;  // the little finger at the bottom is the shortest
+            Rig.T hinge = f.fist.move(-hw - 0.9f, y, fz).rotY(-rel * (1.1f + 0.08f * i));
+            rig.box(hinge, fw / 2f, 0f, 0f, fw, fh - 0.12f, 2.6f, paint, false);
+        }
+        // the thumb lies across the front of the top two fingers, the way a fist holds a knife
+        Rig.T thumb = f.fist.move(-hw - 0.4f, y0 + fh * 3.1f, fz - 1.2f).rotZ(-0.12f).rotY(-rel * 0.9f);
+        rig.box(thumb, hw + 0.4f, 0f, 0f, 2f * hw + 0.8f, fh * 1.05f, 2.0f, paint, false);
+    }
+
+    private void kFingers(Frame f, Pose p, ArmArt.Skin skin) {
+        Rig.Painter paint = ArmArt.finger(skin);
+        float rel = Math.max(0f, Math.min(1f, p.release));
+        float z = -2.3f;
+        for (int i = 0; i < 3; i++) {
+            float y = (i - 1) * 2.7f;
+            Rig.T hinge = f.fist.move(4.0f, y, z).rotY(rel * (1.15f + 0.1f * i));
+            rig.box(hinge, -2.8f, 0f, 0f, 5.6f, 2.6f, 3.2f, paint, false);
+        }
+        boolean inRing = ring() && Math.abs(p.kx) + Math.abs(p.ky) + Math.abs(p.kz) < 0.6f;
+        if (inRing) {
+            Rig.T ring = f.fist.move(0.2f, -KnifeArt.KGRIP, -1.3f);
+            rig.box(ring, 0f, 1.4f, 0f, 2.4f, 4.6f, 2.8f, paint, false);
+        }
+        Rig.T thumb = f.fist.move(-2.3f, -4.3f - 1.5f * rel, z - 0.2f).rotZ(0.25f + 0.7f * rel);
+        rig.box(thumb, 0f, 0f, 0f, 2.6f, 4.4f, 2.6f, paint, false);
+    }
+
+    private void fingers(Frame f, Pose p, ArmArt.Skin skin) {
+        Rig.Painter paint = ArmArt.finger(skin);
+        float rel = Math.max(0f, Math.min(1f, p.release));
+        float z = -(KnifeArt.PIN_Z + KnifeArt.HT / 2f + 1.5f);
+        for (int i = 0; i < 4; i++) {
+            float y = (i - 1.5f) * 2.4f;
+            float hx = 3.6f;
+            Rig.T hinge = f.fist.move(hx, y, z).rotY(rel * (1.15f + 0.1f * i));
+            rig.box(hinge, -2.5f, 0f, 0f, 5.0f, 2.3f, 3.0f, paint, false);
+        }
+        Rig.T thumb = f.fist.move(-2.3f, -5.6f - 2f * rel, z - 0.2f).rotZ(0.25f + 0.7f * rel);
+        rig.box(thumb, 0f, 0f, 0f, 2.6f, 4.6f, 2.6f, paint, false);
+    }
+    private static boolean still() {
+        return com.zlorbie788.zeus.ui.UiSettings.REDUCE_MOTION.on();
+    }
+
+    public String info() {
+        String name = karambit() ? KTRICKS[ktrick.index()] : TRICKS[trick.index()];
+        if (!enabled()) return name;
+        if (frames == 0) return name + " · not drawn yet";
+        if (model3d.on() && !meshReady()) return name + " · 3D model fell back to pixels";
+        return name;
     }
 }

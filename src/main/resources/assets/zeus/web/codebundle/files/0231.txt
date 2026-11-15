@@ -1,1 +1,238 @@
-{"q":[{"id":"cheats","text":"Is the place you play fine with cheats?","hint":"Your own world, or a server whose rules allow cheat clients. Say no and only low-risk helpers are offered.","default":true,"short":"Cheats are allowed where I play"},{"id":"sp","text":"Do you mostly play in your own single-player world?","hint":"Single-player unlocks the modules that refuse to run on servers.","default":false,"short":"Mostly single-player","if":["cheats"]},{"id":"pvp","text":"Do you fight other players?","hint":"PvP on a server or in a duel world.","default":false,"short":"I fight other players","if":["cheats"]},{"id":"crystal","text":"Do you use end crystals or respawn anchors?","hint":"The crystal PvP kit: crystals, holes, totems.","default":false,"short":"Crystal and anchor PvP","if":["cheats","pvp"]},{"id":"ranged","text":"Do you use bows a lot?","hint":"Aim help and trajectory lines.","default":false,"short":"I use bows","if":["cheats","pvp"]},{"id":"bases","text":"Do you want to find other players' bases or hidden storage?","hint":"Scanners that score chunks and show storage.","default":false,"short":"Find bases and storage","if":["cheats"]},{"id":"underground","text":"Do you search tunnels and caves?","hint":"Underground bases, ores and dark spots.","default":false,"short":"Search underground","if":["cheats","bases"]},{"id":"donut","text":"Do you play on DonutSMP?","hint":"Media Base Finder, Goliath RTP, staff detection and auction helpers.","default":false,"short":"I play on DonutSMP","if":["cheats","bases"]},{"id":"explore","text":"Do you travel long distances or explore a lot?","hint":"Elytra navigation, waypoints, compass and breadcrumbs.","default":false,"short":"I explore and travel"},{"id":"mine","text":"Do you mine a lot?","hint":"Tunnelling, ore finding, tool switching and lava safety.","default":false,"short":"I mine a lot"},{"id":"build","text":"Do you build big things or use schematics?","hint":"Placement helpers, schematic builder and clear views.","default":false,"short":"I build"},{"id":"stream","text":"Do you stream or record videos?","hint":"Hides your name and coordinates and keeps the HUD tidy.","default":false,"short":"I stream or record"},{"id":"hud","text":"Do you want information on screen (armor, potions, keystrokes)?","hint":"HUD widgets you can move in the HUD editor.","default":true,"short":"Information HUD"},{"id":"auto","text":"Do you want helpers for small chores?","hint":"Eat, switch tools, restock, respawn and stay online.","default":true,"short":"Helpers for small chores"},{"id":"fun","text":"Do you want the fun extras?","hint":"Knife animations, jump circles, a custom crosshair and weather.","default":false,"short":"Fun extras"},{"id":"lowend","text":"Is your computer low-end, or do you want the highest frame rate?","hint":"Leaves out the heaviest scanners and ESPs.","default":false,"short":"Keep it light"}],"buckets":{"defence":{"name":"Staying alive","why":"keeps you alive in a fight","core":4,"mods":["autototem","autoarmor","autoeat","antiknockback","nofall","antivoid","durabilityalert","lowhealth"]},"melee":{"name":"Melee fighting","why":"helps you win sword and axe fights","core":3,"mods":["autoweapon","aimassist","killaura","reach","triggerbot","wtap","jumpreset","shieldbreaker","hitboxes","swordpvpcoach","autoclicker","multiaura","targetstrafe","swordbot","spearswap"]},"crystal":{"name":"Crystal and anchor PvP","why":"for crystal and anchor fights","core":5,"mods":["crystalaura","surround","holefiller","holeesp","maceswap","attributeswap","autocombo","crystalmacro","anchoraura","anchormacro","autotrap","selftrap","crystalbot","crystaloptimizer"]},"ranged":{"name":"Bows","why":"for bow fights","core":2,"mods":["bowaimbot","bowspam","trajectories"]},"pvpinfo":{"name":"Fight information","why":"tells you what your target and opponents are doing","core":4,"mods":["targethud","popcounter","threatradar","armorhud","potionhud","nametags","targetesp","friends"]},"bases":{"name":"Finding bases","why":"finds bases and hidden storage","core":3,"mods":["suspicious","basefinder","storageesp","baseclues","spawneresp","blockesp","chestmemory","cheststealer","waypoints"]},"underground":{"name":"Tunnels and caves","why":"for bases and ores underground","core":3,"mods":["tunnelbasefinder","lightdetector","caveesp","xray","lightoverlay","fullbright"]},"donut":{"name":"DonutSMP","why":"made for DonutSMP","core":3,"mods":["mediabasefinder","goliathrtp","staffhud","auction_house_tweaks","autosell","regionmap","stafflive"]},"explore":{"name":"Exploring","why":"for long trips and finding your way","core":5,"mods":["elytrawaypoint","elytraboost","waypoints","breadcrumbs","compass","radar","nofall","fullbright","zoom","autosprint","chestswap","regionmap","portalfinder","ancientcityfinder","trialfinder","entityspeed"]},"mine":{"name":"Mining","why":"for digging and finding ore","core":5,"mods":["xray","tunnelminer","autotool","fastbreak","fullbright","lightoverlay","antivoid","autoreplenish","storageesp","nuker","orecompass","inventorycleaner","lootwalker"]},"build":{"name":"Building","why":"for building faster and cleaner","core":5,"mods":["fastplace","schematicbuilder","schematiclibrary","scaffold","autoreplenish","coordsnapper","blockoutline","lightoverlay","zoom","freecam","autotool","fullbright"]},"stream":{"name":"Streaming","why":"keeps private details off camera","core":3,"mods":["streamerprivacy","screenshottweaks","watermark","keystrokes","infohud","modulelist","session","netinfo"]},"hud":{"name":"Information on screen","why":"shows information you check often","core":4,"mods":["infohud","armorhud","potionhud","keystrokes","modulelist","netinfo","session","itemcounter","compass"]},"auto":{"name":"Small chores","why":"does small chores for you","core":4,"mods":["autoeat","autotool","autoreplenish","autorespawn","autosprint","chestmemory","autofish","antiafk","chatmacro1","autoreconnect","fastxp","fastuse","autofarm","inventorycleaner","lootwalker"]},"practice":{"name":"Single-player practice","why":"lets you try things in your own world","core":6,"mods":["killaura","multiaura","triggerbot","reach","hitboxes","speed","flight","treebot","tunnelminer","nuker","swordpvpcoach","freecam"]},"fun":{"name":"Fun extras","why":"makes the game more fun to look at","core":3,"mods":["knife","jumpcircles","customcrosshair","weatherchanger","timechanger","morph","atmosphere","discordpresence"]},"basics":{"name":"Quality of life","why":"small helpers nearly everyone wants","core":4,"mods":["fullbright","zoom","autosprint","waypoints","keystrokes","nojumpdelay","antighostblock","perfguard","deathmarker"]}},"safe":["autotool","autoeat","autosprint","keystrokes","infohud","armorhud","potionhud","modulelist","netinfo","session","itemcounter","compass","zoom","fullbright","waypoints","breadcrumbs","chestmemory","durabilityalert","blockoutline","lightoverlay","streamerprivacy","watermark","screenshottweaks","autoreplenish","autorespawn","coordsnapper","schematiclibrary","timechanger","weatherchanger","customcrosshair","jumpcircles","knife","perfguard","perfmonitor","deathmarker","updatecheck","lowhealth","regionmap","radar","friends","chatmacro1","fastplace","freelook","trajectories","nametags","chestswap","autofish"],"sponly":["treebot","tunnelminer","multiaura"],"heavy":["atmosphere","esp","itemesp","blockesp","villageresp","holeesp","chunkborders","invisesp","suspicious","basefinder","tunnelbasefinder","caveesp","xray","spawneresp","amethystesp","kelpesp","storageesp","mediabasefinder","cropfinder","lightdetector","baseclues","lightoverlay","targetesp"],"risky":["killaura","multiaura","crystalaura","anchoraura","aimassist","triggerbot","reach","hitboxes","autoclicker","autocombo","crystalmacro","anchormacro","bowaimbot","bowspam","flight","speed","highjump","longjump","airjump","spider","step","lowgravity","jesus","scaffold","nuker","xray","boatfly","boatnoclip","airstuck","antiknockback","shieldbreaker","autotrap","selftrap","autoweb","selfweb","wtap","jumpreset"],"styles":[{"id":"explorer","name":"Explorer","icon":"map","blurb":"Travel far, see far and never get lost.","answers":{"explore":true,"hud":true,"auto":true,"bases":false,"pvp":false}},{"id":"basehunter","name":"Base hunter","icon":"search","blurb":"Find bases, stashes and hidden storage where scanning is allowed.","answers":{"bases":true,"underground":true,"explore":true,"hud":true}},{"id":"crystal","name":"Crystal PvP","icon":"shield","blurb":"Totems, armor, crystals, holes and info on your target.","answers":{"pvp":true,"crystal":true,"hud":true,"auto":true}},{"id":"melee","name":"Sword and axe PvP","icon":"bolt","blurb":"Melee fights with aim help and the information you need.","answers":{"pvp":true,"crystal":false,"hud":true,"auto":true}},{"id":"legit","name":"Quiet helper","icon":"eye","blurb":"Small conveniences that are hard to notice. Nothing that cheats.","answers":{"cheats":false,"hud":true,"auto":true,"explore":true}},{"id":"builder","name":"Builder","icon":"cube","blurb":"Build faster and cleaner with schematics and a clear view.","answers":{"build":true,"hud":true,"auto":true}},{"id":"streamer","name":"Streamer","icon":"play","blurb":"Keep private details off camera and show a tidy HUD.","answers":{"stream":true,"hud":true,"cheats":false,"auto":false}},{"id":"practice","name":"Single-player practice","icon":"gear","blurb":"Try everything in your own world, even what servers refuse.","answers":{"sp":true,"pvp":true,"build":true,"mine":true,"explore":true,"fun":true,"hud":true}},{"id":"miner","name":"Miner","icon":"gear","blurb":"Dig, find ore and stay safe underground.","answers":{"mine":true,"underground":true,"auto":true,"hud":true}},{"id":"donut","name":"DonutSMP","icon":"spark","blurb":"The DonutSMP toolkit: media bases, Goliath RTP and staff detection.","answers":{"bases":true,"donut":true,"explore":true,"hud":true,"auto":true}}]}
+package com.zlorbie788.zeus.ui;
+
+import net.minecraft.client.gui.GuiGraphics;
+
+public final class Intro {
+    private Intro() {}
+
+    public static final float LEADER = 0.17f;
+    public static final float STRIKE1 = 0.65f;
+    public static final float STRIKE2 = 1.25f;
+    public static final float STRIKE3 = 1.85f;
+    public static final float FORMED = 2.40f;
+    public static final float NAME = 2.65f;
+    public static final float LEAVE = 3.45f;
+    public static final float LENGTH = 4.10f;
+
+    private static final float[][] Z = {{-0.5f, -0.5f}, {0.5f, -0.5f}, {-0.5f, 0.5f}, {0.5f, 0.5f}};
+    private static final float SLANT = 0.10f;
+    private static final float[] LAND = {STRIKE1, STRIKE2, STRIKE3};
+
+    private static float hash(int a, int b) {
+        return Lightning.hash(a, b);
+    }
+
+    private static float ease(float x) {
+        x = Math.max(0f, Math.min(1f, x));
+        return x * x * (3f - 2f * x);
+    }
+
+    private static float clamp01(float x) {
+        return Math.max(0f, Math.min(1f, x));
+    }
+
+    private static float[] pt(float cx, float cy, float size, float[] u) {
+        return new float[] {cx + (u[0] - u[1] * SLANT) * size, cy + u[1] * size};
+    }
+
+    private static float decay(float since, float len) {
+        if (since < 0 || since > len) return 0f;
+        float k = 1f - since / len;
+        return k * k;
+    }
+
+    private static float tri(float x, float len) {
+        if (x < 0f || x > len) return 0f;
+        return 1f - x / len;
+    }
+
+    static float returnStroke(float s) {
+        if (s < 0f) return 0f;
+        float v = s < 0.07f ? 1f : 0f;
+        v = Math.max(v, tri(s - 0.10f, 0.05f) * 0.85f);
+        v = Math.max(v, tri(s - 0.19f, 0.07f) * 0.65f);
+        float glow = Math.max(0f, 1f - s / 1.0f);
+        return Math.max(v, glow * glow * 0.32f);
+    }
+
+    public static float flash(float t) {
+        float f = 0f;
+        for (int i = 0; i < 3; i++) {
+            float s = t - LAND[i];
+            f = Math.max(f, (s < 0.07f && s >= 0f ? 1f : 0f) * 0.50f);
+            f = Math.max(f, tri(s - 0.10f, 0.05f) * 0.32f);
+            f = Math.max(f, decay(s, 0.30f) * 0.22f);
+        }
+        f = Math.max(f, tri(t - 0.12f, 0.10f) * 0.10f);
+        f = Math.max(f, tri(t - 0.33f, 0.08f) * 0.14f);
+        f = Math.max(f, decay(t - FORMED, 0.45f) * 0.85f);
+        f = Math.max(f, decay(t - LEAVE, 0.30f) * 0.35f);
+        return f;
+    }
+
+    public static float shake(float t) {
+        float s = 0f;
+        for (float land : LAND) s = Math.max(s, decay(t - land, 0.22f) * 0.8f);
+        s = Math.max(s, decay(t - FORMED, 0.35f) * 1.5f);
+        return s;
+    }
+
+    public static void backdrop(GuiGraphics g, int w, int h, float t, int accent, float fade) {
+        if (fade <= 0.02f) return;
+        float charge = clamp01(t / FORMED);
+        float lit = Math.min(1f, flash(t) * 1.5f);
+        g.fillGradient(0, 0, w, h, Draw.rgba(0xFF020308, 0.97f * fade), Draw.rgba(0xFF05070F, 0.97f * fade));
+        int cloud = Draw.mix(0xFF1B2440, 0xFF9FB6FF, lit);
+        g.fillGradient(0, 0, w, Math.round(h * 0.42f), Draw.rgba(cloud, (0.35f + 0.5f * lit) * fade), 0x00000000);
+        g.fillGradient(0, 0, w, Math.round(h * 0.16f), Draw.rgba(Draw.mix(accent, 0xFFFFFFFF, 0.3f), (0.10f + 0.25f * lit) * fade), 0x00000000);
+        Lightning.bloom(g, w / 2f, h * 0.46f, Math.min(w, h) * 0.45f, accent, (0.25f + 0.75f * charge) * fade * (0.6f + 0.4f * lit));
+        for (int i = 0; i < 44; i++) {
+            float layer = i < 22 ? 1f : 0.55f;
+            float x = hash(i, 11) * w * 1.2f - w * 0.1f;
+            float sp = (0.7f + hash(i, 12)) * layer;
+            float y = ((hash(i, 13) * h * 2f + t * 520f * sp) % (h * 1.3f)) - h * 0.15f;
+            int len = Math.round((6 + hash(i, 14) * 9) * layer);
+            float a = (0.07f + 0.09f * hash(i, 15)) * layer * (1f + 2.2f * lit) * fade;
+            Draw.line(g, x, y, x - len * 0.25f, y + len, 1f, Draw.rgba(0xFFBFD8FF, Math.min(0.5f, a)));
+        }
+        g.fillGradient(0, Math.round(h * 0.78f), w, h, 0x00000000, Draw.rgba(0xFF000000, 0.55f * fade));
+    }
+
+    private static void ring(GuiGraphics g, float cx, float cy, float r, float thick, int color) {
+        int n = Math.max(28, Math.min(64, (int) (r / 3)));
+        float px = cx + r;
+        float py = cy;
+        for (int i = 1; i <= n; i++) {
+            float a = i / (float) n * 6.2832f;
+            float x = cx + (float) Math.cos(a) * r;
+            float y = cy + (float) Math.sin(a) * r * 0.62f;
+            Draw.line(g, px, py, x, y, thick, color);
+            px = x;
+            py = y;
+        }
+    }
+
+    public static void front(GuiGraphics g, int w, int h, float t, int accent, int second, float leave, float tx, float ty, float tsize) {
+        float big = Math.min(w, h) * 0.36f;
+        float cx0 = w / 2f;
+        float cy0 = h / 2f - big * 0.12f;
+        float e = ease(leave);
+        float size = big + (tsize - big) * e;
+        float cx = cx0 + (tx - cx0) * e;
+        float cy = cy0 + (ty - cy0) * e;
+        float[][] p = new float[4][];
+        for (int i = 0; i < 4; i++) p[i] = pt(cx, cy, size, Z[i]);
+
+        int frame = (int) (t * 30f);
+        float[][] from = {p[0], p[1], p[2]};
+        float[][] to = {p[1], p[2], p[3]};
+        float[] dur = {0.34f, 0.46f, 0.34f};
+        float wUnit = Math.max(0.6f, size / 42f);
+
+        if (leave < 1f && t < FORMED + 0.2f) {
+            for (int s = 0; s < 3; s++) {
+                float since = t - LAND[s];
+                float untilLand = -since;
+                if (untilLand > LEADER + 0.02f) continue;
+                float sx = from[s][0] + (hash(s, 3) - 0.5f) * size * 0.9f;
+                int seed = s * 53 + 11;
+                float stroke = returnStroke(since);
+                if (untilLand > 0f) {
+                    float pr = clamp01(1f - untilLand / LEADER);
+                    Lightning.bolt(g, sx, -8, from[s][0], from[s][1], pr, seed, 0.55f, accent, second, wUnit * 0.55f, 2, 1f, 0.35f, 3);
+                    float headY = -8 + (from[s][1] + 8) * pr;
+                    float headX = sx + (from[s][0] - sx) * pr;
+                    Lightning.bloom(g, headX, headY, size * 0.18f, 0xFFFFFFFF, 0.75f);
+                } else {
+                    float widthScale = 0.9f + 1.0f * stroke;
+                    float flick = 0.45f + 0.55f * stroke;
+                    Lightning.bolt(g, sx, -8, from[s][0], from[s][1], 1f, seed, Math.min(1f, flick), accent, second, wUnit * 1.2f * widthScale, 2, 1f, 0.35f, 4);
+                    if (since < 0.9f) {
+                        float hit = decay(since, 0.9f);
+                        Lightning.bloom(g, from[s][0], from[s][1], size * (0.35f + 0.5f * stroke), 0xFFFFFFFF, 0.95f * hit);
+                        Lightning.streak(g, from[s][0], from[s][1], size * (0.5f + 0.9f * stroke), accent, hit * stroke);
+                        Lightning.sparks(g, from[s][0], from[s][1], 12, size * 0.8f, since, s * 7 + 1, accent, hit);
+                    }
+                }
+                float cs = since - 0.02f;
+                if (cs > 0f) {
+                    float prog = clamp01(cs / dur[s]);
+                    float settle = clamp01((cs - dur[s]) / 0.60f);
+                    float wander = 1f - 0.87f * ease(settle);
+                    int cseed = s * 97 + (settle < 1f ? frame : frame / 5);
+                    float alive = 0.70f + 0.30f * stroke;
+                    Lightning.bolt(g, from[s][0], from[s][1], to[s][0], to[s][1], prog, cseed, alive, accent, second, wUnit * 1.15f, settle < 0.7f ? 1 : 0, wander, 0f, 3);
+                    if (prog < 1f && prog > 0f) {
+                        float hx = from[s][0] + (to[s][0] - from[s][0]) * prog;
+                        float hy = from[s][1] + (to[s][1] - from[s][1]) * prog;
+                        Lightning.bloom(g, hx, hy, size * 0.28f, 0xFFFFFFFF, 0.85f);
+                    }
+                }
+            }
+        }
+
+        if (t > FORMED - 0.05f) {
+            float live = clamp01((t - FORMED + 0.05f) / 0.3f);
+            float pic = ease(clamp01((t - FORMED - 0.05f) / 0.55f));
+            Logo.packed(g, cx, cy, size, t, accent, second, live * (1f - 0.8f * pic));
+            if (pic > 0f && !Logo.live("intro", g, cx, cy, size * 1.2f, t, accent, second, pic * live)) Logo.packed(g, cx, cy, size, t, accent, second, live);
+            if (leave == 0f) {
+                float since = t - FORMED;
+                if (since < 1.0f) {
+                    float k = since / 1.0f;
+                    ring(g, cx, cy, size * (0.2f + 1.5f * ease(k)), Math.max(1f, wUnit * 1.3f * (1f - k)), Draw.rgba(Draw.mix(accent, 0xFFFFFFFF, 0.5f), 0.7f * (1f - k)));
+                    ring(g, cx, cy, size * (0.1f + 1.1f * ease(k)), 1f, Draw.rgba(0xFFFFFFFF, 0.5f * (1f - k)));
+                    Lightning.streak(g, cx, cy, size * (0.8f + 1.4f * k), accent, (1f - k) * (1f - k));
+                    if (since < 0.35f) {
+                        for (int i = 0; i < 4; i++) {
+                            float ang = (i + hash(frame / 2, i)) * 1.5708f + 0.4f;
+                            float len = size * (0.55f + 0.5f * hash(frame / 2, i + 9));
+                            float ox = p[i][0];
+                            float oy = p[i][1];
+                            Lightning.bolt(g, ox, oy, ox + (float) Math.cos(ang) * len, oy + (float) Math.sin(ang) * len, 1f, frame / 2 * 5 + i, 1f - since / 0.35f, accent, second, wUnit * 0.8f, 1, 1f, 0.1f, 3);
+                        }
+                    }
+                }
+            }
+        }
+
+        if (leave < 0.6f && t > NAME) {
+            float fade = (1f - clamp01(leave / 0.6f));
+            String word = "ZEUS";
+            float sc = Math.max(2f, Math.round(size / 45f));
+            int total = 0;
+            int gap = Math.round(5 * sc);
+            int[] ws = new int[word.length()];
+            for (int i = 0; i < word.length(); i++) {
+                ws[i] = Math.round(Draw.widthBold(String.valueOf(word.charAt(i))) * sc);
+                total += ws[i] + (i < word.length() - 1 ? gap : 0);
+            }
+            float x = cx - total / 2f;
+            float y = cy + size * 0.78f;
+            for (int i = 0; i < word.length(); i++) {
+                float a = clamp01((t - NAME - i * 0.07f) / 0.25f) * fade;
+                if (a <= 0f) {
+                    x += ws[i] + gap;
+                    continue;
+                }
+                int col = Draw.mix(accent, second, i / 3f);
+                col = Draw.mix(col, 0xFFFFFFFF, 0.55f);
+                float flash = clamp01(1f - (t - NAME - i * 0.07f - 0.1f) / 0.3f);
+                col = Draw.mix(col, 0xFFFFFFFF, flash * 0.8f);
+                g.pose().pushMatrix();
+                g.pose().translate(x, y + (1f - a) * 6f);
+                g.pose().scale(sc, sc);
+                Draw.bold(g, String.valueOf(word.charAt(i)), 0, 0, Draw.rgba(col, a));
+                g.pose().popMatrix();
+                x += ws[i] + gap;
+            }
+            float ta = clamp01((t - NAME - 0.4f) / 0.4f) * fade;
+            if (ta > 0f) {
+                String tag = "T H U N D E R   C L I E N T";
+                Draw.textCenter(g, tag, Math.round(cx), Math.round(y + 9 * sc + 6), Draw.rgba(0xFF8FA3C8, ta));
+                int half = Math.round(total * 0.6f * ease((t - NAME) / 0.8f));
+                g.fill(Math.round(cx) - half, Math.round(y + 9 * sc + 2), Math.round(cx) + half, Math.round(y + 9 * sc + 3), Draw.rgba(accent, 0.6f * ta));
+            }
+        }
+    }
+}

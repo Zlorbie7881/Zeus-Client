@@ -1,244 +1,416 @@
-"""0.9.5.0 changes to the FAQ: the website is now described as the published site, a few site-owner entries leave the public FAQ,
-and many questions get several differently worded answers (ALTS). The helper picks a different one each time you ask."""
+/* Zeus Client website 9.5: header, backgrounds, page intros, thunder cursor, floating helper, home layout, dialogs. Loaded after site.css. */
 
-# questions that were about running your own copy of the site: they are not for visitors of the published site
-REMOVE = {
-    "How can I publish this website on my own domain?", "How do I publish the Zeus website on my own domain?", "Which hosts can serve the website?",
-    "Do I need HTTPS for the website?", "How do I set the download link on the website?", "How do I change the Discord link on the website?",
-    "How do I add a SHA-256 checksum for the download?",
-    "Can Zeus see through walls or reveal hidden terrain?", "Does Zeus include a bypass for anti-cheat?", "Does Zeus work against anti-xray?",
+/* ====================================================================== thunder cursor */
+*{cursor:url(/img/cursor.png) 19 3,auto!important}
+a,a *,button,button *,summary,select,label,[role=button],[role=button] *,.chip,.preset,.tool-card,.pop,input[type=checkbox],input[type=radio],input[type=range],.faq summary{cursor:url(/img/cursor-link.png) 19 3,pointer!important}
+input[type=text],input[type=search],input[type=password],input[type=email],input[type=url],input[type=number],textarea,[contenteditable=true],[contenteditable=true] *{cursor:text!important}
+button:disabled,button:disabled *{cursor:not-allowed!important}
+#cur{position:fixed;inset:0;width:100%;height:100%;z-index:9999;pointer-events:none}
+html.calm #cur{display:none}
+@media(hover:none){#cur{display:none}}
+
+/* ====================================================================== header */
+.nav-inner{gap:clamp(8px,1.1vw,20px)}
+.brand{gap:10px}
+.links{overflow:visible;justify-content:center}
+.links a{padding:0 clamp(10px,1vw,18px);font-size:15px;gap:9px}
+.links a .i{width:22px;height:22px}
+.links>a::after,.more-btn::after{content:"";position:absolute;left:50%;bottom:0;width:0;height:2px;background:var(--blue2);transition:width .25s,left .25s;border-radius:2px}
+.links>a:hover::after,.more-btn:hover::after{width:44%;left:28%}
+.more{position:relative;display:flex;align-items:stretch}
+.more-btn{position:relative;display:flex;align-items:center;gap:9px;padding:0 clamp(10px,1vw,18px);background:none;border:0;color:#b7c7e8;font:inherit;font-weight:500;font-size:15px;transition:color .15s,background .15s;white-space:nowrap}
+.more-btn .i:first-child{color:var(--blue2);width:22px;height:22px}
+.more-btn .chev{transform:rotate(90deg);transition:transform .25s}
+.more.open .more-btn .chev{transform:rotate(-90deg)}
+.more-btn:hover,.more.open .more-btn,.more.on .more-btn{color:#fff;background:rgba(40,110,255,.08)}
+.more.on .more-btn .i:first-child{color:#7dbbff;filter:drop-shadow(0 0 8px rgba(70,150,255,.9))}
+.links .more-menu{position:absolute;top:calc(100% + 4px);right:0;min-width:300px;padding:8px;border-radius:18px;border:1px solid var(--line2);background:linear-gradient(180deg,rgba(10,24,56,.98),rgba(5,12,30,.98));box-shadow:0 26px 60px rgba(0,0,0,.6),0 0 40px rgba(31,110,255,.18);opacity:0;visibility:hidden;transform:translateY(-8px) scale(.97);transform-origin:top right;transition:opacity .2s,transform .22s cubic-bezier(.2,.8,.2,1),visibility 0s .22s;display:grid;gap:2px;z-index:70}
+.more.open .more-menu{opacity:1;visibility:visible;transform:none;transition-delay:0s}
+.links .more-menu a{height:auto;padding:10px 12px;border-radius:12px;gap:14px;align-items:center;font-size:15px}
+.links .more-menu a::before,.links .more-menu a::after{display:none}
+.links .more-menu a .i{width:26px;height:26px;padding:5px;border-radius:9px;background:rgba(31,125,255,.2)}
+.links .more-menu a span{display:flex;flex-direction:column;line-height:1.25}
+.links .more-menu a small{color:var(--dim);font-size:12.5px;font-weight:400}
+.links .more-menu a:hover{background:rgba(40,110,255,.16)}
+.links .more-menu a.on{background:rgba(40,110,255,.22)}
+.burger{display:none;flex-direction:column;justify-content:center;gap:5px;width:44px;height:44px;padding:0 11px;border-radius:12px;border:1px solid var(--line2);background:rgba(10,26,62,.6);margin-left:auto;flex:none}
+.burger i{display:block;height:2px;border-radius:2px;background:#cfe4ff;transition:transform .25s,opacity .2s}
+html.navopen .burger i:nth-child(1){transform:translateY(7px) rotate(45deg)}
+html.navopen .burger i:nth-child(2){opacity:0}
+html.navopen .burger i:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
+.nav-inner>.btn{flex:none}
+#helpTop{padding:10px 16px}
+#helpTop span{display:none}
+.discord-btn{padding:10px 14px;gap:9px}
+.discord-btn span,.discord-btn .small{display:none}
+.btn-acct .acct-n{display:none}
+.btn-acct{padding:7px}
+@media(min-width:1380px){.btn-acct .acct-n{display:inline;max-width:110px;overflow:hidden;text-overflow:ellipsis}.btn-acct{padding:7px 14px 7px 8px}}
+@media(min-width:1560px){#helpTop span{display:inline}.discord-btn span{display:inline}.discord-btn{padding:10px 18px}}
+@media(min-width:1760px){.discord-btn .small{display:inline-block}}
+@media(max-width:1100px){
+  .nav-inner{gap:8px}
+  .burger{display:flex}
+  .links{position:fixed;top:var(--navh);left:0;right:0;height:auto;flex:none;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:2px;padding:10px 14px 16px;background:rgba(4,9,20,.985);border-bottom:1px solid var(--line2);box-shadow:0 30px 60px rgba(0,0,0,.55);max-height:calc(100vh - var(--navh));overflow:auto;opacity:0;visibility:hidden;transform:translateY(-10px);transition:opacity .2s,transform .22s,visibility 0s .22s}
+  html.navopen .links{opacity:1;visibility:visible;transform:none;transition-delay:0s}
+  .links>a{height:50px;border-radius:12px;padding:0 14px}
+  .links .ind,.more-btn{display:none}
+  .more,.links .more-menu{display:contents}
+  .links .more-menu a{height:50px;padding:0 14px}
+  .links .more-menu a small{display:none}
+  .links .more-menu{opacity:1;visibility:inherit;transform:none}
+  .links>a::after{display:none}
+  #helpTop span{display:none}
+}
+@media(max-width:760px){
+  :root{--navh:66px}
+  .nav{height:var(--navh)}
+  .nav-inner{flex-wrap:nowrap;height:100%;padding:0 12px;row-gap:0}
+  .brand{height:auto;margin-right:0}
+  .links{order:0;margin:0;flex:none;height:auto;justify-content:flex-start}
+  .links a{font-size:15px}
+  .brand-text{display:none}
+  .brand .zlogo{--zs:44px}
+  .links{max-height:calc(100vh - var(--navh))}
+}
+@media(max-width:420px){.nav-inner .btn{padding:8px}.nav-inner>.btn .i{width:20px;height:20px}#searchTop{display:none}}
+
+/* ====================================================================== page backgrounds */
+#bg{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+#bg .bl{position:absolute;inset:-3%;opacity:0;background-position:center top;background-size:cover;background-repeat:no-repeat;transition:opacity .8s ease;will-change:opacity}
+#bg .bl.on{opacity:1}
+html.motion #bg .bl.on{animation:bgDrift 46s ease-in-out infinite alternate}
+@keyframes bgDrift{from{transform:translate3d(-1%,0,0) scale(1.01)}to{transform:translate3d(1%,-1.2%,0) scale(1.04)}}
+#bg .bl[data-k=home]{background-image:url(/img/bg/home.svg)}
+#bg .bl[data-k=download]{background-image:url(/img/bg/download.svg);background-position:center bottom}
+#bg .bl[data-k=features]{background-image:url(/img/bg/features.svg);background-size:100px 173px;background-repeat:repeat;-webkit-mask-image:linear-gradient(180deg,#000 10%,transparent 85%);mask-image:linear-gradient(180deg,#000 10%,transparent 85%)}
+#bg .bl[data-k=tutorial]{background-image:url(/img/bg/tutorial.svg)}
+#bg .bl[data-k=information]{background-image:url(/img/bg/information.svg)}
+#bg .bl[data-k=help]{background-image:url(/img/bg/help.svg)}
+#bg .bl[data-k=source]{background-image:url(/img/bg/source.svg)}
+#bg .bl[data-k=credits]{background-image:url(/img/bg/credits.svg)}
+#bg .bl[data-k=config]{background-image:url(/img/bg/config.svg)}
+#bg .bl[data-k=grid]{background-image:url(/img/bg/grid.svg);background-size:56px 56px;background-repeat:repeat;-webkit-mask-image:radial-gradient(900px 600px at 50% 20%,#000,transparent);mask-image:radial-gradient(900px 600px at 50% 20%,#000,transparent)}
+/* a slow light that drifts across every page */
+#bg::after{content:"";position:absolute;width:60vmax;height:60vmax;left:-20vmax;top:-10vmax;border-radius:50%;background:radial-gradient(circle,rgba(45,125,255,.16),transparent 62%);opacity:.8}
+html.motion #bg::after{animation:orb 32s ease-in-out infinite alternate}
+@keyframes orb{from{transform:translate(0,0)}to{transform:translate(90vw,40vh)}}
+html.calm #bg .bl{transition:none}
+
+/* ====================================================================== page opening animations */
+main.pgin{animation:pgDefault .55s cubic-bezier(.2,.75,.2,1) both}
+html[data-pg=home] main.pgin{animation:pgCircle .9s cubic-bezier(.2,.7,.2,1) both}
+html[data-pg=download] main.pgin{animation:pgRise .6s cubic-bezier(.2,.75,.2,1) both}
+html[data-pg=features] main.pgin{animation:pgSplit .7s cubic-bezier(.2,.75,.2,1) both}
+html[data-pg=tutorial] main.pgin{animation:pgSlideR .6s cubic-bezier(.2,.75,.2,1) both}
+html[data-pg=information] main.pgin{animation:pgDrop .7s cubic-bezier(.2,.75,.2,1) both}
+html[data-pg=help] main.pgin{animation:pgZoom .6s cubic-bezier(.2,.75,.2,1) both}
+html[data-pg=source] main.pgin{animation:pgWipe .65s cubic-bezier(.3,.7,.2,1) both}
+html[data-pg=credits] main.pgin{animation:pgZoomOut .75s cubic-bezier(.2,.75,.2,1) both}
+html[data-pg=config] main.pgin{animation:pgDiag .75s cubic-bezier(.3,.7,.2,1) both}
+@keyframes pgDefault{from{opacity:0;transform:translateY(16px);filter:blur(6px)}to{opacity:1;transform:none;filter:none}}
+@keyframes pgCircle{from{clip-path:circle(0% at 50% 6%);opacity:.4}to{clip-path:circle(150% at 50% 6%);opacity:1}}
+@keyframes pgRise{from{opacity:0;transform:translateY(46px) scale(.97)}to{opacity:1;transform:none}}
+@keyframes pgSplit{from{clip-path:inset(0 50% 0 50%);opacity:.3}to{clip-path:inset(0 0 0 0);opacity:1}}
+@keyframes pgSlideR{from{opacity:0;transform:translateX(54px)}to{opacity:1;transform:none}}
+@keyframes pgDrop{from{clip-path:inset(0 0 100% 0)}to{clip-path:inset(0 0 0 0)}}
+@keyframes pgZoom{from{opacity:0;transform:scale(.94);filter:blur(8px)}to{opacity:1;transform:none;filter:none}}
+@keyframes pgWipe{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+@keyframes pgZoomOut{from{opacity:0;transform:scale(1.06)}to{opacity:1;transform:none}}
+@keyframes pgDiag{from{clip-path:polygon(0 0,0 0,0 0)}to{clip-path:polygon(0 0,220% 0,0 220%)}}
+#view.leaving{opacity:0;transform:translateY(-6px);transition:opacity .14s,transform .14s}
+/* a quick bolt across the page header on every page change */
+.bolt-flash{position:fixed;left:0;right:0;top:var(--navh);height:3px;z-index:290;pointer-events:none;overflow:visible}
+.bolt-flash::before{content:"";position:absolute;left:-30%;top:-1px;width:30%;height:3px;border-radius:3px;background:linear-gradient(90deg,transparent,#8cc4ff,#fff,#8cc4ff,transparent);box-shadow:0 0 18px 4px rgba(90,170,255,.9),0 0 60px 12px rgba(40,120,255,.5);animation:boltRun .55s cubic-bezier(.4,0,.2,1) forwards}
+.bolt-flash svg{position:absolute;left:0;top:0;width:100%;height:150px;opacity:0;animation:boltFlick .5s steps(1) forwards;filter:drop-shadow(0 0 6px rgba(120,180,255,.9))}
+@keyframes boltRun{to{left:100%}}
+@keyframes boltFlick{0%{opacity:0}12%{opacity:.9}26%{opacity:.1}38%{opacity:.7}100%{opacity:0}}
+html.calm .bolt-flash{display:none}
+
+/* ====================================================================== animated emblem: electric arcs */
+.zl-arcs{position:absolute;inset:-14%;width:128%;height:128%;pointer-events:none;overflow:visible}
+.zl-arcs path{fill:none;stroke:#bfe0ff;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;opacity:0;filter:drop-shadow(0 0 5px #4ea4ff) drop-shadow(0 0 12px #1f7dff)}
+html.motion .zl-arcs path{animation:arc 4.2s steps(1) infinite}
+html.motion .zl-arcs path:nth-child(2){animation-duration:5.3s;animation-delay:-1.4s}
+html.motion .zl-arcs path:nth-child(3){animation-duration:3.7s;animation-delay:-2.6s}
+html.motion .zl-arcs path:nth-child(4){animation-duration:6.1s;animation-delay:-.7s}
+@keyframes arc{0%{opacity:0}6%{opacity:1}9%{opacity:.15}12%{opacity:.9}17%{opacity:0}100%{opacity:0}}
+.brand .zl-arcs path{stroke-width:3}
+
+/* ====================================================================== floating helper button */
+.hlp-fab{right:26px;bottom:26px;padding:12px 22px 12px 14px;gap:12px;overflow:visible;translate:0 0;transition:transform .25s cubic-bezier(.2,.8,.2,1),box-shadow .25s,opacity .25s}
+html.motion .hlp-fab{animation:fabBob 4.4s ease-in-out infinite}
+@keyframes fabBob{0%,100%{translate:0 0;rotate:0deg}30%{translate:0 -9px;rotate:-1.2deg}60%{translate:0 -3px;rotate:.8deg}}
+.hlp-fab:hover{animation-play-state:paused;transform:scale(1.06);box-shadow:0 18px 56px rgba(45,138,255,.75)}
+.hlp-fab:active{transform:scale(.97)}
+.hlp-fab .fab-ic{position:relative;display:grid;place-items:center;width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.18);box-shadow:inset 0 0 0 1px rgba(255,255,255,.3)}
+.hlp-fab .fab-ic .i{width:22px;height:22px}
+.hlp-fab .fab-ic::after{content:"";position:absolute;right:-1px;top:-1px;width:11px;height:11px;border-radius:50%;background:#35d99a;border:2px solid #1458d8;box-shadow:0 0 10px #35d99a}
+html.motion .hlp-fab .fab-ic::after{animation:fabDot 2s ease-in-out infinite}
+@keyframes fabDot{50%{transform:scale(1.35);opacity:.65}}
+.hlp-fab::before{inset:-5px;border-width:2px}
+.hlp-fab::after{display:none}
+.fab-hint{position:fixed;right:30px;bottom:92px;z-index:119;display:flex;align-items:center;gap:10px;max-width:260px;padding:10px 14px;border-radius:16px;border-bottom-right-radius:4px;border:1px solid var(--line2);background:rgba(8,20,48,.97);color:#dbe8ff;font-size:14px;line-height:1.35;box-shadow:0 14px 40px rgba(0,0,0,.5),0 0 30px rgba(45,138,255,.25);opacity:0;transform:translateY(10px) scale(.94);transform-origin:bottom right;transition:opacity .3s,transform .35s cubic-bezier(.2,.9,.3,1.3);pointer-events:none}
+.fab-hint.on{opacity:1;transform:none;pointer-events:auto}
+.fab-hint .dots{display:inline-flex;gap:3px}
+.fab-hint .dots i{width:5px;height:5px;border-radius:50%;background:var(--blue2);animation:dot 1s ease-in-out infinite}
+.fab-hint .dots i:nth-child(2){animation-delay:.15s}.fab-hint .dots i:nth-child(3){animation-delay:.3s}
+.fab-hint button{border:0;background:none;color:var(--dim);padding:2px;margin-left:2px;line-height:0}
+.fab-hint button .i{width:14px;height:14px}
+@media(max-width:760px){.hlp-fab{right:14px;bottom:14px;padding:10px}.hlp-fab span:not(.fab-ic){display:none}.fab-hint{right:16px;bottom:78px}}
+
+/* ====================================================================== home */
+.cards3{grid-template-columns:repeat(3,minmax(0,1fr));align-items:stretch}
+.hc{display:flex;flex-direction:column}
+.hc .card-foot{margin-top:auto;padding-top:24px;position:relative;z-index:1}
+.about p{max-width:none;margin:14px 0 0}
+.ticks{list-style:none;margin:16px 0 0;padding:0;display:grid;gap:10px;position:relative;z-index:1}
+.ticks li{display:flex;gap:10px;align-items:flex-start;color:#c9d6ef;font-size:15px;line-height:1.5}
+.ticks .i{color:var(--ok);margin-top:3px}
+.hc .bigz{opacity:.14;width:220px;right:-30px;bottom:-34px}
+.upd-card .upd{grid-template-columns:96px minmax(0,1fr);margin-top:18px}
+.upd-card .upd .thumb{width:96px;height:96px}
+.upd-card .upd .thumb img{width:70px}
+.upd-card .upd h3{font-size:21px;margin-bottom:6px}
+.upd .clamp{display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden;margin:0;font-size:15px;line-height:1.65}
+.hc-chips{margin-top:16px}
+.disc .row{align-items:flex-start}
+.disc .row>.i{width:40px;height:40px;color:#5865f2;filter:drop-shadow(0 0 10px rgba(88,101,242,.7))}
+.disc h3{margin:0 0 6px;font-size:21px}
+.disc p{margin:0;color:var(--dim);font-size:15px}
+h2.home-sec{margin:48px 0 18px}
+.home-tools{grid-template-columns:repeat(4,minmax(0,1fr));margin:0}
+.home-tools .tool-card{padding:20px 20px;align-items:flex-start;min-height:112px}
+.home-tools .tc-i{width:48px;height:48px}
+.pop-box{margin:40px 0 0}
+.pop-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.pop-head h2{margin:0}
+.pop-head a{color:var(--blue2);font-weight:600;font-size:14.5px;display:inline-flex;align-items:center;gap:8px}
+.pop-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px}
+.pop{display:inline-flex;align-items:center;gap:8px;padding:9px 16px;border-radius:999px;border:1px solid var(--line);background:rgba(9,22,52,.7);color:#cfe0ff;font-weight:600;font-size:14px;transition:transform .2s,border-color .2s,background .2s,box-shadow .2s}
+.pop .i{color:var(--blue2);transition:transform .3s}
+.pop:hover{transform:translateY(-3px);border-color:var(--blue2);background:rgba(25,64,150,.55);box-shadow:0 10px 26px rgba(31,110,255,.3);color:#fff}
+.pop:hover .i{transform:rotate(-14deg) scale(1.25)}
+.band{margin-top:40px;display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap;padding:26px 32px;background:linear-gradient(100deg,rgba(24,70,170,.55),rgba(8,20,48,.8) 60%)}
+.band-t{display:flex;align-items:center;gap:20px}
+.band-t .i{color:var(--blue3);filter:drop-shadow(0 0 12px rgba(80,160,255,.8))}
+.band h3{margin:0 0 4px;font-size:24px}.band p{margin:0;max-width:560px}
+@media(max-width:1180px){.cards3{grid-template-columns:1fr 1fr}.cards3 .disc{grid-column:1/-1}.home-tools{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.cards3,.home-tools{grid-template-columns:1fr}.band{padding:22px}}
+.strip a .i{transition:transform .3s}
+.strip a:hover .i{animation:icBounce .6s ease}
+@keyframes icBounce{30%{transform:translateY(-6px) scale(1.12)}60%{transform:translateY(1px)}}
+.tut-cfg{display:flex;align-items:center;gap:20px;margin-top:34px;flex-wrap:wrap}
+.tut-cfg>div:nth-child(2){flex:1;min-width:240px}.tut-cfg h3{margin:0 0 4px}.tut-cfg p{margin:0}
+.tut-cfg .tc-i{width:56px;height:56px;border-radius:16px}.tut-cfg .tc-i .i{width:30px;height:30px}
+
+/* ====================================================================== download: GitHub card */
+.gh-card{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:22px;align-items:center;margin-bottom:30px;border-color:rgba(140,196,255,.45)}
+.gh-ic{display:grid;place-items:center;width:64px;height:64px;border-radius:18px;background:rgba(31,125,255,.2);color:#cfe4ff}
+.gh-t h3{margin:0 0 6px;font-size:21px}.gh-t p{margin:0;max-width:640px}
+.gh-b{display:flex;flex-wrap:wrap;gap:12px;justify-content:flex-end}
+@media(max-width:980px){.gh-card{grid-template-columns:auto 1fr}.gh-b{grid-column:1/-1;justify-content:flex-start}}
+@media(max-width:560px){.gh-card{grid-template-columns:1fr}}
+
+/* ====================================================================== dialogs */
+.modal-back{position:fixed;inset:0;z-index:400;display:grid;place-items:center;padding:20px;background:rgba(2,6,16,.74);backdrop-filter:blur(7px);animation:fadeIn .25s both}
+.modal-back.out{animation:fadeOut .2s both}
+.modal{position:relative;width:min(760px,100%);max-height:calc(100vh - 40px);overflow:auto;border-radius:24px;border:1px solid var(--line2);background:linear-gradient(180deg,rgba(14,32,74,.98),rgba(6,14,34,.98));box-shadow:0 40px 100px rgba(0,0,0,.65),0 0 60px rgba(31,110,255,.25);padding:30px 32px;animation:popIn .4s cubic-bezier(.2,.9,.3,1.2) both}
+.modal-back.out .modal{animation:popOut .2s both}
+.modal{text-align:left}.modal h2{margin:0 0 8px;font-size:28px;display:flex;align-items:center;gap:14px}
+.modal h2 .i{width:36px;height:36px;color:#7dbbff;filter:drop-shadow(0 0 10px rgba(70,150,255,.8))}
+.modal .lead{margin:0 0 20px;color:var(--dim);font-size:16px}
+.modal-x{position:absolute;right:16px;top:16px;width:38px;height:38px;border-radius:12px;border:1px solid var(--line);background:rgba(10,26,62,.7);color:#cfe4ff;display:grid;place-items:center;transition:background .2s,transform .2s}
+.modal-x:hover{background:rgba(40,90,190,.6);transform:rotate(90deg)}
+.safe-list{display:grid;gap:10px;margin:0 0 18px}
+.safe-row{display:flex;gap:14px;padding:14px 16px;border:1px solid var(--line);border-radius:16px;background:rgba(9,22,52,.6);animation:rise .4s both}
+.safe-row .i{width:26px;height:26px;color:var(--ok);flex:none;margin-top:2px}
+.safe-row b{display:block;margin-bottom:2px}.safe-row span{color:var(--dim);font-size:14.5px;line-height:1.5}
+.safe-gh{display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:18px;border-radius:18px;border:1px solid rgba(140,196,255,.5);background:linear-gradient(100deg,rgba(31,100,255,.3),rgba(8,20,48,.7))}
+.safe-gh>.i{width:38px;height:38px;color:#e6f1ff}
+.safe-gh>div{flex:1;min-width:220px}.safe-gh b{display:block;margin-bottom:4px;font-size:17px}.safe-gh p{margin:0;color:#c9d6ef;font-size:14.5px}
+.safe-risk{margin:16px 0 0;color:#ffe2a6;font-size:14px}
+.modal .acts{display:flex;flex-wrap:wrap;gap:12px;margin-top:18px}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}@keyframes fadeOut{to{opacity:0}}
+@keyframes popIn{from{opacity:0;transform:translateY(26px) scale(.95)}to{opacity:1;transform:none}}@keyframes popOut{to{opacity:0;transform:translateY(10px) scale(.97)}}
+@media(max-width:560px){.modal{padding:24px 20px}.modal h2{font-size:23px;padding-right:40px}}
+
+/* ====================================================================== banner, footer switch */
+.site-banner{position:relative;z-index:62;display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap;padding:9px 44px 9px 16px;font-size:14.5px;border-bottom:1px solid var(--line2);background:linear-gradient(90deg,rgba(20,60,150,.8),rgba(10,30,80,.85));color:#e3eeff;animation:bannerIn .5s both}
+.site-banner.warn{background:linear-gradient(90deg,rgba(120,80,0,.85),rgba(70,45,0,.85));color:#ffe9b8}
+.site-banner.ok{background:linear-gradient(90deg,rgba(10,100,70,.85),rgba(6,60,45,.85));color:#c6f7e3}
+.site-banner a{font-weight:700;text-decoration:underline;text-underline-offset:3px}
+.site-banner .bx{position:absolute;right:10px;top:50%;margin-top:-14px;width:28px;height:28px;border:0;background:none;color:inherit;border-radius:8px;display:grid;place-items:center;opacity:.8}
+.site-banner .bx:hover{opacity:1;background:rgba(255,255,255,.12)}
+.site-banner .bx .i{width:16px;height:16px}
+@keyframes bannerIn{from{opacity:0;transform:translateY(-100%)}to{opacity:1;transform:none}}
+.mt{display:inline-flex;align-items:center;gap:8px;margin-left:16px;padding:4px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(9,22,52,.6);color:var(--dim);font:inherit;font-size:12.5px;font-weight:600}
+.mt:hover{border-color:var(--line2);color:#fff}
+.mt .i{width:15px;height:15px;color:var(--blue2)}
+
+/* ====================================================================== small motion extras */
+html.motion h2.sec{position:relative;padding-bottom:9px}
+html.motion h2.sec::after{content:"";position:absolute;left:0;bottom:0;height:2px;width:70px;border-radius:2px;background:linear-gradient(90deg,var(--blue2),transparent);animation:secLine .9s .25s cubic-bezier(.2,.8,.2,1) both}
+@keyframes secLine{from{width:0;opacity:0}to{width:70px;opacity:1}}
+html.motion .btn-primary:not(:hover)::after{animation:idleShine 6s 2s ease-in-out infinite}
+@keyframes idleShine{0%,70%{left:-70%}90%,100%{left:130%}}
+html.motion .faq[open]>p,html.motion .faq[open]>.faq-links{animation:faqOpen .35s both}
+@keyframes faqOpen{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.tool-card .tc-i,.preset .pi{transition:transform .3s,background .3s}
+.tool-card:hover .tc-i,.preset:hover .pi{transform:rotate(-8deg) scale(1.1);background:rgba(45,138,255,.35)}
+html.motion .pill:not(.ok):not(.bad):not(.warn){background-image:linear-gradient(100deg,transparent 30%,rgba(255,255,255,.25) 50%,transparent 70%);background-size:220% 100%;animation:pillSheen 5s ease-in-out infinite}
+@keyframes pillSheen{0%,60%{background-position:130% 0}100%{background-position:-60% 0}}
+html.motion .hero .tagline em{background-size:200% 100%;animation:tagFlow 6s linear infinite}
+@keyframes tagFlow{to{background-position:200% 0}}
+.msg.bot{animation:msgIn .35s cubic-bezier(.2,.8,.2,1) both}
+.msg.me{animation:msgInR .3s cubic-bezier(.2,.8,.2,1) both}
+@keyframes msgIn{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes msgInR{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:none}}
+
+/* nav labels: the old stylesheet hid them below 1440px; the new header has room for them from 1240px */
+@media(min-width:1241px){.links>a span{display:inline!important}}
+.links .more-menu a span{display:flex!important}
+
+.mini-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px;position:relative;z-index:1}
+.mini-stats>div{padding:12px 10px;border:1px solid var(--line);border-radius:14px;background:rgba(9,22,52,.6);text-align:center}
+.mini-stats b{display:block;font-family:var(--display);font-size:26px;font-style:italic;font-weight:900;color:#dbe8ff;line-height:1.1}
+.mini-stats small{color:var(--dim);font-size:12.5px;letter-spacing:.04em}
+.hc .ticks{flex:1;align-content:space-evenly}
+.upd .clamp{-webkit-line-clamp:5}
+
+/* ------------------------------------------------------------------ administration */
+.adm .acts{margin:18px 0 6px;display:flex;flex-wrap:wrap;gap:10px}
+.adm-body{margin-top:22px}
+.adm-tabs{display:flex;gap:6px;flex-wrap:wrap;padding:6px;border:1px solid var(--line);border-radius:16px;background:rgba(6,15,36,.7);margin-bottom:20px}
+.adm-tab{display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border-radius:11px;border:1px solid transparent;background:transparent;cursor:pointer;color:var(--dim);font-weight:600;font-size:14.5px;transition:background .2s,color .2s}
+.adm-tab .i{width:18px;height:18px}
+.adm-tab:hover{color:var(--text);background:rgba(40,100,220,.18)}
+.adm-tab.on{color:#fff;background:linear-gradient(180deg,rgba(45,138,255,.5),rgba(20,80,200,.45));border-color:rgba(140,196,255,.5)}
+.adm-sec{display:grid;gap:18px}
+.adm-card{padding:22px 24px}
+.adm-card h3{margin:0 0 10px;font-size:18px}
+.adm-card .acts{margin-top:16px}
+.adm-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.adm-stats div{border:1px solid var(--line);border-radius:16px;padding:16px 18px;background:rgba(8,19,44,.6);display:flex;flex-direction:column;gap:2px}
+.adm-stats b{font-size:30px;font-family:var(--display);color:var(--blue3);line-height:1.1}
+.adm-stats span{color:var(--dim);font-size:13.5px}
+.adm-ul{margin:0;padding-left:20px;color:var(--dim);display:grid;gap:6px}
+.adm-f{display:grid;gap:6px;margin:0 0 14px}
+.adm-f>span{font-weight:600;font-size:14px;color:var(--blue3)}
+.adm-f small,.adm-note{color:var(--faint);font-size:12.5px;min-height:0}
+.adm-note:empty{display:none}
+.adm-f input,.adm-f textarea,.adm-f select,.adm-sec>input[type=search],.adm-card>input[type=search],.adm-row input,.adm-row textarea{width:100%;padding:11px 14px;border-radius:12px;border:1px solid var(--line);background:rgba(3,10,26,.8);color:var(--text);outline:none;transition:border-color .2s,box-shadow .2s;resize:vertical}
+.adm-f input:focus,.adm-f textarea:focus,.adm-f select:focus,.adm-sec>input[type=search]:focus,.adm-card>input[type=search]:focus,.adm-row input:focus,.adm-row textarea:focus{border-color:var(--blue2);box-shadow:0 0 0 3px rgba(78,164,255,.2)}
+.adm-two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.adm-sw{display:flex;align-items:center;gap:12px;font-weight:600;margin-bottom:16px;cursor:pointer}
+.adm-sw input{width:20px;height:20px;accent-color:#2d8aff}
+.adm-grp{border:1px solid var(--line);border-radius:14px;background:rgba(8,19,44,.55);margin:0 0 10px;overflow:hidden}
+.adm-grp>summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;gap:12px;padding:13px 16px;align-items:center}
+.adm-grp>summary::-webkit-details-marker{display:none}
+.adm-grp>summary b{font-weight:600}
+.adm-grp>summary em{font-style:normal;color:var(--faint);font-size:12.5px;white-space:nowrap}
+.adm-grp[open]>summary{border-bottom:1px solid var(--line);background:rgba(30,80,180,.14)}
+.adm-det{padding:16px}
+.adm-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end;padding:12px 16px;border-bottom:1px solid rgba(52,120,255,.14)}
+.adm-row:last-child{border-bottom:0}
+.adm-row label{display:grid;gap:6px;min-width:0}
+.adm-row code{font-size:11.5px;color:var(--faint)}
+.adm-row.chg code{color:var(--warn)}
+.adm-row.chg code::after{content:" · changed"}
+.adm-mini{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid rgba(52,120,255,.14)}
+.adm-mini:last-child{border-bottom:0}
+.adm-mini b{flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis}
+.adm-tag{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:99px;border:1px solid var(--line2);color:var(--blue3)}
+.adm-tag.bad{border-color:rgba(255,93,114,.6);color:#ffc7cf}
+.adm-gate{max-width:560px;margin:60px auto}
+.adm-pill{position:fixed;left:16px;bottom:16px;z-index:60;display:flex;align-items:center;gap:4px;padding:6px;border-radius:99px;border:1px solid var(--line2);background:rgba(5,14,34,.92);backdrop-filter:blur(10px);box-shadow:0 10px 34px rgba(0,0,0,.5)}
+.adm-pill a,.adm-pill button{display:inline-flex;align-items:center;gap:7px;padding:8px 13px;border-radius:99px;border:0;background:transparent;color:var(--text);cursor:pointer;font-weight:600;font-size:13.5px;text-decoration:none}
+.adm-pill a:hover,.adm-pill button:hover{background:rgba(45,110,230,.3)}
+.adm-pill button.on{background:linear-gradient(180deg,#2d8aff,#1458d8)}
+.adm-pill .i{width:16px;height:16px}
+.adm-dot{width:10px;height:10px;border-radius:50%;background:var(--ok);margin:0 8px 0 8px;box-shadow:0 0 10px var(--ok)}
+html.adm-edit [data-edit]{outline:1px dashed rgba(78,164,255,.7);outline-offset:4px;border-radius:6px;cursor:text!important;transition:background .2s}
+html.adm-edit [data-edit]:hover{background:rgba(45,110,230,.14)}
+html.adm-edit [data-edit]:focus{outline:2px solid var(--blue2);background:rgba(45,110,230,.2)}
+@media(max-width:760px){
+  .adm-stats{grid-template-columns:repeat(2,1fr)}
+  .adm-two{grid-template-columns:1fr}
+  .adm-row{grid-template-columns:1fr}
+  .adm-pill{left:10px;bottom:84px}
+  .adm-mini{flex-wrap:wrap}
 }
 
-RENAME = {"Is the local website safe?": "Is the control center safe?"}
-
-PATCH = {
-    "What is the Zeus website?": "The official Zeus website. It has the download and install guide, every module and setting, the help centre with this helper, the update timeline, the source code browser, a config builder and a troubleshooter. A Settings page can also connect to the Zeus running in your game.",
-    "Is the control center safe?": "Yes. The control center is an optional page that only talks to your own game. Zeus's built-in web server accepts connections from your computer only (127.0.0.1), checks the Host and Origin of every request, serves no inline scripts and needs your private access token to read or change anything. Nobody else on your network or on the internet can reach it, and this website never connects to your game by itself.",
-    "The control center says it must be opened from Minecraft": "The Settings page controls the Zeus running in your game, so it needs the link the game prints. Run /zeus website in Minecraft and open that link; the public pages work anywhere, but the control center only works from the game's own link.",
-    "Why does the Settings page say it needs Minecraft?": "Settings controls the running game, so it needs the link Zeus prints when you run /zeus website. The public website cannot reach your game on its own, which is how it should be.",
-    "Does the website work without internet?": "The website needs an internet connection like any other website. The control center link that Zeus prints in game is served by the game itself and keeps working offline.",
-    "Is Zeus safe?": "Zeus is a client-side Fabric mod: it has no accounts, never asks for a password and has no server of its own to send your data to. Only three optional modules connect out: Discord Webhook (to the address you type in), Staff Live (which asks YouTube, TikTok and Twitch whether the channels in your list are live) and Update Checker (which reads the one version file at the address you give it). Discord Rich Presence talks only to the Discord app on your own computer. You can read all of the code on the Source code page. What can hurt you is on the game side (servers ban cheat clients) and fake copies, so download Zeus only from the official Download page or the GitHub releases page.",
-    "Is the source code available?": "Yes. You can read every file of this release on the Source code page, and the GitHub page links to the full repository. Zeus is built from source with Gradle, and the LICENSE and NOTICE files say what you may do with the code.",
-    "Is Zeus open source?": "You can read all of Zeus's source on the Source code page, and the GitHub page has the repository. Parts of it are derived from GPL-3.0 software and the licence notices ship in the jar. For anything about reuse, ask on the Discord.",
-    "Where can I read the Zeus source code?": "On the Source code page of this website: it lists every file of the release you are looking at, with line counts, a file filter and a viewer with line numbers. The same code is on the project's GitHub page, which that page links to.",
-    "How do I build a config for my playstyle?": "Open Build a config (it is in the More menu, on the Tutorial page and in the Help centre). Either answer a few yes or no questions and it assembles a custom pack for you, or pick a playstyle such as Explorer, Base hunter, Crystal PvP, Quiet helper, Builder, Streamer, Single-player practice or Miner and tune it. Then download zeus.json or copy the /zeus on commands. The file only holds which modules switch on at launch, so back up your own zeus.json first.",
-    "Is there a troubleshooting wizard?": "Yes. The Troubleshooter (in the More menu and the Help centre) asks a few yes or no questions and ends at the matching fix, together with the exact lines to look for in logs/latest.log.",
+/* ------------------------------------------------------------------ build a config */
+.cw-modes{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.cw-mode{display:flex;flex-direction:column;align-items:flex-start;gap:8px;text-align:left;padding:26px;border:1px solid var(--line);border-radius:20px;background:linear-gradient(180deg,rgba(11,26,60,.8),rgba(6,15,36,.8));color:var(--text);cursor:pointer;font:inherit;position:relative;overflow:hidden;transition:transform .25s,border-color .25s,box-shadow .25s}
+.cw-mode:hover{transform:translateY(-3px);border-color:var(--blue2);box-shadow:0 18px 50px rgba(31,125,255,.22)}
+.cw-mode b{font-size:22px;font-family:var(--display)}
+.cw-mode span:not(.pi){color:var(--dim);line-height:1.5}
+.cw-mode small{color:var(--blue3);font-weight:600}
+.cw-mode .pi,.preset .pi{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;background:rgba(31,125,255,.18);border:1px solid var(--line2)}
+.cw-mode .pi .i{width:26px;height:26px}
+.cw-nav{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:22px}
+.cw-chip{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:99px;border:1px solid var(--line2);background:rgba(31,125,255,.16);font-weight:600;font-size:14px}
+.cw-q{max-width:760px;margin:0 auto;padding:30px 32px}
+.cw-q h2{font-size:clamp(22px,3.4vw,32px);margin:6px 0 10px;font-family:var(--display)}
+.cw-step{color:var(--blue3);font-weight:600;letter-spacing:.05em;text-transform:uppercase;font-size:12.5px}
+.cw-prog{height:5px;border-radius:9px;background:rgba(52,120,255,.2);margin-bottom:18px;overflow:hidden}
+.cw-prog i{display:block;height:100%;background:linear-gradient(90deg,#1f7dff,#8cc4ff);border-radius:9px;transition:width .4s cubic-bezier(.2,.7,.2,1)}
+.cw-ans{display:flex;gap:14px;margin:24px 0 4px}
+.cw-ans .btn{min-width:140px;padding:15px 26px}
+.cw-res{display:grid;grid-template-columns:300px 1fr;gap:22px;align-items:start}
+.cw-left{position:sticky;top:calc(var(--navh) + 16px);padding:20px}
+.cw-left h3{margin:0 0 4px;font-size:18px}
+.cw-left .small{font-size:13px;margin:0 0 12px}
+.cw-sw{display:flex;align-items:center;gap:12px;padding:9px 2px;cursor:pointer;font-size:14.5px;line-height:1.3}
+.cw-sw input{position:absolute;opacity:0;pointer-events:none}
+.cw-sw .knob{flex:none;width:38px;height:22px;border-radius:99px;background:rgba(52,120,255,.2);border:1px solid var(--line2);position:relative;transition:background .2s}
+.cw-sw .knob::after{content:"";position:absolute;left:2px;top:2px;width:16px;height:16px;border-radius:50%;background:#cfe3ff;transition:transform .2s}
+.cw-sw input:checked+.knob{background:linear-gradient(180deg,#2d8aff,#1458d8)}
+.cw-sw input:checked+.knob::after{transform:translateX(16px);background:#fff}
+.cw-sw input:focus-visible+.knob{box-shadow:0 0 0 3px rgba(78,164,255,.4)}
+.cw-right{display:grid;gap:16px;min-width:0}
+.cw-sum{display:flex;flex-wrap:wrap;gap:18px 30px;align-items:center;justify-content:space-between;padding:20px 24px}
+.cw-sum .big{font-size:40px;font-family:var(--display);color:var(--blue3);margin-right:6px;line-height:1}
+.cw-risk{display:flex;align-items:center;gap:14px;min-width:240px}
+.cw-risk .bar{width:120px;height:8px;border-radius:9px;background:rgba(52,120,255,.2);overflow:hidden}
+.cw-risk .bar i{display:block;height:100%;border-radius:9px;background:var(--ok);transition:width .4s,background .3s}
+.cw-risk.r1 .bar i{background:var(--warn)}.cw-risk.r2 .bar i{background:#ff9348}.cw-risk.r3 .bar i{background:var(--bad)}
+.cw-risk span{display:flex;flex-direction:column}
+.cw-risk small{color:var(--faint);font-size:12.5px}
+.cw-notes{display:grid;gap:10px}
+.cw-notes .note-box{margin:0}
+.cw-grp>summary em{margin-left:auto;font-style:normal;color:var(--faint);font-size:13px}
+.cw-mods{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;padding:14px}
+.cw-add .cw-mods{padding:0}
+.cw-mod{display:grid;grid-template-columns:auto 1fr;grid-template-areas:"t n" "t d" ". f";column-gap:12px;row-gap:2px;text-align:left;padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:rgba(6,15,36,.7);color:var(--text);cursor:pointer;font:inherit;transition:border-color .2s,background .2s,transform .15s}
+.cw-mod:hover{border-color:var(--blue2);transform:translateY(-1px)}
+.cw-mod .tick{grid-area:t;align-self:center;width:24px;height:24px;border-radius:8px;border:1px solid var(--line2);display:grid;place-items:center;background:rgba(3,10,26,.7)}
+.cw-mod .tick .i{width:15px;height:15px;opacity:0;transform:scale(.4);transition:opacity .2s,transform .2s}
+.cw-mod.on{border-color:var(--blue2);background:linear-gradient(180deg,rgba(31,100,230,.35),rgba(12,36,90,.55))}
+.cw-mod.on .tick{background:#2d8aff;border-color:#8cc4ff}
+.cw-mod.on .tick .i{opacity:1;transform:none}
+.cw-mod.opt:not(.on){opacity:.72}
+.cw-n{grid-area:n;font-weight:600}
+.cw-d{grid-area:d;color:var(--faint);font-size:12.5px}
+.cw-f{grid-area:f;display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
+.cw-f em{font-style:normal;font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--dim)}
+.cw-f em.bad{border-color:rgba(255,93,114,.55);color:#ffc7cf}
+.cw-f em.opt{border-style:dashed}
+.cw-add h3{margin:0 0 10px;font-size:18px}
+.cw-hits{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.cw-hit{display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:99px;border:1px solid var(--line2);background:rgba(10,26,62,.7);color:var(--text);cursor:pointer;font:inherit;font-size:14px}
+.cw-hit:hover{background:rgba(31,100,230,.35)}
+.cw-hit.on{opacity:.55;cursor:default}
+.cw-hit .i{width:15px;height:15px}
+@media(max-width:960px){
+  .cw-res{grid-template-columns:1fr}
+  .cw-left{position:static}
 }
-
-NEW = [
-    ("Why is Zeus using so much of my FPS?", "Open the Performance page (Interface) and look at Right now. Zeus defaults to Light mode, which skips the expensive outline and glow effects and scans less often, and it lightens itself further when your frame rate drops. Switch on Performance Monitor to see which modules cost the most, and use Switch off the 3 costliest if one of them is the problem. ESPs and base finders are usually the heaviest.", "fps lag slow performance stutter lightweight light mode lag frames", [("Features", "/features")]),
-    ("What are the Crystal PvP Bot and the Sword PvP Bot?", "Fighting bots that walk, turn and fight the nearest player for you. The Sword Bot closes in, strafes, times critical hits, stays out of reach while the swing recharges, eats golden apples, mends armour, refills the hotbar and throws pearls to close a gap. The Crystal Bot keeps the right distance and steers Crystal Aura and Anchor Aura. They never target friends. Whether a server allows a bot is your decision and your risk.", "bot pvp crystal sword fight auto fighting bot", [("Features", "/features")]),
-    ("What is hit confirmation?", "Every swing Zeus sends is written down first, and the server's answer (a damage event, the hurt flash, an entity being removed) is matched back to it. Kill Aura stops swinging at a target after four unanswered hits, and the attack modules show how many hits landed out of how many were sent, plus how long the server took to answer. That delay is the real limit on how fast you can hit.", "hit confirmation confirm landed missed hits damage packet kill aura delay swing answer", [("Features", "/features")]),
-    ("What does Trident Util do?", "It takes a trident out when you press use with anything else in your hand, holds the throw long enough for a real riptide, and puts your item back afterwards. While you fall it can also riptide you upward, which is the quickest way out of a fall that would kill you. A trident only riptides in water or rain.", "trident util riptide trident fall water rain loyalty", [("Features", "/features")]),
-    ("What are Hover Totem and Spawner Protect?", "Hover Totem moves a totem of undying into your offhand (or the selected hotbar slot) from any open chest, barrel, shulker box or loot chest just by hovering over it. Spawner Protect refuses to break spawners (and containers if you choose) so one stray click cannot destroy your farm, and it lists nearby spawners that are too bright for anything to spawn.", "hover totem spawner protect offhand container farm spawners light break", [("Features", "/features")]),
-    ("What is the Chunk Scanner?", "It counts one kind of block per chunk across the chunks you have loaded and lists the richest ones with a direction and a distance, so you can walk a straight line instead of a spiral. It only counts what the server has already sent to your game.", "chunk scanner count blocks per chunk richest list direction distance spiral", [("Features", "/features")]),
-    ("Why does the Discoveries card not show up?", "It only appears for a real base: either a base the finders have already recorded near you, or a spot that clearly looks like one (four or more containers, or two or more together with machines or displays). A dungeon's two chests or a lone barrel will not open it.", "discoveries card base found zeus discoveries not showing appears chest", [("Features", "/features")]),
-    ("What do /zeus find and /zeus settings do?", "/zeus find <text> searches every module by name, description and alias from the chat box. /zeus settings <module> prints the current value of every visible setting of that module. Together they let you read and change the whole client without the mouse.", "zeus find zeus settings command chat search module setting value accessibility", []),
-    ("What happened to Atmosphere, Jump Circles, Weather Notifier and Self Trap?", "They were removed in 0.9.9.0 as filler. The weather and time of day can still be changed with Weather Changer and Time Changer.", "atmosphere jump circles weather notifier self trap removed gone missing", []),
-    ("How do I set up Discord Rich Presence?", "Create a free application at discord.com/developers, copy its Application ID into the Discord Rich Presence module, keep the Discord app open and switch the module on. The application's name is what people see after Playing. It only talks to the Discord app on your own computer.", "discord rich presence rpc application id playing status", []),
-    ("How does the AH Sniper work?", "It is part of Auction House Tweaks and is off by default. You give it rules such as item=maxprice (or just the item name to use the learned market price), a spending limit and a maximum number of purchases. It reads every listing on the page, compares the price with your rule and with what the item has been seen selling for, pages through the auction house, refreshes and can run a search command. It buys the biggest discount, supports shift-click instant buys, and after confirming it checks the item is really in your inventory before counting the money as spent. It stops itself at its limits, refuses a confirm window above your remaining budget, and remembers a listing that failed so it is not clicked in a loop. Check the rules of the server first.", "ah sniper auto buy auction house snipe buy below price paging search", []),
-    ("Which modules connect to the internet?", "Only three optional ones: Discord Webhook (to the address you type in), Staff Live (to YouTube, TikTok and Twitch, to see whether the channels in your list are live) and Update Checker (to the version file at the address you set, and nowhere else). Discord Rich Presence talks only to the Discord app on your own computer.", "internet network connect staff live webhook youtube tiktok", []),
-    ("Where can I download Zeus from?", "Only from the official sources: the Download page of this website, or the Releases page of the project's GitHub repository. Copies from video descriptions, file-sharing sites or anyone who asks you to turn off your antivirus are not official.", "download where get link official source github releases safe", [("Download page", "/download")]),
-    ("Can I download Zeus from GitHub instead?", "Yes. The same jar is published on the project's GitHub page (Releases). If you would rather not download from this site, get it there and compare its SHA-256 with the one shown on the Download page. You can also build it yourself from the source.", "github download releases instead trust mirror build from source jar", [("Download page", "/download"), ("Source code", "/source")]),
-    ("How do I check that my download is genuine?", "Hash the file and compare it with the SHA-256 on the Download page. On Windows run certutil -hashfile zeus.jar SHA256, on Linux or macOS run sha256sum zeus.jar. If the two strings differ, delete the file and download it again from an official place.", "verify checksum sha256 hash genuine fake real check download integrity", [("Download page", "/download")]),
-    ("Boat NoClip or Boat Fly does not work", "Sit in the boat or raft first, since both modules only act on the vehicle you are riding, and close any open screen because they pause while one is open. In your own single-player world Boat NoClip should phase through blocks: keep Ignore server corrections on and use the vertical keys to move up and down. On a multiplayer server the server decides where the boat really is, so it may snap back or refuse the move, and no setting can force that. In survival, do not let your head stay inside a block or you will suffocate.", "boat noclip boat fly raft phase suffocate", [("Boat NoClip", "/features?m=boatnoclip")]),
-    ("Is this website official?", "Yes. This is the official Zeus Client website. The download link, the Discord invite and the GitHub link on it are the ones the developer published. Be careful with look-alike sites that ask for your Minecraft or Microsoft password: the real Zeus never does.", "official website real fake legit site is this", [("Download page", "/download")]),
-    ("How do I see what each module costs?", "Open the panel: every module row shows its measured cost on the right (green is cheap, red is heavy). To show the same figures on your HUD, switch on Interface > Module list > Show what each costs. The numbers are Zeus's own timers, a share of the time it spends per frame, not a profiler reading. You can switch the figures off in the UI settings.", "cost module list fps lag expensive heavy which module measured percent", [("Features", "/features")]),
-    ("Can I see what a set of modules will cost before I switch them on?", "Yes. The Performance monitor page on this website shows a gauge and a bar for every module. Pick a playstyle or tick modules yourself and it adds up their estimated cost, split into game tick work, screen drawing, world drawing and scanning. It is an estimate worked out from the code, not a measurement, so use the in-game costs for real numbers.", "performance monitor gauge cost fps estimate load before switch on", [("Performance monitor", "/monitor")]),
-    ("What are the new modules in 0.9.8.0?", "Target Strafe circles the player or mob you fight. Auto Farm breaks ripe crops around you and plants them again. Chest Stealer takes the items out of an open chest, barrel, shulker box or hopper. Inventory Cleaner throws junk out of your inventory. Loot Walker walks to the nearest dropped item. Entity Speed makes the horse, boat or other mount you ride go faster. Ore Compass is a small panel that lists the nearest ore of each kind with its distance and direction. Kill Aura can also attack players now and can pick the target with the lowest health.", "new modules 0.9.8.0 target strafe auto farm chest stealer inventory cleaner loot walker entity speed ore compass kill aura players", [("Target Strafe", "/features?m=targetstrafe"), ("Auto Farm", "/features?m=autofarm"), ("Ore Compass", "/features?m=orecompass")]),
-    ("Does Zeus still limit anything to single-player?", "Not any more. MultiAura, Tunnel Miner, Tree Bot and the Schematic Builder's auto-place used to refuse to run on a server and now work the same everywhere. They use the game's own breaking and placing, so a server sees ordinary digging and placing. Whether a server allows that is up to the server's rules.", "single-player only multiplayer server lock multiaura tunnel miner tree bot schematic auto-place", [("MultiAura", "/features?m=multiaura"), ("Tunnel Miner", "/features?m=tunnelminer")]),
-    ("How do I pick a knife and a finish?", "Switch on Butterfly & Karambit and press Open the knife gallery in its settings. It shows every knife on the left and every finish of the chosen knife on the right, each drawn by the same code the game uses, and a click changes the setting at once. The Knife preview page on this website shows the same pictures. Each knife also has its own Inspect trick, which you can play from the trick list.", "knife gallery finish picker inspect preview skin", [("Knife preview", "/knives"), ("Butterfly & Karambit", "/features?m=knife")]),
-    ("What is Performance Guard?", "A module that switches the costliest ESPs and scanners off by itself when your FPS stays under a limit you set, and switches them back on once the frame rate has recovered. You choose the limit, how many it switches off at a time, whether it touches only scanners or any module, and it tells you in chat what it did. It never touches a module you switched off yourself.", "performance guard auto disable fps limit esp heavy switch off automatically", [("Features", "/features")]),
-    ("How do I bind a key to a module?", "Type /zeus keybinds, or switch on the Keybinds module. Every module is listed with its key: click a key box, press the key you want, and it is saved. Backspace or a right click clears a key, and a key that two modules share is marked. They are the same keys that Options > Controls shows.", "keybind key bind hotkey shortcut keyboard assign toggle module", [("Features", "/features")]),
-    ("How do I get told about a new Zeus version?", "Switch on Update Checker and give it the address of the version file that the website build writes (version.json). Every time you join a server it compares versions and, if a newer one exists, shows a chat line and a pop-up at the top of the screen for about five seconds. It does nothing until you set the address.", "update checker new version notification popup latest download", [("Download", "/download")]),
-    ("Does Zeus mark where I died?", "Yes. The Death Marker module remembers the place you died and shows a marker with the distance so you can find your items. It is kept in memory only, so it is gone when you leave the game, and you can clear it with its button.", "death marker point where died coordinates grave items recover", [("Features", "/features")]),
-    ("How do I add or remove Staff Live channels?", "Open Staff Live in the panel. Type the channel name, pick YouTube, TikTok or Twitch and press Add; remove a channel with its Remove button. The check is a best-effort read of the channel page, so a channel can show as unknown when the site changes or blocks the request.", "staff live channels twitch youtube tiktok add remove list streamers", [("Features", "/features")]),
-    ("Which knives does Zeus have?", "The butterfly knife, the karambit and eighteen knives modelled on the CS2 line-up: Bayonet, M9 Bayonet, Huntsman, Flip, Gut, Falchion, Bowie, Navaja, Stiletto, Talon, Ursus, Classic, Paracord, Survival, Nomad, Skeleton, Kukri and the Shadow Daggers. Pick one in the Knife module (Knife type), choose a finish such as Fade, Slaughter, Doppler or Case hardened, and use the karambit's tricks with it. The shapes and the motion were made from scratch.", "knife knives cs2 bayonet m9 huntsman falchion bowie kukri talon karambit butterfly finish fade doppler", [("Features", "/features")]),
-]
-
-ALTS = {
- "What is Zeus Client?": [
-  "Zeus Client is a Fabric mod for Minecraft Java 1.21.11 with about 170 modules: combat helpers, movement, ESP and other visuals, base finders and everyday utilities. You run it from a storm-themed panel opened with Z, place its widgets with a HUD editor and can optionally use the website's control center.",
-  "Zeus is a Fabric mod for Minecraft 1.21.11 with about 170 modules: combat, movement, ESP, base finding, automation and utilities. You open it with Z. It also has profiles and a HUD editor. It is a client-side cheat client, meant for your own worlds or servers that allow it.",
- ],
- "Is Zeus a cheat client?": [
-  "Yes, and it says so openly. Zeus has combat, movement, ESP and base-finding modules, which many servers forbid. It is best used in your own worlds or on servers whose rules allow it.",
-  "It is. Anything that gives an edge, such as Kill Aura, Flight or X-Ray, counts as cheating on most multiplayer servers, so check the rules before you switch such modules on.",
- ],
- "Is Zeus safe?": [
-  "For your computer and accounts, yes, as long as the jar comes from an official place. Zeus has no logins and no server of its own, and the code is on the Source code page for anyone to read. The risk that is left is on the server side: many servers ban cheat clients.",
-  {"p": ["Here is what you can check yourself:"], "ul": ["The code is readable on the Source code page.", "Zeus never asks for your Minecraft or Microsoft password and has no telemetry.", "It is a .jar for your mods folder, not an installer.", "The Download page shows the SHA-256 of the official file so you can compare it with yours.", "If you do not want to download from this site, the same file is on the GitHub page."], "extra": "Server bans are the main real risk, so read each server's rules."},
- ],
- "Will I get banned?": [
-  "It can happen. Each server decides what it allows, many detect or forbid combat and movement modules, and Zeus has no ban protection. The safest place is single-player; anywhere else read the rules and keep to the minimum.",
-  "I cannot promise you will not be. Test in single-player first, read the server's rules, and do not use modules that give an obvious edge where cheats are banned.",
- ],
- "Is Zeus a virus?": [
-  "No. Zeus is a Fabric mod .jar, not an executable. The danger is fake copies: they exist for every popular client, so use only the official Download page or the GitHub releases page, and be wary of anything that asks you to run an .exe.",
-  "No. A real Zeus file is a .jar that goes into your mods folder. If a download is an installer, asks you to disable antivirus or wants a password, it is not Zeus.",
- ],
- "Does Zeus steal my account or password?": [
-  "No. Zeus has no code for reading your launcher accounts and never asks for a login. If something that claims to be Zeus asks for your password, close it.",
-  "No. It never asks for your Minecraft or Microsoft login, and there is no Zeus server it could send one to.",
- ],
- "Does Zeus collect data or have telemetry?": [
-  "No. There is no telemetry and no Zeus server to receive any. Only three optional modules connect out: Discord Webhook (to the address you give it), Staff Live (to YouTube, TikTok and Twitch, to see whether your listed channels are live) and Update Checker (to the version file at the address you set).",
-  "Zeus collects nothing. It has nowhere to send data, apart from the Discord Webhook and Staff Live modules, which you have to switch on yourself.",
- ],
- "Which Minecraft version does Zeus support?": [
-  "Minecraft Java Edition 1.21.11, with Fabric Loader 0.18 or newer and Fabric API for 1.21.11. Other versions are not supported.",
-  "Only 1.21.11 (Java Edition) on Fabric. You also need Fabric API for 1.21.11 and Java 21.",
- ],
- "Is Zeus free?": [
-  "Yes, updates are free. If someone charged you for a copy, tell the team on Discord.",
-  "It is free. Paying for a copy means you were scammed, and the Discord is the place to report it.",
- ],
- "How do I install Zeus?": [
-  {"p": ["Four steps:"], "ol": ["Install Java 21 and the Fabric Loader for 1.21.11.", "Put the Fabric API jar for 1.21.11 into .minecraft/mods.", "Put the Zeus jar (not the -sources one) into the same folder.", "Start the Fabric profile and press Z in a world."], "extra": "The Download page has the same steps with more detail."},
-  "You need Java 21, Fabric Loader for 1.21.11 and Fabric API. Drop the Fabric API jar and the Zeus jar into your mods folder, launch the Fabric profile, then press Z in a world to open the menu.",
- ],
- "What is Fabric and do I need Fabric API?": [
-  "Fabric is the mod loader Zeus runs on, and Fabric API is a library Fabric mods rely on. Zeus needs both, in their 1.21.11 versions.",
-  "Yes, both. Install Fabric Loader to run mods at all, and add Fabric API for 1.21.11 to the mods folder next to Zeus.",
- ],
- "Which Java version do I need?": [
-  "Java 21 or newer. Check with java -version in a terminal; current Minecraft launchers bundle Java 21 for you.",
-  "Java 21 or later. If the game says your Java is too old, install a Java 21 build or let the official launcher use its bundled one.",
- ],
- "How do I open the Zeus menu?": [
-  "Press Z in a world, or type /zeus. You can change the key in Minecraft's Controls under the Zeus category.",
-  "In a world press Z. If another mod uses that key, rebind it in Controls or just type /zeus in chat.",
- ],
- "The Z key does nothing": [
-  "Probably another mod uses Z. Rebind the Zeus key in Controls, or type /zeus in chat to open the panel.",
-  "Check Controls for a conflict on Z. Until you fix it, /zeus in chat opens the same panel.",
- ],
- "How do I turn a module on?": [
-  "Open the panel with Z, find the module (search helps) and click its switch. Click the rest of the row for its settings. /zeus on <module> works too.",
-  {"p": ["Three ways:"], "ul": ["Click the module's switch in the panel.", "Type /zeus on <module> or /zeus toggle <module>.", "Bind it to a key in its settings and press that key."]},
- ],
- "How do I switch everything off quickly?": [
-  "Click Panic at the bottom of the panel, type /zeus panic, or use the Panic button on the control center. Every module goes off at once.",
-  "Panic does it: the button in the panel, the /zeus panic command, or the control center button. It does not close the game.",
- ],
- "What does Panic do?": [
-  "It switches every Zeus module off at once. The game keeps running and Zeus stays installed.",
-  "Panic turns all modules off immediately, nothing more: no restart, no uninstall.",
- ],
- "Where are my settings saved?": [
-  "In config/zeus.json in your Minecraft folder. Waypoints are in config/zeus-waypoints.json and schematics in config/zeus/schematics.",
-  "Everything lives in your Minecraft config folder: zeus.json for settings, zeus-waypoints.json for waypoints and a zeus folder for schematics and profiles.",
- ],
- "How do I reset Zeus to defaults?": [
-  "Close the game, delete config/zeus.json and start again. A single HUD widget can be reset with R in the HUD editor.",
-  "Deleting config/zeus.json while the game is closed resets everything. Back it up first if you might want it again.",
- ],
- "How do I use the HUD editor?": [
-  {"p": ["Type /zeus hud, then:"], "ul": ["Click a widget's outline to select it and drag to move it.", "Use the mouse wheel to scale, the arrow keys to nudge.", "R resets a widget, U undoes, G toggles the grid and S toggles snapping."], "extra": "The floating panel also edits position, scale, opacity and colour."},
-  "/zeus hud opens it. Drag widgets where you want them; they snap to edges, centre lines and each other. The wheel scales, R resets, U undoes. A floating panel has position, scale, opacity, colour and a List tab to switch widgets on.",
- ],
- "How do I open the control center?": [
-  "Run /zeus website in the game (or switch on Interface, Web Dashboard), click the link in chat, open Settings and paste the access token.",
-  {"p": ["To connect the control center:"], "ol": ["Run /zeus website in Minecraft.", "Click the link it prints.", "Open the Settings page and paste the access token."]},
- ],
- "Is the control center safe?": [
-  "Yes. It only accepts connections from your own computer, checks every request and needs your private token. No one else can reach it.",
-  "Yes. It listens on 127.0.0.1 only, so the internet and your network cannot connect, and nothing can be read or changed without the token that stays in your game.",
- ],
- "Does Zeus work in single-player?": [
-  "Yes, everything works in single-player, and a few modules (Tree Bot, Tunnel Miner, MultiAura and the schematic builder's automatic placement) only run there.",
-  "It does, and it is the best place to try things. Tree Bot, Tunnel Miner, MultiAura and automatic schematic placement are single-player only.",
- ],
- "Does Zeus lag my game?": [
-  "It is designed to be light, but scanners and ESPs cost the most. Keep entity caps low and switch off scanners you are not using. Zeus Brain adjusts scan budgets for you.",
-  "Mostly no. If you notice a drop, check which scanners and ESPs are on, lower their ranges and entity caps, and let Zeus Brain manage the scan budget.",
- ],
- "My FPS dropped after enabling a module": [
-  "Lower the entity cap on ESPs, shorten scanner ranges and switch off scanners you are not using. Zeus Brain (Tools) manages scan budgets automatically.",
-  "Try the heavy ones first: ESPs and scanners. Reduce their range or entity cap, or turn them off, and see whether the frame rate comes back.",
- ],
- "The game crashes with Zeus installed": [
-  "Check that you use Fabric Loader for 1.21.11, Fabric API for 1.21.11 and Java 21. If it still crashes, send the file from the crash-reports folder to the Discord.",
-  {"p": ["Work through this:"], "ol": ["Make sure only one Zeus jar is in the mods folder.", "Check Fabric Loader, Fabric API and Minecraft are all 1.21.11 and Java is 21.", "Remove other mods and try again.", "Still crashing? Send the crash report to the Discord."]},
- ],
- "A module does nothing": [
-  "Open its card and read the Status text. The log (logs/latest.log, lines starting with Zeus) says what happened. Send both to the Discord if it is still stuck.",
-  "Read the module's Status line first: it usually names what is missing. If not, look for Zeus lines in logs/latest.log and share them on the Discord.",
- ],
- "Is the source code available?": [
-  "Yes. Read every file of this release on the Source code page; the GitHub page links to the repository.",
-  "Yes, on the Source code page and on GitHub. The LICENSE and NOTICE files describe what you may do with it.",
- ],
- "How do I update Zeus?": [
-  "Download the new jar from the official link, delete the old one from the mods folder and put the new one in. Your settings stay in config/zeus.json.",
-  "Swap the jar: remove the old Zeus file from the mods folder, add the new one and start the game. Settings are kept.",
- ],
- "How do I uninstall Zeus?": [
-  "Delete the Zeus jar from the mods folder. To remove its data as well, delete config/zeus.json and the config/zeus folder.",
-  "Remove the jar from the mods folder and Zeus is gone. The config files only matter if you want to erase your settings too.",
- ],
- "Does Zeus work on DonutSMP?": [
-  "Zeus has DonutSMP-aware helpers (Media Base Finder, Goliath RTP, staff detection), but whether any module is allowed there is up to the server's rules, and there is no ban protection.",
-  "It contains helpers made for DonutSMP. That does not make them allowed: check the server rules before using them.",
- ],
- "Why does the server rubber-band me?": [
-  "The server is correcting a movement it does not accept. Lower the speed or switch the movement module off; Zeus cannot override the server.",
-  "Rubber-banding means the server rejected your position. Reduce the speed or turn the module off.",
- ],
- "Does Zeus work on Mac and Linux?": [
-  "Yes, it is a Java mod. The mods folder is ~/Library/Application Support/minecraft/mods on macOS and ~/.minecraft/mods on Linux.",
-  "Yes. Anything that runs Minecraft Java with Java 21 works; only the mods folder path differs.",
- ],
- "Does Zeus work with shaders?": [
-  "Yes. Zeus draws through the normal renderer, but ESPs and overlays can look different under some shader packs. If one looks wrong, test it with shaders off.",
-  "It works; some overlays look off under certain shader packs, in which case try the module without shaders.",
- ],
- "How do I bind a module to a key?": [
-  "Open the module's card, click the None chip and press the key. Backspace or Delete clears it.",
-  {"p": ["To give a module its own key:"], "ol": ["Open the panel and click the module's row (not the switch).", "Click the key chip that says None.", "Press the key you want. Backspace clears it."]},
- ],
- "How do I favourite a module?": [
-  "Click the star beside a module in the panel. Starred modules appear on the Favourites page, above a Recently used row.",
-  "Use the star on the module's row or card. You will find them again on Favourites.",
- ],
- "Can Zeus switch profile by itself on a server?": [
-  "Yes. In the Profiles module switch on Switch profile per server, join the server and press Use it on the server I am on. After that, that profile loads whenever you join it.",
-  "Yes: link the active profile to a server with Use it on the server I am on, in the Profiles module. Single-player counts as its own place.",
- ],
- "How do I back up my Zeus settings?": [
-  "Copy config/zeus.json, config/zeus-waypoints.json and the config/zeus folder somewhere safe.",
-  "Back up three things in your config folder: zeus.json, zeus-waypoints.json and the zeus folder.",
- ],
- "How do I find a base with Zeus?": [
-  "Begin with Suspicious Chunks, which ranks loaded chunks by signs of building. Confirm with Advanced Base Finder, Storage ESP or Base Clues. Underground, use Tunnel Base Finder and Light Detector.",
-  {"p": ["A good order:"], "ol": ["Switch on Suspicious Chunks and look at its list or radar.", "Check the top hits with Advanced Base Finder and Storage ESP.", "Use Tunnel Base Finder underground."], "extra": "Scores are hints, not proof."},
- ],
- "Why does a scanner show nothing?": [
-  "Scanners only look at chunks your game has loaded. Move around, raise render distance and lower the minimum score. If nothing nearby was built, there is nothing to find.",
-  "Probably nothing is loaded or nothing scores high enough. Fly around, increase render distance and lower the minimum score in the settings.",
- ],
- "What does Auto Totem do?": [
-  "It keeps a totem of undying in your offhand and swaps in a new one after a pop.",
-  "Auto Totem puts a totem into your offhand automatically, and again after one is used.",
- ],
- "What does Kill Aura do?": [
-  "It attacks the nearest valid target in range for you. Range, delay and target types are in its settings, and it is one of the modules servers ban fastest.",
-  "Kill Aura hits nearby targets automatically. Tune range, delay and which targets count in its settings, and use it only where allowed.",
- ],
- "How do I fly?": [
-  "Switch on Flight in the Movement category and start with a low speed. Many servers detect flight, so use it where it is allowed.",
-  "Turn on Flight (Movement). Keep the speed low at first; servers that forbid flying will kick you.",
- ],
- "Are Zeus commands sent to the server?": [
-  "No. Zeus commands run on your client and are never sent to a server.",
-  "They stay on your computer: the game handles /zeus itself.",
- ],
- "Can I make a YouTube video or stream with Zeus?": [
-  "Yes. Remember a cheat client on a server can get you banned from it, switch on Streamer Privacy to hide identity-bearing panels, and credit Zlorbie788.",
-  "Sure. Use Streamer Privacy to keep your name and coordinates off screen, mind the server rules, and credit the developer.",
- ],
- "Does Zeus show up in screenshots or recordings?": [
-  "Your HUD does. Streamer Privacy hides identity-bearing panels and the HUD editor lets you hide the rest.",
-  "Anything on your HUD is captured. Use Streamer Privacy and the HUD editor to keep things off camera.",
- ],
+@media(max-width:700px){
+  .cw-modes{grid-template-columns:1fr}
+  .cw-q{padding:22px 20px}
+  .cw-ans .btn{flex:1;min-width:0}
+  .cw-mods{grid-template-columns:1fr}
 }
+.adm-row code{background:none!important;border:0!important;padding:0!important;display:block;width:auto}

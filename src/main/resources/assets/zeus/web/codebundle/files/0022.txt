@@ -1,237 +1,154 @@
 package com.zlorbie788.zeus.core;
 
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 
-import java.util.ArrayDeque;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
 
-/**
- * Hit confirmation: remembers what you swung at, and whether the server said it landed.
- *
- * <p>Every attack is a guess about what the server will accept — reach, line of sight, rotation, cooldown, anti-cheat. The
- * client used to throw those guesses away. Here the guess is written down first ({@link #attempt}) and the answer is taken
- * from the packets that describe damage or a removed entity ({@link #confirm}), which gives three things nothing in the mod
- * could see before: whether a target is actually taking your hits, how long the server takes to say so (latency, which is
- * the real ceiling on how fast anything can hit it), and a per-target misses streak, so a module can stop swinging at
- * somebody the server is ignoring instead of spamming packets into the void.</p>
- *
- * <p>The tracker is deliberately passive: it never sends anything and never changes a fight by itself. Modules read it.</p>
- */
-public final class Hits {
-    private Hits() {}
+public final class Build {
+    private Build() {}
 
-    /** An answer only counts when it arrives soon after the swing it belongs to. */
-    private static final long WINDOW_MS = 1200L;
-    /** How long the rolling numbers look back. */
-    private static final long RECENT_MS = 8000L;
-    /** Attempts with nothing back before a target is called cold. */
-    private static final int COLD_MISSES = 4;
-    /** ... and how recent that streak has to be for it to still mean anything. */
-    private static final long COLD_MS = 2600L;
-    private static final int MAX_LOG = 96;
-    private static final int MAX_TRACKED = 256;
+    /**
+     * Vanilla block interaction range. The server keeps its own copy of this attribute and never sees
+     * the Reach module, so Grim's FarPlace measures against 4.5 no matter what the slider says: a
+     * placement past this is a flag on every module that places, from scaffold to surround to
+     * crystals. Placements therefore use this, not the slider.
+     */
+    public static final double REACH = 4.5;
 
-    /** One swing: where it went and whether anything came back. */
-    private static final class Swing {
-        final int id;
-        final long at;
-        boolean landed;
-        long latency;
-
-        Swing(int id, long at) {
-            this.id = id;
-            this.at = at;
-        }
+    public static double reach() {
+        return REACH;
     }
 
-    /** What one entity has been doing. */
-    private static final class Rec {
-        int swings;
-        int landed;
-        int streak;
-        long lastSwing;
-        long lastLand;
-        double latency;
+    /** The most a placement may use: the server's own range, whatever the module asked for. */
+    private static double placeReach(double asked) {
+        return Math.min(REACH, Math.max(asked, REACH));
     }
 
-    private static final Map<Integer, Rec> REC = new ConcurrentHashMap<>();
-    private static final ArrayDeque<Swing> LOG = new ArrayDeque<>();
-
-    /** True when a swing was sent within this many milliseconds, or a hit came back. Used to decide whether a player is
-     * actually fighting right now (fake lag holds its packets only then, if you ask it to). */
-    public static boolean fighting(long ms) {
-        long now = System.currentTimeMillis();
-        synchronized (LOG) {
-            for (Swing s : LOG) {
-                if (now - s.at <= ms) return true;
-            }
+    /** Nothing solid between the eyes and the face being used, so it is not a placement through a wall. */
+    private static boolean sees(Vec3 eye, Vec3 hit) {
+        Minecraft mc = mc();
+        if (mc.level == null) return true;
+        double dist = eye.distanceTo(hit);
+        int steps = (int) Math.ceil(dist / 0.15);
+        // Stop short of the face itself: the block being clicked is solid and the last samples are
+        // inside it. Everything before that must be air, otherwise we are reaching through a wall.
+        for (int i = 2; i < steps - 2; i++) {
+            Vec3 at = eye.lerp(hit, (double) i / steps);
+            BlockPos p = BlockPos.containing(at.x, at.y, at.z);
+            if (solid(p)) return false;
         }
-        for (Rec r : REC.values()) {
-            if (r.lastLand > 0 && now - r.lastLand <= ms) return true;
+        return true;
+    }
+
+    private static Minecraft mc() {
+        return Minecraft.getInstance();
+    }
+
+    public static BlockState state(BlockPos p) {
+        return mc().level.getBlockState(p);
+    }
+
+    public static boolean replaceable(BlockPos p) {
+        return state(p).canBeReplaced();
+    }
+
+    public static boolean air(BlockPos p) {
+        return state(p).isAir();
+    }
+
+    public static boolean solid(BlockPos p) {
+        BlockState s = state(p);
+        return !s.isAir() && !s.canBeReplaced() && !s.getCollisionShape(mc().level, p).isEmpty();
+    }
+
+    public static boolean blocked(BlockPos p) {
+        for (Entity e : mc().level.getEntities((Entity) null, new AABB(p))) {
+            if (e instanceof ItemEntity || !e.isAlive() || e.isSpectator()) continue;
+            return true;
         }
         return false;
     }
 
-    /** Writes a swing down. Call it right before an attack. */
-    public static void attempt(Entity e) {
-        if (e != null) attempt(e.getId());
+    public static Vec3 eye() {
+        return mc().player.getEyePosition();
     }
 
-    public static void attempt(int id) {
-        if (id < 0) return;
-        long now = System.currentTimeMillis();
-        Rec r = REC.computeIfAbsent(id, k -> new Rec());
-        r.swings++;
-        r.streak++;
-        r.lastSwing = now;
-        Swing s = new Swing(id, now);
-        synchronized (LOG) {
-            LOG.addLast(s);
-            while (LOG.size() > MAX_LOG) LOG.removeFirst();
+    public static double distTo(BlockPos p) {
+        return eye().distanceTo(Vec3.atCenterOf(p));
+    }
+
+    public static BlockHitResult top(BlockPos base) {
+        return new BlockHitResult(new Vec3(base.getX() + 0.5, base.getY() + 1.0, base.getZ() + 0.5), Direction.UP, base, false);
+    }
+
+    public static BlockHitResult against(BlockPos pos, double reach) {
+        BlockHitResult best = null;
+        double bestD = Double.MAX_VALUE;
+        for (Direction d : Direction.values()) {
+            BlockPos nb = pos.relative(d);
+            if (!solid(nb)) continue;
+            Direction face = d.getOpposite();
+            Vec3 hit = new Vec3(nb.getX() + 0.5 + face.getStepX() * 0.5, nb.getY() + 0.5 + face.getStepY() * 0.5, nb.getZ() + 0.5 + face.getStepZ() * 0.5);
+            double dist = eye().distanceTo(hit);
+            if (dist > reach || dist >= bestD) continue;
+            best = new BlockHitResult(hit, face, nb, false);
+            bestD = dist;
         }
-        purge(now);
+        return best;
     }
 
-    /**
-     * The server reported something happening to this entity (damage, or the entity being removed). Only a swing from the
-     * last moment is matched, so unrelated damage somewhere else never counts as your hit.
-     */
-    public static void confirm(int id) {
-        long now = System.currentTimeMillis();
-        Rec r = REC.get(id);
-        if (r == null) return;
-        Swing hit = null;
-        synchronized (LOG) {
-            Iterator<Swing> it = LOG.descendingIterator();
-            while (it.hasNext()) {
-                Swing s = it.next();
-                if (s.id != id || s.landed) continue;
-                if (now - s.at > WINDOW_MS) break;
-                hit = s;
-                break;
-            }
-            if (hit != null) {
-                hit.landed = true;
-                hit.latency = now - hit.at;
-            }
+    public static boolean canPlace(BlockPos pos, double reach) {
+        BlockHitResult hit = against(pos, placeReach(reach));
+        return replaceable(pos) && !blocked(pos) && hit != null && sees(eye(), hit.getLocation());
+    }
+
+    public static boolean useOn(BlockHitResult hit, Predicate<ItemStack> item, boolean swing) {
+        Minecraft mc = mc();
+        if (mc.gameMode == null || mc.player == null) return false;
+        // One block use per tick: a second one is MultiPlace, and so is the same block twice.
+        if (!Stealth.allowUse(mc)) return false;
+        if (Inv.offhand(item)) {
+            mc.gameMode.useItemOn(mc.player, InteractionHand.OFF_HAND, hit);
+            if (swing) mc.player.swing(InteractionHand.OFF_HAND);
+            return true;
         }
-        if (hit == null) return;
-        r.landed++;
-        r.streak = 0;
-        r.lastLand = now;
-        r.latency = r.latency <= 0 ? hit.latency : r.latency * 0.7 + hit.latency * 0.3;
+        int slot = Inv.hotbar(item);
+        if (slot < 0) return false;
+        return Inv.with(slot, () -> {
+            mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, hit);
+            if (swing) mc.player.swing(InteractionHand.MAIN_HAND);
+        });
     }
 
-    // ------------------------------------------------------------------ what a module reads
+    // One placement per tick is what a real player can do; two in the same tick is a red flag for
+    // placement checks, so anything after the first is skipped and the caller tries again next tick.
+    private static int placedTick = -1;
 
-    /** True when recent swings at this entity got nothing back, so it is probably out of the server's reach. */
-    public static boolean cold(int id) {
-        Rec r = REC.get(id);
-        return r != null && r.streak >= COLD_MISSES && System.currentTimeMillis() - r.lastSwing < COLD_MS;
-    }
-
-    public static int swings(int id) {
-        Rec r = REC.get(id);
-        return r == null ? 0 : r.swings;
-    }
-
-    public static int landed(int id) {
-        Rec r = REC.get(id);
-        return r == null ? 0 : r.landed;
-    }
-
-    /** 0 to 1: how much of what was swung at this entity landed. */
-    public static float ratio(int id) {
-        Rec r = REC.get(id);
-        if (r == null || r.swings == 0) return 1f;
-        return Math.min(1f, r.landed / (float) r.swings);
-    }
-
-    /** How long the server takes to confirm a hit on this entity, in milliseconds. 0 when unknown. */
-    public static double latencyMs(int id) {
-        Rec r = REC.get(id);
-        return r == null ? 0 : r.latency;
-    }
-
-    /** Everything swung at lately, landed or not. */
-    public static int recentSwings() {
-        long now = System.currentTimeMillis();
-        int n = 0;
-        synchronized (LOG) {
-            for (Iterator<Swing> it = LOG.descendingIterator(); it.hasNext(); ) {
-                if (now - it.next().at > RECENT_MS) break;
-                n++;
-            }
-        }
-        return n;
-    }
-
-    public static int recentLanded() {
-        long now = System.currentTimeMillis();
-        int n = 0;
-        synchronized (LOG) {
-            for (Iterator<Swing> it = LOG.descendingIterator(); it.hasNext(); ) {
-                Swing s = it.next();
-                if (now - s.at > RECENT_MS) break;
-                if (s.landed) n++;
-            }
-        }
-        return n;
-    }
-
-    /** Landed share over the last few seconds, 1 when nothing was swung. */
-    public static float recentRatio() {
-        int n = recentSwings();
-        return n == 0 ? 1f : Math.min(1f, recentLanded() / (float) n);
-    }
-
-    /** Average confirmation delay over the last few seconds, in milliseconds. 0 when unknown. */
-    public static double recentLatency() {
-        long now = System.currentTimeMillis();
-        double sum = 0;
-        int n = 0;
-        synchronized (LOG) {
-            for (Iterator<Swing> it = LOG.descendingIterator(); it.hasNext(); ) {
-                Swing s = it.next();
-                if (now - s.at > RECENT_MS) break;
-                if (s.landed) {
-                    sum += s.latency;
-                    n++;
-                }
-            }
-        }
-        return n == 0 ? 0 : sum / n;
-    }
-
-    /** A short line for a module's info: how many hits land and how fast the server answers. */
-    public static String text() {
-        int n = recentSwings();
-        if (n == 0) return "";
-        int ok = recentLanded();
-        StringBuilder sb = new StringBuilder();
-        sb.append(ok).append('/').append(n);
-        double ms = recentLatency();
-        if (ms > 0) sb.append(' ').append(Math.round(ms)).append("ms");
-        return sb.toString();
-    }
-
-    public static void reset() {
-        REC.clear();
-        synchronized (LOG) {
-            LOG.clear();
-        }
-    }
-
-    private static long purgedAt;
-
-    private static void purge(long now) {
-        if (now - purgedAt < 5000L) return;
-        purgedAt = now;
-        REC.entrySet().removeIf(e -> now - e.getValue().lastSwing > 30000L);
-        if (REC.size() > MAX_TRACKED) {
-            REC.entrySet().removeIf(e -> now - e.getValue().lastSwing > 6000L);
-        }
+    public static boolean place(BlockPos pos, Predicate<ItemStack> item, boolean swing, double reach) {
+        if (!replaceable(pos) || blocked(pos)) return false;
+        Minecraft mc = mc();
+        if (mc.player == null) return false;
+        if (mc.player.tickCount == placedTick) return false;
+        // Using an item while the game is digging is its own packet-order flag, so the placement waits.
+        if (mc.gameMode.isDestroying()) return false;
+        BlockHitResult hit = against(pos, placeReach(reach));
+        if (hit == null) return false;
+        if (!sees(eye(), hit.getLocation())) return false;
+        // A placement whose face was never in the player's line of sight is a flag of its own, so
+        // look at it first. The rotation goes out before the use packet in the same tick.
+        if (!Aim.isLookingAt(hit.getLocation(), 8.0)) Aim.look(hit.getLocation());
+        if (!useOn(hit, item, swing)) return false;
+        placedTick = mc.player.tickCount;
+        return true;
     }
 }

@@ -1,87 +1,295 @@
-package com.zlorbie788.zeus.mixin;
+package com.zlorbie788.zeus.core;
 
-import com.zlorbie788.zeus.mods.Activity;
-import com.zlorbie788.zeus.mods.Combat;
+import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.ClientPacketListener;
-import net.minecraft.network.protocol.game.ClientboundBlockUpdatePacket;
-import net.minecraft.network.protocol.game.ClientboundEntityEventPacket;
-import net.minecraft.network.protocol.game.ClientboundDamageEventPacket;
-import net.minecraft.network.protocol.game.ClientboundMoveVehiclePacket;
-import net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket;
-import net.minecraft.network.protocol.game.ClientboundSectionBlocksUpdatePacket;
-import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket;
-import net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket;
-import com.zlorbie788.zeus.mods.AdvancedFeatures;
-import com.zlorbie788.zeus.mods.MediaBaseFinder;
-import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import net.minecraft.client.gui.GuiGraphics;
 
-/** Anti Knockback: the push the game sends when you are hit is dropped on arrival. Also lets Activity count block changes. */
-@Mixin(ClientPacketListener.class)
-public abstract class ClientPacketListenerMixin {
-    @Inject(method = "handleSetEntityMotion", at = @At("HEAD"), cancellable = true, require = 0)
-    private void zeus$motion(ClientboundSetEntityMotionPacket packet, CallbackInfo ci) {
-        Minecraft mc = Minecraft.getInstance();
-        if (Combat.AntiKnockback.blocks() && mc.player != null && packet.getId() == mc.player.getId()) ci.cancel();
-    }
+import java.util.ArrayList;
+import java.util.List;
 
-    @Inject(method = "handleBlockUpdate", at = @At("HEAD"), require = 0)
-    private void zeus$blockUpdate(ClientboundBlockUpdatePacket packet, CallbackInfo ci) {
-        Activity.note(packet.getPos(), packet.getBlockState());
-    }
+public abstract class Module {
+    public final String id;
+    public final String name;
+    public final String desc;
+    public final Category category;
+    private final List<Setting> settings = new ArrayList<>();
+    private boolean enabled;
+    private boolean startsOff = true;
+    private boolean toggleable = true;
+    private boolean oneShot;
+    private boolean airborne;
+    public KeyMapping key;
 
-    @Inject(method = "handleChunkBlocksUpdate", at = @At("HEAD"), require = 0)
-    private void zeus$sectionUpdate(ClientboundSectionBlocksUpdatePacket packet, CallbackInfo ci) {
-        Activity.beginBatch();
-        try {
-            packet.runUpdates(Activity::note);
-        } finally {
-            Activity.endBatch();
+    public String error;
+
+    long profNs;
+
+    public volatile float costPct;
+    private boolean light;
+    private int skip;
+
+    public static final class Holder {
+        private final List<Setting> list = new ArrayList<>();
+
+        public <T extends Setting> T add(T s) {
+            list.add(s);
+            return s;
+        }
+
+        public <T extends Setting> T addFirst(T s) {
+            list.add(0, s);
+            return s;
+        }
+
+        public List<Setting> settings() {
+            return list;
         }
     }
 
+    private boolean defaultOn;
 
-    @Inject(method = "handlePlayerInfoUpdate", at = @At("HEAD"), require = 0)
-    private void zeus$playerInfoUpdate(ClientboundPlayerInfoUpdatePacket packet, CallbackInfo ci) {
-        MediaBaseFinder.notePlayerInfoUpdate(packet);
-        com.zlorbie788.zeus.mods.StaffHud.notePlayerInfoUpdate(packet);
+    public boolean defaultOn() {
+        return defaultOn;
     }
 
-    /** Entity event 35 is "a totem of undying was used", 2 is the hurt flash every damaged living entity broadcasts. */
-    @Inject(method = "handleEntityEvent", at = @At("HEAD"), require = 0)
-    private void zeus$event(ClientboundEntityEventPacket packet, CallbackInfo ci) {
-        int event = packet.getEventId();
-        if (event != 2 && event != 35) return;
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.level == null) return;
-        net.minecraft.world.entity.Entity who = packet.getEntity(mc.level);
-        if (who == null) return;
-        // event 2 is the hurt flash, 35 is a totem pop: both mean our last swing at that entity landed
-        com.zlorbie788.zeus.core.Hits.confirm(who.getId());
-        if (event == 35) com.zlorbie788.zeus.mods.NetPanels.totemPopped(who);
+    public Module onByDefault() {
+        defaultOn = true;
+        return this;
     }
 
-    /** The server says who damaged what: the cleanest hit confirmation there is. */
-    @Inject(method = "handleDamageEvent", at = @At("HEAD"), require = 0)
-    private void zeus$damageEvent(ClientboundDamageEventPacket packet, CallbackInfo ci) {
-        com.zlorbie788.zeus.core.Hits.confirm(packet.entityId());
+    public boolean isLight() {
+        return light;
     }
 
-    /**
-     * Removed entities are the only answer an end crystal gives (it is not a living entity, so it never sends a hurt event),
-     * and the same packet tells the tracker that a mob we hit is gone.
-     */
-    @Inject(method = "handleRemoveEntities", at = @At("HEAD"), require = 0)
-    private void zeus$removed(ClientboundRemoveEntitiesPacket packet, CallbackInfo ci) {
-        for (int id : packet.getEntityIds()) com.zlorbie788.zeus.core.Hits.confirm(id);
+    public void setEnabledQuiet(boolean on) {
+        if (!toggleable || locked || on == enabled) return;
+        enabled = on;
+        Zeus.activeChanged();
+        try {
+            if (on) onEnable();
+            else onDisable();
+        } catch (Throwable t) {
+            fail(t);
+        }
     }
 
-    /** Boat NoClip: the server's "move the boat back here" correction is dropped on arrival (when the module's setting is on). */
-    @Inject(method = "handleMoveVehicle", at = @At("HEAD"), cancellable = true, require = 0)
-    private void zeus$moveVehicle(ClientboundMoveVehiclePacket packet, CallbackInfo ci) {
-        if (com.zlorbie788.zeus.mods.AutomationPlus.BoatNoClip.ignoresCorrections()) ci.cancel();
+    protected void cleanSlate() {}
+
+    protected Module(String id, String name, String desc, Category category) {
+        this.id = id;
+        this.name = name;
+        this.desc = desc;
+        this.category = category;
+    }
+
+    protected <T extends Setting> T add(T s) {
+        settings.add(s);
+        return s;
+    }
+
+    public <T extends Setting> T addSetting(T s) {
+        return add(s);
+    }
+
+    protected Module anywhere() {
+        startsOff = false;
+        return this;
+    }
+
+    private final List<String> aliases = new ArrayList<>();
+
+    protected Module alias(String... names) {
+        for (String n : names) if (n != null && !n.isBlank()) aliases.add(n);
+        return this;
+    }
+
+    public List<String> aliases() {
+        return aliases;
+    }
+
+    private boolean hudCard;
+
+    protected Module hudCard() {
+        hudCard = true;
+        return this;
+    }
+
+    public boolean isHudWidget() {
+        return category == Category.PANELS || hudCard;
+    }
+
+    protected Module light() {
+        light = true;
+        return this;
+    }
+
+    protected Module oneShot() {
+        oneShot = true;
+        return this;
+    }
+
+    protected Module airborne() {
+        airborne = true;
+        return this;
+    }
+
+    public boolean isAirborne() {
+        return airborne;
+    }
+
+    protected Module panelOnly() {
+        toggleable = false;
+        return this;
+    }
+
+    private boolean locked;
+    private String note;
+
+    protected Module locked(String why) {
+        locked = true;
+        note = why;
+        return this;
+    }
+
+    public boolean locked() {
+        return locked;
+    }
+
+    public String note() {
+        return note;
+    }
+
+    public List<Setting> settings() {
+        return settings;
+    }
+
+    public boolean enabled() {
+        return enabled;
+    }
+
+    public boolean startsOff() {
+        return startsOff;
+    }
+
+    public boolean toggleable() {
+        return toggleable;
+    }
+
+    public void toggle() {
+        boolean was = enabled;
+        setEnabled(!enabled);
+        if (!was && enabled) Usage.used(this);
+    }
+
+    public void setEnabled(boolean on) {
+        if (Zeus.destroyed()) return;
+        if (!toggleable || locked || on == enabled) return;
+        enabled = on;
+        Zeus.activeChanged();
+        error = null;
+        try {
+            if (on) onEnable();
+            else onDisable();
+        } catch (Throwable t) {
+            fail(t);
+        }
+        if (on && oneShot && enabled) {
+            enabled = false;
+            Zeus.activeChanged();
+        }
+        if (!oneShot) Zeus.event(name + (enabled ? " switched on" : " switched off"), enabled);
+        Zeus.markDirty();
+    }
+
+    void restart() {
+        if (!enabled) return;
+        try {
+            onDisable();
+            onEnable();
+        } catch (Throwable t) {
+            fail(t);
+        }
+    }
+
+    void quietForWorldExit() {
+        if (startsOff) quiet();
+    }
+
+    void quiet() {
+        if (!enabled) return;
+        enabled = false;
+        Zeus.activeChanged();
+        try {
+            onDisable();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    void fail(Throwable t) {
+        Zeus.LOG.warn("Module {} failed and was switched off", id, t);
+        enabled = false;
+        Zeus.activeChanged();
+        error = t.getClass().getSimpleName();
+        try {
+            onDisable();
+        } catch (Throwable ignored) {
+        }
+        Zeus.toast(name + " hit a problem and was switched off", false);
+    }
+
+    protected void onEnable() {}
+
+    protected void onDisable() {}
+
+    protected void onTick(Minecraft mc) {}
+
+    protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {}
+
+    protected void onHudWorld(GuiGraphics g, Minecraft mc, float partial, int w, int h) {}
+
+    final void hudWorld(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+        long t0 = Prof.on ? System.nanoTime() : 0L;
+        try {
+            onHudWorld(g, mc, partial, w, h);
+        } catch (Throwable t) {
+            fail(t);
+        }
+        if (t0 != 0L) profNs += System.nanoTime() - t0;
+    }
+
+    public String info() {
+        return null;
+    }
+
+    final void tick(Minecraft mc) {
+        if (light) {
+            int stride = com.zlorbie788.zeus.ui.Perf.stride();
+            if (stride > 1 && (++skip % stride) != 0) return;
+        }
+        long t0 = Prof.on ? System.nanoTime() : 0L;
+        try {
+            onTick(mc);
+        } catch (Throwable t) {
+            fail(t);
+        }
+        if (t0 != 0L) profNs += System.nanoTime() - t0;
+    }
+
+    final void hud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+        long t0 = Prof.on ? System.nanoTime() : 0L;
+        try {
+            onHud(g, mc, partial, w, h);
+        } catch (Throwable t) {
+            fail(t);
+        }
+        if (t0 != 0L) profNs += System.nanoTime() - t0;
+    }
+
+    public final void tickFromComposite(Minecraft mc) {
+        if (enabled()) tick(mc);
+    }
+
+    public final void hudFromComposite(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+        if (enabled()) hud(g, mc, partial, w, h);
     }
 }

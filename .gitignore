@@ -15,3 +15,4 @@ recover/
 # Python caches from the knife generator
 __pycache__/
 *.pyc
+tools/knives_hd/level2/

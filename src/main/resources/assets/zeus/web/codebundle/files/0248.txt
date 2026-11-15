@@ -1,254 +1,198 @@
-/* Zeus Client website 9.5: page backgrounds, opening animations, thunder cursor, electric arcs on the emblem, the floating helper button,
-   the "Is it safe?" dialog, the site banner and the Full/Calm motion switch. No inline scripts (the page's CSP forbids them). */
-(function () {
-  "use strict";
-  var Z = window.Z, h = Z.h, icon = Z.icon, $ = Z.$;
-  var NS = "http://www.w3.org/2000/svg";
+package com.zlorbie788.zeus.ui;
 
-  function rnd(a, b) { return a + Math.random() * (b - a); }
-  function svgEl(tag, attrs) {
-    var e = document.createElementNS(NS, tag);
-    for (var k in attrs) e.setAttribute(k, attrs[k]);
-    return e;
-  }
+import net.minecraft.client.gui.GuiGraphics;
 
-  /* ---------------------------------------------------------------- per-page background */
-  var BG_KEYS = { home: 1, download: 1, features: 1, tutorial: 1, information: 1, help: 1, source: 1, credits: 1, config: 1 };
-  var bg = null, layers = {};
-  function setBackground(page) {
-    if (!bg) {
-      bg = h("div", { id: "bg", "aria-hidden": "true" });
-      var fx = $("#fx");
-      document.body.insertBefore(bg, fx || document.body.firstChild);
+import java.util.Locale;
+
+/** The smaller pieces of the Zeus menu: Continue card, update notice, splash line, chevrons, shooting stars. */
+final class MenuExtras {
+    private MenuExtras() {
     }
-    var key = BG_KEYS[page] ? page : "grid";
-    if (!layers[key]) { layers[key] = h("div", { class: "bl", "data-k": key }); bg.appendChild(layers[key]); }
-    Object.keys(layers).forEach(function (k) { layers[k].classList.toggle("on", k === key); });
-  }
 
-  /* ---------------------------------------------------------------- bolt that runs across the header line on a page change */
-  function boltFlash() {
-    if (Z.reduced) return;
-    var old = $(".bolt-flash");
-    if (old) old.remove();
-    var w = 1000, d = "M" + rnd(w * 0.15, w * 0.85) + " 0", x = parseFloat(d.slice(1)), y = 0;
-    var branches = "";
-    for (var i = 0; i < 7; i++) {
-      x += rnd(-70, 70); y += rnd(14, 24);
-      d += " L" + x.toFixed(0) + " " + y.toFixed(0);
-      if (Math.random() < 0.4) branches += "M" + x.toFixed(0) + " " + y.toFixed(0) + " l" + rnd(-60, 60).toFixed(0) + " " + rnd(14, 36).toFixed(0);
+    private static final String[] SPLASHES = {
+            "72 knives!", "Now with crates!", "Struck by lightning!", "Type @ to ask Zeus!", "Olympian drop rate: 1%!",
+            "Thunder approves!", "Hades sends his regards!", "Storms ahead!", "Fabric 1.21.11!", "Bloodstone!",
+            "Open a crate!", "Ask the AI to build it!", "Spin the karambit!", "Made for Olympus!", "Try Quick open!",
+            "Lightning never strikes twice. Zeus does.", "Collect them all!", "Inspect your knife!", "Gold leaf!",
+            "Now 100% more thunder!"};
+    private static final String SPLASH = SPLASHES[(int) (Math.random() * SPLASHES.length)];
+
+    private static float hotContinue;
+    private static float hotUpdate;
+
+    static float clamp01(float x) {
+        return x < 0 ? 0 : x > 1 ? 1 : x;
     }
-    var s = svgEl("svg", { viewBox: "0 0 " + w + " 150", preserveAspectRatio: "none", "aria-hidden": "true" });
-    s.appendChild(svgEl("path", { d: d + branches.replace(/M/g, " M"), fill: "none", stroke: "#cfe6ff", "stroke-width": "2", "stroke-linejoin": "round", "stroke-linecap": "round" }));
-    var el = h("div", { class: "bolt-flash", "aria-hidden": "true" });
-    el.appendChild(s);
-    document.body.appendChild(el);
-    setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 700);
-  }
 
-  /* ---------------------------------------------------------------- electric arcs around every emblem */
-  function makeArc(angle) {
-    var cx = 50, cy = 50, r = rnd(37, 41), step = 4 + Math.floor(rnd(0, 2)), a = angle;
-    var d = "M" + (cx + Math.cos(a) * r).toFixed(1) + " " + (cy + Math.sin(a) * r).toFixed(1);
-    for (var i = 0; i < step; i++) {
-      r += rnd(3, 6); a += rnd(-0.16, 0.16);
-      var j = rnd(-2.6, 2.6);
-      d += " L" + (cx + Math.cos(a) * r + j).toFixed(1) + " " + (cy + Math.sin(a) * r + j).toFixed(1);
+    /** Silver ink and the menu's blue hover light, as on the stone plates. */
+    private static final int INK = 0xFFE8EEF8;
+    private static final int INK_DIM = 0xFF9AA8C8;
+    private static final int HOVER = 0xFF7C9CE0;
+    private static final int HOVER_LINE = 0xFFA8BEEA;
+    private static final int[] SHINE = new int[2];
+    private static float contEnter = -10f;
+    private static boolean contWasHot;
+
+    /** Greek capitals when the menu font has every letter, otherwise the normal bold font. */
+    private static void title(GuiGraphics g, String s, int cx, int y, int cap, int tint) {
+        if (GreekFont.supports(s)) GreekFont.drawCentered(g, s, cx, y, cap, tint, true);
+        else Draw.boldCenter(g, s, cx, y + (cap - 8) / 2, tint);
     }
-    return d;
-  }
-  var origLogo = Z.logo;
-  Z.logo = function (size) {
-    var el = origLogo(size);
-    var float = el.querySelector(".zl-float");
-    if (float) {
-      var s = svgEl("svg", { class: "zl-arcs", viewBox: "0 0 100 100", "aria-hidden": "true" });
-      [-0.6, 0.9, 2.5, 4.1].forEach(function (a) { s.appendChild(svgEl("path", { d: makeArc(a) })); });
-      float.appendChild(s);
+
+    /**
+     * The "jump back in" card: a stone plate like the menu buttons, with the last world or server and
+     * how long ago, one click to play. Returns its box {x, y, w, h}, or null when there is nothing.
+     */
+    static int[] continueCard(GuiGraphics g, int right, int y, int h, float u, int mx, int my, float t, float dt) {
+        LastPlayed.Entry e = LastPlayed.get();
+        if (e == null) return null;
+        float appear = clamp01((t - 0.75f) / 0.5f);
+        if (appear <= 0f) return null;
+        float ease = 1f - (1f - appear) * (1f - appear) * (1f - appear);
+        // wide enough for the world name, within reason, and never off the left edge
+        int want = Math.max(Draw.width(e.name), Draw.width((e.server ? "Server" : "World") + "  \u00b7  " + LastPlayed.ago(e.at))) + 28;
+        int w = Math.max(Math.max(120, Math.round(300 * u)), Math.min(want, Math.max(120, Math.round(420 * u))));
+        w = Math.min(w, right - 10);
+        int x = right - w - Math.round((1f - ease) * 14f);
+        boolean hot = mx >= x && mx < x + w && my >= y && my < y + h;
+        if (hot && !contWasHot) contEnter = t;
+        contWasHot = hot;
+        hotContinue += ((hot ? 1f : 0f) - hotContinue) * (1f - (float) Math.exp(-dt * 12f));
+        float hv = hotContinue;
+        int lift = Math.round(1.5f * u * hv);
+        if (hv > 0.02f) Draw.shadow(g, x, y, w, h, 3, Math.max(3, Math.round(5 * u * hv)), 0.4f * hv * ease);
+        if (hv > 0.01f) Draw.glow(g, x, y - lift, w, h, 3, HOVER, Math.max(3, Math.round(6 * u)), 0.34f * hv * ease);
+        Plate9.draw(g, x, y - lift, w, h, Draw.rgba(0xFFFFFFFF, ease));
+        // three rows: CONTINUE in the menu's lettering, the world, when
+        int cap = Math.max(6, Math.round(h * 0.24f));
+        int nameY = y - lift + Math.round(h * 0.18f) + cap + Math.max(3, Math.round(h * 0.06f));
+        title(g, "CONTINUE", x + w / 2, y - lift + Math.round(h * 0.16f), cap, Draw.rgba(Draw.mix(0xFFD8DEE8, 0xFFFFFFFF, hv), ease));
+        if (hv > 0.02f) title(g, "CONTINUE", x + w / 2, y - lift + Math.round(h * 0.16f), cap, Draw.rgba(0xFFDCE8FF, 0.45f * hv * ease));
+        int pad = Math.max(8, Math.round(w * 0.09f));
+        Draw.textCenter(g, Draw.fit(e.name, w - pad * 2), x + w / 2, nameY, Draw.rgba(INK, ease));
+        String sub = (e.server ? "Server" : "World") + "  \u00b7  " + LastPlayed.ago(e.at);
+        Draw.textCenter(g, Draw.fit(sub, w - pad * 2), x + w / 2, nameY + 11, Draw.rgba(INK_DIM, ease));
+        if (hv > 0.02f) {
+            Draw.rrectLine(g, x, y - lift, w, h, 3, Draw.rgba(HOVER_LINE, (0.68f + 0.10f * (float) Math.sin(t * 4f)) * hv * ease));
+            HoverFx.shine(g, x, y - lift, w, h, (t - contEnter) / 0.62f, u, hv * ease, SHINE);
+        }
+        return new int[] {x, y, w, h};
     }
-    return el;
-  };
 
-  /* ---------------------------------------------------------------- thunder cursor: a short spark trail */
-  var cur = { cv: null, ctx: null, parts: [], running: false, lx: -99, ly: -99, dpr: 1 };
-  function curInit() {
-    if (window.matchMedia && matchMedia("(hover: none)").matches) return;
-    cur.cv = h("canvas", { id: "cur", "aria-hidden": "true" });
-    document.body.appendChild(cur.cv);
-    cur.ctx = cur.cv.getContext("2d");
-    function size() { cur.dpr = Math.min(window.devicePixelRatio || 1, 1.5); cur.cv.width = innerWidth * cur.dpr; cur.cv.height = innerHeight * cur.dpr; }
-    size();
-    window.addEventListener("resize", Z.debounce(size, 150));
-    document.addEventListener("pointermove", function (e) {
-      if (Z.reduced || e.pointerType === "touch") return;
-      var dx = e.clientX - cur.lx, dy = e.clientY - cur.ly;
-      if (dx * dx + dy * dy < 110) return;
-      cur.lx = e.clientX; cur.ly = e.clientY;
-      var n = 1 + (Math.random() < 0.35 ? 1 : 0);
-      for (var i = 0; i < n; i++) cur.parts.push({ x: e.clientX + 19 - 19 + rnd(-3, 3), y: e.clientY + rnd(0, 8), vx: rnd(-18, 18), vy: rnd(8, 34), life: 0, max: rnd(0.35, 0.7), bolt: Math.random() < 0.25, r: rnd(1, 2.3) });
-      if (cur.parts.length > 60) cur.parts.splice(0, cur.parts.length - 60);
-      if (!cur.running) { cur.running = true; cur.last = performance.now(); requestAnimationFrame(curFrame); }
-    }, { passive: true });
-    document.addEventListener("pointerdown", function (e) {
-      if (Z.reduced || e.pointerType === "touch") return;
-      for (var i = 0; i < 9; i++) { var a = Math.random() * 6.283, v = rnd(40, 120); cur.parts.push({ x: e.clientX, y: e.clientY, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0, max: rnd(0.25, 0.5), bolt: i % 3 === 0, r: rnd(1, 2) }); }
-      if (!cur.running) { cur.running = true; cur.last = performance.now(); requestAnimationFrame(curFrame); }
-    }, { passive: true });
-  }
-  function curFrame(t) {
-    var dt = Math.min(0.05, (t - cur.last) / 1000 || 0.016);
-    cur.last = t;
-    var c = cur.ctx;
-    c.setTransform(cur.dpr, 0, 0, cur.dpr, 0, 0);
-    c.clearRect(0, 0, innerWidth, innerHeight);
-    c.globalCompositeOperation = "lighter";
-    for (var i = cur.parts.length - 1; i >= 0; i--) {
-      var p = cur.parts[i];
-      p.life += dt;
-      if (p.life >= p.max) { cur.parts.splice(i, 1); continue; }
-      p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.96; p.vy *= 0.96;
-      var a = 1 - p.life / p.max;
-      if (p.bolt) {
-        c.strokeStyle = "rgba(190,225,255," + (a * 0.9).toFixed(2) + ")"; c.lineWidth = 1.4;
-        c.beginPath(); c.moveTo(p.x, p.y); c.lineTo(p.x + 4, p.y + 5); c.lineTo(p.x - 1, p.y + 7); c.lineTo(p.x + 3, p.y + 13); c.stroke();
-      } else {
-        var g = c.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 4);
-        g.addColorStop(0, "rgba(200,230,255," + (a * 0.9).toFixed(2) + ")");
-        g.addColorStop(1, "rgba(40,120,255,0)");
-        c.fillStyle = g; c.beginPath(); c.arc(p.x, p.y, p.r * 4, 0, 6.283); c.fill();
-      }
+    /** A small stone plate top-left when a newer Zeus build is out. Returns its box or null. */
+    static int[] updatePill(GuiGraphics g, int mx, int my, float t, float dt) {
+        int build = MenuOnline.updateAvailable();
+        if (build <= 0) return null;
+        float appear = clamp01((t - 1.2f) / 0.5f);
+        if (appear <= 0) return null;
+        int cap = 7;
+        String s = "UPDATE";
+        int tw = GreekFont.supports(s) ? GreekFont.width(s, cap) : Draw.widthBold(s);
+        int w = tw + 34, h = 18;
+        int x = 8, y = 8 - Math.round((1f - appear) * 10f);
+        boolean hot = mx >= x && mx < x + w && my >= y && my < y + h;
+        hotUpdate += ((hot ? 1f : 0f) - hotUpdate) * (1f - (float) Math.exp(-dt * 12f));
+        float pulse = 0.5f + 0.5f * (float) Math.sin(t * 2.6f);
+        Draw.glow(g, x, y, w, h, 3, HOVER, 6, (0.10f + 0.10f * pulse + 0.25f * hotUpdate) * appear);
+        Plate9.draw(g, x, y, w, h, Draw.rgba(0xFFFFFFFF, appear));
+        // a silver up arrow
+        int ax = x + 9, ay = y + 5, ink = Draw.rgba(Draw.mix(0xFFC8D4E8, 0xFFFFFFFF, hotUpdate), appear);
+        for (int k = 0; k < 4; k++) g.fill(ax + 3 - k, ay + k, ax + 4 + k, ay + k + 1, ink);
+        g.fill(ax + 2, ay + 4, ax + 5, ay + 9, ink);
+        title(g, s, x + 21 + tw / 2, y + (h - cap) / 2, cap, ink);
+        if (hotUpdate > 0.02f) Draw.rrectLine(g, x, y, w, h, 3, Draw.rgba(HOVER_LINE, 0.7f * hotUpdate * appear));
+        if (hot) {
+            String tip = "Build " + build + " is out. Click to download it.";
+            Draw.rrect(g, x, y + h + 3, Draw.width(tip) + 10, 13, 4, 0xF0050914);
+            Draw.rrectLine(g, x, y + h + 3, Draw.width(tip) + 10, 13, 4, 0xFF2A4A8A);
+            Draw.text(g, tip, x + 5, y + h + 6, INK);
+        }
+        return new int[] {x, y, w, h};
     }
-    if (cur.parts.length && !Z.reduced) requestAnimationFrame(curFrame); else { cur.running = false; c.clearRect(0, 0, innerWidth, innerHeight); }
-  }
 
-  /* ---------------------------------------------------------------- dialogs */
-  Z.modal = function (o) {
-    var prev = document.activeElement;
-    var back = h("div", { class: "modal-back", role: "presentation" });
-    var x = h("button", { class: "modal-x", type: "button", "aria-label": "Close" }, icon("close"));
-    var box = h("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-label": o.title || "Dialog", style: o.width ? "width:min(" + o.width + "px,100%)" : null },
-      x, o.title ? h("h2", {}, o.icon ? icon(o.icon) : null, o.title) : null, o.lead ? h("p", { class: "lead", text: o.lead }) : null, o.body);
-    back.appendChild(box);
-    document.body.appendChild(back);
-    var closed = false;
-    function close() {
-      if (closed) return; closed = true;
-      document.removeEventListener("keydown", onKey, true);
-      back.classList.add("out");
-      setTimeout(function () { if (back.parentNode) back.parentNode.removeChild(back); }, Z.reduced ? 0 : 200);
-      if (prev && prev.focus) try { prev.focus(); } catch (e) { /* ignore */ }
-      if (o.onClose) o.onClose();
+    /** The number of crates waiting, on a small stone plate beside the Zeus Crates button. */
+    /**
+     * How many crates are waiting: a gold coin pinned to the top-right corner of the crates button, like a
+     * notification badge, breathing softly. bx/by is the button's top-right corner, h its height.
+     */
+    static void crateCount(GuiGraphics g, int bx, int by, int h, int n, float ease, float t) {
+        String s = n > 99 ? "99+" : String.valueOf(n);
+        int d = Math.max(12, Math.round(h * 0.62f));
+        int tw = Draw.widthBold(s);
+        int w = Math.max(d, tw + Math.round(d * 0.55f));
+        int x = bx - w / 2 - Math.round(d * 0.15f), y = by - d / 2 + Math.round(d * 0.12f);
+        float pulse = 0.5f + 0.5f * (float) Math.sin(t * 2.4f);
+        int gold = 0xFFF2C14E;
+        Draw.glow(g, x + w / 2 - 1, y + d / 2 - 1, 2, 2, 1, gold, d, (0.18f + 0.14f * pulse) * ease * 3f / d);
+        Draw.shadow(g, x, y + 1, w, d, d / 2, 3, 0.5f * ease);
+        Draw.rrect(g, x, y, w, d, d / 2, Draw.rgba(0xFFFFE08A, ease), Draw.rgba(0xFFC8901E, ease));
+        Draw.rrectLine(g, x, y, w, d, d / 2, Draw.rgba(0xFF6A4A0C, ease));
+        g.fill(x + d / 3, y + 1, x + w - d / 3, y + 2, Draw.rgba(0xFFFFF6D0, 0.8f * ease));
+        float sc = Math.max(1f, Math.round(d / 11f * 2f) / 2f);
+        Draw.boldCenterS(g, s, x + w / 2, y + (d - Math.round(8 * sc)) / 2 + 1, Draw.rgba(0xFF3A2606, ease), sc);
     }
-    function onKey(e) {
-      if (e.key === "Escape") { e.stopPropagation(); close(); }
-      if (e.key === "Tab") {
-        var f = box.querySelectorAll("a[href],button:not([disabled]),input,textarea,select,[tabindex]:not([tabindex='-1'])");
-        if (!f.length) return;
-        var first = f[0], last = f[f.length - 1];
-        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-      }
+
+    /** The splash line beside the logo, tilted and pulsing like vanilla's, in the menu's pale blue. */
+    static void splash(GuiGraphics g, float x, float y, float u, float t) {
+        float appear = clamp01((t - 1.0f) / 0.4f);
+        if (appear <= 0) return;
+        float pulse = 1f + 0.06f * (float) Math.abs(Math.sin(t * 6.0f));
+        float base = Math.max(0.7f, Math.min(1.6f, u * 2.4f));
+        int len = Draw.widthBold(SPLASH);
+        float sc = base * pulse * Math.min(1f, 120f / Math.max(1, len) + 0.35f);
+        g.pose().pushMatrix();
+        g.pose().translate(x, y);
+        g.pose().rotate(-0.35f);
+        g.pose().scale(sc * (0.6f + 0.4f * appear), sc * (0.6f + 0.4f * appear));
+        Draw.boldCenter(g, SPLASH, 1, -3, Draw.rgba(0xFF0A1226, appear));
+        Draw.boldCenter(g, SPLASH, 0, -4, Draw.rgba(0xFFBFD6FF, appear));
+        g.pose().popMatrix();
     }
-    document.addEventListener("keydown", onKey, true);
-    x.addEventListener("click", close);
-    back.addEventListener("mousedown", function (e) { if (e.target === back) close(); });
-    box.addEventListener("click", function (e) { var a = e.target.closest && e.target.closest("a[href]"); if (a && a.getAttribute("href").charAt(0) === "/" && !a.target) close(); });
-    setTimeout(function () { x.focus(); }, 30);
-    return { close: close, box: box };
-  };
 
-  /* ---------------------------------------------------------------- Is it safe? */
-  Z.safe = {
-    open: function () {
-      var S = Z.content.safe || {};
-      var L = Z.site.links;
-      var checks = (S.checks || []).map(function (c, i) {
-        var r = h("div", { class: "safe-row" }, icon(c.icon && document.getElementById("i-" + c.icon) ? c.icon : "check"), h("div", {}, h("b", { text: c.title }), h("span", { text: c.text })));
-        r.style.animationDelay = i * 70 + "ms";
-        return r;
-      });
-      var gh = L.github;
-      var ghBox = h("div", { class: "safe-gh" }, icon("github"),
-        h("div", {}, h("b", { text: "Do not trust the download on this site?" }),
-          h("p", { text: S.github || "You do not have to. The same jar is on the project's GitHub page, and you can build it yourself from the source." })),
-        gh ? h("div", { class: "cta", style: "margin:0;gap:10px" },
-          h("a", { class: "btn btn-primary flat", href: gh, target: "_blank", rel: "noopener noreferrer" }, icon("github"), "Open GitHub"),
-          h("a", { class: "btn btn-outline", href: gh.replace(/\/+$/, "") + "/releases", target: "_blank", rel: "noopener noreferrer" }, "Releases"))
-        : h("a", { class: "btn btn-outline", href: "/download#github" }, icon("github"), "GitHub download"));
-      var body = h("div", {}, h("div", { class: "safe-list" }, checks), ghBox,
-        S.risk ? h("p", { class: "safe-risk", text: S.risk }) : null,
-        h("div", { class: "acts" },
-          h("a", { class: "btn btn-outline sm", href: "/source" }, icon("code", "small"), "Read the source"),
-          h("a", { class: "btn btn-outline sm", href: "/download" }, icon("download", "small"), "Download page"),
-          h("button", { class: "btn btn-outline sm", type: "button", onclick: function () { m.close(); if (Z.helper) Z.helper.ask("Is Zeus safe to download?"); } }, icon("chat", "small"), "Ask the helper")));
-      var m = Z.modal({ title: S.title || "Is Zeus safe?", icon: "shield", lead: S.lead, body: body });
-      return m;
-    },
-  };
-
-  /* ---------------------------------------------------------------- banner */
-  Z.renderBanner = function () {
-    var old = $("#siteBanner");
-    if (old) old.remove();
-    var b = Z.content.banner;
-    if (!b || !b.on || !b.text) return;
-    var key = "zeus.banner." + String(b.text).length + String(b.text).charCodeAt(0);
-    if (Z.store(key) === "x" && !(Z.adminActive && Z.adminActive())) return;
-    var kind = /^(warn|ok)$/.test(b.kind) ? b.kind : "info";
-    var el = h("div", { class: "site-banner " + kind, id: "siteBanner", role: "status" }, h("span", { text: b.text }),
-      b.href && /^(https?:\/\/|\/)/.test(b.href) ? h("a", { href: b.href, target: /^https?:/.test(b.href) ? "_blank" : null, rel: "noopener noreferrer", text: b.label || "Learn more" }) : null);
-    var x = h("button", { class: "bx", type: "button", "aria-label": "Dismiss" }, icon("close"));
-    x.addEventListener("click", function () { Z.store(key, "x"); el.remove(); });
-    el.appendChild(x);
-    document.body.insertBefore(el, $("#nav"));
-  };
-
-  /* ---------------------------------------------------------------- footer motion switch */
-  function motionSwitch() {
-    var left = $(".foot-left");
-    if (!left || $("#motionSw")) return;
-    var b = h("button", { class: "mt", id: "motionSw", type: "button", "aria-pressed": "false", title: "Switch animations between Full and Calm" });
-    function paint() {
-      while (b.firstChild) b.removeChild(b.firstChild);
-      b.appendChild(icon(Z.reduced ? "eye" : "spark"));
-      b.appendChild(document.createTextNode("Motion: " + (Z.reduced ? "Calm" : "Full")));
-      b.setAttribute("aria-pressed", Z.reduced ? "true" : "false");
+    /** Small chevrons that slide in either side of a hovered menu button. */
+    static void chevrons(GuiGraphics g, int x, int y, int w, int h, float gl, float u, int colour) {
+        if (gl <= 0.02f) return;
+        int cy = y + h / 2;
+        int size = Math.max(3, Math.round(h * 0.18f));
+        float slide = (1f - gl) * 10f * u;
+        int lx = Math.round(x + w * 0.07f - slide), rx = Math.round(x + w * 0.93f + slide);
+        int col = Draw.rgba(colour, gl);
+        for (int k = 0; k < 2; k++) {
+            int off = k * (size + 2);
+            Draw.line(g, lx + off, cy - size, lx + off + size, cy, 2f, col);
+            Draw.line(g, lx + off + size, cy, lx + off, cy + size, 2f, col);
+            Draw.line(g, rx - off, cy - size, rx - off - size, cy, 2f, col);
+            Draw.line(g, rx - off - size, cy, rx - off, cy + size, 2f, col);
+        }
     }
-    b.addEventListener("click", function () { Z.setMotion(Z.reduced ? "full" : "calm"); paint(); if (!Z.reduced) boltFlash(); });
-    paint();
-    left.appendChild(b);
-  }
 
-  /* ---------------------------------------------------------------- floating helper button */
-  function fabInit() {
-    var fab = $(".hlp-fab");
-    if (!fab || fab.getAttribute("data-v95")) return;
-    fab.setAttribute("data-v95", "1");
-    while (fab.firstChild) fab.removeChild(fab.firstChild);
-    fab.appendChild(h("span", { class: "fab-ic" }, icon("chat")));
-    fab.appendChild(h("span", { text: "Ask the helper" }));
-    var hint = null, seen = false;
-    try { seen = sessionStorage.getItem("zeus.fabhint") === "1"; } catch (e) { /* storage blocked */ }
-    function hide() { if (hint) { hint.classList.remove("on"); var hh = hint; hint = null; setTimeout(function () { if (hh.parentNode) hh.parentNode.removeChild(hh); }, 400); } }
-    function show() {
-      if (seen || hint || fab.classList.contains("hide") || fab.style.display === "none" || Z.reduced) return;
-      seen = true;
-      try { sessionStorage.setItem("zeus.fabhint", "1"); } catch (e) { /* storage blocked */ }
-      var x = h("button", { type: "button", "aria-label": "Dismiss" }, icon("close"));
-      x.addEventListener("click", function (e) { e.stopPropagation(); hide(); });
-      hint = h("div", { class: "fab-hint", role: "status" }, h("span", { class: "dots" }, h("i"), h("i"), h("i")), h("span", { text: "Stuck? I can answer questions about Zeus." }), x);
-      hint.addEventListener("click", function () { hide(); fab.click(); });
-      document.body.appendChild(hint);
-      requestAnimationFrame(function () { requestAnimationFrame(function () { if (hint) hint.classList.add("on"); }); });
-      setTimeout(hide, 9000);
+    /** Now and then a shooting star crosses the sky (not in a storm, not in calm mode). */
+    static void shootingStars(GuiGraphics g, float[] back, float t, float storm) {
+        if (storm > 0.3f) return;
+        float period = 6.5f;
+        int cycle = (int) (t / period);
+        float p = (t - cycle * period) / 0.85f;
+        if (p < 0f || p > 1f) return;
+        float h1 = Lightning.hash(cycle, 91), h2 = Lightning.hash(cycle, 92), h3 = Lightning.hash(cycle, 93);
+        if (h3 < 0.25f) return;                       // some cycles stay empty
+        float cs = back[0];
+        float sx = back[1] + (300f + h1 * 800f) * cs, sy = back[2] + (20f + h2 * 140f) * cs;
+        float len = 160f * cs, dx = -0.86f, dy = 0.5f;
+        float head = p * len * 1.6f;
+        float fade = p < 0.15f ? p / 0.15f : 1f - (p - 0.15f) / 0.85f;
+        for (int k = 0; k < 8; k++) {
+            float a0 = head - k * len * 0.07f, a1 = head - (k + 1) * len * 0.07f;
+            if (a1 < 0) break;
+            Draw.line(g, sx + dx * a0, sy + dy * a0, sx + dx * a1, sy + dy * a1, k == 0 ? 2f : 1f,
+                    Draw.rgba(0xFFDCE8FF, fade * (1f - k / 8f) * 0.9f));
+        }
     }
-    fab.addEventListener("click", hide);
-    setTimeout(show, 6500);
-    document.addEventListener("zeus:page", function (e) { if (e.detail && e.detail.page === "help") hide(); });
-  }
 
-  /* ---------------------------------------------------------------- wiring */
-  Z.hooks.page.push(function (page) { setBackground(page); boltFlash(); });
-  Z.hooks.data.push(function () { Z.renderBanner(); });
-  Z.ready.push(function () { curInit(); motionSwitch(); fabInit(); Z.renderBanner(); });
-})();
+    static String splashRaw() {
+        return SPLASH;
+    }
+
+    static String splashText() {
+        return SPLASH.toLowerCase(Locale.ROOT);
+    }
+}

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Renders the Zeus panel intro: a 5 second film that plays when the Zeus panel is opened (the Z key).
+Renders the Zeus panel intro: a 5 second film that plays when the Zeus panel is opened (the Right Shift key).
 
 The scene (nothing from the game is used, only the Zeus logo):
    0.0 - 0.3 s   pure black

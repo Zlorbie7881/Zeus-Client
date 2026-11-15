@@ -1,199 +1,316 @@
-package com.zlorbie788.zeus.render;
+package com.zlorbie788.zeus.mods;
 
-import net.minecraft.client.KeyMapping;
+import com.zlorbie788.zeus.core.Category;
+import com.zlorbie788.zeus.core.Env;
+import com.zlorbie788.zeus.core.Module;
+import com.zlorbie788.zeus.core.Setting;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.Options;
 
-/**
- * The state behind Freecam and Free Look. The game's camera is asked (by the camera mixin) where to stand and which way to
- * look; while this is on, the answer comes from here and not from your player. Your player is not touched: it stands where
- * it was, and the game sends exactly what it would send if you were not pressing any key. Nothing here talks to a server.
- */
-public final class CameraControl {
-    private CameraControl() {}
+public final class Movement {
+    private Movement() {}
 
-    public static final int OFF = 0;
-    public static final int FREECAM = 1;
-    public static final int LOOK = 2;
+    public static final class Flight extends Module {
+        private final Setting.Num speed = add(new Setting.Num("Speed", "Sideways speed. 1x is about creative flight.", 2.0, 0.5, 10.0, 0.5, "x"));
+        private final Setting.Num vertical = add(new Setting.Num("Up and down speed", "How fast jump and sneak move you.", 1.0, 0.2, 5.0, 0.1, "x"));
+        private final Setting.Bool hover = add(new Setting.Bool("Hold position", "Stay in the air when you let go of every key. Off: you slowly sink.", true));
 
-    private static volatile int mode;
-    private static volatile boolean freeze;
-    private static volatile boolean blockClicks;
-    private static Object world;
-    private static double bx, by, bz;
-    private static double x, y, z, px, py, pz;
-    private static float yaw, pitch, pyaw, ppitch;
-    private static volatile boolean cameraHook;
-    private static volatile boolean keyHook;
-    private static volatile boolean turnHook;
-    private static final boolean[] RAW = new boolean[7]; // forward, back, left, right, up, down, sprint
-
-    public static int mode() {
-        return mode;
-    }
-
-    public static boolean overridingPosition() {
-        return mode == FREECAM;
-    }
-
-    public static boolean overridingLook() {
-        return mode != OFF;
-    }
-
-    public static boolean freezing() {
-        return freeze && mode == FREECAM;
-    }
-
-    /** Starts a mode with the camera where your eyes are and looking where you look. */
-    public static void begin(int newMode, double ex, double ey, double ez, float yRot, float xRot, boolean freezeInput, boolean noClicks) {
-        x = px = ex;
-        y = py = ey;
-        z = pz = ez;
-        yaw = pyaw = yRot;
-        pitch = ppitch = xRot;
-        cameraHook = false;
-        keyHook = false;
-        turnHook = false;
-        java.util.Arrays.fill(RAW, false);
-        freeze = freezeInput;
-        blockClicks = noClicks;
-        Minecraft mc = Minecraft.getInstance();
-        world = mc.level;
-        if (mc.player != null) {
-            bx = mc.player.getX();
-            by = mc.player.getY();
-            bz = mc.player.getZ();
+        public Flight() {
+            super("flight", "Flight", "Fly with your movement keys, jump to rise and sneak to sink.", Category.MOVEMENT);
+            airborne();
         }
-        mode = newMode;
+
+        @Override
+        protected void onTick(Minecraft mc) {
+            var p = mc.player;
+            if (p == null || mc.screen != null || p.isPassenger() || p.isFallFlying()) return;
+            double sp = 0.55 * speed.get();
+            double f = (mc.options.keyUp.isDown() ? 1 : 0) - (mc.options.keyDown.isDown() ? 1 : 0);
+            double l = (mc.options.keyLeft.isDown() ? 1 : 0) - (mc.options.keyRight.isDown() ? 1 : 0);
+            double yaw = Math.toRadians(p.getYRot());
+            double dx = -Math.sin(yaw) * f + Math.cos(yaw) * l;
+            double dz = Math.cos(yaw) * f + Math.sin(yaw) * l;
+            double len = Math.sqrt(dx * dx + dz * dz);
+            if (len > 1e-6) {
+                dx = dx / len * sp;
+                dz = dz / len * sp;
+            } else {
+                dx = 0;
+                dz = 0;
+            }
+            double dy = hover.on() ? 0 : -0.04;
+            double vs = 0.42 * vertical.get();
+            if (mc.options.keyJump.isDown()) dy = vs;
+            else if (mc.options.keyShift.isDown()) dy = -vs;
+            p.setDeltaMovement(dx, dy, dz);
+            p.fallDistance = 0;
+        }
+
+        @Override
+        public String info() {
+            return speed.text();
+        }
     }
 
-    /** True while the world the camera was started in is still the world you are in. A new world or a reconnect ends the mode. */
-    public static boolean stillHere() {
-        Minecraft mc = Minecraft.getInstance();
-        if (mode == OFF) return true;
-        if (mc.level == null || mc.level != world) {
-            end();
+    public static final class Speed extends Module {
+        private final Setting.Num factor = add(new Setting.Num("Speed", "How much faster you run than normal.", 2.0, 1.1, 8.0, 0.1, "x"));
+
+        public Speed() {
+            super("speed", "Speed", "Run faster.", Category.MOVEMENT);
+            factor.onChange(this::apply);
+        }
+
+        private void apply() {
+            if (enabled()) Env.attribute("movement_speed", "speed", factor.get() - 1.0, "add_multiplied_total");
+        }
+
+        @Override
+        protected void onEnable() {
+            apply();
+        }
+
+        @Override
+        protected void onDisable() {
+            Env.attributeOff("movement_speed", "speed");
+        }
+
+        @Override
+        protected void cleanSlate() {
+            onDisable();
+        }
+
+        @Override
+        public String info() {
+            return factor.text();
+        }
+    }
+
+    public static final class HighJump extends Module {
+        private final Setting.Num power = add(new Setting.Num("Jump power", "1x is a normal jump. 3x is about a nine block jump.", 2.5, 1.2, 10.0, 0.1, "x"));
+
+        public HighJump() {
+            super("highjump", "High Jump", "Jump much higher.", Category.MOVEMENT);
+            power.onChange(this::apply);
+        }
+
+        private void apply() {
+            if (enabled()) Env.attribute("jump_strength", "jump", power.get() - 1.0, "add_multiplied_total");
+        }
+
+        @Override
+        protected void onEnable() {
+            apply();
+        }
+
+        @Override
+        protected void onDisable() {
+            Env.attributeOff("jump_strength", "jump");
+        }
+
+        @Override
+        protected void cleanSlate() {
+            onDisable();
+        }
+
+        @Override
+        public String info() {
+            return power.text();
+        }
+    }
+
+    public static final class Step extends Module {
+        private final Setting.Num height = add(new Setting.Num("Step height", "How tall a block you can walk up without jumping. Normal is 0.6.", 2.0, 1.0, 8.0, 0.5, " blocks"));
+
+        public Step() {
+            super("step", "Step", "Walk up blocks without jumping.", Category.MOVEMENT);
+            height.onChange(this::apply);
+        }
+
+        private void apply() {
+            if (enabled()) Env.attribute("step_height", "step", height.get() - 0.6, "add_value");
+        }
+
+        @Override
+        protected void onEnable() {
+            apply();
+        }
+
+        @Override
+        protected void onDisable() {
+            Env.attributeOff("step_height", "step");
+        }
+
+        @Override
+        protected void cleanSlate() {
+            onDisable();
+        }
+
+        @Override
+        public String info() {
+            return height.text();
+        }
+    }
+
+    public static final class NoFall extends Module {
+        private static volatile boolean on;
+        private static volatile boolean hookSeen;
+        private static volatile boolean rewriteBroken;
+        private final Setting.Num distance = add(new Setting.Num("From a fall of", "How far you have fallen before the flag is set. Damage starts above 3 blocks.", 2.0, 1.0, 3.0, 0.25, " blocks"));
+        private final Setting.Bool water = add(new Setting.Bool("Skip over water", "Do nothing while you are landing in water (it does not hurt anyway).", true));
+        private static double from = 2.0;
+        private static boolean waterSkip = true;
+        private int ticks;
+
+        public NoFall() {
+            super("nofall", "No Fall", "Fall from any height without damage.", Category.MOVEMENT);
+            distance.onChange(() -> from = distance.get());
+            water.onChange(() -> waterSkip = water.on());
+        }
+
+        public static void ping() {
+            hookSeen = true;
+        }
+
+        public static void rewrite(net.minecraft.network.protocol.game.ServerboundMovePlayerPacket packet) {
+            if (!on || rewriteBroken) return;
+            Minecraft mc = Minecraft.getInstance();
+            var p = mc.player;
+            if (p == null || p.onGround() || p.isFallFlying() || p.getAbilities().flying || p.isInWater() && waterSkip || p.isPassenger()) return;
+            if (p.fallDistance < from) return;
+            try {
+                ((com.zlorbie788.zeus.mixin.MovePacketAccessor) (Object) packet).zeus$onGround(true);
+            } catch (ClassCastException | LinkageError e) {
+                rewriteBroken = true;
+            }
+        }
+
+        @Override
+        protected void onEnable() {
+            on = true;
+            from = distance.get();
+            waterSkip = water.on();
+            hookSeen = false;
+            rewriteBroken = false;
+            ticks = 0;
+        }
+
+        @Override
+        protected void onDisable() {
+            on = false;
+        }
+
+        @Override
+        protected void onTick(Minecraft mc) {
+            var p = mc.player;
+            var net = mc.getConnection();
+            ticks++;
+            if (p == null || net == null || p.onGround() || p.isFallFlying() || p.getAbilities().flying || p.isPassenger()) return;
+            boolean backup = ticks > 40 && (!hookSeen || rewriteBroken);
+            if (backup && p.fallDistance > from && p.getDeltaMovement().y < 0 && !(p.isInWater() && water.on())) {
+                net.send(new net.minecraft.network.protocol.game.ServerboundMovePlayerPacket.StatusOnly(true, p.horizontalCollision));
+                p.fallDistance = 0;
+            }
+        }
+
+        @Override
+        public String info() {
+            return ticks > 40 && (!hookSeen || rewriteBroken) ? "backup" : null;
+        }
+    }
+
+    public static final class AntiHunger extends Module {
+        private static volatile boolean on;
+        private static volatile boolean dropSprint = true;
+        private static volatile boolean flag = true;
+        private final Setting.Bool sprint = add(new Setting.Bool("Do not tell the server about sprinting", "The sprint start and stop messages are not sent, so sprinting costs no hunger.", true));
+        private final Setting.Bool ground = add(new Setting.Bool("Send \"in the air\" while on the ground", "The ground flag of your movement is sent as false while you are not falling. Hunger from walking and jumping drops.", true));
+
+        public AntiHunger() {
+            super("antihunger", "Anti Hunger", "Sprint and jump without losing food.", Category.MOVEMENT);
+            sprint.onChange(() -> dropSprint = sprint.on());
+            ground.onChange(() -> flag = ground.on());
+        }
+
+        @Override
+        protected void onEnable() {
+            on = true;
+            dropSprint = sprint.on();
+            flag = ground.on();
+        }
+
+        @Override
+        protected void onDisable() {
+            on = false;
+        }
+
+        public static boolean drops(Object packet) {
+            if (!on || !dropSprint) return false;
+            if (packet instanceof net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket c) {
+                String a = c.getAction().name();
+                return a.equals("START_SPRINTING") || a.equals("STOP_SPRINTING");
+            }
             return false;
         }
-        return true;
+
+        public static void rewrite(net.minecraft.network.protocol.game.ServerboundMovePlayerPacket packet) {
+            if (!on || !flag) return;
+            Minecraft mc = Minecraft.getInstance();
+            var p = mc.player;
+            if (p == null || p.fallDistance > 0.0 || p.isFallFlying() || p.getAbilities().flying || p.isInWater() || p.isPassenger()) return;
+            if (mc.gameMode != null && mc.gameMode.isDestroying()) return;
+            try {
+                ((com.zlorbie788.zeus.mixin.MovePacketAccessor) (Object) packet).zeus$onGround(false);
+            } catch (ClassCastException | LinkageError ignored) {
+            }
+        }
+
+        @Override
+        public String info() {
+            return null;
+        }
     }
 
-    /** How far your body has been moved since the camera started (a teleport, knockback, a vehicle). */
-    public static double bodyMoved() {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null) return 0;
-        return Math.sqrt(sq(mc.player.getX() - bx) + sq(mc.player.getY() - by) + sq(mc.player.getZ() - bz));
+    public static final class LowGravity extends Module {
+        private final Setting.Num gravity = add(new Setting.Num("Gravity", "How strong gravity is. 1x is normal, 0.1x is almost floating.", 0.3, 0.02, 1.0, 0.02, "x"));
+
+        public LowGravity() {
+            super("lowgravity", "Low Gravity", "Fall slowly and jump far, like on the moon.", Category.MOVEMENT);
+            gravity.onChange(this::apply);
+        }
+
+        private void apply() {
+            if (enabled()) Env.attribute("gravity", "gravity", gravity.get() - 1.0, "add_multiplied_total");
+        }
+
+        @Override
+        protected void onEnable() {
+            apply();
+        }
+
+        @Override
+        protected void onDisable() {
+            Env.attributeOff("gravity", "gravity");
+        }
+
+        @Override
+        protected void cleanSlate() {
+            onDisable();
+        }
+
+        @Override
+        public String info() {
+            return gravity.text();
+        }
     }
 
-    private static double sq(double v) {
-        return v * v;
-    }
+    public static final class AutoSprint extends Module {
+        public AutoSprint() {
+            super("autosprint", "Auto Sprint", "Sprints for you whenever you walk forward.", Category.MOVEMENT);
+        }
 
-    /** Forgets which keys were held, for example when a screen opens, so the camera does not keep flying. */
-    public static void clearKeys() {
-        java.util.Arrays.fill(RAW, false);
-    }
-
-    public static void end() {
-        mode = OFF;
-        freeze = false;
-        blockClicks = false;
-    }
-
-    /** Remembers where the camera was, so a frame between two ticks can be drawn smoothly. */
-    public static void snapshot() {
-        px = x;
-        py = y;
-        pz = z;
-        pyaw = yaw;
-        ppitch = pitch;
-    }
-
-    public static void move(double dx, double dy, double dz) {
-        x += dx;
-        y += dy;
-        z += dz;
-    }
-
-    public static double x() {
-        return x;
-    }
-
-    public static double y() {
-        return y;
-    }
-
-    public static double z() {
-        return z;
-    }
-
-    public static float yaw() {
-        return yaw;
-    }
-
-    public static float pitch() {
-        return pitch;
-    }
-
-    public static double[] eye(float t) {
-        return new double[] {px + (x - px) * t, py + (y - py) * t, pz + (z - pz) * t};
-    }
-
-    /** The mouse turns the camera at once (no smoothing between ticks, so it never lags behind the hand). */
-    public static float yaw(float t) {
-        return yaw;
-    }
-
-    public static float pitch(float t) {
-        return pitch;
-    }
-
-    /** Mouse movement while the camera is detached (the same scale the game uses). */
-    public static void turn(double dYaw, double dPitch) {
-        turnHook = true;
-        yaw += (float) (dYaw * 0.15);
-        pitch = Math.max(-90f, Math.min(90f, pitch + (float) (dPitch * 0.15)));
-    }
-
-    // ------------------------------------------------------------ hooks report in
-
-    public static void sawCamera() {
-        cameraHook = true;
-    }
-
-    public static boolean cameraHooked() {
-        return cameraHook;
-    }
-
-    public static boolean keysHooked() {
-        return keyHook;
-    }
-
-    public static boolean turnHooked() {
-        return turnHook;
-    }
-
-    /** True state of the movement keys while they are held back from the player: forward, back, left, right, up, down, sprint. */
-    public static boolean[] keys() {
-        return RAW;
-    }
-
-    /** Called from the key mixin: the player sees these keys as released while the freecam is on, the camera reads them here. */
-    public static boolean filterDown(KeyMapping k, boolean real) {
-        if (!freezing()) return real;
-        Options o = Minecraft.getInstance().options;
-        // holding attack or use would keep mining or placing from your body while you look elsewhere
-        if (blockClicks && (k == o.keyAttack || k == o.keyUse)) return false;
-        int i = k == o.keyUp ? 0 : k == o.keyDown ? 1 : k == o.keyLeft ? 2 : k == o.keyRight ? 3 : k == o.keyJump ? 4 : k == o.keyShift ? 5 : k == o.keySprint ? 6 : -1;
-        if (i < 0) return real;
-        RAW[i] = real;
-        keyHook = true;
-        return false;
-    }
-
-    public static boolean filterClick(KeyMapping k, boolean real) {
-        if (!real || !blockClicks || !freezing()) return real;
-        Options o = Minecraft.getInstance().options;
-        return !(k == o.keyAttack || k == o.keyUse || k == o.keyPickItem);
+        @Override
+        protected void onTick(Minecraft mc) {
+            if (mc.player == null || mc.screen != null) return;
+            if (mc.options.keyUp.isDown() && !mc.options.keyShift.isDown()) mc.options.keySprint.setDown(true);
+        }
     }
 }

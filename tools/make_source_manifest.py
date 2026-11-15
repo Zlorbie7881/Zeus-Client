@@ -15,7 +15,7 @@ OUT = os.path.join(WEB, "codebundle")
 
 TEXT_EXT = {".java": "Java", ".json": "JSON", ".py": "Python", ".js": "JavaScript", ".css": "CSS", ".html": "HTML", ".md": "Markdown",
             ".gradle": "Gradle", ".properties": "Properties", ".bat": "Batch", ".txt": "Text", ".webmanifest": "JSON", ".mcmeta": "JSON"}
-SKIP_DIRS = {".git", ".gradle", "build", "website", "__pycache__", "node_modules", ".idea", ".vscode", "out", "run"}
+SKIP_DIRS = {".git", ".gradle", "build", "remapped_check", "level2", "website", "__pycache__", "node_modules", ".idea", ".vscode", "out", "run"}
 W = "src/main/resources/assets/zeus/web/"
 # the bundle itself, a copy of README.md, and the generated website data (it is rebuilt from tools/site/*.py)
 SKIP_PATHS = {W + "codebundle", "src/main/resources/README.md"} | {W + n for n in ("features.json", "help.json", "timeline.json", "trouble.json", "presets.json")}

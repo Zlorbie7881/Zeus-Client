@@ -177,6 +177,8 @@ public final class KeybindScreen extends Screen {
     private void refresh() {
         if (!dirty) return;
         dirty = false;
+        version++;
+        labels.clear();
         byKey.clear();
         actions.clear();
         for (Module m : all) if (bound(m)) byKey.computeIfAbsent(m.key.saveString(), x -> new ArrayList<>()).add(m);
@@ -203,6 +205,14 @@ public final class KeybindScreen extends Screen {
     }
 
     private String keyLabel(Module m) {
+        String have = labels.get(m);
+        if (have != null) return have;
+        String l = keyLabelSlow(m);
+        labels.put(m, l);
+        return l;
+    }
+
+    private String keyLabelSlow(Module m) {
         if (!bound(m)) return "";
         Cap c = capFor(InputConstants.getKey(m.key.saveString()));
         if (c != null && !c.label.isEmpty()) return c.label;
@@ -222,8 +232,41 @@ public final class KeybindScreen extends Screen {
                 || m.category.label.toLowerCase(Locale.ROOT).contains(q);
     }
 
+    /** Waiting for the key that should open the Zeus menu. */
+    private boolean listeningMenu;
+    private int[] menuBtn;
+
+    /** The keyboard, waiting straight away for a new Zeus menu key. */
+    public static KeybindScreen forMenuKey(net.minecraft.client.gui.screens.Screen parent) {
+        KeybindScreen s = new KeybindScreen(parent);
+        s.listeningMenu = true;
+        return s;
+    }
+
+    private void setMenuKey(InputConstants.Key key) {
+        ZeusClient.setMenuKey(key);
+        listeningMenu = false;
+        dirty = true;
+        pressAnim = 1f;
+        Zeus.toast("Zeus menu key: " + ZeusClient.menuKeyName(), true);
+    }
+
+    private String lastQ;
+    private int lastFilter = -1;
+    private Cap lastSel;
+    private int lastVersion = -1;
+    private int version;
+    private final java.util.Map<Module, String> labels = new java.util.HashMap<>();
+    private static final java.util.Map<String, String> FIT_S = new java.util.HashMap<>();
+
+    /** The module list, rebuilt only when the search, the filter, the chosen key or a binding changed. */
     private void refilter() {
         String q = search.getValue().trim().toLowerCase(Locale.ROOT);
+        if (q.equals(lastQ) && filter == lastFilter && selected == lastSel && version == lastVersion) return;
+        lastQ = q;
+        lastFilter = filter;
+        lastSel = selected;
+        lastVersion = version;
         shown = new ArrayList<>();
         String sel = selected == null ? null : selected.key.getName();
         for (Module m : all) {
@@ -370,7 +413,7 @@ public final class KeybindScreen extends Screen {
         Draw.textRightS(g, model, kx + kw, mid - Math.round(4 * ms), 0x70B4C0D8, ms);
         // RGB strip along the front edge
         int sy = cy + ch - Math.max(2, pad / 3) - 1;
-        int seg = Math.max(2, Math.round(u * 0.25f));
+        int seg = Math.max(4, (cw - 2 * r) / 48);
         for (int x = cx + r; x < cx + cw - r; x += seg) {
             float f = (x - cx) / (float) cw;
             g.fill(x, sy, Math.min(x + seg, cx + cw - r), sy + 2, Draw.rgba(backlight(f * KB_W, 6.5f), 0.9f));
@@ -381,7 +424,9 @@ public final class KeybindScreen extends Screen {
         List<Module> mods = on(c);
         List<String> act = actionsOn(c);
         boolean sel = c == selected;
-        boolean down = c.key.getType() == InputConstants.Type.KEYSYM && InputConstants.isKeyDown(minecraft.getWindow(), c.key.getValue());
+        // while typing in the search box, the real keys do not light up the board
+        boolean down = !search.isFocused() && c.key.getType() == InputConstants.Type.KEYSYM
+                && InputConstants.isKeyDown(minecraft.getWindow(), c.key.getValue());
         boolean menuKey = ZeusClient.OPEN != null && !ZeusClient.OPEN.isUnbound() && ZeusClient.OPEN.saveString().equals(c.key.getName());
         int travel = Math.max(1, Math.round(u * 0.07f));
         boolean pressed = down || (sel && pressAnim > 0);
@@ -451,6 +496,16 @@ public final class KeybindScreen extends Screen {
     }
 
     private static String fitS(String s, int max, float sc) {
+        String key = max + "|" + sc + "|" + s;
+        String have = FIT_S.get(key);
+        if (have != null) return have;
+        if (FIT_S.size() > 4000) FIT_S.clear();
+        String out = fitSSlow(s, max, sc);
+        FIT_S.put(key, out);
+        return out;
+    }
+
+    private static String fitSSlow(String s, int max, float sc) {
         if (Draw.widthS(s, sc) <= max) return s;
         String e = "..";
         int n = s.length();
@@ -506,8 +561,11 @@ public final class KeybindScreen extends Screen {
         Draw.rrectLine(g, panelX, panelY, panelW, panelH, 6, 0xFF2B4A78);
         int x0 = panelX + 10, y0 = panelY + 8;
         // header
-        clearBtn = doneBtn = null;
-        if (listening != null) {
+        clearBtn = doneBtn = menuBtn = null;
+        if (listeningMenu) {
+            Draw.text(g, Draw.fit("Press the key that should open the Zeus menu, or click it above.", panelW - 30 - Draw.width("Escape cancels")), x0, y0 + 2, GOLD);
+            Draw.textRight(g, "Escape cancels", panelX + panelW - 10, y0 + 2, DIM);
+        } else if (listening != null) {
             Draw.text(g, Draw.fit("Click a key above, or press one, to link " + listening.name + ".", panelW - 30 - Draw.width("Escape cancels")), x0, y0 + 2, BLUE);
             Draw.textRight(g, "Escape cancels", panelX + panelW - 10, y0 + 2, DIM);
         } else if (selected != null) {
@@ -527,7 +585,11 @@ public final class KeybindScreen extends Screen {
             else clearBtn = null;
             button(g, doneBtn, "Done", false, mx, my, BLUE);
         } else {
-            Draw.text(g, Draw.fit("Click any key, or press one on your keyboard. Or pick a module below, then a key.", panelW - 20), x0, y0 + 2, DIM);
+            String ml = "Zeus menu: " + ZeusClient.menuKeyName();
+            int mw = Draw.width(ml) + 16;
+            menuBtn = new int[] {panelX + panelW - 10 - mw, y0 - 3, mw, 15};
+            button(g, menuBtn, ml, false, mx, my, GOLD);
+            Draw.text(g, Draw.fit("Click any key, or press one on your keyboard. Or pick a module below, then a key.", menuBtn[0] - x0 - 10), x0, y0 + 2, DIM);
         }
         // search and filters
         int sy = y0 + 18;
@@ -629,6 +691,17 @@ public final class KeybindScreen extends Screen {
         double x = event.x(), y = event.y();
         int button = event.button();
         Cap c = y < panelY ? capAt(x, y) : null;
+        if (listeningMenu && c != null && button == 0) {
+            if (c.bindable) setMenuKey(c.key);
+            return true;
+        }
+        if (button == 0 && menuBtn != null && in(menuBtn, x, y)) {
+            listeningMenu = true;
+            listening = null;
+            selected = null;
+            search.setFocused(false);
+            return true;
+        }
         if (c != null) {
             search.setFocused(false);
             if (button == 1 && c.bindable) {       // right click a key: unlink everything on it
@@ -690,6 +763,11 @@ public final class KeybindScreen extends Screen {
     @Override
     public boolean keyPressed(KeyEvent event) {
         int key = event.key();
+        if (listeningMenu) {
+            if (key == GLFW.GLFW_KEY_ESCAPE) listeningMenu = false;
+            else setMenuKey(k(key));
+            return true;
+        }
         if (listening != null) {
             if (key == GLFW.GLFW_KEY_ESCAPE) {
                 listening = null;

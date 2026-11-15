@@ -1,23 +1,20 @@
-package com.zlorbie788.zeus.mods;
+package com.zlorbie788.zeus.mixin;
 
-import com.zlorbie788.zeus.core.Setting;
+import com.zlorbie788.zeus.mods.Motion;
+import net.minecraft.client.player.ClientInput;
+import net.minecraft.client.player.KeyboardInput;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/**
- * Base Finder: the same scanner as Suspicious Chunks, tuned to find bases and nothing else. It starts on the strict side
- * (a find needs blocks that no natural structure places, such as chests, hoppers, concrete and redstone parts), shows only
- * finds of at least two chunks, names natural structures and hides them, and can send the big ones to your Discord webhook.
- */
-public final class BaseFinder extends SuspiciousChunks {
-    private final Setting.Num bigSize;
-
-    public BaseFinder() {
-        super("basefinder", "Advanced Base Finder", "Scores player-built bases using storage, redstone, workstations, activity and crop patterns; also lists likely mined geodes separately. Natural structures are filtered.", 2, 1);
-        this.bigSize = addSetting(new Setting.Num("Big base from", "A find this many chunks wide counts as a big base (for the Discord message).", 4, 2, 12, 1, " chunks"));
-    }
-
-    @Override
-    protected void found(net.minecraft.client.Minecraft mc, double x, double z, int chunks, int minY, int maxY, String kind, String structure) {
-        if (chunks < bigSize.i()) return;
-        DiscordWebhook.bigBase(mc, x, z, chunks, minY, maxY, kind);
+@Mixin(KeyboardInput.class)
+public abstract class SnapTapMixin extends ClientInput {
+    @Inject(method = "tick", at = @At("TAIL"), require = 0)
+    private void zeus$snapTap(CallbackInfo ci) {
+        try {
+            this.keyPresses = Motion.SnapTap.filter(this.keyPresses);
+        } catch (RuntimeException ignored) {
+        }
     }
 }

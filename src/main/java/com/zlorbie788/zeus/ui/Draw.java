@@ -52,6 +52,7 @@ public final class Draw {
             g.fill(x, y, x + w, y + h, top);
             return;
         }
+        if (r >= 2 && Shapes.rrect(g, x, y, w, h, r, top, bottom)) return;
         if (top == bottom) {
             g.fill(x, y + r, x + w, y + h - r, top);
             for (int i = 0; i < r; i++) {
@@ -114,6 +115,7 @@ public final class Draw {
         if (w < 2 || h < 2) return;
         r = Math.max(0, Math.min(r, Math.min(w, h) / 2));
         if (cheap) r = Math.min(r, 1);
+        if (r >= 2 && Shapes.outline(g, x, y, w, h, r, color)) return;
         g.fill(x + r, y, x + w - r, y + 1, color);
         g.fill(x + r, y + h - 1, x + w - r, y + h, color);
         g.fill(x, y + r, x + 1, y + h - r, color);
@@ -183,12 +185,41 @@ public final class Draw {
         return glowImg;
     }
 
+    private static final int SHEEN_N = 64;
+    private static Tex.Img sheenImg;
+    private static boolean sheenFailed;
+
+    private static Tex.Img sheenTex() {
+        if (sheenImg != null || sheenFailed) return sheenImg;
+        try {
+            int[] px = new int[SHEEN_N];
+            for (int i = 0; i < SHEEN_N; i++) {
+                float k = 1f - Math.abs((i + 0.5f) / SHEEN_N - 0.5f) * 2f;
+                px[i] = (Math.round(k * k * 255f) << 24) | 0xFFFFFF;
+            }
+            sheenImg = Tex.madeSmooth("zeus_sheen", px, SHEEN_N, 1);
+        } catch (RuntimeException | LinkageError e) {
+            sheenFailed = true;
+        }
+        return sheenImg;
+    }
+
     public static void sheen(GuiGraphics g, int x, int y, int w, int h, int color, float phase) {
         if (cheap || w <= 0 || h <= 0) return;
         int band = Math.max(12, w / 3);
         int travel = w + band * 2;
         float wrapped = ((phase % 1f) + 1f) % 1f;
         int start = x - band + Math.round(wrapped * travel);
+        Tex.Img tex = sheenTex();
+        if (tex != null) {
+            // one stretched strip instead of a fill per pixel column
+            int a0 = Math.max(x, start), a1 = Math.min(x + w, start + band);
+            if (a1 <= a0) return;
+            int s0 = Math.round((a0 - start) * (float) SHEEN_N / band);
+            int s1 = Math.max(s0 + 1, Math.round((a1 - start) * (float) SHEEN_N / band));
+            tex.drawPart(g, a0, y, a1 - a0, h, s0, 0, Math.min(SHEEN_N, s1) - s0, 1, rgba(color, 0.18f));
+            return;
+        }
         for (int i = 0; i < band; i++) {
             int px = start + i;
             if (px < x || px >= x + w) continue;

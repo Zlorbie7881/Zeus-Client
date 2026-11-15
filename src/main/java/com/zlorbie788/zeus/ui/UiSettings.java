@@ -44,6 +44,12 @@ public final class UiSettings {
 
             "Video", "Video once", "Lightning", "Quick", "Off"));
 
+    /** Set once the old Z menu key has been moved to Right Shift, so a later choice of Z is respected. */
+    public static final Setting.Bool MENU_KEY_MOVED = Zeus.UI.add(new Setting.Bool("Menu key moved", "Internal: the old Z menu key was moved to Right Shift once.", false)).showIf(() -> false);
+    public static final Setting.Action MENU_KEY = Zeus.UI.add(new Setting.Action("Zeus menu key",
+            "The key that opens the Zeus menu in a world. Click, then press the key you want. Right Shift by default.",
+            () -> net.minecraft.client.Minecraft.getInstance().setScreen(KeybindScreen.forMenuKey(net.minecraft.client.Minecraft.getInstance().screen)))
+            .primary(() -> com.zlorbie788.zeus.client.ZeusClient.menuKeyName() + "  \u00b7  click to change"));
     public static final Setting.Bool MENU = Zeus.UI.add(new Setting.Bool("Zeus main menu", "Replaces the game's title screen with the Zeus menu. The Classic menu link in the corner turns it off.", true));
 
     public static final Setting.Bool INTRO_SOUND = Zeus.UI.add(new Setting.Bool("Intro film sound", "Plays the sound of the intro films. Switch it off to watch them in silence.", true));
@@ -132,7 +138,7 @@ public final class UiSettings {
 
     }));
 
-    public static final Setting.Action PLAY_PANEL = Zeus.UI.add(new Setting.Action("Play panel intro", "Shows the five second film that plays when you press Z.", () -> {
+    public static final Setting.Action PLAY_PANEL = Zeus.UI.add(new Setting.Action("Play panel intro", "Shows the five second film that plays when you open the Zeus menu.", () -> {
 
         net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
 

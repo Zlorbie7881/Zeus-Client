@@ -1,235 +1,357 @@
 package com.zlorbie788.zeus.mods;
 
-import com.zlorbie788.zeus.core.Build;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.zlorbie788.zeus.core.Category;
 import com.zlorbie788.zeus.core.Module;
 import com.zlorbie788.zeus.core.Setting;
-import com.zlorbie788.zeus.render.Projector;
-import com.zlorbie788.zeus.render.Wire;
-import com.zlorbie788.zeus.ui.Draw;
+import com.zlorbie788.zeus.core.Zeus;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.core.BlockPos;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
-import net.minecraft.world.level.ClipContext;
-import net.minecraft.world.level.LightLayer;
-import net.minecraft.world.phys.HitResult;
-import net.minecraft.world.phys.Vec3;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.net.StandardProtocolFamily;
+import java.net.UnixDomainSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.channels.SocketChannel;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.UUID;
 
-/** Drawn aids: holes, dark spots, flight paths and your own trail. All of it is drawn on your screen only. */
-public final class Overlays {
-    private Overlays() {}
+public final class DiscordPresence extends Module {
+    private static volatile DiscordPresence self;
 
-    // ------------------------------------------------------------------ Hole ESP
+    private final Setting.Text appId = add(new Setting.Text("Application ID", "The number from discord.com/developers (New Application, then General Information). Its name is what people see after \"Playing\".", "", 24));
+    private final Setting.Text details = add(new Setting.Text("First line", "The top line of your card.", "Playing with Zeus", 60));
+    private final Setting.Text state = add(new Setting.Text("Second line", "The line under it. Empty for none.", "", 60));
+    private final Setting.Text image = add(new Setting.Text("Image name", "The name of an image you uploaded under Rich Presence, Art Assets in your Discord application. Empty for no picture.", "zeus", 40));
+    private final Setting.Bool showServer = add(new Setting.Bool("Show the server", "Puts the name of the server you are on in the second line (when it is empty). Off keeps it private.", false));
+    private final Setting.Bool showWorld = add(new Setting.Bool("Show singleplayer / multiplayer", "Says whether you are in a singleplayer world or on a server. Off keeps that private.", true));
+    private volatile String note = "Off.";
+    private final Setting.Info status = addSetting(new Setting.Info("Status", () -> List.of(note)));
 
-    /** Marks one-block holes where a crystal fight is safe to stand. */
-    public static final class HoleEsp extends Module {
-        private final Setting.Num range = add(new Setting.Num("Range", "How far around you it looks.", 10, 4, 20, 1, " blocks"));
-        private final Setting.Bool bedrock = add(new Setting.Bool("Bedrock holes", "Holes with only bedrock around (safest).", true));
-        private final Setting.Bool obsidian = add(new Setting.Bool("Obsidian holes", "Holes with obsidian or a mix.", true));
-        private final Setting.Bool fill = add(new Setting.Bool("Cross", "Draw a cross on the floor of every hole.", true));
-        private final Setting.Choice bedrockColor = add(new Setting.Choice("Bedrock colour", "Colour of holes with only bedrock around.", 5, com.zlorbie788.zeus.render.EspKit.COLOR_NAMES));
-        private final Setting.Choice obsidianColor = add(new Setting.Choice("Obsidian colour", "Colour of holes with obsidian or a mix.", 4, com.zlorbie788.zeus.render.EspKit.COLOR_NAMES));
-        private final Setting.Num width = add(new Setting.Num("Line width", "Thickness of the lines.", 1.2, 0.6, 4.0, 0.2, ""));
-        private final Setting.Num opacity = add(new Setting.Num("Opacity", "How strong the lines are.", 100, 20, 100, 5, " %"));
-        private final List<int[]> holes = new ArrayList<>();
-        private int ticks;
+    private volatile String liveWhere = "In the menus";
+    private volatile String liveServer = "";
+    private volatile long since;
+    private Link link;
 
-        public HoleEsp() {
-            super("holeesp", "Hole ESP", "Marks one-block holes in the ground.", Category.RENDER);
-            light();
+    public DiscordPresence() {
+        super("discordpresence", "Discord Rich Presence", "Shows what you are playing on your Discord profile. Needs the Discord app open and an Application ID.", Category.UTILITY);
+        anywhere();
+        alias("discord", "rpc", "presence", "rich presence");
+        self = this;
+    }
+
+    @Override
+    protected void onEnable() {
+        since = System.currentTimeMillis() / 1000L;
+        if (appId.get().trim().isEmpty()) {
+            note = "Paste your Application ID first.";
+            Zeus.toast("Discord Presence: paste your Application ID first (discord.com/developers)", false);
+            return;
         }
+        Link previous = link;
+        link = new Link(appId.get().trim(), previous);
+        link.start();
+        note = "Connecting to Discord...";
+    }
 
-        @Override
-        protected void onTick(Minecraft mc) {
-            if (mc.level == null || mc.player == null || ++ticks % 10 != 1) return;
-            holes.clear();
-            BlockPos c = mc.player.blockPosition();
-            int r = range.i();
-            for (int x = -r; x <= r; x++) {
-                for (int z = -r; z <= r; z++) {
-                    for (int y = -4; y <= 4; y++) {
-                        BlockPos p = c.offset(x, y, z);
-                        if (!Build.air(p) || !Build.air(p.above())) continue;
-                        int kind = Defense.Hole.kind(p);
-                        if (kind == 0 || (kind == 2 && !bedrock.on()) || (kind == 1 && !obsidian.on())) continue;
-                        holes.add(new int[] {p.getX(), p.getY(), p.getZ(), kind});
-                    }
-                }
-            }
-        }
+    @Override
+    protected void onDisable() {
+        if (link != null) link.stop();
+        link = null;
+        note = "Off.";
+    }
 
-        @Override
-        public String info() {
-            return holes.isEmpty() ? null : Integer.toString(holes.size());
-        }
+    @Override
+    public String info() {
+        return link != null && link.connected ? "live" : null;
+    }
 
-        @Override
-        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
-            if (mc.player == null || holes.isEmpty() || !Projector.prepare(mc, partial, w, h)) return;
-            for (int[] p : holes) {
-                int col = p[3] == 2 ? com.zlorbie788.zeus.render.EspKit.pick(bedrockColor, 0xFF52F28A) : com.zlorbie788.zeus.render.EspKit.pick(obsidianColor, 0xFFFFC857);
-                col = Draw.rgba(col, opacity.f() / 100f);
-                Wire.floor(g, p[0] + 0.06, p[1] + 0.02, p[2] + 0.06, 0.88, width.f(), col);
-                if (fill.on()) {
-                    Wire.line(g, p[0] + 0.06, p[1] + 0.02, p[2] + 0.06, p[0] + 0.94, p[1] + 0.02, p[2] + 0.94, width.f() * 0.85f, Draw.rgba(col, 0.7f), false);
-                    Wire.line(g, p[0] + 0.94, p[1] + 0.02, p[2] + 0.06, p[0] + 0.06, p[1] + 0.02, p[2] + 0.94, width.f() * 0.85f, Draw.rgba(col, 0.7f), false);
-                }
-            }
+    static void pulse(Minecraft mc) {
+        DiscordPresence m = self;
+        if (m == null || !m.enabled()) return;
+        if (mc.level == null) {
+            m.liveWhere = "In the menus";
+            m.liveServer = "";
+        } else if (mc.getCurrentServer() != null) {
+            m.liveWhere = "On a server";
+            m.liveServer = mc.getCurrentServer().name == null ? "" : mc.getCurrentServer().name;
+        } else {
+            m.liveWhere = "In a singleplayer world";
+            m.liveServer = "";
         }
     }
 
-    // ------------------------------------------------------------------ Light overlay
-
-    /** Shows where monsters can spawn. */
-    public static final class LightOverlay extends Module {
-        private final Setting.Num range = add(new Setting.Num("Range", "How far around you it looks.", 12, 4, 24, 1, " blocks"));
-        private final List<int[]> spots = new ArrayList<>();
-        private int ticks;
-
-        public LightOverlay() {
-            super("lightoverlay", "Light Overlay", "Marks floors where monsters can spawn: red anytime, yellow at night.", Category.RENDER);
-            light();
+    private JsonObject card() {
+        JsonObject a = new JsonObject();
+        String d = details.get().trim();
+        if (!d.isEmpty()) a.addProperty("details", d);
+        String s = state.get().trim();
+        if (s.isEmpty()) {
+            if (showServer.on() && !liveServer.isBlank()) s = liveServer;
+            else if (showWorld.on()) s = liveWhere;
         }
-
-        @Override
-        protected void onTick(Minecraft mc) {
-            if (mc.level == null || mc.player == null || ++ticks % 10 != 3) return;
-            spots.clear();
-            BlockPos c = mc.player.blockPosition();
-            int r = range.i();
-            for (int x = -r; x <= r; x++) {
-                for (int z = -r; z <= r; z++) {
-                    for (int y = -5; y <= 5; y++) {
-                        BlockPos p = c.offset(x, y, z);
-                        if (!Build.solid(p.below()) || !Build.air(p) || Build.solid(p) || !Build.air(p.above())) continue;
-                        int block = mc.level.getBrightness(LightLayer.BLOCK, p);
-                        if (block > 0) continue;
-                        int sky = mc.level.getBrightness(LightLayer.SKY, p);
-                        spots.add(new int[] {p.getX(), p.getY(), p.getZ(), sky == 0 ? 0 : 1});
-                    }
-                }
-            }
+        if (!s.isEmpty()) a.addProperty("state", s);
+        JsonObject t = new JsonObject();
+        t.addProperty("start", since);
+        a.add("timestamps", t);
+        String img = image.get().trim();
+        if (!img.isEmpty()) {
+            JsonObject assets = new JsonObject();
+            assets.addProperty("large_image", img);
+            assets.addProperty("large_text", "Zeus");
+            a.add("assets", assets);
         }
-
-        @Override
-        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
-            if (mc.player == null || spots.isEmpty() || !Projector.prepare(mc, partial, w, h)) return;
-            for (int[] p : spots) {
-                int col = p[3] == 0 ? 0xFFFF5A5A : 0xFFFFD24D;
-                double y = p[1] + 0.03;
-                Wire.line(g, p[0] + 0.2, y, p[2] + 0.2, p[0] + 0.8, y, p[2] + 0.8, 1f, col, false);
-                Wire.line(g, p[0] + 0.8, y, p[2] + 0.2, p[0] + 0.2, y, p[2] + 0.8, 1f, col, false);
-            }
-        }
+        return a;
     }
 
-    // ------------------------------------------------------------------ Trajectories
+    private final class Link implements Runnable {
+        private final String id;
+        private final Thread thread;
+        private final Thread previous;
+        private volatile boolean running = true;
+        volatile boolean connected;
+        private Pipe pipe;
+        private String sent = "";
+        private long sentAt;
+        private long retry = 4000;
+        private long readyAt;
 
-    /** Draws where an arrow, pearl or potion you are about to throw will land. */
-    public static final class Trajectories extends Module {
-        private final Setting.Bool landing = add(new Setting.Bool("Landing marker", "A box where it hits.", true));
-        private final Setting.Choice colour = add(new Setting.Choice("Colour", "Colour of the path.", 0, "Blue", "White", "Gold"));
-
-        public Trajectories() {
-            super("trajectories", "Trajectories", "Shows the flight path of bows, pearls, snowballs and potions.", Category.RENDER);
+        Link(String id, Link previous) {
+            this.id = id;
+            this.previous = previous == null ? null : previous.thread;
+            this.thread = new Thread(this, "Zeus-Discord");
+            this.thread.setDaemon(true);
         }
 
-        private static double[] physics(Minecraft mc, ItemStack s) {
-            // {speed, gravity}
-            if (s.is(Items.BOW)) {
-                if (!mc.player.isUsingItem()) return null;
-                float f = mc.player.getTicksUsingItem() / 20f;
-                f = (f * f + f * 2f) / 3f;
-                if (f < 0.1f) return null;
-                return new double[] {Math.min(1f, f) * 3.0, 0.05};
-            }
-            if (s.is(Items.CROSSBOW)) return new double[] {3.15, 0.05};
-            if (s.is(Items.TRIDENT)) return new double[] {2.5, 0.05};
-            if (s.is(Items.ENDER_PEARL) || s.is(Items.SNOWBALL) || s.is(Items.EGG)) return new double[] {1.5, 0.03};
-            if (s.is(Items.EXPERIENCE_BOTTLE)) return new double[] {0.7, 0.07};
-            if (s.is(Items.SPLASH_POTION) || s.is(Items.LINGERING_POTION)) return new double[] {0.5, 0.05};
-            return null;
+        void start() {
+            thread.start();
+        }
+
+        void stop() {
+            running = false;
+            thread.interrupt();
         }
 
         @Override
-        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
-            if (mc.player == null || mc.level == null || !Projector.prepare(mc, partial, w, h)) return;
-            double[] ph = physics(mc, mc.player.getMainHandItem());
-            if (ph == null) ph = physics(mc, mc.player.getOffhandItem());
-            if (ph == null) return;
-            Vec3 look = mc.player.getViewVector(partial);
-            Vec3 pos = mc.player.getEyePosition(partial).add(look.scale(0.3)).add(0, -0.1, 0);
-            Vec3 vel = look.scale(ph[0]);
-            int col = switch (colour.index()) {
-                case 1 -> 0xFFFFFFFF;
-                case 2 -> 0xFFFFD24D;
-                default -> 0xFF5FD4FF;
-            };
-            HitResult end = null;
-            for (int i = 0; i < 200; i++) {
-                Vec3 next = pos.add(vel);
-                HitResult r = mc.level.clip(new ClipContext(pos, next, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, mc.player));
-                boolean hit = r.getType() != HitResult.Type.MISS;
-                Vec3 to = hit ? r.getLocation() : next;
-                float fade = 1f - i / 260f;
-                Wire.line(g, pos.x, pos.y, pos.z, to.x, to.y, to.z, 1.4f, Draw.rgba(col, Math.max(0.35f, fade)), i % 2 == 0);
-                if (hit) {
-                    end = r;
+        public void run() {
+            try {
+                if (previous != null) previous.join(1500);
+            } catch (InterruptedException e) {
+                return;
+            }
+            while (running) {
+                try {
+                    if (pipe == null) {
+                        pipe = open(id);
+                        if (pipe == null) {
+                            note = "Discord is not open (or not reachable). Trying again...";
+                            Thread.sleep(retry);
+                            retry = Math.min(retry * 2, 30000);
+                            continue;
+                        }
+                        retry = 4000;
+                        sent = "";
+                        readyAt = System.currentTimeMillis() + 1200;
+                        connected = true;
+                        note = "Connected to Discord.";
+                    }
+                    pipe.drain();
+                    String now = card().toString();
+                    long t = System.currentTimeMillis();
+                    if (t >= readyAt && (!now.equals(sent) ? t - sentAt > 4000 : t - sentAt > 60000)) {
+                        pipe.send(1, activity(now));
+                        sent = now;
+                        sentAt = t;
+                    }
+                    Thread.sleep(500);
+                } catch (InterruptedException e) {
                     break;
+                } catch (IOException | RuntimeException e) {
+                    connected = false;
+                    note = "Lost Discord (" + e.getClass().getSimpleName() + "). Trying again...";
+                    closePipe();
+                    try {
+                        Thread.sleep(retry);
+                    } catch (InterruptedException ie) {
+                        break;
+                    }
                 }
-                pos = next;
-                vel = new Vec3(vel.x * 0.99, vel.y * 0.99 - ph[1], vel.z * 0.99);
-                if (pos.y < mc.level.getMinY() - 5) break;
             }
-            if (end != null && landing.on()) {
-                Vec3 p = end.getLocation();
-                Wire.box(g, p.x - 0.25, p.y - 0.05, p.z - 0.25, p.x + 0.25, p.y + 0.45, p.z + 0.25, 1.4f, 0xFFFF5A5A, true);
+            if (pipe != null) {
+                try {
+                    pipe.send(1, clear());
+                } catch (IOException | RuntimeException ignored) {
+                }
+            }
+            closePipe();
+            connected = false;
+        }
+
+        private void closePipe() {
+            if (pipe != null) pipe.close();
+            pipe = null;
+        }
+
+        private String activity(String card) {
+            JsonObject args = new JsonObject();
+            args.addProperty("pid", ProcessHandle.current().pid());
+            args.add("activity", JsonParser.parseString(card));
+            JsonObject root = new JsonObject();
+            root.addProperty("cmd", "SET_ACTIVITY");
+            root.add("args", args);
+            root.addProperty("nonce", UUID.randomUUID().toString());
+            return root.toString();
+        }
+
+        private String clear() {
+            JsonObject args = new JsonObject();
+            args.addProperty("pid", ProcessHandle.current().pid());
+            JsonObject root = new JsonObject();
+            root.addProperty("cmd", "SET_ACTIVITY");
+            root.add("args", args);
+            root.addProperty("nonce", UUID.randomUUID().toString());
+            return root.toString();
+        }
+    }
+
+    private interface Pipe {
+        void write(byte[] data) throws IOException;
+
+        void drain() throws IOException;
+
+        void close();
+
+        default void send(int opcode, String json) throws IOException {
+            byte[] body = json.getBytes(StandardCharsets.UTF_8);
+            ByteBuffer b = ByteBuffer.allocate(8 + body.length).order(ByteOrder.LITTLE_ENDIAN);
+            b.putInt(opcode).putInt(body.length).put(body);
+            write(b.array());
+        }
+    }
+
+    private static Pipe open(String appId) {
+        boolean windows = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
+        for (int i = 0; i < 10; i++) {
+            try {
+                Pipe p;
+                if (windows) {
+                    File f = new File("\\\\?\\pipe\\discord-ipc-" + i);
+                    if (!f.exists()) continue;
+                    p = new WinPipe(new RandomAccessFile(f, "rw"));
+                } else {
+                    p = null;
+                    for (Path dir : socketDirs()) {
+                        Path path = dir.resolve("discord-ipc-" + i);
+                        if (!path.toFile().exists()) continue;
+                        SocketChannel ch = SocketChannel.open(StandardProtocolFamily.UNIX);
+                        try {
+                            ch.connect(UnixDomainSocketAddress.of(path));
+                        } catch (IOException e) {
+                            ch.close();
+                            continue;
+                        }
+                        ch.configureBlocking(false);
+                        p = new UnixPipe(ch);
+                        break;
+                    }
+                    if (p == null) continue;
+                }
+                JsonObject hello = new JsonObject();
+                hello.addProperty("v", 1);
+                hello.addProperty("client_id", appId);
+                p.send(0, hello.toString());
+                return p;
+            } catch (IOException | RuntimeException ignored) {
+            }
+        }
+        return null;
+    }
+
+    private static List<Path> socketDirs() {
+        List<Path> out = new ArrayList<>();
+        for (String key : new String[] {"XDG_RUNTIME_DIR", "TMPDIR", "TMP", "TEMP"}) {
+            String v = System.getenv(key);
+            if (v == null || v.isBlank()) continue;
+            Path base = Path.of(v);
+            out.add(base);
+            out.add(base.resolve("app/com.discordapp.Discord"));
+            out.add(base.resolve("snap.discord"));
+        }
+        out.add(Path.of("/tmp"));
+        return out;
+    }
+
+    private static final class WinPipe implements Pipe {
+        private final RandomAccessFile file;
+
+        WinPipe(RandomAccessFile file) {
+            this.file = file;
+        }
+
+        @Override
+        public synchronized void write(byte[] data) throws IOException {
+            file.write(data);
+        }
+
+        @Override
+        public synchronized void drain() throws IOException {
+            while (file.length() >= 8) {
+                byte[] head = new byte[8];
+                file.readFully(head);
+                int len = ByteBuffer.wrap(head, 4, 4).order(ByteOrder.LITTLE_ENDIAN).getInt();
+                if (len < 0 || len > 1 << 20) throw new IOException("bad frame");
+                file.readFully(new byte[len]);
+            }
+        }
+
+        @Override
+        public void close() {
+            try {
+                file.close();
+            } catch (IOException ignored) {
             }
         }
     }
 
-    // ------------------------------------------------------------------ Breadcrumbs
+    private static final class UnixPipe implements Pipe {
+        private final SocketChannel ch;
+        private final ByteBuffer scratch = ByteBuffer.allocate(8192);
 
-    /** A line behind you showing where you have been. */
-    public static final class Breadcrumbs extends Module {
-        private final Setting.Num length = add(new Setting.Num("Length", "How many points of the path are kept.", 200, 20, 1000, 20, ""));
-        private final List<double[]> trail = new ArrayList<>();
-        private int ticks;
-
-        public Breadcrumbs() {
-            super("breadcrumbs", "Breadcrumbs", "Draws a line along the way you walked.", Category.RENDER);
+        UnixPipe(SocketChannel ch) {
+            this.ch = ch;
         }
 
         @Override
-        protected void onEnable() {
-            trail.clear();
+        public synchronized void write(byte[] data) throws IOException {
+            ByteBuffer b = ByteBuffer.wrap(data);
+            int spins = 0;
+            while (b.hasRemaining()) {
+                if (ch.write(b) == 0 && ++spins > 2000) throw new IOException("write stalled");
+            }
         }
 
         @Override
-        protected void onTick(Minecraft mc) {
-            if (mc.player == null || ++ticks % 3 != 0) return;
-            double[] last = trail.isEmpty() ? null : trail.get(trail.size() - 1);
-            double x = mc.player.getX();
-            double y = mc.player.getY() + 0.1;
-            double z = mc.player.getZ();
-            if (last != null && Math.abs(last[0] - x) + Math.abs(last[1] - y) + Math.abs(last[2] - z) < 0.3) return;
-            trail.add(new double[] {x, y, z});
-            while (trail.size() > length.i()) trail.remove(0);
+        public synchronized void drain() throws IOException {
+            while (true) {
+                scratch.clear();
+                int n = ch.read(scratch);
+                if (n < 0) throw new IOException("closed");
+                if (n == 0) return;
+            }
         }
 
         @Override
-        protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
-            if (trail.size() < 2 || !Projector.prepare(mc, partial, w, h)) return;
-            for (int i = 1; i < trail.size(); i++) {
-                double[] a = trail.get(i - 1);
-                double[] b = trail.get(i);
-                float t = i / (float) trail.size();
-                Wire.line(g, a[0], a[1], a[2], b[0], b[1], b[2], 1.3f, Draw.rgba(Draw.mix(0xFF2E6BFF, 0xFFBFE6FF, t), 0.25f + 0.7f * t), false);
+        public void close() {
+            try {
+                ch.close();
+            } catch (IOException ignored) {
             }
         }
     }

@@ -1,134 +1,119 @@
-# More FAQ entries for the Zeus Helper (0.9.3.0). Format: (question, answer, search keywords, [(link label, href)]).
-# Facts here must match the client: if a module or setting changes, change the entry too.
-H = [("Help centre", "/help")]
-F = [("Features", "/features")]
-D = [("Download", "/download")]
-C = [("Credits", "/credits")]
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#040811">
+<meta name="description" content="Zeus Client is a Fabric cheat client for Minecraft 1.21.11 with combat, movement, ESP and base-finding modules.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Zeus Client">
+<meta property="og:title" content="Zeus Client - a cheat client for Minecraft 1.21.11">
+<meta property="og:description" content="Combat, movement, ESP, base finding and a full in-game control center for Minecraft 1.21.11 on Fabric.">
+<meta property="og:image" content="/img/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="preload" href="/fonts/Exo2-BlackItalic.woff" as="font" type="font/woff" crossorigin>
+<link rel="preload" href="/fonts/Inter-Regular.woff" as="font" type="font/woff" crossorigin>
+<title>Zeus Client</title>
+<link rel="icon" type="image/png" href="/img/favicon.png">
+<link rel="stylesheet" href="/css/site.css">
+<link rel="stylesheet" href="/css/v95.css">
+<link rel="stylesheet" href="/css/polish.css">
+<link rel="stylesheet" href="/css/atlas.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5M5.5 10v10h5v-6h3v6h5V10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3.5v11M7.5 10.5 12 15l4.5-4.5M4.5 19.5h15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-cube" viewBox="0 0 24 24"><path d="M12 2.8 20.5 7.5v9L12 21.2 3.5 16.5v-9zM3.8 7.7 12 12.3l8.2-4.6M12 12.3v8.7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M6.5 4.5v15l13-7.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-playfill" viewBox="0 0 24 24"><path d="M6 3.8v16.4L20 12z" fill="currentColor"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><path d="M16.5 19.5v-1.3a3.7 3.7 0 0 0-3.7-3.7H8.2a3.7 3.7 0 0 0-3.7 3.7v1.3M10.5 11.2a3.6 3.6 0 1 0 0-7.2 3.6 3.6 0 0 0 0 7.2M20.5 19.5v-1.3a3.7 3.7 0 0 0-2.7-3.5M15.3 4.2a3.6 3.6 0 0 1 0 6.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 11v5.5M12 7.6v.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13.5 2.5 5 13.5h6l-1.2 8L19 10h-6.2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-puzzle" viewBox="0 0 24 24"><path d="M20 11.5V18a2 2 0 0 1-2 2h-3.6v-1.7a2.3 2.3 0 1 0-4.6 0V20H6a2 2 0 0 1-2-2v-3.7h1.7a2.3 2.3 0 1 0 0-4.6H4V6a2 2 0 0 1 2-2h3.8V3.7a2.3 2.3 0 1 1 4.6 0V4H18a2 2 0 0 1 2 2v3.4h-.6a2.3 2.3 0 1 0 0 4.6z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+    <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3.2a8.8 8.8 0 1 0 0 17.6c1.3 0 2.1-.9 2.1-2 0-.6-.3-1-.6-1.4-.3-.4-.5-.8-.5-1.2 0-1 .8-1.9 1.9-1.9h2.1a3.6 3.6 0 0 0 3.6-3.6C20.6 6.6 16.8 3.2 12 3.2z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="7.6" cy="11" r="1.2" fill="currentColor"/><circle cx="10.2" cy="7.2" r="1.2" fill="currentColor"/><circle cx="15" cy="7.4" r="1.2" fill="currentColor"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 2.8 19.8 5.6v6c0 4.9-3.3 8-7.8 9.6-4.5-1.6-7.8-4.7-7.8-9.6v-6z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="m8.6 12 2.5 2.5 4.4-4.9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M8 4h8v5.5a4 4 0 0 1-8 0zM8 5.5H4.5v1.8A3.7 3.7 0 0 0 8 11M16 5.5h3.5v1.8A3.7 3.7 0 0 1 16 11M12 13.5v4M8.5 20.5h7M10 17.5h4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-gift" viewBox="0 0 24 24"><path d="M3.5 8.5h17v4h-17zM5 12.5v8h14v-8M12 8.5v12M12 8.5C9.8 8.5 8.2 7.5 8.2 6.1S9.3 4 10.6 4C12.4 4 12 7 12 8.5zM12 8.5c2.2 0 3.8-1 3.8-2.4S14.7 4 13.4 4C11.6 4 12 7 12 8.5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+    <symbol id="i-discord" viewBox="0 0 24 24"><path d="M19.3 5.4A16.5 16.5 0 0 0 15.2 4l-.5 1a15 15 0 0 0-5.4 0l-.5-1a16.5 16.5 0 0 0-4.1 1.4C2 9.3 1.3 13.1 1.6 16.9a16.6 16.6 0 0 0 5 2.5l1.1-1.7a10.800 10.800 0 0 1-1.7-.8l.4-.3a11.900 11.900 0 0 0 10.200 0l.4.3c-.5.3-1.100.6-1.700.8l1.100 1.700a16.600 16.600 0 0 0 5-2.500c.4-4.400-.7-8.200-3.100-11.500zM8.700 14.600c-1 0-1.800-.9-1.800-2s.8-2 1.800-2 1.800.9 1.800 2-.8 2-1.800 2zm6.600 0c-1 0-1.800-.9-1.800-2s.8-2 1.800-2 1.800.9 1.800 2-.8 2-1.800 2z" fill="currentColor"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><path d="M4.5 6h15v14h-15zM4.5 10.2h15M8.5 3.5V7M15.5 3.5V7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 13.5h2v2H8zM12 13.5h2v2h-2zM8 17h2v.1H8z" fill="currentColor"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13.500 6.500 19 12l-5.500 5.500" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-youtube" viewBox="0 0 24 24"><path d="M21.600 7.200a2.500 2.500 0 0 0-1.800-1.800C18.200 5 12 5 12 5s-6.200 0-7.800.4A2.500 2.500 0 0 0 2.400 7.200C2 8.800 2 12 2 12s0 3.200.4 4.800a2.500 2.500 0 0 0 1.800 1.800C5.800 19 12 19 12 19s6.200 0 7.800-.4a2.500 2.500 0 0 0 1.800-1.800c.4-1.600.4-4.800.4-4.800s0-3.200-.4-4.800zM10 15V9l5.200 3z" fill="currentColor"/></symbol>
+    <symbol id="i-twitter" viewBox="0 0 24 24"><path d="M22 5.900c-.7.300-1.500.5-2.300.6.800-.5 1.500-1.300 1.800-2.200-.8.500-1.700.8-2.600 1a4 4 0 0 0-6.900 3.700A11.400 11.400 0 0 1 3.800 4.800a4 4 0 0 0 1.200 5.400c-.7 0-1.300-.2-1.800-.5 0 2 1.400 3.700 3.200 4.100-.6.200-1.200.2-1.800.1.500 1.600 2 2.800 3.800 2.800A8.100 8.100 0 0 1 2.500 18a11.400 11.400 0 0 0 6.200 1.800c7.500 0 11.600-6.200 11.600-11.600v-.5c.8-.6 1.500-1.300 2-2z" fill="currentColor"/></symbol>
+    <symbol id="i-dots" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3" fill="currentColor"/><path d="M8 8h3v3H8zM13 13h3v3h-3zM13 8h3v3h-3zM8 13h3v3H8z" fill="#040811"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.500" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.500 4.500" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9M13 4.500v5M7 14.500v5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3.500v8M7 6.700a7.500 7.500 0 1 0 10 0" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.500" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7.500V12l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7.500-4.600-7.500-10A4.200 4.200 0 0 1 12 7.600 4.200 4.200 0 0 1 19.500 10c0 5.400-7.500 10-7.500 10z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8.500 6.500H20M8.500 12H20M8.500 17.500H20M4 6.500h.1M4 12h.1M4 17.500h.1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.500 4.500 4.500L19 7.500" fill="none" stroke="currentColor" stroke-width="2.200" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9.200 9.500a2.900 2.900 0 0 1 5.600.9c0 1.900-2.800 2.300-2.800 4.100M12 17.200v.1" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5.500h16v11H9.500L5.500 20v-3.500H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 10h8M8 13h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M4 12 20 4l-4.500 16-3.500-6.500z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="m12 13.500 4-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 6.500C10.300 5.200 7.800 4.700 4.500 5v13c3.300-.3 5.800.2 7.500 1.500 1.700-1.300 4.200-1.800 7.500-1.500V5c-3.300-.3-5.800.2-7.500 1.500zM12 6.500v13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.500 12a7.500 7.500 0 1 1-2.200-5.300M19.500 4.500v4h-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.500" y="8.500" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M15.500 8.500V6a1.500 1.500 0 0 0-1.500-1.500H6A1.500 1.500 0 0 0 4.500 6v8A1.500 1.500 0 0 0 6 15.500h2.500" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3.500 13.800 10l6.200 2-6.200 2L12 20.500 10.200 14 4 12l6.200-2z" fill="currentColor"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8.2" r="3.8" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4.5 20c.6-4 3.700-6 7.500-6s6.900 2 7.500 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.500" width="14" height="9.500" rx="2.200" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8.200 10.500V8a3.800 3.800 0 0 1 7.600 0v2.500M12 14.200v2.600" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3.500" y="5.500" width="17" height="13" rx="2.200" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m4.500 7.500 7.500 5.700 7.500-5.700" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="m8.500 7-5 5 5 5M15.500 7l5 5-5 5M13.500 5l-3 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.500 6.500a1.800 1.800 0 0 1 1.800-1.800h3.700l2 2.300h7.700a1.800 1.800 0 0 1 1.800 1.800v8.700a1.800 1.800 0 0 1-1.800 1.800H5.300a1.800 1.800 0 0 1-1.800-1.800z" fill="none" stroke="currentColor" stroke-width="1.700" stroke-linejoin="round"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M6.500 3.500h7l4 4v12a1 1 0 0 1-1 1h-10a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1zM13.500 3.500v4h4" fill="none" stroke="currentColor" stroke-width="1.700" stroke-linejoin="round"/></symbol>
+    <symbol id="i-github" viewBox="0 0 24 24"><path d="M12 2.500a9.500 9.500 0 0 0-3 18.500c.5.100.7-.2.700-.5v-1.800c-2.700.6-3.300-1.200-3.300-1.200-.4-1.100-1.100-1.400-1.100-1.400-.9-.6.100-.6.100-.6 1 .1 1.500 1 1.500 1 .9 1.500 2.300 1.100 2.900.8.1-.6.300-1.100.6-1.300-2.100-.3-4.400-1.100-4.400-4.800 0-1.100.4-1.900 1-2.600-.1-.3-.4-1.300.1-2.600 0 0 .8-.3 2.700 1a9.200 9.200 0 0 1 4.900 0c1.900-1.300 2.700-1 2.700-1 .5 1.300.2 2.300.1 2.600.6.700 1 1.500 1 2.600 0 3.700-2.300 4.500-4.400 4.800.4.300.7.900.7 1.800v2.700c0 .3.200.6.700.5A9.500 9.500 0 0 0 12 2.500z" fill="currentColor"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3.800 2.500 5.300 5.700.7-4.200 4 1.100 5.700-5.100-2.800-5.100 2.800 1.100-5.700-4.200-4 5.700-.7z" fill="none" stroke="currentColor" stroke-width="1.700" stroke-linejoin="round"/></symbol>
+    <symbol id="i-starfill" viewBox="0 0 24 24"><path d="m12 3.800 2.500 5.300 5.700.7-4.200 4 1.100 5.700-5.100-2.800-5.100 2.800 1.100-5.700-4.200-4 5.700-.7z" fill="currentColor" stroke="currentColor" stroke-width="1.200" stroke-linejoin="round"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.500 12s3.600-6.500 9.500-6.500S21.500 12 21.500 12s-3.600 6.500-9.500 6.500S2.500 12 2.500 12z" fill="none" stroke="currentColor" stroke-width="1.700" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.700"/></symbol>
+    <symbol id="i-map" viewBox="0 0 24 24"><path d="m3.500 6.500 5.500-2 6 2 5.500-2v13l-5.500 2-6-2-5.500 2zM9 4.500v13M15 6.500v13" fill="none" stroke="currentColor" stroke-width="1.700" stroke-linejoin="round"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9.500 4.500h-4v15h4M14 8l4 4-4 4M18 12H9.500" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.500" y="4.500" width="17" height="15" rx="2.200" fill="none" stroke="currentColor" stroke-width="1.800"/><circle cx="9" cy="10" r="1.600" fill="currentColor"/><path d="m4.500 17 4.800-4.600 3.200 3 2.500-2.200 4.500 3.800" fill="none" stroke="currentColor" stroke-width="1.700" stroke-linejoin="round" stroke-linecap="round"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.700 0l3-3a4 4 0 0 0-5.700-5.700l-1 1M14 10a4 4 0 0 0-5.700 0l-3 3a4 4 0 0 0 5.700 5.700l1-1" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round"/></symbol>
+    <symbol id="i-wand" viewBox="0 0 24 24"><path d="m4.500 19.500 10-10M14.500 5l.7 1.800L17 7.500l-1.800.7-.7 1.800-.7-1.800L12 7.500l1.800-.7zM18.500 11l.5 1.300 1.300.5-1.300.5-.5 1.300-.5-1.300-1.300-.5 1.300-.5z" fill="none" stroke="currentColor" stroke-width="1.700" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  </defs>
+</svg>
 
-FAQ_MORE = [
- # ---------------------------------------------------------------- installing and launchers
- ("How do I install Zeus with Prism Launcher or MultiMC?", "Create an instance for Minecraft 1.21.11, choose Fabric as the loader, then open the instance's Mods tab and add the Fabric API jar and the Zeus jar. Start the instance and press Z in a world.", "prism multimc polymc instance launcher install fabric mods tab add", D),
- ("How do I install Zeus with the official Minecraft launcher?", "Run the Fabric installer for 1.21.11 (it adds a profile to the launcher), put Fabric API and the Zeus jar into .minecraft/mods and start the new Fabric profile, not the plain Release profile.", "official mojang launcher microsoft profile install fabric installer", D),
- ("Can I use the Modrinth App or CurseForge App?", "Yes, as long as the profile is Minecraft 1.21.11 with Fabric. Add Fabric API from their catalogue, then drag the Zeus jar into the profile's mods folder (open it from the profile's menu).", "modrinth curseforge app launcher profile import drag drop", D),
- ("The mods folder does not exist", "Start the Fabric profile once. The launcher creates .minecraft/mods the first time Fabric runs. You can also create the folder yourself, named exactly mods in lower case.", "mods folder missing doesnt exist create where not found", []),
- ("Minecraft says Fabric API is missing", "Zeus needs Fabric API for 1.21.11. Download the 1.21.11 build of Fabric API (not an older one) and put it in the same mods folder as Zeus.", "fabric api missing required dependency error requires crash screen", D),
- ("Minecraft says Zeus needs another version of Minecraft or Java", "Check the profile: it must be Minecraft 1.21.11 on Fabric Loader 0.18 or newer, running on Java 21 or newer. A message about unsupported class file version means your Java is too old.", "requires minecraft version java unsupported class file major version incompatible wrong", []),
- ("Zeus does not appear in the Mods list", "Make sure the jar is the one without -sources in its name, that it sits directly in the mods folder (not in a sub-folder) and that you started the Fabric profile. The log (logs/latest.log) lists every mod that loaded.", "not in mod list missing not loaded jar sources folder nothing happens fabric", []),
- ("I put two Zeus jars in the mods folder", "Remove one. Two versions of the same mod stop the game from starting. Keep the newest jar without -sources in its name.", "duplicate two jars twice conflict version both old new", []),
- ("How much RAM should I give Minecraft with Zeus?", "4 GB is a comfortable amount for most people. Zeus is light, but large scanners and ESPs on a big render distance use more memory. Give it more only if you see out-of-memory errors.", "ram memory allocate gb xmx heap out of memory java settings", []),
- ("The game is stuck on a black screen at start-up", "Wait a minute on the first start, since Fabric prepares itself. If it never moves, remove Zeus and Fabric API one at a time to find the culprit and check logs/latest.log. The intro film can be skipped with any key.", "black screen stuck loading freeze startup hang white screen", []),
- ("How do I skip the intro film?", "Press any key while it plays. To turn it off for good, open Zeus Customs and switch off Intro film at start-up.", "intro film video skip disable startup animation splash", []),
- ("How do I go back to the normal Minecraft main menu?", "Open Zeus Customs, go to the Panel page and switch off Zeus main menu. Your settings and modules stay as they are.", "main menu vanilla title screen normal revert go back disable custom", []),
- ("Do I need to install Zeus on the server?", "No. Zeus is client-side only: the server never has to know about it and nothing needs installing there. It also means a server can only react to what your client does.", "server side install host plugin needed required", []),
- ("Does Zeus work on Mac and Linux?", "Yes. It is a Java mod, so it works on any system that runs Minecraft Java Edition with Java 21. Paths differ: the mods folder is ~/Library/Application Support/minecraft/mods on macOS and ~/.minecraft/mods on Linux.", "mac macos linux windows os platform ubuntu arch apple m1 m2", []),
- ("Will Zeus be updated for newer Minecraft versions?", "Zeus targets 1.21.11 today. Updates are announced on the Discord and on the Information page's timeline.", "future newer version 1.22 26 snapshot update port support next", [("Update timeline", "/information#timeline")]),
- ("Can I use Zeus with Xaero's Minimap, Journeymap, ReplayMod or similar mods?", "Usually yes, since Zeus is a normal Fabric mod. A conflict only happens if two mods change the same piece of the game. If you hit one, report the two mods and your Zeus version on the Discord.", "xaero minimap journeymap replaymod mods compatible compatibility conflict other mods", []),
- ("Does Zeus work with shaders?", "Yes. Zeus draws with the normal game renderer. ESP and overlay modules can look different under some shader packs; if one looks wrong, try the same module with shaders off.", "shaders iris optifine complementary bsl sildurs render overlay esp", []),
- ("Does Zeus work with OptiFine?", "OptiFine is not a Fabric mod. Use Sodium with Iris on Fabric instead; Zeus is built to coexist with them.", "optifine optifabric compatible", []),
- ("Can I put Zeus on a USB stick or another computer?", "Yes. Copy the Zeus jar to the other computer's mods folder. To keep your settings, copy config/zeus.json too.", "move copy transfer another computer pc usb backup", []),
- ("How do I back up my Zeus settings?", "Copy config/zeus.json (settings), config/zeus-waypoints.json (waypoints) and the config/zeus folder (schematics and profiles) somewhere safe.", "backup save export copy settings config restore", []),
- ("How do I share my config with a friend?", "Send them your config/zeus.json and they drop it into their own config folder while the game is closed. A saved profile (Profiles category) is the tidier way to keep a named copy.", "share config friend send export import settings preset", []),
+<header class="nav" id="nav">
+  <div class="nav-inner">
+    <a class="brand" href="/" data-link aria-label="Zeus Client home">
+      <img src="/img/emblem.png" alt="" width="64" height="60">
+      <span class="brand-text"><b>ZEUS</b><i>CLIENT</i></span>
+    </a>
+    <nav class="links" id="links" aria-label="Main"></nav>
+    <a class="btn btn-help" id="helpTop" href="/help" data-link><svg class="i"><use href="#i-help"/></svg><span>Help</span></a>
+    <a class="btn btn-outline discord-btn" id="discordTop" href="#" target="_blank" rel="noopener noreferrer" hidden><svg class="i"><use href="#i-discord"/></svg><span>Join Our Discord</span><svg class="i small"><use href="#i-arrow"/></svg></a>
+  </div>
+</header>
 
- # ---------------------------------------------------------------- using the panel
- ("How do I change the Zeus menu key?", "Open Minecraft's Controls screen, find the Zeus category and rebind Open Zeus. The /zeus command always works as a backup.", "change menu key rebind open key controls z other", []),
- ("How do I search for a module?", "Type in the search box at the top of the panel or press Ctrl+K. It matches names, descriptions and categories, and it copes with small typos.", "search find module ctrl k box filter looking", []),
- ("What are the categories in the panel?", "Combat, Movement, Player, World, Visuals, Base Finding, Tools, Friends, Profiles, HUD & Info and Interface. The Features page of this website lists every module in each.", "categories tabs groups sections rail list panel", F),
- ("How do I change the colour of the panel?", "Open Zeus Customs and change Accent colour. It recolours the panel, the bolt and the module list. A high-contrast option is there too.", "colour color theme accent panel recolor skin customize ui style", []),
- ("How do I make modules turn on automatically?", "Enable Remember enabled modules. Zeus then switches on what was on when you last quit. A single module can also be bound to a key if you prefer to toggle it yourself.", "auto enable startup remember saved on join persist keep", []),
- ("Why did a module switch itself off?", "Three usual reasons: you pressed Panic, the module hit an error (Zeus switches it off instead of crashing, and logs the reason in logs/latest.log), or the module only works in single-player and you joined a server.", "module turned off itself disabled automatically why stops error panic", []),
- ("What does the Status line on a module card mean?", "It explains what the module is doing right now, or why it is idle (for example no target in range, or a game hook it could not find). It is the first place to look when a module seems to do nothing.", "status line text card idle nothing doing why", []),
- ("What are the module ID names used in commands?", "They are the module's name in lower case without spaces, for example killaura or autototem. Type /zeus on and press Tab to see every ID in the chat suggestions.", "module id name command tab complete suggestions on off toggle", []),
- ("Can I use Zeus without opening the panel?", "Yes. Bind your favourite modules to keys, or use /zeus on <module>, /zeus off <module> and /zeus toggle <module> in chat.", "without panel keybind command quick toggle fast shortcut", []),
- ("How do I see which modules are on?", "Switch on the Module List HUD (HUD & Info). It shows the enabled modules, top right by default, and you can move it in the HUD editor.", "list enabled active on modules which hud arraylist", []),
- ("Does Zeus show up in screenshots or recordings?", "Your HUD does. To keep identity-bearing panels out of a stream or screenshot, switch on Streamer Privacy, and use the HUD editor to hide what you do not want to show.", "screenshot record stream obs hide hud visible capture", []),
+<canvas id="fx" aria-hidden="true"></canvas>
+<div class="progress" id="progress" aria-hidden="true"></div>
+<main id="view" tabindex="-1"></main>
 
- # ---------------------------------------------------------------- HUD editor
- ("Which HUD widgets can I move in the HUD editor?", "All the panels in the HUD & Info category (Module List, Info, Armor HUD, Potion HUD, Keystrokes, Target HUD, Radar, Compass, Item Counter, Net Info, Session, Pop Counter, Region Map, Watermark, Staff HUD, Threat Radar), plus the HUD cards of Media Base Finder, Suspicious Chunks, Advanced Base Finder, Tunnel Base Finder, Zeus Sense, Fake Lag Monitor, Friends Panel, Fake Scoreboard, Auction House Tweaks, Sword PvP Coach and Elytra Waypoint.", "hud editor widgets movable list which can move media base finder suspicious chunks base finder cards", [("HUD editor guide", "/help#hud")]),
- ("Can I move the Media Base Finder HUD?", "Yes. Media Base Finder has a movable card. Open /zeus hud, switch the module on and drag the card where you want it. Resize it with the mouse wheel.", "media base finder hud card move drag editor position", [("HUD editor guide", "/help#hud")]),
- ("Can I move the Suspicious Chunks HUD?", "Yes. The Suspicious Chunks radar is a HUD card you can move and scale in /zeus hud. Advanced Base Finder and Tunnel Base Finder have cards as well. The markers drawn on the world itself stay where the base is.", "suspicious chunks hud radar move drag editor advanced base finder tunnel card", [("HUD editor guide", "/help#hud")]),
- ("How do I resize a HUD widget?", "In /zeus hud select the widget and use the mouse wheel, or the Scale slider in the floating panel. R resets the selected widget.", "resize scale bigger smaller zoom widget hud size", []),
- ("How do I hide a HUD widget?", "Switch its module off, or open the List tab in the HUD editor and click the dot next to the widget. Hiding it does not lose its position.", "hide remove widget hud disable off list tab dot", []),
- ("Do my HUD positions save?", "Yes, automatically. They are stored with your settings in config/zeus.json, and each widget remembers its position, scale and colour.", "hud save position remember persist layout stored", []),
- ("How do I reset the HUD layout?", "Select a widget and press R to reset just that one. To reset every widget, delete config/zeus.json while the game is closed (this resets all settings).", "reset hud layout default positions all widgets restore", []),
- ("How do I undo a move in the HUD editor?", "Press U to undo the last move or resize. The floating panel also shows the exact position, so you can correct it by hand.", "undo hud editor mistake revert back move", []),
- ("How do I line widgets up exactly?", "Turn on the grid with G and keep snapping on (S). Widgets snap to the screen edges, the centre lines, the grid and each other, and show guide lines while you drag. Arrow keys nudge by one pixel.", "align line up snap grid guide center centre exact pixel nudge", []),
- ("Why can't I see a widget in the HUD editor?", "Widgets only show while their module is on and has something to draw. Zeus Sense, the Fake Lag Monitor and the Market graph appear only when they have something to show. Turn the module on first.", "widget missing not showing hud editor cant find outline empty", []),
- ("Can I move Freecam or Anti Vanish text?", "No. Those modules show short messages rather than a panel, so there is nothing to place. Everything that is a real panel is in the HUD editor.", "freecam anti vanish message text move hud cant", []),
+<footer class="foot">
+  <div class="foot-inner">
+    <div class="foot-left"><img src="/img/emblem.png" alt="" width="38" height="36"><span id="footText">Zeus Client &copy; 2026. All rights reserved.</span></div>
+    <div class="foot-right" id="footSocial"></div>
+  </div>
+</footer>
 
- # ---------------------------------------------------------------- website and hosting
- ("How do I publish the Zeus website on my own domain?", "Run python3 tools/build_website.py with your download and Discord links. It writes a ready-to-upload website folder with one page per route, a sitemap and headers. Upload it to any static host and point your domain at it. DEPLOY.md inside the folder has the steps.", "publish host domain website deploy upload build_website static cloudflare netlify github pages custom domain", [("Download", "/download")]),
- ("Which hosts can serve the website?", "Any static host: Cloudflare Pages, Netlify, GitHub Pages, Vercel or a normal web server. The site is plain HTML, CSS and JavaScript, with no database and no server code.", "hosting host cloudflare pages netlify vercel github pages nginx apache static server provider", []),
- ("Do I need HTTPS for the website?", "Use it for anything public. Cloudflare Pages, Netlify, Vercel and GitHub Pages give you HTTPS for free. Never ask visitors for passwords on any page.", "https ssl tls certificate secure lets encrypt padlock", []),
- ("How do I set the download link on the website?", "In the hosted build pass --download <url> to tools/build_website.py. For the local website, put it in the Web Dashboard settings in Minecraft.", "set download link url button configure build site", []),
- ("How do I change the Discord link on the website?", "The website uses https://discord.gg/GcbryFXgcR by default. To change it, edit discordUrl in site.json, pass --discord to tools/build_website.py, or change Discord link in the Web Dashboard settings.", "change discord link url invite website configure site json", []),
- ("What is the Zeus Discord link?", "The Zeus Discord invite is https://discord.gg/GcbryFXgcR. It is also in the website header and footer.", "discord link invite url join server community support", []),
- ("How do I add a SHA-256 checksum for the download?", "Run sha256sum on the jar (or Get-FileHash on Windows) and pass the result with --sha256 to tools/build_website.py. The Download page then shows it so people can verify their file.", "sha256 checksum hash verify integrity download file", D),
- ("Does the website work without internet?", "The local copy served by the game does: it loads everything from your own computer. The hosted copy needs the normal internet, of course.", "offline internet connection work without local", []),
- ("Why does the Settings page say it needs Minecraft?", "Settings controls the running game, so it exists only on the copy of the website the game serves on your computer. The public website cannot reach your game, which is how it should be.", "settings page minecraft required only local control center hosted public", []),
- ("The control center shows Disconnected or token invalid", "The token changes when you restart the website module. Copy the new token from the Web Dashboard settings or from the /zeus website message and paste it again.", "disconnected token invalid expired unauthorized 401 403 reconnect control", []),
- ("Can I change the website port?", "Yes. Change Port in the Web Dashboard settings and switch the module off and on again. Use a port above 1024 that nothing else uses.", "port change 8080 address in use busy webdashboard", []),
- ("What do presets on the website do?", "A preset remembers which modules are on and applies it later, for example a mining set and a PvP set. They are stored in your browser and applied through the running game.", "preset presets save load modules set website", []),
- ("Can I search the whole website?", "Yes. Press Ctrl+K anywhere on the site (or click Search in the header) to find pages, modules, settings and help articles.", "search site ctrl k command palette find page quick", []),
-
- # ---------------------------------------------------------------- credits and project
- ("Who came up with the modules and feature ideas?", "Modules and feature ideas come from mitko_pandata.", "mitko pandata ideas modules features suggestions who", C),
- ("Who made the animations?", "The animations are by NikiTheFacter.", "niki nikithefacter animation animations animated who made", C),
- ("What did Zlorbie788 make?", "Zlorbie788 made the overall client: all of the code, the website and the images.", "zlorbie788 george developer code website images who built", C),
- ("What did Zeus use as references?", "The base mod style follows Meteor Client. Zeus also builds on Fabric, reads Litematica schematics, uses the Inter, Exo 2, Cinzel Decorative and GFS Didot typefaces, and has helpers written around how DonutSMP works. The Credits page lists them all.", "references inspiration meteor client credit based on style reference litematica fonts", C),
- ("Is Zeus a copy of Meteor Client?", "No. Meteor Client is credited as the reference for the base mod style, meaning the general shape of a Minecraft cheat client with a module list and settings. Zeus has its own modules, menu, HUD editor, website and scanners.", "meteor copy clone fork same based reference", C),
- ("What licence is Zeus under?", "Parts of Zeus are derived from software under the GPL-3.0 licence, and its notices ship in the NOTICE file inside the jar. Fonts are under the SIL Open Font License.", "licence license gpl copyright notice legal open source terms", C),
- ("Is Zeus open source?", "Zeus builds from source with Gradle, and the licence notices ship in the jar. Parts are GPL-3.0 derived. How and where the source is shared is the developer's call; ask on the Discord.", "open source github repository code available license gpl public", C),
- ("Can I make a YouTube video or stream with Zeus?", "Yes. Keep in mind that showing a cheat client on a server can get you banned from that server, and that Streamer Privacy hides identity-bearing panels. Credit the developer, Zlorbie788.", "youtube video stream twitch content creator showcase review record", []),
- ("Can I redistribute the Zeus jar?", "Please share the website link instead of the file, so everyone gets the current version. Fake or modified copies are a common way to spread malware.", "redistribute share upload mirror reupload repost jar distribute", D),
-
- # ---------------------------------------------------------------- glossary
- ("What is ESP?", "ESP draws a box, outline or label on something so you can see it through walls: players, items, chests, spawners and so on. In Zeus the Visuals and Base Finding categories hold the ESP modules.", "esp what is extrasensory wallhack outline box tracers see through walls glow", F),
- ("What is an aura?", "A module that acts automatically on everything in range. Kill Aura attacks nearby targets, Crystal Aura handles end crystals, Anchor Aura respawn anchors. Their range, delay and target type are in their settings.", "aura meaning what is killaura crystal anchor automatic range", F),
- ("What is Surround?", "A crystal-PvP module that walls you in with obsidian at foot level. Self Trap goes further: walls at foot and head height, and a lid.", "surround obsidian crystal pvp cpvp defense feet box trap meaning", F),
- ("What is a hole in Minecraft PvP?", "A one-block space fully surrounded by bedrock or obsidian, so explosions cannot reach you from the sides. Hole ESP highlights nearby holes and Hole Filler fills them.", "hole bedrock obsidian safe spot cpvp hole esp filler meaning", F),
- ("What is an anticheat?", "A server plugin that watches player movement and actions and flags what is not possible in vanilla. It can cancel actions, set you back, kick or ban. Zeus has no way of hiding from it.", "anticheat anti cheat grim vulcan nocheatplus ncp matrix spartan verus plugin flag detect what", []),
- ("What are rubber-banding and setbacks?", "The server moved you back because a movement was not allowed. In Zeus, lower the speed or turn the movement module off. It means the server does not accept that module there.", "rubberband rubber banding setback teleport back lag back flag", []),
- ("What is a chunk?", "A 16 by 16 column of blocks, the unit the game loads and the unit Zeus scanners score. Only chunks your client has already received can be scanned.", "chunk what is 16x16 loaded render distance unit", []),
- ("What is a stash and what is a base?", "A base is where a player lives and builds; a stash is where they keep loot. Zeus scanners look for the traces both leave: storage, lighting, workstations, farms, tunnels.", "stash base meaning difference hidden storage loot", F),
- ("What is a schematic?", "A saved building (.schem or .litematic file). Zeus can browse them in the Schematic Library and guide placement with the Schematic Builder.", "schematic litematic schem blueprint build file meaning", F),
- ("What is a Discord webhook?", "A private URL that lets a program post into one Discord channel. You make one in the channel's Integrations settings and paste it into the Discord Webhook module. Never share it, anyone with it can post there.", "webhook url discord channel integration create make", []),
- ("What is TPS, ping and FPS?", "FPS is how many frames your computer draws per second. Ping is how long a message to the server takes. TPS is how fast the server itself runs, 20 is normal. Net Info shows your ping and its stability.", "tps ping fps latency lag meaning difference", []),
- ("What is a macro?", "A saved action you trigger with one key. Zeus has Chat Macro modules that send a chat message or command from a key press, and Crystal Macro and Anchor Macro for repeated combat sequences while you hold right click.", "macro keybind chat sequence repeated automation meaning", F),
-
- # ---------------------------------------------------------------- base finding
- ("How do I find a base with Zeus?", "Start with Suspicious Chunks: it scores loaded chunks for signs of building and groups the best into a list and radar. Then confirm with Advanced Base Finder, Storage ESP or Base Clues. Underground, use Tunnel Base Finder and Light Detector.", "find base how stash hunt locate base finding start workflow beginner", [("Base Finding guide", "/help#scanner")]),
- ("What is the difference between Suspicious Chunks and Advanced Base Finder?", "Suspicious Chunks scores every loaded chunk and gives a ranked list and a radar. Advanced Base Finder scores individual bases from clues like storage, redstone, workstations and crops, and lists mined geodes separately. They complement each other.", "difference suspicious chunks advanced base finder compare versus which better", [("Base Finding guide", "/help#scanner")]),
- ("Why does a scanner show nothing?", "Scanners only inspect chunks your game has loaded. Move around, raise your render distance, and lower the minimum score in the module settings. If nothing near you was built, there is nothing to show.", "scanner nothing show empty no results base finder suspicious not working", []),
- ("Why does a scanner mark natural things?", "Naturally generated structures (villages, mineshafts, ancient cities) look built. Zeus subtracts the ones it knows, but a few get through. Raise the minimum score or switch the filter in the module's settings.", "false positive natural structure village mineshaft wrong marks incorrect", []),
- ("How far do the scanners see?", "As far as your client has loaded chunks, which depends on the server's view distance and your render distance. They never see unloaded terrain.", "range distance how far scanner see render distance loaded limit", []),
- ("Does Zeus work against anti-xray?", "No. Zeus uses only what the server has sent to your game. If the server hides blocks, Zeus cannot show them.", "anti xray antixray paper orebfuscator hidden blocks bypass", []),
- ("How do I find underground bases?", "Use Tunnel Base Finder, which looks for build clues plus enclosed tunnel and shaft geometry, and Light Detector for torches and lamps where someone has been. CaveFinder highlights hollow cave networks.", "underground base tunnel cave find mine hidden bunker below", []),
- ("How do I find farms with Zeus?", "Farm ESP finds machines by their redstone parts, Crop ESP shows grown crops, Kelp ESP finds kelp farms and Bee ESP finds hives.", "farm find redstone crop kelp bee machine auto farm esp", []),
- ("How do I find spawners?", "Spawner ESP finds monster spawners and trial spawners within your loaded chunks and can notify your Discord. Trial Chamber ESP finds the chambers themselves.", "spawner find dungeon monster trial esp locate", []),
- ("How do I find a nether portal or stronghold?", "Portal ESP finds nether portals, end portals and end portal frames in the chunks your game has loaded.", "portal nether end stronghold frame find locate", []),
- ("Can Zeus tell me whose base it is?", "No. It can show where something built is. Staff HUD, Friends and Media Base Finder deal with who players are, but no scanner knows an owner.", "owner whose base who owns player name identify", []),
-
- # ---------------------------------------------------------------- combat and movement
- ("How do I set up a crystal PvP kit?", "Switch on Auto Totem and Auto Armor, then Surround for defence and Crystal Aura (or Crystal Macro) for offence. Attribute Swap helps with sword and mace. Test everything in your own world first.", "crystal pvp cpvp setup kit start begin how", [("Combat guide", "/help#combat")]),
- ("How do I get less obvious combat?", "Prefer Smooth Aim Assist or Triggerbot over a full Kill Aura, and keep ranges and delays at realistic numbers. No setting is invisible to a good anticheat.", "legit less obvious subtle closet blatant rage settings combat", [("Combat guide", "/help#combat")]),
- ("Does Zeus have an elytra autopilot?", "Yes. Advanced Elytra Autopilot navigates to coordinates with terrain clearance, obstacle avoidance, a landing approach and optional firework assist, and shows its state on a HUD card. Elytra Boost speeds you up while gliding.", "elytra autopilot fly waypoint boost glide firework", [("Movement guide", "/help#movement")]),
- ("Does Zeus have a mace swap or Attribute Swap?", "Yes. Attribute Swap alternates between a sword and mace (or two slots you choose) and Mace Swap swaps to your mace when you fall towards a target, for the smash hit.", "mace swap attribute swap wind charge smash sword hotbar", []),
- ("Does Zeus have scaffold or bridging?", "Yes. Scaffold places blocks under you as you move. Safe Walk stops you walking off edges. Many servers flag scaffold quickly, so be careful.", "scaffold bridge bridging safewalk place blocks under", [("Movement guide", "/help#movement")]),
- ("Is there a way to fall without damage?", "No Fall removes fall damage. Servers with an anticheat often detect it.", "no fall nofall fall damage safe drop", []),
-
- # ---------------------------------------------------------------- tools and misc
- ("What does the Fake Scoreboard do?", "It draws a copy of the Donut SMP scoreboard on your screen with the numbers you choose (money, shards, kills, deaths, playtime). It is only visual, so it changes nothing on the server. Use Hide Scoreboard to remove the real one.", "fake scoreboard donut money shards kills fake stats screenshot", []),
- ("What is Zeus Sense for?", "It watches your own state and surroundings (low health, hunger, danger near you, spectators) and keeps a short list on a HUD card of what needs attention first.", "zeus sense warnings low health hunger danger attention card", [("HUD editor guide", "/help#hud")]),
- ("What does the Fake Lag Monitor show?", "A rolling ping and jitter monitor on a HUD card, with a display-only latency simulator. It does not intercept or delay real packets.", "fake lag monitor ping packets delay card hud", []),
- ("What is Threat Radar?", "A HUD panel that rates the players around you from their gear, weapon, distance and aim, so you can see who is dangerous at a glance.", "threat radar danger players rate rating gear weapon nearby", []),
- ("What does Pop Counter do?", "It counts totem pops per player and shows who is close to running out of totems.", "pop counter totem pops count player", []),
- ("What does Anti Vanish do?", "It warns you when a vanished player is close, with a message like “NAME is watching you”. Staff HUD does the same on a panel with confidence and reasons.", "anti vanish vanished staff watching spectator invisible warn", []),
- ("What does Chest Memory do?", "It remembers what is in the chests you opened and finds where an item is, so you do not have to walk back and look.", "chest memory remember containers items where storage search", []),
- ("How do I take better screenshots?", "Zoom gets you closer, Freecam flies the camera around while your player stays put, and Streamer Privacy hides identity-bearing panels. After you take a screenshot, Screenshot Tweaks adds Open, Copy to clipboard and Delete buttons to the chat line.", "screenshot zoom freecam capture picture photo f2", []),
- ("How does Auto Eat decide when to eat?", "It eats food for you when you are hungry and golden apples when you are hurt. The thresholds and food choices are in its settings.", "auto eat food hunger threshold when eats golden apple", []),
- ("How do I mine automatically?", "Tunnel Miner clears a one-wide, two-high tunnel in the direction you face, Area Clearer clears an area, Tree Bot harvests nearby logs and Auto Tool picks the right tool. Tunnel Miner and Tree Bot are restricted to single-player worlds.", "mine automatically bot nuker tunnel miner clear area tree auto mining", [("World guide", "/help#world")]),
- ("How do I stop being kicked for AFK?", "Switch on Anti AFK. It swings and turns a little now and then so you are never marked away. A server rule against AFK farming can still apply.", "afk kick idle anti afk timeout away", []),
- ("Can Zeus buy or sell on the auction house?", "Auto Sell and the Auction House Tweaks help list your items and spot bargains, but Zeus buys on its own only if you arm the AH Sniper (inside Auction House Tweaks, off by default, with your rules and limits).", "auction house ah sell buy market hunter auto sell bargain price", []),
- ("How many settings does Zeus have?", "More than fourteen hundred, across about 170 modules. Every setting has a short explanation, and the Features page of this website lists them all.", "how many settings options count total", F),
- ("Where can I read every setting of a module?", "On the Features page click a module to open its details. The helper can also list them: ask “What are the settings of Kill Aura?”.", "settings list all options module details drawer", F),
-]
+<div class="toast-host" id="toasts" aria-live="polite"></div>
+<noscript><div class="wrap" style="padding:40px 0"><h1>Zeus Client</h1><p>A cheat client for Minecraft 1.21.11 on Fabric. This site needs JavaScript to show its pages.</p></div></noscript>
+<script src="/js/app.js"></script>
+<script src="/js/pages.js"></script>
+<script src="/js/helper.js"></script>
+<script src="/js/dash.js"></script>
+<script src="/js/extra.js"></script>
+<script src="/js/source.js"></script>
+<script src="/js/v95.js"></script>
+<script src="/js/config.js"></script>
+<script src="/js/monitor.js"></script>
+<script src="/js/knife3d.js"></script>
+<script src="/js/knives.js"></script>
+<script src="/js/admin.js"></script>
+<script src="/js/atlas.js"></script>
+</body>
+</html>

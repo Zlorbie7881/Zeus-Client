@@ -1,511 +1,457 @@
-/* Zeus Client website 9.5: administration. One account, no email. The sign-in is checked in the browser against a salted PBKDF2-SHA256 hash;
-   neither the name nor the password exists anywhere in the site. Edits are kept as a draft in this browser and exported as overrides.json,
-   which the site applies for every visitor once it is published with the site (tools/build_website.py copies it). */
-(function () {
-  "use strict";
-  var Z = window.Z, h = Z.h, icon = Z.icon, $ = Z.$, clear = Z.clear;
-  var SALT = "de9f3f2db188e1d02efa59184805d8f6", HASH = "88f1f3398844b00d3efde55fce318704b69f5ad033905b61ff10008d9ed65678", ITER = 310000;
-  var SESSION = "zeus.adm.s", DRAFT = "zeus.adm.draft", FAILS = "zeus.adm.f", TTL = 2 * 3600 * 1000;
+package com.zlorbie788.zeus.ui;
 
-  /* ---------------------------------------------------------------- sign-in */
-  function hexBytes(s) { var a = new Uint8Array(s.length / 2); for (var i = 0; i < a.length; i++) a[i] = parseInt(s.substr(i * 2, 2), 16); return a; }
-  function toHex(buf) { var a = new Uint8Array(buf), o = ""; for (var i = 0; i < a.length; i++) o += (a[i] < 16 ? "0" : "") + a[i].toString(16); return o; }
-  function derive(user, pw) {
-    var c = window.crypto && window.crypto.subtle;
-    if (!c || !window.TextEncoder) return Promise.reject(new Error("Sign-in needs a secure connection (https)."));
-    return c.importKey("raw", new TextEncoder().encode(user + "\0" + pw), "PBKDF2", false, ["deriveBits"]).then(function (k) {
-      return c.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: hexBytes(SALT), iterations: ITER }, k, 256);
-    }).then(toHex);
-  }
-  function same(a, b) { if (a.length !== b.length) return false; var d = 0; for (var i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; }
-  function readFails() { try { var f = JSON.parse(localStorage.getItem(FAILS) || "{}"); return { n: +f.n || 0, until: +f.until || 0 }; } catch (e) { return { n: 0, until: 0 }; } }
-  function writeFails(f) { try { localStorage.setItem(FAILS, JSON.stringify(f)); } catch (e) { /* storage blocked */ } }
-  function bad() { return new Error("Wrong email or password."); }
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import net.minecraft.client.gui.GuiGraphics;
 
-  function login(user, pw) {
-    var f = readFails(), now = Date.now();
-    if (f.until > now) return Promise.reject(new Error("Too many attempts. Try again in " + Math.ceil((f.until - now) / 1000) + " seconds."));
-    if (!user || !pw || user.length > 80 || pw.length > 200) return Promise.reject(bad());
-    return derive(user.trim(), pw).then(function (d) {
-      if (!same(d, HASH)) {
-        f.n++;
-        if (f.n >= 5) f.until = Date.now() + Math.min(3600, 30 * Math.pow(2, f.n - 5)) * 1000;
-        writeFails(f);
-        throw bad();
-      }
-      writeFails({ n: 0, until: 0 });
-      try { sessionStorage.setItem(SESSION, String(Date.now() + TTL)); } catch (e) { throw new Error("Your browser blocks session storage, so the sign-in cannot be kept."); }
-      boot();
-    });
-  }
-  function active() {
-    try {
-      var t = +sessionStorage.getItem(SESSION);
-      if (t && t > Date.now()) return true;
-      if (t) sessionStorage.removeItem(SESSION);
-    } catch (e) { /* storage blocked */ }
-    return false;
-  }
-  function touch() { try { sessionStorage.setItem(SESSION, String(Date.now() + TTL)); } catch (e) { /* ignore */ } }
-  function logout() {
-    try { sessionStorage.removeItem(SESSION); } catch (e) { /* ignore */ }
-    location.href = "/";
-  }
+public final class KnifeMesh {
+    private static final float D = 90f;
+    private static final float LX = -0.40f, LY = -0.55f, LZ = -0.73f;
+    private static final int MAX_TRIS = 820;
 
-  /* ---------------------------------------------------------------- draft */
-  var draft = null, orig = {}, faqAll = null, editing = false;
-  function emptyDraft() { return { content: {}, links: {}, banner: null, faq: { hide: [], edit: {}, add: [] }, releases: [], sha256: "" }; }
-  function clone(o) { return JSON.parse(JSON.stringify(o)); }
-  function normalise(d) {
-    var o = emptyDraft();
-    if (!d || typeof d !== "object") return o;
-    if (d.content && typeof d.content === "object") Object.keys(d.content).forEach(function (k) { if (typeof d.content[k] === "string" && d.content[k].length < 6000) o.content[k] = d.content[k]; });
-    if (d.links && typeof d.links === "object") Object.keys(d.links).forEach(function (k) { if (typeof d.links[k] === "string" && (d.links[k] === "" || Z.safeUrl(d.links[k]))) o.links[k] = d.links[k]; });
-    if (d.banner && typeof d.banner === "object") o.banner = { on: !!d.banner.on, kind: /^(warn|ok)$/.test(d.banner.kind) ? d.banner.kind : "info", text: String(d.banner.text || "").slice(0, 300), label: String(d.banner.label || "").slice(0, 40), href: String(d.banner.href || "").slice(0, 300) };
-    if (d.faq && typeof d.faq === "object") {
-      if (Array.isArray(d.faq.hide)) o.faq.hide = d.faq.hide.filter(function (x) { return typeof x === "string"; });
-      if (d.faq.edit && typeof d.faq.edit === "object") Object.keys(d.faq.edit).forEach(function (k) { var e = d.faq.edit[k]; if (e && typeof e === "object") o.faq.edit[k] = { q: String(e.q || ""), a: String(e.a || "") }; });
-      if (Array.isArray(d.faq.add)) o.faq.add = d.faq.add.filter(function (e) { return e && e.q && e.a; }).map(function (e) { return { q: String(e.q), a: String(e.a), cat: String(e.cat || "About Zeus"), keys: String(e.keys || "") }; });
+    private static final String TRI = "textures/gui/anim/tri.png";
+    private static boolean broken;
+    private static Map<String, Model> models;
+    private static boolean tried;
+
+    static final class Mesh {
+        String mat;
+        float[] v;
+        int[] f;
     }
-    if (Array.isArray(d.releases)) o.releases = d.releases.filter(function (r) { return r && r.version && r.title; }).map(function (r) { return { version: String(r.version).slice(0, 20), title: String(r.title).slice(0, 120), text: String(r.text || "").slice(0, 2000), mods: Array.isArray(r.mods) ? r.mods.map(String) : [] }; });
-    if (/^[0-9a-fA-F]{64}$/.test(d.sha256 || "")) o.sha256 = d.sha256.toLowerCase();
-    return o;
-  }
-  function loadDraft() {
-    var d = null;
-    try { d = JSON.parse(localStorage.getItem(DRAFT) || "null"); } catch (e) { d = null; }
-    draft = normalise(d || Z.overrides);
-  }
-  function saveDraft() { try { localStorage.setItem(DRAFT, JSON.stringify(draft)); } catch (e) { Z.toast("Your browser blocked saving the draft.", "bad"); } touch(); }
-  function getPath(o, p) { var parts = p.split("."); for (var i = 0; i < parts.length; i++) { if (o === undefined || o === null) return undefined; o = o[parts[i]]; } return o; }
-  function setContent(key, val) {
-    if (!(key in orig)) { var cur = getPath(Z.content, key); orig[key] = cur === undefined ? "" : cur; }
-    Z.setPath(Z.content, key, val);
-    draft.content[key] = val;
-    saveDraft();
-  }
-  function revertContent(key) {
-    if (key in orig) Z.setPath(Z.content, key, orig[key]);
-    delete draft.content[key];
-    saveDraft();
-  }
-  function changeCount() {
-    return Object.keys(draft.content).length + Object.keys(draft.links).length + (draft.banner ? 1 : 0) + draft.faq.hide.length + Object.keys(draft.faq.edit).length + draft.faq.add.length + draft.releases.length + (draft.sha256 ? 1 : 0);
-  }
 
-  /* apply the draft to the live page (admins only) */
-  function applyDraft() {
-    faqAll = (Z.help.faq || []).slice();
-    var d = clone(draft);
-    var have = {};
-    Z.timeline.forEach(function (r) { have[r.version + "|" + r.title] = 1; });
-    d.releases = d.releases.filter(function (r) { return !have[r.version + "|" + r.title]; });
-    if (!d.banner) delete d.banner;
-    if (!d.sha256) delete d.sha256;
-    var linksOk = {};
-    Object.keys(d.links).forEach(function (k) { if (d.links[k]) linksOk[k] = d.links[k]; });
-    d.links = linksOk;
-    Z.applyOverrides(d);
-  }
-
-  /* ---------------------------------------------------------------- small UI pieces */
-  function field(label, input, hint) {
-    return h("label", { class: "adm-f" }, h("span", { text: label }), input, hint ? h("small", { text: hint }) : null);
-  }
-  function inputText(value, ph) { var i = h("input", { type: "text", maxlength: 600, placeholder: ph || "", autocomplete: "off", spellcheck: "false" }); i.value = value || ""; return i; }
-  function area(value, rows) { var t = h("textarea", { rows: rows || 3, maxlength: 4000, spellcheck: "true" }); t.value = value || ""; return t; }
-  function btn(text, ic, cls, fn) { var b = h("button", { class: "btn sm " + (cls || "btn-outline"), type: "button" }, ic ? icon(ic, "small") : null, text); if (fn) b.addEventListener("click", fn); return b; }
-
-  /* ---------------------------------------------------------------- tabs */
-  var TABS = [["overview", "Overview", "gear"], ["text", "Page text", "file"], ["links", "Links", "link"], ["banner", "Banner", "bolt"], ["faq", "FAQ & helper", "chat"], ["releases", "Releases", "calendar"], ["log", "Helper log", "list"]];
-  var tab = "overview", faqPrefill = null;
-
-  function tabOverview() {
-    var n = changeCount();
-    var file = $("#admImport");
-    return h("div", { class: "adm-sec" },
-      h("div", { class: "adm-stats" },
-        h("div", {}, h("b", { text: String(n) }), h("span", { text: "changes in your draft" })),
-        h("div", {}, h("b", { text: String(draft.faq.add.length) }), h("span", { text: "added questions" })),
-        h("div", {}, h("b", { text: String(draft.releases.length) }), h("span", { text: "added releases" })),
-        h("div", {}, h("b", { text: draft.banner && draft.banner.on ? "On" : "Off" }), h("span", { text: "banner" }))),
-      h("div", { class: "card adm-card" },
-        h("h3", { text: "How publishing works" }),
-        h("p", { class: "muted", text: "Everything you change here is saved as a draft in this browser and you see it on the site straight away. Other visitors see it after you publish: export the draft as overrides.json and put it next to the site's index.html (or save it as tools/site/overrides.json and run the build script again). Nothing else on the site has to change." }),
-        h("div", { class: "acts" },
-          btn("Export overrides.json", "download", "btn-primary flat", exportDraft),
-          btn("Import a file", "folder", "btn-outline", function () { importPick(); }),
-          btn("Edit text on the page", "wand", "btn-outline", function () { setEdit(true); Z.go("/"); }),
-          btn("Discard the draft", "close", "btn-danger", function () {
-            if (!window.confirm("Throw away every unpublished change in this browser?")) return;
-            try { localStorage.removeItem(DRAFT); } catch (e) { /* ignore */ }
-            location.reload();
-          }))),
-      h("div", { class: "card adm-card" },
-        h("h3", { text: "What you can change" }),
-        h("ul", { class: "adm-ul" },
-          h("li", { text: "Page text: the tagline, the about text, the safety dialog, install steps, the tutorial, credits and more." }),
-          h("li", { text: "Links: Discord, download, GitHub, YouTube, X / Twitter, tutorial video and the SHA-256 shown on the Download page." }),
-          h("li", { text: "Banner: a notice across the top of every page." }),
-          h("li", { text: "FAQ: reword, hide or add questions. The helper uses the same entries, so its answers change too." }),
-          h("li", { text: "Releases: add a new entry to the update timeline." }),
-          h("li", { text: "Helper log: the questions visitors asked in this browser that the helper could not answer well." }))),
-      h("div", { class: "card adm-card" },
-        h("h3", { text: "Good to know" }),
-        h("p", { class: "muted", text: "The sign-in check runs in your browser, so it keeps the panel away from casual visitors but it is not server security: anyone could still change the files of a site they host themselves. Do not reuse this password anywhere else. Sign in only on your own device and sign out when you are done; the session also ends by itself after two hours." })));
-  }
-
-  var EXCL = [/^defaults\./, /\.icon$/, /\.page$/, /\.url$/, /^banner\./];
-  var GROUPS = { _general: "General", home: "Home page", strip: "Home highlights", requirements: "Requirements", install: "Install steps", tutorial: "Tutorial", commands: "Commands", credits: "Credits", references: "References", safe: "Is Zeus safe? dialog" };
-  function flat(o, p, out) {
-    if (typeof o === "string") { if (!EXCL.some(function (r) { return r.test(p); })) out.push(p); return; }
-    if (Array.isArray(o)) o.forEach(function (v, i) { flat(v, p ? p + "." + i : String(i), out); });
-    else if (o && typeof o === "object") Object.keys(o).forEach(function (k) { flat(o[k], p ? p + "." + k : k, out); });
-  }
-  function tabText() {
-    var keys = [];
-    flat(Z.content, "", keys);
-    var groups = {};
-    keys.forEach(function (k) {
-      var g = k.indexOf(".") < 0 ? "_general" : k.split(".")[0];
-      (groups[g] = groups[g] || []).push(k);
-    });
-    var order = Object.keys(GROUPS).filter(function (g) { return groups[g]; }).concat(Object.keys(groups).filter(function (g) { return !GROUPS[g]; }));
-    var q = h("input", { type: "search", placeholder: "Search the text…", "aria-label": "Search the text" });
-    var host = h("div", {});
-    function rows() {
-      clear(host);
-      var needle = q.value.trim().toLowerCase();
-      order.forEach(function (g) {
-        var list = groups[g].filter(function (k) { return !needle || k.toLowerCase().indexOf(needle) >= 0 || String(getPath(Z.content, k)).toLowerCase().indexOf(needle) >= 0; });
-        if (!list.length) return;
-        var det = h("details", { class: "adm-grp" }, h("summary", {}, h("b", { text: GROUPS[g] || g }), h("em", { text: list.length + " fields" })));
-        if (needle || g === "_general") det.open = true;
-        list.forEach(function (k) { det.appendChild(textRow(k)); });
-        host.appendChild(det);
-      });
-      if (!host.firstChild) host.appendChild(h("p", { class: "muted", text: "Nothing matches." }));
+    static final class Part {
+        String name;
+        float[] pivot;
+        final List<Mesh> meshes = new ArrayList<>();
     }
-    q.addEventListener("input", Z.debounce(rows, 150));
-    rows();
-    return h("div", { class: "adm-sec" }, h("p", { class: "muted", text: "Type in a field and it changes on the site right away (in your browser). The small key under each field is its place in the page data." }), q, host);
-  }
-  function textRow(key) {
-    var v = String(getPath(Z.content, key) || "");
-    var multi = v.length > 64 || v.indexOf("\n") >= 0;
-    var inp = multi ? area(v, Math.min(7, Math.ceil(v.length / 70) + 1)) : inputText(v);
-    var row = h("div", { class: "adm-row" });
-    var rev = btn("Undo", "refresh", "btn-outline", function () { revertContent(key); inp.value = String(getPath(Z.content, key) || ""); row.classList.remove("chg"); });
-    inp.addEventListener("input", Z.debounce(function () { setContent(key, inp.value); row.classList.add("chg"); }, 300));
-    if (key in draft.content) row.classList.add("chg");
-    row.appendChild(h("label", {}, h("code", { text: key }), inp));
-    row.appendChild(rev);
-    return row;
-  }
 
-  var LINKS = [["discord", "Discord invite"], ["download", "Download link (the jar)"], ["github", "GitHub page"], ["youtube", "YouTube"], ["twitter", "X / Twitter"], ["tutorial", "Tutorial video"]];
-  function tabLinks() {
-    var box = h("div", { class: "adm-sec" }, h("p", { class: "muted", text: "Only https:// links are accepted. Leave a field empty to remove that link from the site." }));
-    var card = h("div", { class: "card adm-card" });
-    LINKS.forEach(function (l) {
-      var i = inputText(draft.links[l[0]] !== undefined ? draft.links[l[0]] : (Z.site.links[l[0]] || ""), "https://…");
-      var note = h("small", { class: "adm-note" });
-      i.addEventListener("input", Z.debounce(function () {
-        var v = i.value.trim();
-        if (v && !Z.safeUrl(v)) { note.textContent = "Not saved: this must start with https://"; return; }
-        note.textContent = "";
-        draft.links[l[0]] = v; Z.site.links[l[0]] = v; saveDraft();
-      }, 350));
-      card.appendChild(h("label", { class: "adm-f" }, h("span", { text: l[1] }), i, note));
-    });
-    var sh = inputText(draft.sha256 || Z.sha256 || "", "64 hexadecimal characters");
-    var shn = h("small", { class: "adm-note" });
-    sh.addEventListener("input", Z.debounce(function () {
-      var v = sh.value.trim().toLowerCase();
-      if (v && !/^[0-9a-f]{64}$/.test(v)) { shn.textContent = "Not saved: a SHA-256 is 64 characters of 0-9 and a-f."; return; }
-      shn.textContent = ""; draft.sha256 = v; Z.sha256 = v; saveDraft();
-    }, 350));
-    card.appendChild(h("label", { class: "adm-f" }, h("span", { text: "SHA-256 of the official jar" }), sh, shn));
-    box.appendChild(card);
-    return box;
-  }
-
-  function tabBanner() {
-    var b = draft.banner || (Z.content.banner && typeof Z.content.banner === "object" ? clone(Z.content.banner) : { on: false, kind: "info", text: "", label: "", href: "" });
-    var on = h("input", { type: "checkbox" }); on.checked = !!b.on;
-    var kind = h("select", {}, [["info", "Info (blue)"], ["warn", "Warning (amber)"], ["ok", "Good news (green)"]].map(function (k) { return h("option", { value: k[0], text: k[1] }); }));
-    kind.value = b.kind || "info";
-    var text = inputText(b.text, "What visitors should know"), label = inputText(b.label, "Button text, e.g. Learn more"), href = inputText(b.href, "https://… or /download");
-    var err = h("small", { class: "adm-note" });
-    function save() {
-      var hv = href.value.trim();
-      if (hv && !/^(https:\/\/|http:\/\/|\/)/.test(hv)) { err.textContent = "The link must start with https:// or /"; return; }
-      err.textContent = "";
-      draft.banner = { on: on.checked, kind: kind.value, text: text.value.trim(), label: label.value.trim(), href: hv };
-      Z.content.banner = clone(draft.banner);
-      saveDraft(); Z.renderBanner();
+    static final class Model {
+        String name;
+        boolean butterfly;
+        final List<Part> parts = new ArrayList<>();
+        final Map<String, Clip> clips = new HashMap<>();
     }
-    [on, kind].forEach(function (e) { e.addEventListener("change", save); });
-    [text, label, href].forEach(function (e) { e.addEventListener("input", Z.debounce(save, 300)); });
-    return h("div", { class: "adm-sec" },
-      h("div", { class: "card adm-card" },
-        h("label", { class: "adm-sw" }, on, h("span", { text: "Show the banner on every page" })),
-        field("Style", kind), field("Message", text), field("Button text (optional)", label), field("Button link (optional)", href), err));
-  }
 
-  function faqList() { return Z.help.faq || []; }
-  function tabFaq() {
-    var cats = (Z.help && Z.help.cats) || ["About Zeus"];
-    var box = h("div", { class: "adm-sec" });
-    var addQ = inputText(faqPrefill || "", "Question, e.g. How do I reset my keybinds?");
-    var addA = area("", 4), addK = inputText("", "Extra search words (optional)");
-    var addC = h("select", {}, cats.map(function (c) { return h("option", { value: c, text: c }); }));
-    var addBtn = btn("Add question", "check", "btn-primary flat", function () {
-      var q = addQ.value.trim(), a = addA.value.trim();
-      if (q.length < 6 || a.length < 6) { Z.toast("Write a question and an answer first.", "bad"); return; }
-      var e = { q: q, a: a, cat: addC.value, keys: addK.value.trim() };
-      draft.faq.add.push(e); saveDraft();
-      Z.help.faq.push({ q: q, a: a, cat: e.cat, keys: e.keys, alts: [], links: [] });
-      if (Z.helper && Z.helper.reset) Z.helper.reset();
-      faqPrefill = null; Z.toast("Question added. Try it in the helper."); draw();
-    });
-    box.appendChild(h("div", { class: "card adm-card" }, h("h3", { text: "Add a question" }), field("Question", addQ), field("Answer", addA), h("div", { class: "adm-two" }, field("Category", addC), field("Search words", addK)), h("div", { class: "acts" }, addBtn)));
-    if (draft.faq.add.length) {
-      var mine = h("div", { class: "card adm-card" }, h("h3", { text: "Questions you added" }));
-      draft.faq.add.forEach(function (e, i) {
-        mine.appendChild(h("div", { class: "adm-mini" }, h("b", { text: e.q }), btn("Remove", "close", "btn-danger", function () {
-          draft.faq.add.splice(i, 1); saveDraft();
-          Z.help.faq = faqList().filter(function (f) { return !(f.q === e.q && f.a === e.a); });
-          if (Z.helper && Z.helper.reset) Z.helper.reset();
-          draw();
-        })));
-      });
-      box.appendChild(mine);
+    static final class Clip {
+        float d;
+        float[] pivot = {0f, 0f, 0f};
+        float[][] rot = new float[0][];
+        float[][] pos = new float[0][];
+        final Map<String, float[][][]> parts = new HashMap<>();
     }
-    var q = h("input", { type: "search", placeholder: "Search the existing questions…", "aria-label": "Search the questions" });
-    var host = h("div", {});
-    function rows() {
-      clear(host);
-      var needle = q.value.trim().toLowerCase();
-      var list = faqList().filter(function (f) { return !needle || (f.q + " " + f.a).toLowerCase().indexOf(needle) >= 0; });
-      list.slice(0, 40).forEach(function (f) {
-        var qi = inputText(f.q), ai = area(f.a, 4);
-        var det = h("details", { class: "adm-grp" }, h("summary", {}, h("b", { text: f.q }), h("em", { text: f.cat || "" })));
-        var save = btn("Save change", "check", "btn-primary flat", function () {
-          var nq = qi.value.trim(), na = ai.value.trim();
-          if (nq.length < 4 || na.length < 4) { Z.toast("The question and the answer cannot be empty.", "bad"); return; }
-          var o = f.orig || f.q;
-          draft.faq.edit[o] = { q: nq, a: na }; saveDraft();
-          f.orig = o; f.q = nq; f.a = na; f.alts = [];
-          if (Z.helper && Z.helper.reset) Z.helper.reset();
-          Z.toast("Saved. The helper uses the new answer.");
-        });
-        var hide = btn("Hide this question", "eye", "btn-danger", function () {
-          var o = f.orig || f.q;
-          if (draft.faq.hide.indexOf(o) < 0) draft.faq.hide.push(o);
-          saveDraft();
-          Z.help.faq = faqList().filter(function (x) { return x !== f; });
-          if (Z.helper && Z.helper.reset) Z.helper.reset();
-          draw();
-        });
-        det.appendChild(h("div", { class: "adm-det" }, field("Question", qi), field("Answer", ai), h("div", { class: "acts" }, save, hide)));
-        host.appendChild(det);
-      });
-      if (list.length > 40) host.appendChild(h("p", { class: "muted", text: "Showing 40 of " + list.length + ". Search to narrow it down." }));
-      if (!list.length) host.appendChild(h("p", { class: "muted", text: "Nothing matches." }));
+
+    private static float[][] rows(JsonElement e) {
+        if (e == null || !e.isJsonArray()) return new float[0][];
+        JsonArray a = e.getAsJsonArray();
+        float[][] out = new float[a.size()][4];
+        for (int i = 0; i < out.length; i++) {
+            JsonArray r = a.get(i).getAsJsonArray();
+            for (int j = 0; j < 4; j++) out[i][j] = r.get(j).getAsFloat();
+        }
+        return out;
     }
-    q.addEventListener("input", Z.debounce(rows, 150));
-    rows();
-    box.appendChild(h("div", { class: "card adm-card" }, h("h3", { text: "Existing questions" }), q, host));
-    if (draft.faq.hide.length) {
-      var hid = h("div", { class: "card adm-card" }, h("h3", { text: "Hidden questions" }));
-      draft.faq.hide.forEach(function (o) {
-        hid.appendChild(h("div", { class: "adm-mini" }, h("b", { text: o }), btn("Show again", "refresh", "btn-outline", function () {
-          draft.faq.hide = draft.faq.hide.filter(function (x) { return x !== o; }); saveDraft();
-          (faqAll || []).forEach(function (f) { if ((f.orig || f.q) === o && faqList().indexOf(f) < 0) Z.help.faq.push(f); });
-          if (Z.helper && Z.helper.reset) Z.helper.reset();
-          draw();
-        })));
-      });
-      box.appendChild(hid);
+
+    private KnifeMesh() {
     }
-    return box;
-  }
 
-  function tabReleases() {
-    var v = inputText("", "e.g. 0.9.5.1"), t = inputText("", "Short title"), x = area("", 4), m = inputText("", "Module ids, comma separated (optional)");
-    var box = h("div", { class: "adm-sec" });
-    box.appendChild(h("div", { class: "card adm-card" }, h("h3", { text: "Add a release to the timeline" }), h("div", { class: "adm-two" }, field("Version", v), field("Title", t)), field("What changed", x), field("Modules it touches", m),
-      h("div", { class: "acts" }, btn("Add release", "check", "btn-primary flat", function () {
-        var ver = v.value.trim(), ti = t.value.trim();
-        if (!/^\d+(\.\d+){1,3}$/.test(ver) || ti.length < 3) { Z.toast("Give a version like 0.9.5.1 and a title.", "bad"); return; }
-        var r = { version: ver, title: ti, text: x.value.trim(), mods: m.value.split(",").map(function (s) { return s.trim(); }).filter(Boolean) };
-        draft.releases.unshift(r); saveDraft();
-        Z.timeline.unshift({ version: r.version, title: r.title, text: r.text, mods: r.mods });
-        Z.toast("Release added to the timeline."); draw();
-      }))));
-    if (draft.releases.length) {
-      var mine = h("div", { class: "card adm-card" }, h("h3", { text: "Releases you added" }));
-      draft.releases.forEach(function (r, i) {
-        mine.appendChild(h("div", { class: "adm-mini" }, h("b", { text: r.version + " – " + r.title }), btn("Remove", "close", "btn-danger", function () {
-          draft.releases.splice(i, 1); saveDraft();
-          Z.timeline = Z.timeline.filter(function (e) { return !(e.version === r.version && e.title === r.title); });
-          draw();
-        })));
-      });
-      box.appendChild(mine);
+    private static synchronized void load() {
+        if (tried) return;
+        tried = true;
+        models = new HashMap<>();
+        java.io.InputStream in = KnifeMesh.class.getResourceAsStream("/assets/zeus/knives/knives_lo.json");
+        if (in == null) {
+            com.zlorbie788.zeus.core.Zeus.LOG.warn("The 3D knife models are missing from the jar; the pixel knives are used");
+            return;
+        }
+        try (Reader r = new InputStreamReader(in, StandardCharsets.UTF_8)) {
+            JsonObject root = JsonParser.parseReader(r).getAsJsonObject();
+            for (JsonElement ke : root.getAsJsonArray("knives")) {
+                JsonObject k = ke.getAsJsonObject();
+                Model m = new Model();
+                m.name = k.get("name").getAsString();
+                m.butterfly = "butterfly".equals(k.get("kind").getAsString());
+                for (JsonElement pe : k.getAsJsonArray("parts")) {
+                    JsonObject po = pe.getAsJsonObject();
+                    Part p = new Part();
+                    p.name = po.get("n").getAsString();
+                    JsonArray pv = po.getAsJsonArray("p");
+                    p.pivot = new float[] {pv.get(0).getAsFloat(), pv.get(1).getAsFloat(), pv.get(2).getAsFloat()};
+                    for (JsonElement me : po.getAsJsonArray("meshes")) {
+                        JsonObject mo = me.getAsJsonObject();
+                        Mesh mesh = new Mesh();
+                        mesh.mat = mo.get("m").getAsString();
+                        JsonArray v = mo.getAsJsonArray("v");
+                        mesh.v = new float[v.size()];
+                        for (int i = 0; i < mesh.v.length; i++) mesh.v[i] = v.get(i).getAsFloat();
+                        JsonArray f = mo.getAsJsonArray("f");
+                        mesh.f = new int[f.size()];
+                        for (int i = 0; i < mesh.f.length; i++) mesh.f[i] = f.get(i).getAsInt();
+                        p.meshes.add(mesh);
+                    }
+                    m.parts.add(p);
+                }
+                JsonObject an = k.has("anims") && k.get("anims").isJsonObject() ? k.getAsJsonObject("anims") : null;
+                if (an != null) {
+                    for (Map.Entry<String, JsonElement> en : an.entrySet()) {
+                        JsonObject co = en.getValue().getAsJsonObject();
+                        Clip c = new Clip();
+                        c.d = co.get("d").getAsFloat();
+                        JsonObject ro = co.getAsJsonObject("root");
+                        c.rot = rows(ro.get("rot"));
+                        c.pos = rows(ro.get("pos"));
+                        if (ro.has("pivot") && ro.get("pivot").isJsonArray()) {
+                            JsonArray pv = ro.getAsJsonArray("pivot");
+                            c.pivot = new float[] {pv.get(0).getAsFloat(), pv.get(1).getAsFloat(), pv.get(2).getAsFloat()};
+                        }
+                        JsonObject po = co.getAsJsonObject("parts");
+                        if (po != null) {
+                            for (Map.Entry<String, JsonElement> pe : po.entrySet()) {
+                                JsonObject o = pe.getValue().getAsJsonObject();
+                                c.parts.put(pe.getKey(), new float[][][] {rows(o.get("rot")), rows(o.get("pos"))});
+                            }
+                        }
+                        m.clips.put(en.getKey(), c);
+                    }
+                }
+                models.put(m.name, m);
+            }
+        } catch (Exception | Error e) {
+            models = new HashMap<>();
+        }
     }
-    return box;
-  }
 
-  function tabLog() {
-    var log = (Z.helperLog && Z.helperLog.read()) || [];
-    var box = h("div", { class: "adm-sec" });
-    var misses = log.filter(function (e) { return e.kind === "miss"; }).length;
-    box.appendChild(h("p", { class: "muted", text: "Questions asked in the helper on this browser. \"miss\" means it had no good answer. Use one as the start of a new FAQ entry. " + log.length + " saved, " + misses + " unanswered." }));
-    var card = h("div", { class: "card adm-card" });
-    log.slice().reverse().slice(0, 80).forEach(function (e) {
-      card.appendChild(h("div", { class: "adm-mini" },
-        h("span", { class: "adm-tag " + (e.kind === "miss" ? "bad" : "") , text: e.kind || "ask" }),
-        h("b", { text: e.q }),
-        btn("Make FAQ", "send", "btn-outline", function () { faqPrefill = e.q; tab = "faq"; draw(); })));
-    });
-    if (!log.length) card.appendChild(h("p", { class: "muted", text: "Nothing yet. Ask the helper something and it shows up here." }));
-    box.appendChild(card);
-    if (log.length) box.appendChild(h("div", { class: "acts" }, btn("Clear the log", "close", "btn-danger", function () { if (Z.helperLog) Z.helperLog.write([]); draw(); })));
-    return box;
-  }
-
-  /* ---------------------------------------------------------------- export / import */
-  function exportDraft() {
-    var d = clone(draft);
-    if (!d.banner) delete d.banner;
-    if (!d.sha256) delete d.sha256;
-    var json = JSON.stringify(d, null, 2) + "\n";
-    var a = h("a", { href: URL.createObjectURL(new Blob([json], { type: "application/json" })), download: "overrides.json" });
-    document.body.appendChild(a); a.click();
-    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
-    Z.toast("overrides.json saved. Publish it next to index.html.");
-  }
-  function importPick() {
-    var f = h("input", { type: "file", accept: ".json,application/json", style: "display:none" });
-    f.addEventListener("change", function () {
-      var file = f.files && f.files[0];
-      if (!file || file.size > 600000) { Z.toast("Choose an overrides.json file under 600 KB.", "bad"); return; }
-      var r = new FileReader();
-      r.onload = function () {
-        try { draft = normalise(JSON.parse(String(r.result))); saveDraft(); Z.toast("Imported. Reloading…"); setTimeout(function () { location.reload(); }, 500); }
-        catch (e) { Z.toast("That file is not valid JSON.", "bad"); }
-      };
-      r.readAsText(file);
-    });
-    document.body.appendChild(f); f.click(); setTimeout(function () { f.remove(); }, 1000);
-  }
-
-  /* ---------------------------------------------------------------- the page */
-  var view = null;
-  function draw() {
-    if (!view) return;
-    clear(view);
-    var tabs = h("div", { class: "adm-tabs", role: "tablist" }, TABS.map(function (t) {
-      var b = h("button", { class: "adm-tab" + (tab === t[0] ? " on" : ""), type: "button", role: "tab", "aria-selected": tab === t[0] ? "true" : "false" }, icon(t[2], "small"), t[1]);
-      b.addEventListener("click", function () { tab = t[0]; draw(); });
-      return b;
-    }));
-    view.appendChild(tabs);
-    var body = tab === "text" ? tabText() : tab === "links" ? tabLinks() : tab === "banner" ? tabBanner() : tab === "faq" ? tabFaq() : tab === "releases" ? tabReleases() : tab === "log" ? tabLog() : tabOverview();
-    view.appendChild(body);
-    Z.reveal && Z.reveal(view);
-  }
-
-  Z.pages.admin = function () {
-    if (!active()) {
-      return h("div", { class: "wrap page" },
-        h("div", { class: "card adm-gate" },
-          h("h1", { class: "sec", text: "Sign in required" }),
-          h("p", { class: "muted", text: "This area is only for the site administrator." }),
-          h("div", { class: "acts" }, h("a", { class: "btn btn-primary flat", href: "/account" }, icon("user", "small"), "Go to sign in"), h("a", { class: "btn btn-outline", href: "/" }, "Back to the home page"))));
+    public static boolean has(String name) {
+        load();
+        if (KnifeUv.has(name)) return true;
+        return !broken && models.containsKey(name) && Tex.sprite(TRI) != null;
     }
-    touch();
-    view = h("div", { class: "adm-body" });
-    var wrap = h("div", { class: "wrap page adm" },
-      h("div", { class: "eyebrow", text: "Administration" }),
-      h("h1", { class: "title", text: "Site administration" }),
-      h("p", { class: "lead", text: "Edit the site, the FAQ and the helper. Changes are a draft until you publish them." }),
-      h("div", { class: "acts" },
-        btn("Export overrides.json", "download", "btn-primary flat", exportDraft),
-        btn("Edit text on the page", "wand", "btn-outline", function () { setEdit(true); Z.go("/"); }),
-        btn("Sign out", "logout", "btn-outline", logout)),
-      view);
-    draw();
-    return wrap;
-  };
 
-  /* ---------------------------------------------------------------- on-page editing and the admin pill */
-  function applyEditable() {
-    var els = document.querySelectorAll("[data-edit]");
-    for (var i = 0; i < els.length; i++) {
-      if (editing) { els[i].setAttribute("contenteditable", "true"); els[i].setAttribute("spellcheck", "true"); }
-      else { els[i].removeAttribute("contenteditable"); els[i].removeAttribute("spellcheck"); }
+    public static boolean hasClip(String name, String clip) {
+        load();
+        Model m = models == null ? null : models.get(name);
+        return !broken && m != null && m.clips.containsKey(clip);
     }
-  }
-  function setEdit(on) {
-    editing = !!on;
-    document.documentElement.classList.toggle("adm-edit", editing);
-    applyEditable();
-    paintPill();
-    if (editing) Z.toast("Edit mode: click any glowing text and type. It saves to your draft.");
-  }
-  document.addEventListener("focusout", function (e) {
-    var el = e.target;
-    if (!editing || !el || !el.getAttribute || !el.getAttribute("data-edit")) return;
-    var key = el.getAttribute("data-edit");
-    var v = el.textContent.replace(/\s+/g, " ").trim();
-    if (v !== String(getPath(Z.content, key) || "")) setContent(key, v);
-  });
-  document.addEventListener("paste", function (e) {
-    var el = e.target;
-    if (!editing || !el || !el.closest || !el.closest("[data-edit]")) return;
-    e.preventDefault();
-    var t = (e.clipboardData && e.clipboardData.getData("text/plain")) || "";
-    document.execCommand("insertText", false, t.replace(/\s+/g, " "));
-  });
-  document.addEventListener("keydown", function (e) {
-    if (editing && e.key === "Enter" && e.target.getAttribute && e.target.getAttribute("data-edit")) { e.preventDefault(); e.target.blur(); }
-  });
 
-  var pill = null;
-  function paintPill() {
-    if (!active()) { if (pill) { pill.remove(); pill = null; } return; }
-    if (!pill) { pill = h("div", { class: "adm-pill", id: "admPill", role: "region", "aria-label": "Administrator tools" }); document.body.appendChild(pill); }
-    clear(pill);
-    pill.appendChild(h("span", { class: "adm-dot", title: "Signed in as administrator" }));
-    pill.appendChild(h("a", { href: "/admin" }, icon("gear", "small"), "Panel"));
-    var e = h("button", { type: "button", class: editing ? "on" : "" }, icon("wand", "small"), editing ? "Done editing" : "Edit page");
-    e.addEventListener("click", function () { setEdit(!editing); });
-    pill.appendChild(e);
-    var x = h("button", { type: "button", title: "Sign out" }, icon("logout", "small"));
-    x.addEventListener("click", logout);
-    pill.appendChild(x);
-  }
-  function syncNav() {
-    var menu = $("#moreMenu");
-    if (!menu) return;
-    var have = $("#moreAdmin");
-    if (active() && !have) menu.appendChild(h("a", { href: "/admin", id: "moreAdmin", "data-page": "admin", "data-link": "", role: "menuitem" }, icon("gear"), h("span", {}, h("b", { text: "Administration" }), h("small", { text: "Edit the site" }))));
-    if (!active() && have) have.remove();
-  }
+    private static void sample3(float[][] rows, float t, float[] out) {
+        out[0] = out[1] = out[2] = 0f;
+        int n = rows.length;
+        if (n == 0) return;
+        if (t <= rows[0][0]) {
+            out[0] = rows[0][1];
+            out[1] = rows[0][2];
+            out[2] = rows[0][3];
+            return;
+        }
+        if (t >= rows[n - 1][0]) {
+            out[0] = rows[n - 1][1];
+            out[1] = rows[n - 1][2];
+            out[2] = rows[n - 1][3];
+            return;
+        }
+        int i = 0;
+        while (rows[i + 1][0] < t) i++;
+        float t0 = rows[i][0], t1 = rows[i + 1][0], h = t1 - t0, u = (t - t0) / h, u2 = u * u, u3 = u2 * u;
+        for (int c = 1; c <= 3; c++) {
+            float m0 = tangent(rows, i, c, n) * h, m1 = tangent(rows, i + 1, c, n) * h;
+            float v0 = rows[i][c], v1 = rows[i + 1][c];
+            out[c - 1] = (2 * u3 - 3 * u2 + 1) * v0 + (u3 - 2 * u2 + u) * m0 + (-2 * u3 + 3 * u2) * v1 + (u3 - u2) * m1;
+        }
+    }
 
-  function boot() {
-    if (!active()) return;
-    if (!draft) { loadDraft(); applyDraft(); }
-    Z.renderBanner();
-    paintPill(); syncNav();
-  }
+    private static float tangent(float[][] rows, int j, int c, int n) {
+        if (j <= 0 || j >= n - 1) return 0f;
+        return (rows[j + 1][c] - rows[j - 1][c]) / (rows[j + 1][0] - rows[j - 1][0]);
+    }
 
-  Z.adminActive = active;
-  Z.admin = { login: login, logout: logout, active: active };
-  Z.hooks.data.push(function () { if (active()) { loadDraft(); applyDraft(); Z.renderBanner(); } });
-  Z.hooks.page.push(function () { if (active()) { touch(); paintPill(); syncNav(); applyEditable(); } else if (editing) { editing = false; } });
-  Z.ready.push(function () { if (active()) { paintPill(); syncNav(); } });
-})();
+    private static final class Xf {
+        final float[] r = new float[9];
+        final float[] piv = new float[3];
+        final float[] mv = new float[3];
+
+        void set(float[] pivot, float[] rotDeg, float[] move) {
+            float d = (float) (Math.PI / 180.0);
+            float cx = (float) Math.cos(rotDeg[0] * d), sx = (float) Math.sin(rotDeg[0] * d);
+            float cy = (float) Math.cos(rotDeg[1] * d), sy = (float) Math.sin(rotDeg[1] * d);
+            float cz = (float) Math.cos(rotDeg[2] * d), sz = (float) Math.sin(rotDeg[2] * d);
+            r[0] = cz * cy;
+            r[1] = cz * sy * sx - sz * cx;
+            r[2] = cz * sy * cx + sz * sx;
+            r[3] = sz * cy;
+            r[4] = sz * sy * sx + cz * cx;
+            r[5] = sz * sy * cx - cz * sx;
+            r[6] = -sy;
+            r[7] = cy * sx;
+            r[8] = cy * cx;
+            System.arraycopy(pivot, 0, piv, 0, 3);
+            System.arraycopy(move, 0, mv, 0, 3);
+        }
+
+        void apply(float[] p) {
+            float x = p[0] - piv[0], y = p[1] - piv[1], z = p[2] - piv[2];
+            p[0] = piv[0] + mv[0] + r[0] * x + r[1] * y + r[2] * z;
+            p[1] = piv[1] + mv[1] + r[3] * x + r[4] * y + r[5] * z;
+            p[2] = piv[2] + mv[2] + r[6] * x + r[7] * y + r[8] * z;
+        }
+    }
+
+    private static final float[] S_ROT = new float[3], S_POS = new float[3], P3 = new float[3];
+    private static final Xf ROOT = new Xf(), PART = new Xf();
+
+    private static final float[] SX = new float[MAX_TRIS * 3];
+    private static final float[] SY = new float[MAX_TRIS * 3];
+    private static final float[] DEPTH = new float[MAX_TRIS];
+    private static final int[] COL = new int[MAX_TRIS];
+    private static float[] wv = new float[3 * 4096];
+
+    public static boolean draw(GuiGraphics g, String name, Rig.T k, float a, float b, float c, KnifeArt.Look look, float unit, float alpha, boolean cheap) {
+        return draw(g, name, k, a, b, c, look, unit, alpha, cheap, null, 0f);
+    }
+
+    public static boolean drawClip(GuiGraphics g, String name, String clip, float t, Rig.T k, KnifeArt.Look look, float unit, float alpha, boolean cheap) {
+        return draw(g, name, k, 0f, 0f, 0f, look, unit, alpha, cheap, clip, t);
+    }
+
+    private static boolean draw(GuiGraphics g, String name, Rig.T k, float a, float b, float c, KnifeArt.Look look, float unit, float alpha, boolean cheap, String clip, float clipT) {
+        try {
+            return drawMesh(g, name, k, a, b, c, look, unit, alpha, cheap, clip, clipT);
+        } catch (RuntimeException | Error e) {
+            broken = true;
+            com.zlorbie788.zeus.core.Zeus.LOG.warn("3D knife failed, using the pixel knives", e);
+            return false;
+        }
+    }
+
+    private static boolean drawMesh(GuiGraphics g, String name, Rig.T k, float a, float b, float c, KnifeArt.Look look, float unit, float alpha, boolean cheap, String clipName, float clipT) {
+        load();
+        // A knife that has a UV mapped model renders through the textured path instead.
+        if (KnifeUv.has(name)) {
+            float[] root = clipName == null ? null : clipRoot(name, clipName, clipT);
+            if (KnifeUv.draw(g, name, k, root, look, unit, alpha)) return true;
+        }
+        Model m = models.get(name);
+        if (m == null) return false;
+        Clip clip = clipName == null ? null : m.clips.get(clipName);
+        float sc = m.butterfly ? 1.10f : KnifeArt.Q;
+        if (clip != null) {
+            sample3(clip.rot, clipT, S_ROT);
+            sample3(clip.pos, clipT, S_POS);
+            ROOT.set(clip.pivot, S_ROT, S_POS);
+        }
+        int n = 0;
+        for (Part p : m.parts) {
+            Rig.T t = clip != null ? k : partFrame(m, p, k, a, b, c, sc);
+            boolean part = false;
+            if (clip != null) {
+                float[][][] pc = clip.parts.get(p.name);
+                if (pc != null) {
+                    sample3(pc[0], clipT, S_ROT);
+                    sample3(pc[1], clipT, S_POS);
+                    PART.set(p.pivot, S_ROT, S_POS);
+                    part = true;
+                }
+            }
+            for (Mesh mesh : p.meshes) {
+                int nv = mesh.v.length / 3;
+                if (wv.length < nv * 3) wv = new float[nv * 3];
+                for (int i = 0; i < nv; i++) {
+                    float x = mesh.v[i * 3], y = mesh.v[i * 3 + 1], z = mesh.v[i * 3 + 2];
+                    if (clip != null) {
+                        P3[0] = x;
+                        P3[1] = y;
+                        P3[2] = z;
+                        if (part) PART.apply(P3);
+                        ROOT.apply(P3);
+                        x = P3[0];
+                        y = P3[1];
+                        z = P3[2];
+                    }
+                    if (m.butterfly) {
+                        y = -y;
+                        z = -z;
+                    }
+                    float[] w = t.point(x * sc, y * sc, z * sc);
+                    wv[i * 3] = w[0];
+                    wv[i * 3 + 1] = w[1];
+                    wv[i * 3 + 2] = w[2];
+                }
+                for (int i = 0; i + 2 < mesh.f.length && n < MAX_TRIS; i += 3) {
+                    int ia = mesh.f[i] * 3, ib = mesh.f[i + 1] * 3, ic = mesh.f[i + 2] * 3;
+                    float ax = wv[ia], ay = wv[ia + 1], az = wv[ia + 2];
+                    float bx = wv[ib], by = wv[ib + 1], bz = wv[ib + 2];
+                    float cx = wv[ic], cy = wv[ic + 1], cz = wv[ic + 2];
+                    float ux = bx - ax, uy = by - ay, uz = bz - az;
+                    float vx = cx - ax, vy = cy - ay, vz = cz - az;
+                    float nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+                    float len = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
+                    if (!(len > 1e-6f) || !Float.isFinite(len)) continue;
+                    nx /= len;
+                    ny /= len;
+                    nz /= len;
+                    if (!Float.isFinite(ax) || !Float.isFinite(ay) || !Float.isFinite(az)) continue;
+                    if (!Float.isFinite(bx) || !Float.isFinite(by) || !Float.isFinite(bz)) continue;
+                    if (!Float.isFinite(cx) || !Float.isFinite(cy) || !Float.isFinite(cz)) continue;
+                    float mx = (ax + bx + cx) / 3f, my = (ay + by + cy) / 3f, mz = (az + bz + cz) / 3f;
+                    if (nx * mx + ny * my + nz * (mz + D) >= 0f) continue;
+                    float lam = Math.max(0f, nx * LX + ny * LY + nz * LZ);
+                    float ka = unit * D / (D + az), kb = unit * D / (D + bz), kc = unit * D / (D + cz);
+                    SX[n * 3] = ax * ka;
+                    SY[n * 3] = ay * ka;
+                    SX[n * 3 + 1] = bx * kb;
+                    SY[n * 3 + 1] = by * kb;
+                    SX[n * 3 + 2] = cx * kc;
+                    SY[n * 3 + 2] = cy * kc;
+                    DEPTH[n] = mz;
+                    float ly = (mesh.v[mesh.f[i] * 3 + 1] + mesh.v[mesh.f[i + 1] * 3 + 1]
+                            + mesh.v[mesh.f[i + 2] * 3 + 1]) / 3f;
+                    float lx = (mesh.v[mesh.f[i] * 3] + mesh.v[mesh.f[i + 1] * 3]
+                            + mesh.v[mesh.f[i + 2] * 3]) / 3f;
+                    COL[n] = shade(mesh.mat, look, lam, nx, ny, nz, lx, ly, i, alpha);
+                    n++;
+                }
+            }
+        }
+        Integer[] idx = new Integer[n];
+        for (int i = 0; i < n; i++) idx[i] = i;
+        java.util.Arrays.sort(idx, (p, q) -> Float.compare(DEPTH[q], DEPTH[p]));
+        float grow = cheap ? 0.3f : 0.45f;
+        int painted = 0;
+        for (int o = 0; o < n; o++) {
+            int i = idx[o];
+            float x0 = SX[i * 3], y0 = SY[i * 3], x1 = SX[i * 3 + 1], y1 = SY[i * 3 + 1], x2 = SX[i * 3 + 2], y2 = SY[i * 3 + 2];
+            float gx = (x0 + x1 + x2) / 3f, gy = (y0 + y1 + y2) / 3f;
+            if (tri(g, grow(x0, gx, grow), grow(y0, gy, grow), grow(x1, gx, grow), grow(y1, gy, grow), grow(x2, gx, grow), grow(y2, gy, grow), COL[i])) painted++;
+        }
+        return painted > 0;
+    }
+
+    private static boolean tri(GuiGraphics g, float ax, float ay, float bx, float by, float cx, float cy, int color) {
+        Tex.Img t = Tex.sprite(TRI);
+        if (t == null) return false;
+        float ux = (bx - ax) / 126f, uy = (by - ay) / 126f, vx = (cx - ax) / 126f, vy = (cy - ay) / 126f;
+        var pose = g.pose();
+        pose.pushMatrix();
+        pose.mul(new org.joml.Matrix3x2f(ux, uy, vx, vy, ax - ux - vx, ay - uy - vy));
+        t.drawPart(g, 0, 0, 128, 128, 0, 0, 128, 128, color);
+        pose.popMatrix();
+        return true;
+    }
+
+    private static float grow(float v, float centre, float by) {
+        float d = v - centre;
+        float l = Math.abs(d);
+        return l < 1e-4f ? v : v + d * Math.min(0.12f, by / l);
+    }
+
+    private static Rig.T partFrame(Model m, Part p, Rig.T k, float a, float b, float c, float sc) {
+        if (!m.butterfly) return k;
+        float ang;
+        switch (p.name) {
+            case "handleB" -> ang = a;
+            case "handleA" -> ang = b;
+            default -> ang = c - (float) Math.PI;
+        }
+        float px = p.pivot[0] * sc, py = -p.pivot[1] * sc, pz = -p.pivot[2] * sc;
+        return k.move(px, py, pz).rotZ(ang).move(-px, -py, -pz);
+    }
+
+    private static final int[] BRASS = {0xFF3A2408, 0xFF5E3A0E, 0xFF9A6420, 0xFFC8933E, 0xFFEFC97A};
+
+    /** Root transform of a clip at time t: {rx, ry, rz, px, py, pz, pivotX, pivotY, pivotZ}. */
+    static float[] clipRoot(String name, String clipName, float t) {
+        load();
+        Model m = models == null ? null : models.get(name);
+        if (m == null) return null;
+        Clip c = m.clips.get(clipName);
+        if (c == null) return null;
+        float[] rot = new float[3], pos = new float[3];
+        sample3(c.rot, t, rot);
+        sample3(c.pos, t, pos);
+        return new float[] {rot[0], rot[1], rot[2], pos[0], pos[1], pos[2],
+                c.pivot[0], c.pivot[1], c.pivot[2]};
+    }
+
+    private static int shade(String mat, KnifeArt.Look look, float lam, float nx, float ny,
+                             float nz, float lx, float ly, int seed, float alpha) {
+        // Five stop ramps: deep shadow, shadow, body, lit and highlight.  A three stop ramp made
+        // every flat face one of two flat greys, which is what made the knives read as cardboard.
+        boolean grip = "handle".equals(mat) || "cord".equals(mat);
+        int a0, a1, a2, a3, a4;
+        if (grip) {
+            int base = "cord".equals(mat) ? Draw.darken(look.handle[1], 0.35f) : look.handle[0];
+            a4 = Draw.lighten(base, 0.30f);
+            a3 = base;
+            a2 = look.handle[1];
+            a1 = look.handle[2];
+            a0 = Draw.darken(look.handle[3], 0.35f);
+        } else if ("brass".equals(mat) || "accent".equals(mat)) {
+            // Fittings are warm metal whatever the blade finish is, the way a real knife has
+            // brass bolsters and rivets against steel.
+            a0 = BRASS[0];
+            a1 = BRASS[1];
+            a2 = BRASS[2];
+            a3 = BRASS[3];
+            a4 = BRASS[4];
+        } else {
+            int hi = look.blade[0], mid = look.blade[1], dark = look.blade[2];
+            if ("edge".equals(mat) || "guard".equals(mat) || "pin".equals(mat)) {
+                hi = Draw.lighten(look.blade[0], 0.30f);
+                mid = Draw.mix(look.blade[0], look.blade[1], 0.45f);
+            } else if ("dark".equals(mat)) {
+                hi = mid;
+                mid = dark;
+                dark = Draw.darken(dark, 0.4f);
+            }
+            a4 = Draw.lighten(hi, 0.45f);
+            a3 = hi;
+            a2 = mid;
+            a1 = dark;
+            a0 = Draw.darken(dark, 0.55f);
+        }
+
+        // Light, plus a lengthwise polish gradient, a lip of specular on the bevels and a little
+        // forged variance per face so a flat plane is never one dead colour.
+        float b = (grip ? 0.08f : -0.02f) + (grip ? 0.95f : 0.90f) * lam;
+        b -= 0.10f * Math.max(0f, ny);
+        if (!grip) {
+            b += 0.13f * Math.abs(nx);
+            b += 0.10f * (Math.max(0f, Math.min(1f, ly / 26f)) - 0.45f);
+            // Faces turned away from the viewer go dark, which draws a contour round the
+            // silhouette instead of letting the knife melt into the background.  The bevel is
+            // the cutting edge, so it is exempt and gets a highlight instead.
+            // Brushed steel: a fine lengthwise ripple so a big flat is never one tone.
+            b += ("handle".equals(mat) || "cord".equals(mat)) ? 0f
+                    : 0.045f * (float) Math.sin(lx * 6.3f + ly * 0.35f);
+            if ("edge".equals(mat)) {
+                b += 0.12f;
+            } else {
+                b -= 0.18f * (1f - Math.min(1f, Math.abs(nz)));
+            }
+        }
+        b += jitter(seed) * (grip ? 0.045f : 0.075f);
+        if (b < 0f) b = 0f;
+        if (b > 1f) b = 1f;
+
+        int col = b < 0.25f ? Draw.mix(a0, a1, b * 4f)
+                : b < 0.5f ? Draw.mix(a1, a2, (b - 0.25f) * 4f)
+                : b < 0.75f ? Draw.mix(a2, a3, (b - 0.5f) * 4f)
+                : Draw.mix(a3, a4, (b - 0.75f) * 4f);
+        return Draw.rgba(col | 0xFF000000, alpha);
+    }
+
+    private static float jitter(int s) {
+        int h = s * 374761393 + 668265263;
+        h = (h ^ (h >> 13)) * 1274126177;
+        h ^= h >> 16;
+        return (h & 255) / 255f - 0.5f;
+    }
+}

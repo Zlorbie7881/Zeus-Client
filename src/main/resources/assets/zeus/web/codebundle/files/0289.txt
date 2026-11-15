@@ -1,43 +1,34 @@
-"""Adds "rank" (position in Usage.POPULAR, 0 = most used) and "aliases" to features.json, and applies renames.
-Run after regenerating features.json:  python3 tools/site/features_extra.py <web folder>
-(The in-game copy gets the same fields from FeatureCatalog.json(); this keeps the static website copy in step.)"""
-import json, os, re, sys
-
-web = sys.argv[1]
-root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-src = open(os.path.join(root, "src/main/java/com/zlorbie788/zeus/core/Usage.java"), encoding="utf-8").read()
-block = re.search(r"POPULAR\s*=\s*\{(.*?)\};", src, re.S).group(1)
-popular = re.findall(r'"([a-z0-9_]+)"', block)
-rank = {m: i for i, m in enumerate(popular)}
-
-# id -> (display name, description, aliases). Keep in step with the module constructors / alias() calls.
-CHANGES = {
-    "jesus": ("Water Walk", "Walk on top of water as if it were ground. Also known as Jesus.", ["Jesus", "Jesus Walk", "Waterwalk", "Liquid Walk"]),
+/* Zeus Client website: the Atlas page (map of a server's remembered places). */
+.atlas-note{display:flex;align-items:center;gap:10px;margin:0 0 18px;padding:10px 14px;border-radius:12px;
+  border:1px solid rgba(255,194,77,.28);background:rgba(255,194,77,.07);color:#ffd59a;font-size:13.5px;max-width:920px}
+.atlas-note .i{color:#ffc24d}
+.atlas-card{padding:14px 14px 10px;overflow:hidden}
+.atlas-bar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:0 2px 12px}
+.atlas-btns{display:flex;gap:8px;flex-wrap:wrap}
+.atlas-layers{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-left:auto}
+.atlas-chip{display:inline-flex;align-items:center;gap:7px;font-size:13.5px;color:var(--dim);cursor:pointer;user-select:none}
+.atlas-chip input{appearance:none;width:15px;height:15px;border-radius:4px;border:1px solid var(--line2);background:rgba(6,16,31,.9);cursor:pointer;position:relative;margin:0}
+.atlas-chip input:checked{background:linear-gradient(180deg,#3d95ff,#1f66e0);border-color:rgba(140,196,255,.7)}
+.atlas-chip input:checked::after{content:"";position:absolute;left:4px;top:1px;width:4px;height:8px;border-right:2px solid #fff;border-bottom:2px solid #fff;transform:rotate(40deg)}
+.atlas-chip i{width:9px;height:9px;border-radius:2px;display:inline-block}
+.atlas-chip:has(input:not(:checked)){opacity:.5}
+.atlas-badge{font-size:10.5px;font-weight:700;letter-spacing:.16em;color:#ffd59a;border:1px solid rgba(255,194,77,.4);
+  background:rgba(255,194,77,.1);border-radius:6px;padding:3px 7px 2px}
+.atlas-stage{position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--line);background:#080d16}
+.atlas-canvas{display:block;width:100%;cursor:grab;touch-action:none}
+.atlas-canvas.grabbing{cursor:grabbing}
+.atlas-tip{position:absolute;z-index:2;pointer-events:none;min-width:120px;max-width:200px;padding:8px 10px;border-radius:10px;
+  background:rgba(6,13,26,.95);border:1px solid var(--line2);box-shadow:0 12px 30px rgba(0,0,0,.5);display:flex;flex-direction:column;gap:2px}
+.atlas-tip b{font-size:13px;font-weight:600;color:#fff}
+.atlas-tip-kind{align-self:flex-start;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--blue3)}
+.atlas-tip em{font-style:normal;font-size:12px;color:var(--dim)}
+.atlas-tip small{font-size:11.5px;color:var(--faint)}
+.atlas-notice{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:3;display:flex;align-items:center;gap:10px;
+  padding:14px 16px;border-radius:12px;background:rgba(6,13,26,.97);border:1px solid var(--line2);box-shadow:0 18px 50px rgba(0,0,0,.6);flex-wrap:wrap;justify-content:center}
+.atlas-notice b{width:100%;text-align:center;font-size:13.5px;color:#fff}
+.atlas-input{min-width:240px;padding:9px 12px;border-radius:9px;border:1px solid var(--line);background:rgba(3,7,16,.9);color:var(--text);font-size:13.5px}
+.atlas-status{padding:10px 4px 2px;font-size:13px;color:var(--faint);font-variant-numeric:tabular-nums}
+@media (max-width:720px){
+  .atlas-layers{width:100%;margin-left:0}
+  .atlas-badge{margin-left:auto}
 }
-
-# modules that do real work every tick even though their code only has a tick method
-COST_MIN = {"swordbot": 3, "crystalbot": 3, "killaura": 3, "multiaura": 3, "crystalaura": 3, "anchoraura": 3, "aimassist": 3, "triggerbot": 3,
-            "scaffold": 3, "nuker": 3, "treebot": 3, "tunnelminer": 3, "crystaloptimizer": 3, "surround": 3, "autotrap": 3, "autoweb": 3, "holefiller": 3,
-            "perfmonitor": 3, "atmosphere": 4}
-
-path = os.path.join(web, "features.json")
-data = json.load(open(path, encoding="utf-8"))
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from config_data import HEAVY  # the scanners and ESPs: what costs the most frame time
-for m in data["modules"]:
-    m["rank"] = rank.get(m["id"], len(popular) + 1)
-    m["weight"] = "heavy" if (m["id"] in HEAVY or m.get("weight") == "heavy") else "light"
-    # the estimate from the code (FeatureCatalog) plus what is known by hand: the outline and scanner modules are never cheap,
-    # and the fighting modules do real work (target search, line of sight) every tick
-    c = m.get("cost", 2)
-    if m["id"] in HEAVY:
-        c = max(c, 4)
-    c = max(c, COST_MIN.get(m["id"], 1))
-    m["cost"] = min(5, c)
-    m["weight"] = "heavy" if m["cost"] >= 4 else "light"
-    if m["id"] in CHANGES:
-        n, d, a = CHANGES[m["id"]]
-        m["name"], m["description"], m["aliases"] = n, d, a
-with open(path, "w", encoding="utf-8") as f:
-    json.dump(data, f, ensure_ascii=False, indent=1)
-print("modules", len(data["modules"]), "ranked", sum(1 for m in data["modules"] if m["rank"] <= len(popular)))

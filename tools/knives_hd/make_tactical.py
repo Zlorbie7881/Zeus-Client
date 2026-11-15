@@ -1016,6 +1016,9 @@ def to_rgba(rgb, alpha, f, light_mask=None):
     return (out * 255 + 0.5).astype(np.uint8)
 
 
+L2_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "level2")
+
+
 def write(kn, min_level=0):
     cells, mask = bake(kn)
     os.makedirs(OUT_TEX, exist_ok=True)
@@ -1038,7 +1041,11 @@ def write(kn, min_level=0):
             else:
                 rows.append(to_rgba(rgb, None, f, light_mask=mask))
         sheet = np.concatenate(rows, 0)
-        Image.fromarray(sheet, "RGBA").save(os.path.join(OUT_TEX, f"{kn.id}_{level}.png"), optimize=True)
+        # level 2 is not shipped: the client makes it from level 1 when it loads (Tex.derived). It is kept
+        # beside this tool so make_pieces.py can still cut the level 2 piece sheets from it.
+        out_dir = OUT_TEX if level < 2 else L2_DIR
+        os.makedirs(out_dir, exist_ok=True)
+        Image.fromarray(sheet, "RGBA").save(os.path.join(out_dir, f"{kn.id}_{level}.png"), optimize=True)
     # centre of material per column: the side wall strip runs along this line
     m = np.clip(kn.mask, 0, 1)
     wsum = m.sum(0)

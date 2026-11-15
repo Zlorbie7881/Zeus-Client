@@ -1,168 +1,541 @@
 package com.zlorbie788.zeus.mods;
 
-import com.zlorbie788.zeus.core.Category;
 import com.zlorbie788.zeus.core.Env;
-import com.zlorbie788.zeus.core.Module;
-import com.zlorbie788.zeus.core.Setting;
-import com.zlorbie788.zeus.render.EspKit;
-import com.zlorbie788.zeus.render.Projector;
-import com.zlorbie788.zeus.render.Wire;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.item.ItemEntity;
-import net.minecraft.world.phys.AABB;
 
-import java.util.LinkedHashMap;
-import java.util.Locale;
+import com.zlorbie788.zeus.core.Zeus;
+
+import com.zlorbie788.zeus.core.Category;
+
+import com.zlorbie788.zeus.core.Module;
+
+import com.zlorbie788.zeus.core.Setting;
+
+import com.zlorbie788.zeus.render.Projector;
+
+import com.zlorbie788.zeus.ui.Draw;
+
+import net.minecraft.client.Minecraft;
+
+import net.minecraft.client.gui.GuiGraphics;
+
+import net.minecraft.core.registries.BuiltInRegistries;
+
+import com.zlorbie788.zeus.ui.BlockPickerScreen;
+
+import com.zlorbie788.zeus.ui.BlockPickerScreen;
+
+import net.minecraft.world.level.block.Block;
+
+import net.minecraft.world.level.chunk.LevelChunk;
+
+import net.minecraft.world.level.chunk.LevelChunkSection;
+
+import java.util.ArrayList;
+
+import java.util.HashMap;
+
+import java.util.List;
+
 import java.util.Map;
 
-/**
- * Highlights dropped items. It works from a list of items with a colour each: only the listed items
- * are marked (diamonds, netherite, elytra, totems...) and each one has the colour you gave it. Switch "Only listed items"
- * off to mark every dropped item. Items get the game's glow outline through walls, a box and an optional tracer.
- *
- * <p>The list is plain text: {@code diamond:cyan, netherite_ingot:purple, shulker_box:#FF66CC}. A name is the item id without
- * {@code minecraft:}; it may end with a star to mean "starts with" ({@code diamond_*}) or start with one ({@code *_ore}).
- * A colour is one of the colour names of the other ESPs or a hex code. A name with no colour uses the default colour.</p>
- */
-public final class ItemEsp extends Module {
-    public static final String DEFAULT_LIST = "diamond:cyan, emerald:green, netherite_ingot:purple, ancient_debris:purple, elytra:orange, totem_of_undying:yellow, trident:cyan, "
-            + "enchanted_golden_apple:pink, golden_apple:yellow, nether_star:white, heart_of_the_sea:cyan, end_crystal:pink, shulker_box:pink, gold_ingot:yellow, gold_block:yellow, gold_nugget:yellow";
+import java.util.concurrent.ConcurrentHashMap;
 
-    private static volatile ItemEsp self;
+import java.util.Set;
 
-    private final Setting.Num range = add(new Setting.Num("Range", "Maximum distance for dropped-item highlights.", 64, 8, 256, 8, " blocks"));
-    private final Setting.Num maxItems = add(new Setting.Num("Maximum items", "Hard limit on rendered dropped-item entities per frame to protect performance.", 40, 8, 128, 8, ""));
-    private final Setting.Bool onlyListed = add(new Setting.Bool("Only listed items", "Mark only the items in the list below. Off marks every dropped item (enchanted ones in purple).", true));
-    private final Setting.Text list = add(new Setting.Text("Item colours", "Comma separated: item:colour. Colours are names (white, red, orange, yellow, green, cyan, blue, purple, pink) or #RRGGBB. Use * at the start or end of a name.", DEFAULT_LIST, 1200)).showIf(onlyListed::on);
-    private final Setting.Bool outline = add(new Setting.Bool("Outline", "The game's glow outline around the item, visible through walls.", true));
-    private final Setting.Bool labels = add(new Setting.Bool("Item names", "Show item names and stack counts.", true));
-    private final Setting.Bool distance = add(new Setting.Bool("Distance", "Show distance beside each item.", true));
-    private final EspKit kit;
+import java.util.LinkedHashSet;
+
+public final class BlockEsp extends Module {
+
+    private static final int[] COLORS = {
+
+        0xFF9AA0A6, 0xFFD8AF93, 0xFFE77C56, 0xFFFFD700, 0xFFFF3B3B, 0xFF4A74FF, 0xFF4DEEEA,
+
+        0xFF2EE66B, 0xFFFFA24D, 0xFFB06A4A, 0xFFFF7A18, 0xFFFF66FF, 0xFFFFFFFF
+
+    };
+
+    private final Setting.Num radius = add(new Setting.Num("Range", "How far around you it looks (only loaded chunks can be searched).", 48, 16, 256, 8, " blocks"));
+
+    private final Setting.Bool[] kinds = new Setting.Bool[XRay.KINDS.length];
+
+    private final com.zlorbie788.zeus.render.EspKit kit;
+
+    private final Setting.Num maxBoxes = add(new Setting.Num("Most boxes shown", "The nearest ones are kept when there are more.", 150, 20, 600, 10, ""));
+
+    private final Setting.Text extra = add(new Setting.Text("Extra blocks", "Any other blocks to mark, as id:colour separated by commas, e.g. beacon:cyan, ancient_debris:purple, *_spawner:#FF66CC. Colour names or #RRGGBB; * at the start or end of a name.", "", 600));
+
+    private final Setting.Bool names = add(new Setting.Bool("Labels", "Name and distance on the nearest blocks.", true));
+
+    private final Map<Long, int[][]> found = new HashMap<>();
+
+    private final Map<Long, Long> scannedAt = new HashMap<>();
+
+    private static final ConcurrentHashMap<Block, Integer> KIND = new ConcurrentHashMap<>();
+
+    private int tick;
+
     private int shown;
-    private String parsedFrom = "\u0000";
-    private final Map<String, Integer> parsed = new LinkedHashMap<>();
 
-    public ItemEsp() {
-        super("itemesp", "Item ESP", "Highlights dropped items, with a colour for each kind you pick.", Category.RENDER);
+    private String extraFrom = "\u0000";
+
+    private final Map<String, Integer> extraList = new java.util.LinkedHashMap<>();
+
+    private static final ConcurrentHashMap<Block, Integer> CUSTOM = new ConcurrentHashMap<>();
+
+    private List<long[]> queue = new ArrayList<>();
+
+    public BlockEsp() {
+
+        super("blockesp", "Block ESP", "Finds ores, chests and spawners around you and marks them through walls.", Category.RENDER);
+
         light();
-        kit = new EspKit(this, 0, false);
-        kit.autoReveal = false;
-        self = this;
+
+        for (int i = 0; i < kinds.length; i++) {
+
+            boolean def = i >= 3 && i != 10;
+
+            kinds[i] = add(new Setting.Bool(XRay.KINDS[i], "Mark " + XRay.KINDS[i].toLowerCase() + ".", def));
+
+            kinds[i].onChange(this::reset);
+
+        }
+
+        kit = new com.zlorbie788.zeus.render.EspKit(this, 0, false);
+
+        radius.onChange(this::reset);
+
+        extra.onChange(this::reset);
+
+        add(new Setting.Action("Pick blocks...", "Choose which ores and blocks to mark through walls, like X-Ray does.", this::openBlockPicker));
+
     }
 
-    @Override public String info() { return shown == 0 ? null : Integer.toString(shown); }
+    private void parseExtra() {
 
-    // --------------------------------------------------------------- the list
+        String text = extra.get();
 
-    private static int colorByName(String word) {
-        if (word.startsWith("#")) {
-            try {
-                return 0xFF000000 | Integer.parseInt(word.substring(1), 16);
-            } catch (NumberFormatException e) {
-                return 0;
-            }
-        }
-        for (int i = 1; i < EspKit.COLOR_NAMES.length; i++) {
-            if (EspKit.COLOR_NAMES[i].equalsIgnoreCase(word)) return EspKit.COLOR_VALUES[i];
-        }
-        return 0;
-    }
+        if (text.equals(extraFrom)) return;
 
-    private void parse() {
-        String text = list.get();
-        if (text.equals(parsedFrom)) return;
-        parsedFrom = text;
-        parsed.clear();
+        extraFrom = text;
+
+        extraList.clear();
+
+        CUSTOM.clear();
+
         for (String part : text.split(",")) {
-            String p = part.trim().toLowerCase(Locale.ROOT);
+
+            String p = part.trim().toLowerCase(java.util.Locale.ROOT);
+
             if (p.isEmpty()) continue;
+
             int c = p.indexOf(':');
+
             String id = c < 0 ? p : p.substring(0, c).trim();
+
             if (id.startsWith("minecraft:")) id = id.substring(10);
-            int color = c < 0 ? 0 : colorByName(p.substring(c + 1).trim());
-            if (!id.isEmpty()) parsed.put(id, color == 0 ? 0xFF70D6FF : color);
+
+            int color = 0;
+
+            if (c >= 0) {
+
+                String word = p.substring(c + 1).trim();
+
+                if (word.startsWith("#")) {
+
+                    try {
+
+                        color = 0xFF000000 | Integer.parseInt(word.substring(1), 16);
+
+                    } catch (NumberFormatException ignored) {
+
+                        color = 0;
+
+                    }
+
+                } else {
+
+                    for (int i = 1; i < com.zlorbie788.zeus.render.EspKit.COLOR_NAMES.length; i++) {
+
+                        if (com.zlorbie788.zeus.render.EspKit.COLOR_NAMES[i].equalsIgnoreCase(word)) color = com.zlorbie788.zeus.render.EspKit.COLOR_VALUES[i];
+
+                    }
+
+                }
+
+            }
+
+            if (!id.isEmpty()) extraList.put(id, color == 0 ? 0xFF35E0D0 : color);
+
         }
+
     }
 
-    private static String idOf(ItemEntity item) {
+    private int customOf(Block b) {
+
+        parseExtra();
+
+        if (extraList.isEmpty()) return 0;
+
+        Integer hit = CUSTOM.get(b);
+
+        if (hit != null) return hit;
+
+        int color = 0;
+
         try {
-            String id = BuiltInRegistries.ITEM.getKey(item.getItem().getItem()).toString();
-            return id.substring(id.indexOf(':') + 1);
-        } catch (RuntimeException e) {
-            return "";
-        }
-    }
 
-    /** The colour for a dropped item, or 0 when it is not marked. */
-    private int colorOf(ItemEntity item) {
-        if (item.isRemoved() || !item.isAlive()) return 0;
-        if (!onlyListed.on()) return item.getItem().isEnchanted() ? 0xFFB06BFF : 0xFF70D6FF;
-        parse();
-        String id = idOf(item);
-        Integer exact = parsed.get(id);
-        if (exact != null) return exact;
-        for (Map.Entry<String, Integer> e : parsed.entrySet()) {
-            String key = e.getKey();
-            boolean starts = key.endsWith("*");
-            boolean ends = key.startsWith("*");
-            if (starts && ends) {
-                if (key.length() > 2 && id.contains(key.substring(1, key.length() - 1))) return e.getValue();
-            } else if (starts) {
-                if (id.startsWith(key.substring(0, key.length() - 1))) return e.getValue();
-            } else if (ends) {
-                if (id.endsWith(key.substring(1))) return e.getValue();
+            String id = BuiltInRegistries.BLOCK.getKey(b).toString();
+
+            id = id.substring(id.indexOf(':') + 1);
+
+            Integer exact = extraList.get(id);
+
+            if (exact != null) color = exact;
+
+            for (Map.Entry<String, Integer> e : extraList.entrySet()) {
+
+                if (color != 0) break;
+
+                String key = e.getKey();
+
+                boolean starts = key.endsWith("*");
+
+                boolean ends = key.startsWith("*");
+
+                if (starts && ends) {
+
+                    if (key.length() > 2 && id.contains(key.substring(1, key.length() - 1))) color = e.getValue();
+
+                } else if (starts) {
+
+                    if (id.startsWith(key.substring(0, key.length() - 1))) color = e.getValue();
+
+                } else if (ends) {
+
+                    if (id.endsWith(key.substring(1))) color = e.getValue();
+
+                }
+
             }
+
+        } catch (RuntimeException ignored) {
+
+            color = 0;
+
         }
-        return 0;
+
+        CUSTOM.put(b, color);
+
+        return color;
+
     }
 
-    private boolean inRange(Minecraft mc, Entity e) {
-        double r = range.get();
-        return mc.player != null && mc.player.distanceToSqr(e) <= r * r;
+    private int kindFor(Block b) {
+
+        int k = kindOf(b);
+
+        if (k >= 0 && kinds[k].on()) return k;
+
+        int c = customOf(b);
+
+        return c != 0 ? 0x1000000 + (c & 0xFFFFFF) : -1;
+
     }
 
-    // --------------------------------------------------------------- the glow hooks (called through Esp)
+    public void mirrorKinds(int mask) {
 
-    public static boolean outlines(Entity e) {
-        ItemEsp s = self;
-        if (s == null || !s.enabled() || !s.outline.on() || !(e instanceof ItemEntity item)) return false;
-        return s.inRange(Minecraft.getInstance(), e) && s.colorOf(item) != 0;
+        for (int i = 0; i < kinds.length; i++) kinds[i].set((mask & (1 << i)) != 0);
+
     }
 
-    public static int outlineColor(Entity e) {
-        ItemEsp s = self;
-        if (s == null || !s.enabled() || !s.outline.on() || !(e instanceof ItemEntity item)) return 0;
-        return s.inRange(Minecraft.getInstance(), e) ? s.colorOf(item) & 0xFFFFFF : 0;
+    private void reset() {
+
+        found.clear();
+
+        scannedAt.clear();
+
     }
 
-    // --------------------------------------------------------------- the overlay
+    @Override
 
-    @Override protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+    protected void onEnable() {
+
+        reset();
+
+    }
+
+    @Override
+
+    protected void onDisable() {
+
+        reset();
+
+    }
+
+    private static int kindOf(Block b) {
+
+        Integer k = KIND.get(b);
+
+        if (k == null) {
+
+            try {
+
+                String id = BuiltInRegistries.BLOCK.getKey(b).toString();
+
+                k = XRay.classify(id.substring(id.indexOf(':') + 1));
+
+            } catch (RuntimeException e) {
+
+                k = -1;
+
+            }
+
+            KIND.put(b, k);
+
+        }
+
+        return k;
+
+    }
+
+    private boolean wanted(Block b) {
+
+        return kindFor(b) >= 0;
+
+    }
+
+    private static long key(int cx, int cz) {
+
+        return ((long) cx << 32) | (cz & 0xFFFFFFFFL);
+
+    }
+
+    @Override
+
+    protected void onTick(Minecraft mc) {
+
+        if (mc.level == null || mc.player == null) return;
+
+        int pcx = mc.player.getBlockX() >> 4;
+
+        int pcz = mc.player.getBlockZ() >> 4;
+
+        int rc = (int) Math.ceil(radius.get() / 16.0);
+
+        long now = System.currentTimeMillis();
+
+        if (tick++ % 20 == 0) {
+
+            queue = new ArrayList<>();
+
+            for (int dx = -rc; dx <= rc; dx++) {
+
+                for (int dz = -rc; dz <= rc; dz++) {
+
+                    long k = key(pcx + dx, pcz + dz);
+
+                    Long at = scannedAt.get(k);
+
+                    if (at == null || now - at > 6000) queue.add(new long[] {dx * dx + dz * dz, pcx + dx, pcz + dz});
+
+                }
+
+            }
+
+            queue.sort((a, b) -> Long.compare(a[0], b[0]));
+
+            found.keySet().removeIf(k -> Math.abs((int) (k >> 32) - pcx) > rc + 2 || Math.abs((int) (long) k - pcz) > rc + 2);
+
+            scannedAt.keySet().removeIf(k -> !found.containsKey(k) && now - scannedAt.get(k) > 60000);
+
+        }
+
+        long deadline = System.nanoTime() + 2_000_000L;
+
+        while (!queue.isEmpty() && System.nanoTime() < deadline) {
+
+            long[] c = queue.remove(0);
+
+            scan(mc, (int) c[1], (int) c[2], now);
+
+        }
+
+    }
+
+    private void scan(Minecraft mc, int cx, int cz, long now) {
+
+        LevelChunk chunk = Env.chunk(mc, cx, cz);
+
+        if (chunk == null) return;
+
+        scannedAt.put(key(cx, cz), now);
+
+        List<int[]> hits = new ArrayList<>();
+
+        LevelChunkSection[] sections = chunk.getSections();
+
+        int minY = chunk.getMinSectionY() << 4;
+
+        for (int i = 0; i < sections.length && hits.size() < 200; i++) {
+
+            LevelChunkSection sec = sections[i];
+
+            if (sec == null || sec.hasOnlyAir() || !sec.maybeHas(st -> wanted(st.getBlock()))) continue;
+
+            int by = minY + i * 16;
+
+            for (int y = 0; y < 16; y++) {
+
+                for (int z = 0; z < 16; z++) {
+
+                    for (int x = 0; x < 16; x++) {
+
+                        Block b = sec.getBlockState(x, y, z).getBlock();
+
+                        int k = kindFor(b);
+
+                        if (k >= 0) hits.add(new int[] {(cx << 4) + x, by + y, (cz << 4) + z, k});
+
+                    }
+
+                }
+
+            }
+
+        }
+
+        found.put(key(cx, cz), hits.toArray(new int[0][]));
+
+    }
+
+    @Override
+
+    public String info() {
+
+        return shown > 0 ? Integer.toString(shown) : null;
+
+    }
+
+    @Override
+
+    protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+
         shown = 0;
-        if (mc.level == null || mc.player == null || !Projector.prepare(mc, partial, w, h)) return;
-        for (var entity : Env.entities(mc, range.get())) {
-            if (!(entity instanceof ItemEntity item)) continue;
-            int color = colorOf(item);
-            if (color == 0) continue;
-            double dist = Math.sqrt(mc.player.distanceToSqr(item));
-            if (dist > range.get()) continue;
-            if (shown >= maxItems.i()) break;
-            shown++;
-            AABB bb = item.getBoundingBox();
-            float alpha = kit.alphaFor(dist, range.get());
-            kit.box(g, bb, color, alpha, shown <= 12);
-            kit.tracer(g, w, h, item.getX(), item.getY() + 0.15, item.getZ(), color, alpha);
-            if (labels.on() || distance.on()) {
-                float[] rect = Wire.bounds(bb.minX, bb.minY, bb.minZ, bb.maxX, bb.maxY, bb.maxZ);
-                if (rect == null) continue;
-                String name = labels.on() ? item.getItem().getHoverName().getString() + (item.getItem().getCount() > 1 ? " x" + item.getItem().getCount() : "") : "";
-                String right = distance.on() ? Math.round(dist) + "m" : "";
-                if (name.isEmpty()) { name = right; right = ""; }
-                kit.tag(g, name, right, Math.round((rect[0] + rect[2]) / 2f), Math.round(rect[1]) - 14, color, alpha, w, h);
+
+        if (mc.player == null || !Projector.prepare(mc, partial, w, h)) return;
+
+        double ex = Projector.eyeX();
+
+        double ey = Projector.eyeY();
+
+        double ez = Projector.eyeZ();
+
+        double r = radius.get();
+
+        double r2 = r * r;
+
+        List<double[]> near = new ArrayList<>();
+
+        for (int[][] list : found.values()) {
+
+            for (int[] hit : list) {
+
+                double dx = hit[0] + 0.5 - ex;
+
+                double dy = hit[1] + 0.5 - ey;
+
+                double dz = hit[2] + 0.5 - ez;
+
+                double d2 = dx * dx + dy * dy + dz * dz;
+
+                if (d2 <= r2) near.add(new double[] {d2, hit[0], hit[1], hit[2], hit[3]});
+
             }
+
         }
+
+        near.sort((a, b) -> Double.compare(a[0], b[0]));
+
+        int cap = Math.min(near.size(), com.zlorbie788.zeus.ui.Perf.gameFast() ? Math.max(20, maxBoxes.i() * 2 / 3) : maxBoxes.i());
+
+        float[] tmp = new float[2];
+
+        int filled = 0;
+
+        int lines = 0;
+
+        for (int n = 0; n < cap; n++) {
+
+            double[] hit = near.get(n);
+
+            boolean custom = hit[4] >= 0x1000000;
+
+            int color = custom ? 0xFF000000 | ((int) hit[4] & 0xFFFFFF) : COLORS[(int) hit[4]];
+
+            double dist = Math.sqrt(hit[0]);
+
+            float alpha = kit.alphaFor(dist, r);
+
+            net.minecraft.world.phys.AABB box = com.zlorbie788.zeus.render.EspKit.shape(mc, (int) hit[1], (int) hit[2], (int) hit[3]);
+
+            double cx = (box.minX + box.maxX) / 2;
+
+            double cy = (box.minY + box.maxY) / 2;
+
+            double cz = (box.minZ + box.maxZ) / 2;
+
+            if (lines++ < 28) kit.tracer(g, w, h, cx, cy, cz, color, alpha);
+
+            if (Projector.depth(cx, cy, cz) < -1.5) continue;
+
+            if (!Projector.project(cx, cy, cz, tmp) || tmp[0] < -80 || tmp[0] > w + 80 || tmp[1] < -80 || tmp[1] > h + 80) continue;
+
+            shown++;
+
+            kit.box(g, box, color, alpha, filled++ < 36);
+
+            if (names.on() && n < 8 && Projector.project(cx, box.maxY + 0.15, cz, tmp)) {
+
+                kit.tag(g, custom ? mc.level.getBlockState(new net.minecraft.core.BlockPos((int) hit[1], (int) hit[2], (int) hit[3])).getBlock().getName().getString() : XRay.KINDS[(int) hit[4]], Math.round(dist) + "m", Math.round(tmp[0]), Math.round(tmp[1]) - 14, color, alpha, w, h);
+
+            }
+
+        }
+
     }
+
+    private void openBlockPicker() {
+
+        Minecraft mc = Minecraft.getInstance();
+
+        if (mc == null || mc.screen == null) return;
+
+        Set<String> current = new LinkedHashSet<>();
+
+        for (String id : extraList.keySet()) current.add(id);
+
+        mc.setScreen(new BlockPickerScreen(mc.screen, "Pick blocks for Block ESP", current, this::applyBlockPicks));
+
+    }
+
+    private void applyBlockPicks(Set<String> picked) {
+
+        extra.set("");
+
+        extraList.clear();
+
+        CUSTOM.clear();
+
+        for (String id : picked) {
+
+            extra.set(extra.get() + (extra.get().isEmpty() ? "" : ", ") + id);
+
+        }
+
+        reset();
+
+        Zeus.toast("Block ESP: " + picked.size() + " block" + (picked.size() == 1 ? "" : "s") + " selected", true);
+
+    }
+
 }

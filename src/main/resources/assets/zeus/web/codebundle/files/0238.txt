@@ -1,1027 +1,379 @@
-/* Zeus Client website: shell, router, motion and the public pages. No inline scripts (the page's CSP forbids them). */
-(function () {
-  "use strict";
+package com.zlorbie788.zeus.ui;
 
-  var NS = "http://www.w3.org/2000/svg";
-  var Z = (window.Z = {
-    site: { version: "", minecraft: "1.21.11", local: false, moduleCount: 0, links: {}, url: "" },
-    content: {},
-    features: null,
-    help: { sections: [], quick: [], faq: [] },
-    timeline: [],
-    pages: {},
-    ready: [],
-    token: "",
-  });
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.network.chat.Component;
 
-  /* Motion: "full" (default) or "calm". Calm is chosen with the switch in the footer and is remembered. It is
-     not tied to the system setting on purpose: a system that reports "reduce motion" for every page used to
-     switch off the typing animation and every other effect without any way to turn it back on. */
-  var REDUCED = false;
-  try { REDUCED = localStorage.getItem("zeus.motion") === "calm"; } catch (e) { /* storage blocked */ }
-  Z.reduced = REDUCED;
-  document.documentElement.classList.add(REDUCED ? "calm" : "motion");
-  Z.hooks = { data: [], page: [] };
+import java.util.Locale;
 
-  /* ---------------- tiny DOM helpers ---------------- */
-  function h(tag, attrs) {
-    var node = document.createElement(tag);
-    if (attrs) {
-      for (var k in attrs) {
-        var v = attrs[k];
-        if (v === undefined || v === null || v === false) continue;
-        if (k === "class") node.className = v;
-        else if (k === "text") node.textContent = v;
-        else if (k.slice(0, 2) === "on" && typeof v === "function") node.addEventListener(k.slice(2), v);
-        else node.setAttribute(k, v === true ? "" : v);
-      }
+/**
+ * The knife switcher: knife types down the left, the chosen type's skins as live 3D tiles, and a
+ * large turning preview of the skin under the mouse (or the one in hand). Click a skin to hold it.
+ */
+public final class KnifePickerScreen extends Screen {
+
+    public interface Chosen {
+        void pick(int knife, int finish);
     }
-    for (var i = 2; i < arguments.length; i++) add(node, arguments[i]);
-    return node;
-  }
-  function add(node, c) {
-    if (c === undefined || c === null || c === false) return;
-    if (Array.isArray(c)) { c.forEach(function (x) { add(node, x); }); return; }
-    node.appendChild(c.nodeType ? c : document.createTextNode(String(c)));
-  }
-  function icon(name, cls) {
-    if (!document.getElementById("i-" + name)) name = "info";
-    var s = document.createElementNS(NS, "svg");
-    s.setAttribute("class", "i" + (cls ? " " + cls : ""));
-    s.setAttribute("aria-hidden", "true");
-    var u = document.createElementNS(NS, "use");
-    u.setAttribute("href", "#i-" + name);
-    s.appendChild(u);
-    return s;
-  }
-  function $(sel, root) { return (root || document).querySelector(sel); }
-  function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
-  function safeUrl(u) { return typeof u === "string" && /^https?:\/\//i.test(u) ? u : ""; }
-  function debounce(fn, ms) {
-    var t;
-    return function () { var a = arguments, s = this; clearTimeout(t); t = setTimeout(function () { fn.apply(s, a); }, ms); };
-  }
-  function store(key, value) {
-    try {
-      if (value === undefined) return localStorage.getItem(key);
-      if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value);
-    } catch (e) { /* storage can be blocked; the page works without it */ }
-    return null;
-  }
-  function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
-  function safeColor(c) { return /^#[0-9a-fA-F]{3,8}$/.test(c || "") ? c : "#4ea4ff"; }
 
-  Z.setMotion = function (mode) {
-    REDUCED = mode === "calm";
-    Z.reduced = REDUCED;
-    store("zeus.motion", REDUCED ? "calm" : "full");
-    var c = document.documentElement.classList;
-    c.toggle("calm", REDUCED); c.toggle("motion", !REDUCED);
-    if (Z.fxSync) Z.fxSync();
-    document.dispatchEvent(new CustomEvent("zeus:motion", { detail: { calm: REDUCED } }));
-  };
-  Z.h = h; Z.icon = icon; Z.$ = $; Z.clear = clear; Z.safeUrl = safeUrl; Z.debounce = debounce; Z.store = store;
+    /** Only the HD knives are offered; HD knife i is knife kind FIRST + i. */
+    private static final int FIRST = KnifeArt.allKnives().length - KnifeArt.HD_COUNT;
 
-  function toast(msg, kind) {
-    var host = $("#toasts");
-    var t = h("div", { class: "toast " + (kind || ""), text: msg });
-    host.appendChild(t);
-    setTimeout(function () {
-      t.classList.add("out");
-      setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 320);
-    }, kind === "bad" ? 6500 : 3600);
-  }
-  Z.toast = toast;
+    private static final String[][] TYPE_ABOUT = {
+            {"Tactical", "A straight drop-point fighter with a ribbed grip. The all-rounder."},
+            {"Karambit", "A hooked claw on a grooved grip, with the tang coming through as a steel finger ring."},
+            {"M9 Bayonet", "Military bayonet with a sawback spine, a fuller and a muzzle ring guard."},
+            {"Butterfly", "Two slotted handle halves that swing around the blade. Flip it open."},
+            {"Huntsman", "A heavy tanto-point survival knife with a sawback and a black rubber grip."},
+            {"Bowie", "The classic big clip-point bowie with a brass guard and a wooden handle."},
+            {"Skeleton", "A lean spear point with a finger hole through the blade and a wrapped handle."},
+            {"Ursus", "Broad folding blade with a long fuller, finger-grooved G10 handle."},
+            {"Stiletto", "A slim needle blade with a thin crossbar and polished steel bolsters."},
+    };
 
-  /* ---------------- data ---------------- */
-  function getJson(url) {
-    return fetch(url, { cache: "no-cache" }).then(function (r) {
-      if (!r.ok) throw new Error(String(r.status));
-      return r.json();
-    });
-  }
+    private static final String[][] SKIN_ABOUT = {
+            {"Damascus", "Pattern-welded steel folded into flowing grey layers."},
+            {"Slaughter", "Polished steel splashed with deep red."},
+            {"Case hardened", "Heat-blued steel in gold, blue and violet patches."},
+            {"Fade", "Anodised red to violet to blue, running out to the tip."},
+            {"Crimson web", "Black carbon laced with a red web."},
+            {"Tiger tooth", "Gold with torn black stripes."},
+            {"Sapphire", "Deep blue swirled gem finish with sparkles."},
+            {"Urban masked", "Grey and carbon urban camo."},
+            {"Emerald", "Green swirled gem finish."},
+            {"Marble fade", "A red and yellow flame swirl running into a blue tip."},
+            {"Ruby", "Deep red swirled gem finish with sparkles."},
+            {"Ultraviolet", "Violet-black anodised steel, worn bright at the edge."},
+            {"Forest camo", "Olive, moss and khaki woodland camo."},
+            {"Night", "Blackened satin steel with a bright ground edge."},
+            {"Rust coat", "Orange-brown rust flaking over dark steel."},
+            {"Gold leaf", "Polished gold with a faint engraved scroll."},
+            {"Bloodstone", "Dark red marble: crimson clouds over near-black steel."},
+            {"Stock", "Factory satin steel. Every collection starts here."},
+            {"Lightning", "Blued black steel split by forked, glowing bolts."},
+            {"Olympus", "White marble veined with grey and gold."},
+            {"Inferno", "Charred steel cracked open by glowing lava."},
+            {"Nebula", "Violet and teal gas clouds scattered with stars."},
+            {"Frost", "Pale ice-blue steel grown over with frost crystals."},
+            {"Phantom", "Holographic foil that shifts colour as it turns."},
+            {"Toxic", "Black steel eaten through by glowing acid."},
+            {"Sunset", "Violet at the guard through pink and orange to a gold tip."},
+            {"Thunderhead", "Rolling slate storm clouds with a single bright fork."},
+            {"Abyss", "Teal fading to black, lit by rippling caustics."},
+    };
 
-  Z.getJson = getJson;
+    /** Knife types in order, each with the HD indices of its skins. */
+    private static final java.util.List<String> TYPES = new java.util.ArrayList<>();
+    private static final java.util.List<int[]> SKINS = new java.util.ArrayList<>();
 
-  Z.api = function (method, path, body) {
-    var headers = { Accept: "application/json" };
-    if (Z.token) headers.Authorization = "Bearer " + Z.token;
-    var opts = { method: method, headers: headers, cache: "no-store" };
-    if (body !== undefined) { headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
-    return fetch(path, opts).then(function (r) {
-      return r.text().then(function (text) {
-        var data = {};
-        try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { error: "Unexpected reply" }; }
-        if (!r.ok) {
-          var err = new Error(data.error || ("Request failed (" + r.status + ")"));
-          err.status = r.status;
-          throw err;
+    static {
+        String[] all = KnifeArt.allKnives();
+        java.util.Map<String, java.util.List<Integer>> by = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < KnifeArt.HD_COUNT; i++) {
+            by.computeIfAbsent(typeOf(all[FIRST + i]), k -> new java.util.ArrayList<>()).add(i);
         }
-        return data;
-      });
-    });
-  };
-
-  function loadData() {
-    var content = getJson("/site.json").catch(function () { return {}; });
-    // A published build sets "hosted": true in site.json and never asks for the in-game API.
-    var split = content.then(function (c) {
-      var hosted = !!(c && c.hosted);
-      var live = hosted ? Promise.resolve(null) : getJson("/api/site").catch(function () { return null; });
-      var feats = (hosted ? getJson("/features.json") : getJson("/api/features").catch(function () { return getJson("/features.json"); })).catch(function () { return { categories: [], modules: [] }; });
-      return Promise.all([live, feats]);
-    });
-    var help = getJson("/help.json").catch(function () { return { sections: [], quick: [], faq: [] }; });
-    var tl = getJson("/timeline.json").catch(function () { return []; });
-    var over = getJson("/overrides.json").catch(function () { return null; });
-    getJson("/media.json").then(function (m) { Z.media = (m && m.modules) || {}; }, function () { Z.media = {}; });
-    var live = split.then(function (x) { return x[0]; });
-    var feats = split.then(function (x) { return x[1]; });
-    return Promise.all([content, live, feats, help, tl, over]).then(function (r) {
-      Z.content = r[0] || {};
-      var base = Z.content.defaults || {};
-      var live = r[1];
-      Z.site.local = !!live;
-      Z.site.version = (live && live.version) || base.version || "";
-      Z.site.minecraft = (live && live.minecraft) || base.minecraft || "1.21.11";
-      Z.site.moduleCount = (live && live.moduleCount) || (r[2].modules || []).length;
-      Z.site.name = base.siteName || "Zeus Client";
-      Z.site.url = (/^https?:\/\//i.test(base.siteUrl || "") ? base.siteUrl.replace(/\/+$/, "") : "") || location.origin;
-      var L = Z.site.links;
-      L.discord = safeUrl(live && live.discordUrl) || safeUrl(base.discordUrl);
-      L.download = safeUrl(live && live.downloadUrl) || safeUrl(base.downloadUrl);
-      L.youtube = safeUrl(live && live.youtubeUrl) || safeUrl(base.youtubeUrl);
-      L.twitter = safeUrl(live && live.twitterUrl) || safeUrl(base.twitterUrl);
-      L.tutorial = safeUrl(live && live.tutorialUrl) || safeUrl(base.tutorialUrl);
-      L.github = safeUrl(base.githubUrl);
-      L.contact = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(base.contactEmail || "") ? base.contactEmail : "";
-      Z.sha256 = /^[0-9a-fA-F]{64}$/.test(base.sha256 || "") ? base.sha256.toLowerCase() : "";
-      Z.features = r[2];
-      Z.help = r[3] || Z.help;
-      Z.timeline = Array.isArray(r[4]) ? r[4] : [];
-      Z.overrides = r[5] && typeof r[5] === "object" ? r[5] : null;
-      if (Z.overrides) Z.applyOverrides(Z.overrides);
-      Z.hooks.data.forEach(function (fn) { try { fn(); } catch (e) { if (window.console) console.error(e); } });
-    });
-  }
-
-  /* ---------------- content overrides (overrides.json, written by the admin panel) ---------------- */
-  function setPath(root, path, value) {
-    var parts = String(path).split(".");
-    for (var i = 0; i < parts.length; i++) if (parts[i] === "__proto__" || parts[i] === "constructor" || parts[i] === "prototype") return;
-    var o = root;
-    for (var j = 0; j < parts.length - 1; j++) {
-      var k = parts[j];
-      if (o[k] === undefined || o[k] === null || typeof o[k] !== "object") o[k] = /^\d+$/.test(parts[j + 1]) ? [] : {};
-      o = o[k];
-    }
-    o[parts[parts.length - 1]] = value;
-  }
-  Z.setPath = setPath;
-  Z.applyOverrides = function (ov) {
-    if (!ov) return;
-    var C = Z.content;
-    var text = ov.content || {};
-    Object.keys(text).forEach(function (k) { if (typeof text[k] === "string") setPath(C, k, text[k]); });
-    var links = ov.links || {}, L = Z.site.links;
-    Object.keys(links).forEach(function (k) { if (typeof links[k] === "string") L[k] = safeUrl(links[k]); });
-    if (/^[0-9a-fA-F]{64}$/.test(ov.sha256 || "")) Z.sha256 = ov.sha256.toLowerCase();
-    if (ov.banner && typeof ov.banner === "object") C.banner = ov.banner;
-    var F = Z.help && Z.help.faq;
-    if (F && ov.faq) {
-      var hide = ov.faq.hide || [];
-      if (hide.length) Z.help.faq = F = F.filter(function (f) { return hide.indexOf(f.orig || f.q) < 0; });
-      Object.keys(ov.faq.edit || {}).forEach(function (q) {
-        F.forEach(function (f) { if ((f.orig || f.q) === q) { var e = ov.faq.edit[q]; f.orig = f.orig || f.q; if (e.q) f.q = String(e.q); if (e.a) { f.a = String(e.a); f.alts = []; } } });
-      });
-      (ov.faq.add || []).forEach(function (n) {
-        if (n && n.q && n.a) F.push({ q: String(n.q), a: String(n.a), cat: n.cat || "About Zeus", keys: n.keys || "", alts: [], links: [] });
-      });
-    }
-    if (Array.isArray(ov.releases) && ov.releases.length) {
-      ov.releases.slice().reverse().forEach(function (r) { if (r && r.version && r.title) Z.timeline.unshift({ version: String(r.version), title: String(r.title), text: String(r.text || ""), mods: r.mods || [] }); });
-      if (Z.timeline[0] && /^\d+(\.\d+)*$/.test(Z.timeline[0].version)) Z.site.version = Z.timeline[0].version;
-    }
-  };
-
-  /* ---------------- animated emblem ---------------- */
-  /* Layers (back to front): halo, blurred glow copy, emblem, masked light sweep, one-shot shock ring.
-     The emblem itself never changes shape; only light moves across it. */
-  Z.logo = function (size) {
-    var img = h("img", { class: "zl-img", src: "/img/emblem.png", alt: "", width: 250, height: 235, decoding: "async" });
-    var float = h("span", { class: "zl-float" }, h("span", { class: "zl-halo" }), h("span", { class: "zl-glow" }), img, h("span", { class: "zl-sheen" }), h("span", { class: "zl-ring" }));
-    var tilt = h("span", { class: "zl-tilt" }, float);
-    var el = h("span", { class: "zlogo", style: typeof size === "number" ? "--zs:" + size + "px" : null, "aria-hidden": "true" }, tilt);
-    el._tilt = tilt;
-    return el;
-  };
-
-  /* ---------------- ambient embers + emitters ---------------- */
-  var fx = { cv: null, ctx: null, w: 0, h: 0, dpr: 1, parts: [], emitters: [], running: false, last: 0 };
-  Z.emit = function (el, on) {
-    fx.emitters = fx.emitters.filter(function (e) { return e !== el; });
-    if (on) fx.emitters.push(el);
-  };
-  function fxResize() {
-    var cv = fx.cv;
-    fx.dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-    fx.w = window.innerWidth; fx.h = window.innerHeight;
-    cv.width = Math.round(fx.w * fx.dpr); cv.height = Math.round(fx.h * fx.dpr);
-  }
-  function spawn(x, y, strong) {
-    fx.parts.push({
-      x: x, y: y,
-      vx: (Math.random() - 0.5) * (strong ? 22 : 10),
-      vy: -(strong ? 20 + Math.random() * 34 : 6 + Math.random() * 16),
-      r: strong ? 0.8 + Math.random() * 1.6 : 0.6 + Math.random() * 1.5,
-      life: 0, max: strong ? 1.6 + Math.random() * 1.6 : 7 + Math.random() * 7,
-      ph: Math.random() * 6.28,
-    });
-  }
-  function fxFrame(t) {
-    if (!fx.running) return;
-    requestAnimationFrame(fxFrame);
-    var dt = Math.min(0.05, (t - fx.last) / 1000 || 0.016);
-    fx.last = t;
-    var ctx = fx.ctx;
-    ctx.setTransform(fx.dpr, 0, 0, fx.dpr, 0, 0);
-    ctx.clearRect(0, 0, fx.w, fx.h);
-    if (fx.parts.length < 46 && Math.random() < dt * 5) spawn(Math.random() * fx.w, fx.h + 8, false);
-    fx.emitters.forEach(function (el) {
-      if (!el.isConnected) return;
-      var r = el.getBoundingClientRect();
-      if (r.bottom < 0 || r.top > fx.h) return;
-      if (Math.random() < dt * 14) spawn(r.left + r.width * (0.2 + Math.random() * 0.6), r.top + r.height * (0.25 + Math.random() * 0.6), true);
-    });
-    ctx.globalCompositeOperation = "lighter";
-    for (var i = fx.parts.length - 1; i >= 0; i--) {
-      var p = fx.parts[i];
-      p.life += dt;
-      if (p.life >= p.max || p.y < -20) { fx.parts.splice(i, 1); continue; }
-      p.x += (p.vx + Math.sin(p.life * 1.3 + p.ph) * 6) * dt;
-      p.y += p.vy * dt;
-      var k = p.life / p.max;
-      var a = Math.sin(Math.min(1, k) * Math.PI) * 0.8;
-      var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 5);
-      g.addColorStop(0, "rgba(150,205,255," + a.toFixed(3) + ")");
-      g.addColorStop(0.35, "rgba(55,135,255," + (a * 0.45).toFixed(3) + ")");
-      g.addColorStop(1, "rgba(30,90,255,0)");
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 5, 0, 6.2832); ctx.fill();
-    }
-  }
-  function fxStart() {
-    fx.cv = $("#fx");
-    if (!fx.cv) return;
-    fx.ctx = fx.cv.getContext("2d");
-    if (!fx.ctx) return;
-    fxResize();
-    window.addEventListener("resize", debounce(fxResize, 150));
-    for (var i = 0; i < 22; i++) { spawn(Math.random() * fx.w, Math.random() * fx.h, false); fx.parts[i].life = Math.random() * 6; }
-    function go() { if (fx.running || REDUCED) return; fx.running = true; fx.last = performance.now(); requestAnimationFrame(fxFrame); }
-    document.addEventListener("visibilitychange", function () { if (document.hidden) fx.running = false; else go(); });
-    Z.fxSync = function () { fx.cv.style.display = REDUCED ? "none" : ""; if (REDUCED) fx.running = false; else go(); };
-    Z.fxSync();
-  }
-
-  /* ---------------- motion helpers ---------------- */
-  var revealObs = null;
-  Z.reveal = function (root) {
-    var nodes = (root || document).querySelectorAll("[data-reveal]:not(.in)");
-    if (!nodes.length) return;
-    if (REDUCED || !("IntersectionObserver" in window)) { nodes.forEach(function (n) { n.classList.add("in"); }); return; }
-    if (!revealObs) {
-      revealObs = new IntersectionObserver(function (es) {
-        es.forEach(function (e) {
-          if (e.isIntersecting) { e.target.classList.add("in"); revealObs.unobserve(e.target); }
+        by.forEach((k, v) -> {
+            TYPES.add(k);
+            SKINS.add(v.stream().mapToInt(Integer::intValue).toArray());
         });
-      }, { rootMargin: "0px 0px -6% 0px", threshold: 0.01 });
-    }
-    nodes.forEach(function (n) { revealObs.observe(n); });
-  };
-  function stagger(nodes, step, base) {
-    for (var i = 0; i < nodes.length; i++) {
-      nodes[i].setAttribute("data-reveal", "");
-      nodes[i].style.setProperty("--d", Math.min(i, 12) * (step || 60) + (base || 0) + "ms");
-    }
-  }
-  Z.stagger = stagger;
-
-  Z.countUp = function (el, to, suffix) {
-    suffix = suffix || "";
-    if (REDUCED || !to) { el.textContent = to + suffix; return; }
-    var start = performance.now(), dur = 1100;
-    (function step(t) {
-      var k = Math.min(1, (t - start) / dur);
-      var e = 1 - Math.pow(1 - k, 3);
-      el.textContent = Math.round(to * e) + suffix;
-      if (k < 1 && el.isConnected) requestAnimationFrame(step);
-    })(start);
-  };
-
-  function wordmarkLetters(text, offset) {
-    var out = document.createDocumentFragment();
-    for (var i = 0; i < text.length; i++) {
-      var s = h("span", { class: "wm-l", text: text[i] });
-      s.style.setProperty("--i", String(i + (offset || 0)));
-      out.appendChild(s);
-    }
-    return out;
-  }
-
-  /* spotlight on cards */
-  document.addEventListener("pointermove", function (e) {
-    var t = e.target && e.target.closest && e.target.closest(".card,.mod,.mc,.hq");
-    if (!t) return;
-    var r = t.getBoundingClientRect();
-    t.style.setProperty("--mx", (e.clientX - r.left) + "px");
-    t.style.setProperty("--my", (e.clientY - r.top) + "px");
-  }, { passive: true });
-
-  var progressTimer = 0;
-  function progress(on) {
-    var p = $("#progress");
-    if (!p) return;
-    clearTimeout(progressTimer);
-    if (on) { p.style.transition = "none"; p.style.width = "0"; void p.offsetWidth; p.style.transition = ""; p.classList.add("on"); p.style.width = "72%"; }
-    else { p.style.width = "100%"; progressTimer = setTimeout(function () { p.classList.remove("on"); setTimeout(function () { p.style.width = "0"; }, 320); }, 260); }
-  }
-
-  /* ---------------- shell ---------------- */
-  /* The header shows five pages and a "More" menu. At narrow widths it collapses into a burger menu. */
-  var NAV = [
-    ["home", "Home", "home"],
-    ["download", "Download", "download"],
-    ["features", "Features", "cube"],
-    ["tutorial", "Tutorial", "play"],
-    ["information", "About", "info"],
-  ];
-  var MORE = [
-    ["config", "Build a config", "sliders", "Answer a few questions"],
-    ["knives", "Knife preview", "star", "Every knife and finish"],
-    ["monitor", "Performance monitor", "bolt", "What your modules cost"],
-    ["troubleshoot", "Troubleshooter", "wand", "Fix a problem"],
-    ["source", "Source code", "code", "Read every file"],
-    ["credits", "Credits", "users", "Who made Zeus"],
-    ["settings", "Control center", "gear", "In-game only", true],
-  ];
-
-  function buildNav() {
-    var box = $("#links");
-    clear(box);
-    NAV.forEach(function (n) {
-      box.appendChild(h("a", { href: n[0] === "home" ? "/" : "/" + n[0], "data-page": n[0], "data-link": "" }, icon(n[2]), h("span", { text: n[1] })));
-    });
-    var menu = h("div", { class: "more-menu", id: "moreMenu", role: "menu" });
-    MORE.forEach(function (n) {
-      if (n[4] && !Z.site.local) return;
-      menu.appendChild(h("a", { href: "/" + n[0], "data-page": n[0], "data-link": "", role: "menuitem" }, icon(n[2]), h("span", {}, h("b", { text: n[1] }), h("small", { text: n[3] }))));
-    });
-    var moreBtn = h("button", { class: "more-btn", type: "button", "aria-haspopup": "true", "aria-expanded": "false", "aria-controls": "moreMenu" }, icon("list"), h("span", { text: "More" }), icon("arrow", "small chev"));
-    var more = h("div", { class: "more" }, moreBtn, menu);
-    box.appendChild(more);
-    box.appendChild(h("span", { class: "ind", "aria-hidden": "true" }));
-
-    function setMore(open) {
-      more.classList.toggle("open", open);
-      moreBtn.setAttribute("aria-expanded", open ? "true" : "false");
-    }
-    moreBtn.addEventListener("click", function (e) { e.stopPropagation(); setMore(!more.classList.contains("open")); });
-    document.addEventListener("click", function (e) { if (!more.contains(e.target)) setMore(false); });
-    document.addEventListener("keydown", function (e) { if (e.key === "Escape") { setMore(false); document.documentElement.classList.remove("navopen"); } });
-    document.addEventListener("zeus:page", function () { setMore(false); document.documentElement.classList.remove("navopen"); });
-
-    // burger (shown by the stylesheet at narrow widths)
-    var inner = $(".nav-inner");
-    if (inner && !$("#burger")) {
-      var burger = h("button", { class: "burger", id: "burger", type: "button", "aria-label": "Menu", "aria-expanded": "false" }, h("i"), h("i"), h("i"));
-      burger.addEventListener("click", function (e) {
-        e.stopPropagation();
-        var on = document.documentElement.classList.toggle("navopen");
-        burger.setAttribute("aria-expanded", on ? "true" : "false");
-      });
-      document.addEventListener("click", function (e) { if (!e.target.closest || !e.target.closest("#links, #burger")) document.documentElement.classList.remove("navopen"); });
-      inner.appendChild(burger);
     }
 
-    var brand = $(".brand");
-    var old = brand && brand.querySelector("img");
-    if (old) brand.replaceChild(Z.logo(), old);
-    var bt = $(".brand-text b");
-    if (bt) { bt.setAttribute("aria-label", "ZEUS"); }
+    private final Screen parent;
+    private final Chosen chosen;
+    private final int[] finishOf;
+    private int knife;
+    private int group;
+    private int hover = -1;
+    private int hoverGroup = -1;
+    private int px, py, pw, ph;
 
-    var d = $("#discordTop");
-    if (Z.site.links.discord) { d.href = Z.site.links.discord; d.hidden = false; } else d.hidden = true;
-
-    var foot = $("#footSocial");
-    clear(foot);
-    var year = new Date().getFullYear();
-    $("#footText").textContent = "Zeus Client © " + year + ". All rights reserved.";
-    foot.appendChild(h("a", { href: "/help", "data-link": "", "aria-label": "Help", title: "Help" }, icon("help")));
-    [["github", "github", "GitHub"], ["discord", "discord", "Discord"], ["youtube", "youtube", "YouTube"], ["twitter", "twitter", "X / Twitter"]].forEach(function (s) {
-      var url = Z.site.links[s[0]];
-      if (!url) return;
-      foot.appendChild(h("a", { href: url, target: "_blank", rel: "noopener noreferrer", "aria-label": s[2], title: s[2] }, icon(s[1])));
-    });
-    window.addEventListener("resize", debounce(moveIndicator, 100));
-  }
-
-  function moveIndicator() {
-    var box = $("#links"), ind = box && $(".ind", box);
-    var a = box && (box.querySelector(":scope > a.on") || box.querySelector(":scope > .more.on"));
-    if (!ind) return;
-    if (!a || !a.offsetWidth) { ind.classList.remove("on"); return; }
-    ind.style.width = a.offsetWidth + "px";
-    ind.style.transform = "translateX(" + a.offsetLeft + "px)";
-    ind.classList.add("on");
-  }
-
-  function mark(page) {
-    var inMore = false;
-    document.querySelectorAll("#links a").forEach(function (a) {
-      var on = a.getAttribute("data-page") === page;
-      a.classList.toggle("on", on);
-      if (on) { a.setAttribute("aria-current", "page"); if (a.closest(".more")) inMore = true; } else a.removeAttribute("aria-current");
-    });
-    var more = $("#links .more");
-    if (more) more.classList.toggle("on", inMore);
-    var hb = $("#helpTop");
-    if (hb) hb.classList.toggle("on", page === "help");
-    moveIndicator();
-  }
-
-  /* ---------------- router (History API, clean URLs) ---------------- */
-  var cleanup = null;
-  Z.onLeave = function (fn) { cleanup = fn; };
-
-  var META = {
-    home: ["Zeus Client – a cheat client for Minecraft 1.21.11", "Zeus Client is a Fabric cheat client for Minecraft 1.21.11 with combat, movement, ESP and base-finding modules and an in-game menu."],
-    download: ["Download Zeus Client", "Download Zeus Client for Minecraft 1.21.11 on Fabric. What you need and how to install it."],
-    features: ["Features – Zeus Client", "Every Zeus Client module and its settings. Search by name or filter by category."],
-    tutorial: ["Tutorial – Zeus Client", "How to get started with Zeus Client: open the menu, switch modules on and place your HUD."],
-    help: ["Help & FAQ – Zeus Client", "Guides, a searchable FAQ and a helper that answers questions about Zeus Client."],
-    credits: ["Credits – Zeus Client", "Who made Zeus Client, and the projects it builds on."],
-    information: ["Information – Zeus Client", "About Zeus Client, a few notes to read first, and every release from the first version to today."],
-    source: ["Source code – Zeus Client", "Read the Zeus Client source code on this site, file by file."],
-    config: ["Build a config – Zeus Client", "Answer a few yes or no questions, or pick a playstyle, and get a set of modules to start with."],
-    knives: ["Knife preview – Zeus Client", "Every Zeus knife in every finish, drawn by the same code the game uses."],
-    monitor: ["Performance monitor – Zeus Client", "A gauge of what a set of Zeus modules will probably cost you in FPS."],
-    troubleshoot: ["Troubleshooter – Zeus Client", "Answer a few yes or no questions to find the fix for your Zeus problem."],
-    account: ["Your profile – Zeus Client", "Your saved modules, configs and helper history."],
-    settings: ["Control center – Zeus Client", "Control a running Zeus Client from your browser. It only works from the link the game prints."],
-    admin: ["Administration – Zeus Client", "Site administration."],
-  };
-
-  function currentPage() {
-    var seg = location.pathname.replace(/^\/+|\/+$/g, "").split("/")[0].toLowerCase().replace(/\.html$/, "");
-    if (seg === "index" || seg === "") return "home";
-    return Z.pages[seg] ? seg : "home";
-  }
-
-  function setMeta(page) {
-    var m = META[page] || META.home;
-    document.title = m[0];
-    var d = $('meta[name="description"]');
-    if (d) d.setAttribute("content", m[1]);
-    var canon = $('link[rel="canonical"]');
-    if (!canon) { canon = h("link", { rel: "canonical" }); document.head.appendChild(canon); }
-    canon.setAttribute("href", Z.site.url + (page === "home" ? "/" : "/" + page));
-  }
-
-  function tagSplit(t) {
-    var i = t.indexOf("cheat client");
-    if (i < 0) return [t];
-    return [t.slice(0, i), h("em", { text: "cheat client" }), t.slice(i + 12)];
-  }
-  var navToken = 0, lastPath = location.pathname;
-  function render(page, opts) {
-    opts = opts || {};
-    lastPath = location.pathname;
-    var token = ++navToken;
-    var view = $("#view");
-    var swap = function () {
-      if (token !== navToken) return;
-      if (cleanup) { try { cleanup(); } catch (e) { /* ignore */ } cleanup = null; }
-      Z.emit(null, false);
-      fx.emitters = [];
-      clear(view);
-      mark(page);
-      setMeta(page);
-      document.documentElement.setAttribute("data-pg", page);
-      try {
-        view.appendChild(Z.pages[page]());
-      } catch (e) {
-        view.appendChild(h("div", { class: "wrap page" }, h("div", { class: "card" }, h("h2", { class: "sec", text: "Something went wrong" }), h("p", { class: "muted", text: String(e && e.message || e) }))));
-        if (window.console) console.error(e);
-      }
-      view.classList.remove("leaving");
-      view.classList.remove("pgin");
-      if (!REDUCED) {
-        void view.offsetWidth;
-        view.classList.add("pgin");
-        clearTimeout(view._pgt);
-        view._pgt = setTimeout(function () { view.classList.remove("pgin"); }, 1300);
-      }
-      Z.reveal(view);
-      if (opts.hash) {
-        var target = document.getElementById(opts.hash);
-        if (target) setTimeout(function () { target.scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block: "start" }); }, 60);
-        else window.scrollTo(0, 0);
-      } else if (!opts.keepScroll) window.scrollTo(0, 0);
-      progress(false);
-      Z.hooks.page.forEach(function (fn) { try { fn(page, opts); } catch (e) { if (window.console) console.error(e); } });
-      document.dispatchEvent(new CustomEvent("zeus:page", { detail: { page: page } }));
-    };
-    if (opts.first || REDUCED) { swap(); return; }
-    progress(true);
-    view.classList.add("leaving");
-    setTimeout(swap, 150);
-  }
-
-  Z.rerender = function () { render(currentPage(), { first: true, keepScroll: true }); };
-
-  Z.go = function (href, replace) {
-    var u;
-    try { u = new URL(href, location.origin); } catch (e) { return; }
-    if (u.origin !== location.origin) { location.href = href; return; }
-    var same = u.pathname === location.pathname;
-    if (same && u.hash && u.search === location.search) {
-      history.pushState(null, "", u.pathname + u.search + u.hash);
-      var el = document.getElementById(u.hash.slice(1));
-      if (el) el.scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block: "start" });
-      return;
-    }
-    if (same && !u.hash && u.search !== location.search) {
-      history.pushState(null, "", u.pathname + u.search);
-      document.dispatchEvent(new CustomEvent("zeus:query"));
-      return;
-    }
-    if (same && !u.hash) { window.scrollTo({ top: 0, behavior: REDUCED ? "auto" : "smooth" }); return; }
-    history[replace ? "replaceState" : "pushState"](null, "", u.pathname + u.search + u.hash);
-    render(currentPage(), { hash: u.hash.slice(1) });
-  };
-
-  function intercept(e) {
-    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-    var a = e.target.closest && e.target.closest("a[href]");
-    if (!a || a.target === "_blank" || a.hasAttribute("download")) return;
-    var href = a.getAttribute("href");
-    if (!href || href.charAt(0) !== "/" || href.charAt(1) === "/") return;
-    var seg = href.replace(/^\/+/, "").split(/[?#]/)[0].split("/")[0].toLowerCase();
-    if (seg !== "" && !Z.pages[seg]) return;
-    e.preventDefault();
-    Z.go(href);
-    if (Z.helper && Z.helper.isFloatingOpen && Z.helper.isFloatingOpen() && a.closest(".hlp")) { /* keep the chat open while navigating from an answer */ }
-  }
-
-  /* ---------------- shared pieces ---------------- */
-  function extBtn(cls, url, children) {
-    if (url) return h("a", { class: cls, href: url, target: "_blank", rel: "noopener noreferrer" }, children);
-    return h("a", { class: cls, href: "/download" }, children);
-  }
-  Z.extBtn = extBtn;
-
-  function pageHead(eyebrow, title, lead) {
-    var items = [h("div", { class: "eyebrow", text: eyebrow }), h("h1", { class: "title", text: title }), lead ? h("p", { class: "lead", text: lead }) : null];
-    stagger(items.filter(Boolean), 80);
-    return items;
-  }
-  Z.pageHead = pageHead;
-
-  function versionLabel() { return Z.site.version ? "v" + Z.site.version : ""; }
-
-  function askLink(text, question, cls) {
-    var b = h("button", { class: cls || "btn btn-outline sm", type: "button" }, icon("chat", "small"), text);
-    b.addEventListener("click", function () { if (Z.helper) Z.helper.ask(question); });
-    return b;
-  }
-
-  /* ---------------- Home ---------------- */
-  Z.pages.home = function () {
-    var C = Z.content;
-    var L = Z.site.links;
-    var tagline = C.tagline || "A cheat client for Minecraft 1.21.11.";
-    var sub = C.subtitle || "Designed for power, customization and an unbeatable edge.";
-
-    var logo = Z.logo();
-    var art = h("div", { class: "hero-art" }, h("img", { src: "/img/hero.jpg", alt: "", decoding: "async" }));
-    var wm = h("div", { class: "wordmark" }, h("b", { "aria-label": "ZEUS" }, wordmarkLetters("ZEUS", 0)), h("i", { "aria-label": "CLIENT" }, wordmarkLetters("CLIENT", 4)));
-    var hero = h("section", { class: "hero" },
-      art,
-      h("div", { class: "wrap" },
-        h("div", { class: "hero-in" },
-          h("div", { class: "hero-id" }, logo, h("div", { class: "hero-rule" }), wm),
-          h("div", { class: "tagline" }, tagSplit(tagline)),
-          h("p", { class: "lead", "data-edit": "subtitle", text: sub }),
-          h("div", { class: "cta" },
-            extBtn("btn btn-primary", L.download, [icon("download"), h("span", { class: "btn-two" }, h("b", { text: "Download Now" }), h("small", { text: "Minecraft " + Z.site.minecraft + " · Fabric" }))]),
-            h("a", { class: "btn btn-outline", href: "/features" }, icon("cube"), h("span", { class: "btn-two" }, h("b", { text: "View Features" }), h("small", { text: (Z.site.moduleCount || "") + " modules" })))))));
-
-    // light follows the pointer: parallax on the artwork, gentle 3D tilt on the emblem
-    if (!REDUCED) {
-      var raf = 0, px = 0, py = 0;
-      hero.addEventListener("pointermove", function (e) {
-        var r = hero.getBoundingClientRect();
-        px = (e.clientX - r.left) / r.width - 0.5;
-        py = (e.clientY - r.top) / r.height - 0.5;
-        if (raf) return;
-        raf = requestAnimationFrame(function () {
-          raf = 0;
-          hero.style.setProperty("--px", px.toFixed(3));
-          hero.style.setProperty("--py", py.toFixed(3));
-          var lr = logo.getBoundingClientRect();
-          var dx = (e.clientX - (lr.left + lr.width / 2)) / Math.max(lr.width, 1);
-          var dy = (e.clientY - (lr.top + lr.height / 2)) / Math.max(lr.height, 1);
-          dx = Math.max(-1.2, Math.min(1.2, dx)); dy = Math.max(-1.2, Math.min(1.2, dy));
-          logo._tilt.style.setProperty("--ry", (dx * 9).toFixed(2) + "deg");
-          logo._tilt.style.setProperty("--rx", (-dy * 7).toFixed(2) + "deg");
-        });
-      });
-      hero.addEventListener("pointerleave", function () {
-        hero.style.setProperty("--px", "0"); hero.style.setProperty("--py", "0");
-        logo._tilt.style.setProperty("--ry", "0deg"); logo._tilt.style.setProperty("--rx", "0deg");
-      });
-      Z.emit(logo, true);
+    public KnifePickerScreen(Screen parent, int knife, int[] finishes, Chosen chosen) {
+        super(Component.literal("Switch knife"));
+        this.parent = parent;
+        this.chosen = chosen;
+        this.finishOf = finishes.clone();
+        this.knife = Math.max(FIRST, Math.min(KnifeArt.allKnives().length - 1, knife));
+        this.group = groupOf(this.knife);
     }
 
-    var strip = h("nav", { class: "strip", "aria-label": "Highlights" });
-    (C.strip || []).forEach(function (s) {
-      strip.appendChild(h("a", { href: "/" + (s.page || "features") }, icon(s.icon || "bolt"), h("span", {}, h("b", { text: s.title }), h("small", { text: s.sub }))));
-    });
-    stagger(strip.children, 70);
-
-    function ticks(list) {
-      return h("ul", { class: "ticks" }, (list || []).map(function (t) { return h("li", {}, icon("check", "small"), h("span", { text: t })); }));
-    }
-    var HC = C.home || {};
-    var about = h("div", { class: "card hc about" },
-      h("div", { class: "card-title" }, icon("shield"), "About Zeus Client"),
-      h("p", { "data-edit": "about", text: C.about || "Zeus is a Fabric cheat client for Minecraft 1.21.11." }),
-      h("div", { class: "mini-stats" }, [
-        [Z.site.moduleCount || "170+", "modules"],
-        [((Z.features && Z.features.categories) || []).length || "9", "categories"],
-        [String(((Z.features && Z.features.modules) || []).reduce(function (n, m) { return n + (m.settings || []).filter(function (x) { return x.type !== "info"; }).length; }, 0) || "700+"), "settings"],
-      ].map(function (t) { return h("div", {}, h("b", { text: String(t[0]) }), h("small", { text: t[1] })); })),
-      ticks(HC.about2),
-      h("div", { class: "card-foot" }, h("a", { class: "btn btn-outline sm", href: "/information" }, "Learn more", icon("arrow", "small"))),
-      h("img", { class: "bigz", src: "/img/emblem.png", alt: "" }));
-
-    var upd = h("div", { class: "card hc upd-card" },
-      h("div", { class: "upd-head" }, h("div", { class: "card-title" }, icon("calendar"), "Latest update"), h("a", { href: "/information#timeline" }, "Full timeline", icon("arrow", "small"))));
-    var latest = Z.timeline[0];
-    var modById = {};
-    ((Z.features && Z.features.modules) || []).forEach(function (m) { modById[m.id] = m; });
-    if (latest) {
-      var chips = (latest.mods || []).filter(function (id) { return modById[id]; }).slice(0, 6);
-      upd.appendChild(h("div", { class: "upd" },
-        h("div", { class: "thumb" }, h("img", { src: "/img/emblem.png", alt: "" })),
-        h("div", {}, h("h3", {}, latest.title || "Update", " ", h("span", { class: "pill", text: "v" + latest.version })), h("p", { class: "muted clamp", text: latest.text || "" }))));
-      if (chips.length) upd.appendChild(h("div", { class: "tl-mods hc-chips" }, h("span", { class: "tl-lab", text: "New and changed" }), chips.map(function (id) {
-        return h("a", { class: "tl-chip", href: "/features?m=" + encodeURIComponent(id) }, modById[id].name);
-      })));
-      upd.appendChild(h("div", { class: "card-foot" }, h("a", { class: "btn btn-outline sm", href: "/information#timeline" }, "Read the release notes", icon("arrow", "small"))));
-    } else upd.appendChild(h("p", { class: "muted", text: "No updates yet." }));
-
-    var disc = h("div", { class: "card hc disc" },
-      h("div", { class: "row" }, icon(L.discord ? "discord" : "chat"), h("div", {}, h("h3", { text: L.discord ? "Join our Discord" : "Questions?" }), h("p", { text: L.discord ? "Ask for help, share configs and report bugs." : "Open the Help centre or ask the helper. It knows the modules, the install steps and the safety notes." }))),
-      ticks(HC.disc),
-      h("div", { class: "card-foot" }, L.discord ? h("a", { class: "btn btn-primary flat", href: L.discord, target: "_blank", rel: "noopener noreferrer" }, "Join Discord", icon("arrow", "small")) :
-        h("a", { class: "btn btn-primary flat", href: "/help" }, "Open Help", icon("arrow", "small"))));
-
-    var cards = h("div", { class: "cards3" }, about, upd, disc);
-    stagger(cards.children, 110);
-
-    // start-here tools
-    var tools = h("div", { class: "tool-cards home-tools" },
-      [["sliders", "Build a config", "Answer a few questions and get a set of modules for how you play.", "/config"],
-       ["wand", "Troubleshooter", "Something not working? A few yes or no questions lead to the fix.", "/troubleshoot"],
-       ["book", "Learn the basics", "Open the menu, switch modules on, place your HUD.", "/tutorial"],
-       ["code", "Read the source", "Every file of Zeus is on this site, so you can read it before you run it.", "/source"]].map(function (t) {
-        return h("a", { class: "tool-card", href: t[3] }, h("span", { class: "tc-i" }, icon(t[0])), h("span", { class: "tc-t" }, h("b", { text: t[1] }), h("small", { text: t[2] })), icon("arrow", "small"));
-      }));
-    stagger(tools.children, 80);
-
-    // popular modules
-    var popIds = ["killaura", "crystalaura", "elytrawaypoint", "mediabasefinder", "basefinder", "xray", "esp", "scaffold", "flight", "fullbright", "autototem", "freecam", "zoom", "boatfly", "schematicbuilder"];
-    var pop = popIds.filter(function (id) { return modById[id]; }).map(function (id) {
-      return h("a", { class: "pop", href: "/features?m=" + encodeURIComponent(id) }, icon("bolt", "small"), modById[id].name);
-    });
-    var popBox = pop.length ? h("div", { class: "pop-box", "data-reveal": "" },
-      h("div", { class: "pop-head" }, h("h2", { class: "sec", text: "Popular modules" }), h("a", { href: "/features" }, "See all " + (Z.site.moduleCount || "") + " modules", icon("arrow", "small"))),
-      h("div", { class: "pop-row" }, pop)) : null;
-
-    var band = h("div", { class: "card band", "data-reveal": "" },
-      h("div", { class: "band-t" }, icon("download", "big"), h("div", {}, h("h3", { text: "Want to try it?" }), h("p", { class: "muted", text: "Installing takes a few minutes. Get it from the Download page, or from GitHub if you prefer." }))),
-      h("div", { class: "cta", style: "margin:0;animation:none" },
-        extBtn("btn btn-primary flat", L.download, [icon("download"), "Download"]),
-        h("button", { class: "btn btn-outline", type: "button", onclick: function () { if (Z.safe) Z.safe.open(); } }, icon("shield"), "Is it safe?")));
-
-    return h("div", {}, hero, h("div", { class: "wrap" }, strip, cards, h("h2", { class: "sec home-sec", "data-reveal": "", text: "Start here" }), tools, popBox, band, h("div", { style: "height:36px" })));
-  };
-
-  /* ---------------- Download ---------------- */
-  Z.pages.download = function () {
-    var C = Z.content;
-    var L = Z.site.links;
-    var steps = C.install || [];
-    var reqs = h("div", { class: "req", style: "margin-bottom:34px" }, (C.requirements || []).map(function (r) {
-      return h("div", { class: "card" }, h("b", { text: r.title }), h("span", { text: r.text }));
-    }));
-    stagger(reqs.children, 80);
-    var ol = h("ol", { class: "steps" }, steps.map(function (s) { return h("li", {}, h("div", {}, h("b", { text: s.title }), h("span", { text: s.text }))); }));
-    stagger(ol.children, 90);
-    var sha = Z.sha256 ? h("div", { class: "card", style: "margin-bottom:28px", "data-reveal": "" }, h("div", { class: "card-title" }, icon("shield"), "Check your download"),
-      h("p", { class: "muted", style: "margin:10px 0 8px", text: "This is the SHA-256 of the official jar. Compare it with your download: certutil -hashfile zeus.jar SHA256 on Windows, sha256sum zeus.jar on Linux or macOS." }),
-      h("code", { style: "word-break:break-all", text: Z.sha256 })) : null;
-
-    var S = C.safe || {};
-    var gh = L.github;
-    var ghCard = h("div", { class: "card gh-card", id: "github", "data-reveal": "" },
-      h("div", { class: "gh-ic" }, icon("github", "big")),
-      h("div", { class: "gh-t" },
-        h("h3", { text: "Prefer to download it from GitHub?" }),
-        h("p", { class: "muted", text: S.github || "If you would rather not download from this site, get the same jar from the project's GitHub page, or build it yourself from the source." })),
-      h("div", { class: "gh-b" },
-        gh ? h("a", { class: "btn btn-primary flat", href: gh, target: "_blank", rel: "noopener noreferrer" }, icon("github"), "Open GitHub") : null,
-        gh ? h("a", { class: "btn btn-outline", href: gh.replace(/\/+$/, "") + "/releases", target: "_blank", rel: "noopener noreferrer" }, icon("download"), "Releases") : null,
-        h("a", { class: "btn btn-outline", href: "/source" }, icon("code"), "Read the source")));
-
-    return h("div", { class: "wrap page" },
-      pageHead("Download", "Get Zeus Client", "Zeus is a client-side Fabric mod for Minecraft " + Z.site.minecraft + "."),
-      h("div", { class: "cta", style: "margin-bottom:34px" },
-        extBtn("btn btn-primary", L.download, [icon("download"), h("span", { class: "btn-two" }, h("b", { text: "Download Zeus " + versionLabel() }), h("small", { text: L.download ? "Opens the download page" : "Link coming soon" }))]),
-        gh ? h("a", { class: "btn btn-outline", href: gh, target: "_blank", rel: "noopener noreferrer" }, icon("github"), "GitHub") : h("a", { class: "btn btn-outline", href: "#github", onclick: function (e) { e.preventDefault(); var t = document.getElementById("github"); if (t) t.scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block: "center" }); } }, icon("github"), "From GitHub"),
-        L.discord ? h("a", { class: "btn btn-outline", href: L.discord, target: "_blank", rel: "noopener noreferrer" }, icon("discord"), "Get help on Discord") : null,
-        h("button", { class: "btn btn-outline", type: "button", onclick: function () { if (Z.safe) Z.safe.open(); } }, icon("shield"), "Is it safe?")),
-      L.download ? null : h("div", { class: "note", style: "margin-bottom:28px", text: "There is no download link yet. Check back later or ask on the Discord." }),
-      sha,
-      ghCard,
-      h("h2", { class: "sec", text: "Requirements" }), reqs,
-      h("h2", { class: "sec", text: "Install" }), ol,
-      h("div", { class: "note", style: "margin-top:30px", "data-edit": "warning", text: C.warning || "Many servers ban cheat clients. Only use Zeus where it is allowed, and read the server's rules first." }));
-  };
-
-  /* ---------------- Tutorial ---------------- */
-  Z.pages.tutorial = function () {
-    var C = Z.content;
-    var L = Z.site.links;
-    var ol = h("ol", { class: "steps" }, (C.tutorial || []).map(function (s) { return h("li", {}, h("div", {}, h("b", { text: s.title }), h("span", { text: s.text }))); }));
-    stagger(ol.children, 90);
-    return h("div", { class: "wrap page" },
-      pageHead("Tutorial", "Getting started", "How to open the menu, switch modules on and find what you need."),
-      h("div", { class: "cta", style: "margin-bottom:30px" },
-        L.tutorial ? h("a", { class: "btn btn-primary flat", href: L.tutorial, target: "_blank", rel: "noopener noreferrer" }, icon("playfill"), "Watch the video tutorial") : null,
-        h("a", { class: "btn btn-outline", href: "/help" }, icon("book"), "Guides for each part"),
-        h("a", { class: "btn btn-outline", href: "/config" }, icon("sliders"), "Build a config")),
-      ol,
-      h("div", { class: "card tut-cfg", "data-reveal": "" },
-        h("div", { class: "tc-i" }, icon("sliders")),
-        h("div", {}, h("h3", { text: "Not sure what to switch on?" }), h("p", { class: "muted", text: "Answer a few yes or no questions, or pick a playstyle. You get a set of modules with a short reason for each." })),
-        h("a", { class: "btn btn-primary flat", href: "/config" }, "Build a config", icon("arrow", "small"))),
-      h("h2", { class: "sec", style: "margin-top:38px", text: "Useful commands" }),
-      h("div", { class: "card", "data-reveal": "" }, h("table", { class: "tbl" }, h("tbody", {}, (C.commands || []).map(function (c) {
-        return h("tr", {}, h("td", {}, h("code", { text: c.cmd })), h("td", { class: "muted", text: c.text }));
-      })))));
-  };
-
-  /* ---------------- Help centre ---------------- */
-  Z.pages.help = function () {
-    var H = Z.help || { sections: [], faq: [] };
-    var F = Z.features || { categories: [], modules: [] };
-    var byCat = {};
-    F.modules.forEach(function (m) { (byCat[m.category] = byCat[m.category] || []).push(m); });
-
-    var side = h("nav", { class: "side", "aria-label": "Help sections" });
-    var content = h("div", {});
-
-    H.sections.forEach(function (s) {
-      side.appendChild(h("a", { href: "#" + s.id, "data-sec": s.id }, icon(s.icon || "info"), h("span", { text: s.title })));
-      var sec = h("section", { class: "hsec card", id: s.id, "data-reveal": "" },
-        h("h2", {}, icon(s.icon || "info"), s.title),
-        h("p", { class: "intro", text: s.intro || "" }));
-      if (s.steps && s.steps.length) sec.appendChild(h("div", {}, h("h4", { text: "How to" }), h("ol", {}, s.steps.map(function (t) { return h("li", { text: t }); }))));
-      if (s.tips && s.tips.length) sec.appendChild(h("div", {}, h("h4", { text: "Good to know" }), h("ul", { class: "tips" }, s.tips.map(function (t) { return h("li", { text: t }); }))));
-      var mods = s.category && byCat[s.category];
-      if (mods && mods.length) {
-        var ml = h("div", { class: "modlist" }, mods.map(function (m) {
-          var sp = h("span", { text: m.name, title: m.description || "", role: "button", tabindex: "0", style: "cursor:pointer" });
-          var ask = function () { if (Z.helper) Z.helper.ask("What does " + m.name + " do?"); };
-          sp.addEventListener("click", ask);
-          sp.addEventListener("keydown", function (e) { if (e.key === "Enter") ask(); });
-          return sp;
-        }));
-        sec.appendChild(h("div", {}, h("h4", { text: mods.length + " modules in this category · click one to ask about it" }), ml));
-      }
-      content.appendChild(sec);
-    });
-
-    // FAQ: grouped into categories, with chips to show one category and a search that covers all of them
-    side.appendChild(h("a", { href: "#faq", "data-sec": "faq" }, icon("chat"), h("span", { text: "FAQ" })));
-    var faqBox = h("div", { class: "faq-groups" });
-    var faqCount = h("span", { class: "faint" });
-    var q = h("input", { type: "search", placeholder: "Search the FAQ…", "aria-label": "Search the FAQ", autocomplete: "off", spellcheck: "false" });
-    var catOrder = (H.cats && H.cats.length ? H.cats : []).slice();
-    (H.faq || []).forEach(function (f) { if (f.cat && catOrder.indexOf(f.cat) < 0) catOrder.push(f.cat); });
-    var curCat = "";
-    var items = (H.faq || []).map(function (f) {
-      var links = (f.links || []).filter(function (l) { return /^\/[a-z]*$/.test(l.href); });
-      var d = h("details", { class: "faq" }, h("summary", { text: f.q }), h("p", { text: f.a }),
-        links.length ? h("div", { class: "faq-links" }, links.map(function (l) { return h("a", { href: l.href }, l.label + " →"); })) : null);
-      return { el: d, cat: f.cat || "", q: f.q, hay: (f.q + " " + f.a + " " + (f.keys || "")).toLowerCase() };
-    });
-    var groups = {};
-    catOrder.forEach(function (c) {
-      var count = h("span", { class: "cnt" });
-      var body = h("div", { class: "faq-list" });
-      var box = h("section", { class: "faq-group", "data-cat": c }, h("h3", {}, c, count), body);
-      groups[c] = { box: box, body: body, count: count };
-      faqBox.appendChild(box);
-    });
-    items.forEach(function (it) { var g = groups[it.cat]; if (g) g.body.appendChild(it.el); else faqBox.appendChild(it.el); });
-    var chipRow = h("div", { class: "faq-chips", role: "group", "aria-label": "FAQ categories" });
-    var chips = {};
-    function chip(label, value, n) {
-      var b = h("button", { type: "button", class: "faq-chip", "aria-pressed": "false" }, label, h("span", { class: "cnt", text: String(n) }));
-      b.addEventListener("click", function () { curCat = value; filter(); });
-      chips[value] = b; chipRow.appendChild(b);
-    }
-    chip("All", "", items.length);
-    catOrder.forEach(function (c) { chip(c, c, items.filter(function (it) { return it.cat === c; }).length); });
-    function filter() {
-      var terms = q.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
-      var n = 0, per = {};
-      items.forEach(function (it) {
-        var ok = (!curCat || it.cat === curCat) && terms.every(function (t) { return it.hay.indexOf(t) >= 0; });
-        it.el.hidden = !ok;
-        if (ok) { n++; per[it.cat] = (per[it.cat] || 0) + 1; }
-      });
-      catOrder.forEach(function (c) {
-        var g = groups[c];
-        g.box.hidden = !per[c];
-        g.count.textContent = per[c] ? String(per[c]) : "";
-      });
-      Object.keys(chips).forEach(function (k) { var on = k === curCat; chips[k].classList.toggle("on", on); chips[k].setAttribute("aria-pressed", on ? "true" : "false"); });
-      faqCount.textContent = n + " of " + items.length + " questions" + (curCat ? " · " + curCat : "");
-    }
-    q.addEventListener("input", debounce(filter, 80));
-    var pre = (/[?&]faq=([^&]+)/.exec(location.search) || [])[1];
-    if (pre) { try { q.value = decodeURIComponent(pre.replace(/\+/g, " ")).slice(0, 120); } catch (e) { /* ignore */ } }
-    filter();
-    if (pre) setTimeout(function () { var first = items.filter(function (it) { return !it.el.hidden; })[0]; if (first) first.el.open = true; }, 40);
-    content.appendChild(h("section", { class: "hsec card", id: "faq", "data-reveal": "" },
-      h("h2", {}, icon("chat"), "Frequently asked questions"),
-      h("p", { class: "intro", text: "Pick a category, search below, or ask the helper in your own words." }),
-      h("div", { class: "faq-tools" }, h("div", { class: "search" }, icon("search"), q)),
-      chipRow,
-      h("div", { style: "margin:4px 0 12px" }, faqCount), faqBox));
-
-    // the helper, embedded
-    var helperHost = h("div", { id: "ask", class: "card", style: "margin-bottom:30px", "data-reveal": "" },
-      h("div", { class: "card-title" }, icon("spark"), "Ask the helper"),
-      h("p", { class: "muted", style: "margin:8px 0 14px", text: "Ask about Zeus or this website: how to install it, what a module does, whether it is safe, why something is not working." }));
-    var mount = h("div", {});
-    helperHost.appendChild(mount);
-    if (Z.helper) Z.helper.mount(mount);
-
-    var tools = h("div", { class: "tool-cards" },
-      [["wand", "Troubleshooter", "A few yes or no questions lead to the fix.", "/troubleshoot"],
-       ["sliders", "Build a config", "Answer a few questions and get a set of modules for how you play.", "/config"],
-       ["code", "Source code", "Read every file of Zeus here on the site.", "/source"],
-       ["user", "Your profile", "Your saved modules, configs and helper history.", "/account"]].map(function (t) {
-        return h("a", { class: "tool-card", href: t[3] }, h("span", { class: "tc-i" }, icon(t[0])), h("span", { class: "tc-t" }, h("b", { text: t[1] }), h("small", { text: t[2] })), icon("arrow", "small"));
-      }));
-    stagger(tools.children, 70);
-    var page = h("div", { class: "wrap page" },
-      pageHead("Help", "Help centre", "Guides, a searchable FAQ and a helper that answers questions about Zeus and this site."),
-      tools,
-      helperHost,
-      h("div", { class: "help-grid" }, side, content));
-
-    // scroll spy
-    var spy = function () {
-      var best = null;
-      content.querySelectorAll(".hsec").forEach(function (s) {
-        if (s.getBoundingClientRect().top < 160) best = s.id;
-      });
-      side.querySelectorAll("a").forEach(function (a) { a.classList.toggle("on", a.getAttribute("data-sec") === best); });
-    };
-    var ticking = false;
-    var onScroll = function () { if (ticking) return; ticking = true; requestAnimationFrame(function () { ticking = false; spy(); }); };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    Z.onLeave(function () { window.removeEventListener("scroll", onScroll); });
-    side.addEventListener("click", function (e) {
-      var a = e.target.closest("a[data-sec]");
-      if (!a) return;
-      e.preventDefault();
-      var t = document.getElementById(a.getAttribute("data-sec"));
-      if (t) t.scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block: "start" });
-      history.replaceState(null, "", "/help#" + a.getAttribute("data-sec"));
-    });
-    setTimeout(spy, 50);
-    return page;
-  };
-
-  /* ---------------- Information (about + timeline) ---------------- */
-  Z.pages.information = function () {
-    var C = Z.content;
-    var modCount = h("td", { text: String(Z.site.moduleCount || "–") });
-    var glance = h("div", { class: "card" }, h("h2", { class: "sec", text: "At a glance" }), h("table", { class: "tbl" }, h("tbody", {}, [
-      ["Version", h("td", { text: versionLabel() || "–" })],
-      ["Minecraft", h("td", { text: Z.site.minecraft })],
-      ["Loader", h("td", { text: "Fabric (client side only)" })],
-      ["Modules", modCount],
-      ["Settings", h("td", { text: String(((Z.features && Z.features.modules) || []).reduce(function (n, m) { return n + (m.settings || []).filter(function (x) { return x.type !== "info"; }).length; }, 0) || "–") })],
-      ["Releases", h("td", { text: String(Z.timeline.length) })],
-      ["Status", h("td", { text: "Actively updated" })],
-    ].map(function (r) { return h("tr", {}, h("th", { text: r[0] }), r[1]); }))));
-    if (Z.site.moduleCount) { var n = Z.site.moduleCount; modCount.textContent = "0"; setTimeout(function () { Z.countUp(modCount, n); }, 300); }
-
-    var modById = {};
-    ((Z.features && Z.features.modules) || []).forEach(function (m) { modById[m.id] = m; });
-    var tl = h("div", { class: "tl", id: "tl" }, Z.timeline.map(function (u) {
-      var mods = (u.mods || []).filter(function (id) { return modById[id]; });
-      var card = h("div", { class: "tl-card" },
-        h("span", { class: "pill", text: "v" + u.version }),
-        h("h3", { text: u.title }),
-        h("p", { text: u.text }));
-      if (mods.length) {
-        card.appendChild(h("div", { class: "tl-mods" }, h("span", { class: "tl-lab", text: "Modules" }), mods.map(function (id) {
-          return h("a", { class: "tl-chip", href: "/features?m=" + encodeURIComponent(id) }, modById[id].name);
-        })));
-      }
-      if (u.settings && u.settings.length) {
-        card.appendChild(h("details", { class: "tl-sets" }, h("summary", { text: "Settings changed (" + u.settings.length + ")" }), h("ul", {}, u.settings.map(function (t) { return h("li", { text: t }); }))));
-      }
-      return h("div", { class: "tl-item", "data-reveal": "" }, h("span", { class: "tl-dot" }), card);
-    }));
-    var onScroll = function () {
-      var r = tl.getBoundingClientRect();
-      var k = (window.innerHeight * 0.6 - r.top) / Math.max(r.height, 1);
-      tl.style.setProperty("--p", Math.max(0, Math.min(1, k)).toFixed(3));
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
-    Z.onLeave(function () { window.removeEventListener("scroll", onScroll); window.removeEventListener("resize", onScroll); });
-    setTimeout(onScroll, 60);
-    if (REDUCED) tl.style.setProperty("--p", "1");
-
-    var top = h("div", { class: "grid g2", style: "margin-bottom:38px" }, glance,
-      h("div", { class: "card" }, h("h2", { class: "sec", text: "Please read" }),
-        h("p", { class: "muted", "data-edit": "warning", text: C.warning || "" }),
-        h("p", { class: "muted", "data-edit": "disclaimer", text: C.disclaimer || "" }),
-        h("div", { class: "cta", style: "margin:14px 0 0;animation:none" }, h("a", { class: "btn btn-outline sm", href: "/help#faq" }, "Read the FAQ"), h("button", { class: "btn btn-outline sm", type: "button", onclick: function () { if (Z.safe) Z.safe.open(); } }, icon("shield", "small"), "Is it safe?"))));
-    stagger(top.children, 100);
-
-    return h("div", { class: "wrap page" },
-      pageHead("Information", "About and update timeline", "About the client, and every release from the first version to today."),
-      top,
-      h("h2", { class: "sec", id: "timeline", text: "Update timeline" }),
-      h("p", { class: "muted", style: "margin:-6px 0 22px", text: "Newest first. One entry per release. The module chips open that module on the Features page." }),
-      tl);
-  };
-
-  /* Settings is provided by dash.js; show a friendly page if it is missing. */
-  if (!Z.pages.settings) Z.pages.settings = function () { return h("div", { class: "wrap page" }, h("div", { class: "card" }, "The control panel script did not load.")); };
-
-  /* ---------------- start ---------------- */
-  var started = false;
-  function start() {
-    if (started) return;
-    started = true;
-
-    // legacy "#/page" links and the one-time "#token=…" hand-over from the in-game link
-    var tm = /[#&?]token=([A-Za-z0-9_-]{20,})/.exec(location.hash);
-    var legacy = /^#\/([a-z]+)/i.exec(location.hash);
-    if (legacy && !Z.pages[legacy[1].toLowerCase()] && legacy[1].toLowerCase() !== "home") legacy = null;
-    if (tm) {
-      Z.token = tm[1];
-      store("zeus.token", tm[1]);
-      history.replaceState(null, "", "/settings");
-    } else {
-      Z.token = store("zeus.token") || "";
-      if (legacy && legacy[1] !== "token") {
-        var seg = legacy[1].toLowerCase();
-        if (seg === "home") history.replaceState(null, "", "/");
-        else history.replaceState(null, "", "/" + seg);
-      }
+    private static String typeOf(String name) {
+        int dot = name.indexOf('\u00b7');
+        return dot >= 0 ? name.substring(0, dot).trim() : name;
     }
 
-    loadData().then(function () {
-      buildNav();
-      fxStart();
-      document.addEventListener("click", intercept);
-      window.addEventListener("popstate", function () {
-        // the Features page opens and closes its detail drawer through the URL, so back/forward must not rebuild it
-        if (location.pathname === lastPath && currentPage() === "features") { document.dispatchEvent(new CustomEvent("zeus:query")); return; }
-        render(currentPage(), { hash: location.hash.slice(1), keepScroll: !location.hash });
-      });
-      if (!REDUCED) document.documentElement.classList.add("motion");
-      render(currentPage(), { first: true, hash: location.hash.slice(1) });
-      Z.ready.forEach(function (fn) { try { fn(); } catch (e) { if (window.console) console.error(e); } });
-    }).catch(function (e) {
-      $("#view").appendChild(h("div", { class: "wrap page" }, h("div", { class: "card" }, "Could not load the site data: " + (e && e.message))));
-    });
-  }
-  window.addEventListener("DOMContentLoaded", start);
-  if (document.readyState !== "loading") setTimeout(start, 0);
-})();
+    private static String skinOf(String name) {
+        int dot = name.lastIndexOf('\u00b7');
+        return dot >= 0 ? name.substring(dot + 1).trim() : name;
+    }
+
+    private static int groupOf(int kind) {
+        for (int gi = 0; gi < SKINS.size(); gi++) for (int i : SKINS.get(gi)) if (FIRST + i == kind) return gi;
+        return 0;
+    }
+
+    private static String find(String[][] table, String key) {
+        for (String[] a : table) if (a[0].equalsIgnoreCase(key)) return a[1];
+        return "";
+    }
+
+    @Override
+    public boolean isPauseScreen() {
+        return false;
+    }
+
+    @Override
+    public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+    }
+
+    @Override
+    public void onClose() {
+        minecraft.setScreen(parent);
+    }
+
+    // ---------------------------------------------------------------- layout
+    private void layout() {
+        pw = Math.min(width - 16, 620);
+        ph = Math.min(height - 16, 300);
+        px = (width - pw) / 2;
+        py = (height - ph) / 2;
+    }
+
+    private int listW() {
+        return Math.max(96, pw * 22 / 100);
+    }
+
+    private int rowH() {
+        return Math.max(14, Math.min(24, (ph - 30 - 30) / Math.max(1, TYPES.size())));
+    }
+
+    private int rowY(int gi) {
+        return py + 30 + gi * rowH();
+    }
+
+    private int gridX() {
+        return px + 12 + listW() + 10;
+    }
+
+    private int gridW() {
+        return (pw - listW() - 44) * 56 / 100;
+    }
+
+    private int cols() {
+        return SKINS.get(group).length > 6 ? 4 : 3;
+    }
+
+    private int tileW() {
+        return (gridW() - (cols() - 1) * 4) / cols();
+    }
+
+    private int tileH() {
+        int n = SKINS.get(group).length, rows = (n + cols() - 1) / cols();
+        return Math.max(30, Math.min(110, (ph - 30 - 34 - 14 - (rows - 1) * 4) / rows));
+    }
+
+    private int tileX(int t) {
+        return gridX() + (t % cols()) * (tileW() + 4);
+    }
+
+    private int tileY(int t) {
+        return py + 44 + (t / cols()) * (tileH() + 4);
+    }
+
+    // ---------------------------------------------------------------- drawing
+    @Override
+    public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        layout();
+        float time = (com.zlorbie788.zeus.core.Clock.nanoTime() % 3_600_000_000_000L) / 1e9f;
+        String[] all = KnifeArt.allKnives();
+        g.fill(0, 0, width, height, 0xB0030610);
+        Draw.shadow(g, px, py, pw, ph, 8, 10, 0.5f);
+        Draw.rrect(g, px, py, pw, ph, 8, 0xF2070C1A, 0xF2050914);
+        Draw.rrectLine(g, px, py, pw, ph, 8, 0xFF234A8A);
+        Draw.bold(g, "ZEUS / SWITCH KNIFE", px + 12, py + 11, 0xFFE9F1FF);
+        Draw.textRight(g, com.zlorbie788.zeus.core.Crates.ownedCount() + " / " + KnifeArt.HD_COUNT + " unlocked", px + pw - 12, py + 11, 0xFF8EA2CC);
+
+        // knife types
+        hoverGroup = -1;
+        int lw = listW(), rh = rowH(), held = groupOf(knife);
+        for (int gi = 0; gi < TYPES.size(); gi++) {
+            int x = px + 12, y = rowY(gi);
+            boolean on = gi == group, hot = mouseX >= x && mouseX < x + lw && mouseY >= y && mouseY < y + rh - 2;
+            if (hot) hoverGroup = gi;
+            Draw.rrect(g, x, y, lw, rh - 2, 4, on ? 0xFF14306A : hot ? 0xFF0F2148 : 0xFF0A1428);
+            if (on) g.fill(x, y + 3, x + 2, y + rh - 5, 0xFF5CA8FF);
+            int tc = on ? 0xFFFFFFFF : hot ? 0xFFDCE6FA : 0xFFB0C0E0;
+            Draw.text(g, Draw.fit(TYPES.get(gi), lw - 34), x + 8, y + (rh - 2) / 2 - 4, tc);
+            int ownedN = 0;
+            for (int sk : SKINS.get(gi)) if (com.zlorbie788.zeus.core.Crates.ownsHd(sk)) ownedN++;
+            String count = ownedN + "/" + SKINS.get(gi).length;
+            Draw.textRight(g, count, x + lw - 6, y + (rh - 2) / 2 - 4, gi == held ? 0xFF6FE3A0 : 0xFF5E73A0);
+        }
+
+        // skins of the chosen type
+        hover = -1;
+        int gx = gridX(), tw = tileW(), th = tileH();
+        int[] skins = SKINS.get(group);
+        Draw.bold(g, TYPES.get(group).toUpperCase(Locale.ROOT), gx, py + 31, 0xFFE9F1FF);
+        Draw.textRight(g, skins.length + " skins", gx + gridW(), py + 31, 0xFF5E73A0);
+        for (int t = 0; t < skins.length; t++) {
+            int kind = FIRST + skins[t];
+            int x = tileX(t), y = tileY(t);
+            boolean on = kind == knife, hot = mouseX >= x && mouseX < x + tw && mouseY >= y && mouseY < y + th;
+            if (hot) hover = kind;
+            Draw.rrect(g, x, y, tw, th, 5, on ? 0xFF14306A : hot ? 0xFF10224A : 0xFF0A1530);
+            Draw.rrectLine(g, x, y, tw, th, 5, on ? 0xFF5CA8FF : hot ? 0xFF3A6ACA : 0xFF1E3A70);
+            boolean own = com.zlorbie788.zeus.core.Crates.ownsHd(skins[t]);
+            int rc = com.zlorbie788.zeus.core.Crates.rarityOf(com.zlorbie788.zeus.core.Crates.idOf(skins[t])).colour;
+            g.fill(x + 4, y + th - 3, x + tw - 4, y + th - 1, own ? rc : Draw.darken(rc, 0.6f));
+            // only the tile under the mouse turns; the rest are cached stills, which keeps the window light
+            if (own && (hot || on)) KnifeArt.showcase(g, kind, 0, x + 3, y + 2, tw - 6, th - 14, time + t * 0.7f, false);
+            else KnifeArt.still(g, kind, x + 3, y + 2, tw - 6, th - 14);
+            if (!own) {
+                Draw.rrect(g, x, y, tw, th, 5, 0xB8060810);
+                drawLock(g, x + tw / 2, y + (th - 14) / 2 - 2);
+            }
+            Draw.textCenter(g, Draw.fit(skinOf(all[kind]), tw - 4), x + tw / 2, y + th - 11, !own ? 0xFF5E6A88 : on ? 0xFFFFFFFF : 0xFFB8C8E8);
+        }
+
+        // big preview: the skin under the mouse, else the one in hand, else the type's first skin
+        int show = hover >= 0 ? hover : hoverGroup >= 0 ? firstOf(hoverGroup) : groupOf(knife) == group ? knife : FIRST + skins[0];
+        int rx = gx + gridW() + 12, rw = px + pw - 12 - rx, ry = py + 30;
+        int pvh = Math.max(60, ph - 30 - 100);
+        Draw.rrect(g, rx, ry, rw, pvh, 7, 0xFF0B1834, 0xFF060C1E);
+        Draw.rrectLine(g, rx, ry, rw, pvh, 7, 0xFF234A8A);
+        KnifeArt.showcase(g, show, 0, rx + 6, ry + 6, rw - 12, pvh - 12, time, true);
+        Draw.bold(g, Draw.fit(skinOf(all[show]).toUpperCase(Locale.ROOT), rw - 50), rx + 2, ry + pvh + 6, 0xFFE9F1FF);
+        if (show == knife) Draw.textRight(g, "in hand", rx + rw, ry + pvh + 6, 0xFF6FE3A0);
+        else if (!com.zlorbie788.zeus.core.Crates.ownsHd(show - FIRST)) {
+            var from = com.zlorbie788.zeus.core.Crates.crateOf(com.zlorbie788.zeus.core.Crates.idOf(show - FIRST));
+            Draw.textRight(g, "locked", rx + rw, ry + pvh + 6, 0xFFFF8A7A);
+            if (from != null) Draw.textRight(g, "from the " + from.name, rx + rw, ry + pvh + 17, from.colour);
+        }
+        Draw.text(g, typeOf(all[show]), rx + 2, ry + pvh + 17, 0xFF6F86B8);
+        String desc = find(SKIN_ABOUT, skinOf(all[show])) + " " + find(TYPE_ABOUT, typeOf(all[show]));
+        int ty = ry + pvh + 30;
+        for (String line : wrap(desc.trim(), rw)) {
+            if (ty > py + ph - 42) break;
+            Draw.text(g, line, rx + 2, ty, 0xFF9FB2D8);
+            ty += 10;
+        }
+
+        Draw.text(g, "Unlock knives in Zeus Crates  \u00b7  \u2191\u2193 knife  \u2190\u2192 skin", px + 12, py + ph - 18, 0xFF8EA2CC);
+        int cbx = px + pw - 12 - 56 - 8 - 96, cby = py + ph - 20;
+        boolean hotC = mouseX >= cbx && mouseX < cbx + 96 && mouseY >= cby - 2 && mouseY < cby + 16;
+        Draw.rrect(g, cbx, cby - 2, 96, 18, 5, hotC ? 0xFFFFD27A : 0xFFF5C04A, 0xFFB07A18);
+        Draw.boldCenter(g, "ZEUS CRATES", cbx + 48, cby + 2, 0xFF1A1206);
+        int bx = px + pw - 12 - 56, by = py + ph - 20;
+        boolean hotDone = mouseX >= bx && mouseX < bx + 56 && mouseY >= by - 2 && mouseY < by + 16;
+        Draw.rrect(g, bx, by - 2, 56, 18, 5, hotDone ? 0xFF1E4C9A : 0xFF14306A);
+        Draw.boldCenter(g, "Done", bx + 28, by + 2, 0xFFE9F1FF);
+    }
+
+    private static void drawLock(GuiGraphics g, int cx, int cy) {
+        int c = 0xFFB8C4DC;
+        Draw.rrectLine(g, cx - 4, cy - 8, 8, 9, 4, c);
+        Draw.rrect(g, cx - 6, cy - 2, 12, 9, 2, c);
+        g.fill(cx - 1, cy + 1, cx + 1, cy + 4, 0xFF0A0E18);
+    }
+
+    private static int firstOf(int gi) {
+        return FIRST + SKINS.get(gi)[0];
+    }
+
+    private static java.util.List<String> wrap(String text, int width) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        StringBuilder line = new StringBuilder();
+        for (String word : text.split(" ")) {
+            String next = line.length() == 0 ? word : line + " " + word;
+            if (Draw.width(next) > width && line.length() > 0) {
+                out.add(line.toString());
+                line = new StringBuilder(word);
+            } else {
+                line = new StringBuilder(next);
+            }
+        }
+        if (line.length() > 0) out.add(line.toString());
+        return out;
+    }
+
+    @Override
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        layout();
+        double x = event.x();
+        double y = event.y();
+        if (event.button() == 0) {
+            int bx = px + pw - 12 - 56, by = py + ph - 20;
+            if (x >= bx && x < bx + 56 && y >= by - 2 && y < by + 16) {
+                onClose();
+                return true;
+            }
+            int cbx = px + pw - 12 - 56 - 8 - 96, cby = py + ph - 20;
+            if (x >= cbx && x < cbx + 96 && y >= cby - 2 && y < cby + 16) {
+                minecraft.setScreen(new CratesScreen(this));
+                return true;
+            }
+            int lw = listW(), rh = rowH();
+            for (int gi = 0; gi < TYPES.size(); gi++) {
+                int ry = rowY(gi);
+                if (x >= px + 12 && x < px + 12 + lw && y >= ry && y < ry + rh - 2) {
+                    group = gi;
+                    if (doubleClick && com.zlorbie788.zeus.core.Crates.ownsHd(firstOf(gi) - FIRST)) pick(firstOf(gi));
+                    return true;
+                }
+            }
+            int tw = tileW(), th = tileH();
+            int[] skins = SKINS.get(group);
+            for (int t = 0; t < skins.length; t++) {
+                int tx = tileX(t), ty = tileY(t);
+                if (x >= tx && x < tx + tw && y >= ty && y < ty + th) {
+                    if (!com.zlorbie788.zeus.core.Crates.ownsHd(skins[t])) return true;
+                    pick(FIRST + skins[t]);
+                    if (doubleClick) onClose();
+                    return true;
+                }
+            }
+        }
+        return super.mouseClicked(event, doubleClick);
+    }
+
+    private void pick(int kind) {
+        if (!com.zlorbie788.zeus.core.Crates.ownsHd(kind - FIRST)) return;
+        knife = kind;
+        group = groupOf(kind);
+        chosen.pick(knife, finishOf[knife]);
+    }
+
+    @Override
+    public boolean keyPressed(KeyEvent event) {
+        int key = event.key();
+        if (key == 256 || key == 257 || key == 335) {
+            onClose();
+            return true;
+        }
+        if (key == 264 || key == 265) {          // down / up: next or previous knife type
+            int gi = Math.floorMod(group + (key == 264 ? 1 : -1), TYPES.size());
+            group = gi;
+            for (int sk : SKINS.get(gi)) {
+                if (com.zlorbie788.zeus.core.Crates.ownsHd(sk)) {
+                    pick(FIRST + sk);
+                    break;
+                }
+            }
+            return true;
+        }
+        if (key == 262 || key == 263) {          // right / left: next or previous skin
+            int[] skins = SKINS.get(group);
+            int at = 0;
+            for (int t = 0; t < skins.length; t++) if (FIRST + skins[t] == knife) at = t;
+            for (int n = 0; n < skins.length; n++) {
+                at = Math.floorMod(at + (key == 262 ? 1 : -1), skins.length);
+                if (com.zlorbie788.zeus.core.Crates.ownsHd(skins[at])) break;
+            }
+            pick(FIRST + skins[at]);
+            return true;
+        }
+        return super.keyPressed(event);
+    }
+}

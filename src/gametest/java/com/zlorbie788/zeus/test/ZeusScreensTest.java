@@ -56,6 +56,14 @@ public class ZeusScreensTest implements FabricClientGameTest {
         run(ctx, 0.6f);
         ctx.takeScreenshot("title_854");
         ctx.getInput().resizeWindow(1920, 1080);
+        ctx.setScreen(() -> new com.zlorbie788.zeus.ui.ZeusAboutScreen(new ZeusTitleScreen()));
+        run(ctx, 0.8f);
+        ctx.takeScreenshot("about_1080");
+        ctx.setScreen(() -> com.zlorbie788.zeus.ui.KeybindScreen.forMenuKey(null));
+        run(ctx, 0.5f);
+        ctx.takeScreenshot("keys_menu_listen");
+        ctx.setScreen(ZeusTitleScreen::new);
+        run(ctx, 1.0f);
 
         ctx.runOnClient(c -> grant());
 
@@ -216,6 +224,19 @@ public class ZeusScreensTest implements FabricClientGameTest {
             ctx.runOnClient(c -> set(c.screen, "filter", 1));
             run(ctx, 0.3f);
             ctx.takeScreenshot("keys_g_linked_" + tag);
+            ctx.runOnClient(c -> {
+                try {
+                    var f = c.screen.getClass().getDeclaredField("search");
+                    f.setAccessible(true);
+                    var box = (net.minecraft.client.gui.components.EditBox) f.get(c.screen);
+                    box.setFocused(true);
+                    box.setValue("fly");
+                } catch (ReflectiveOperationException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            run(ctx, 0.3f);
+            ctx.takeScreenshot("keys_search_" + tag);
             ctx.setScreen(() -> null);
             ctx.waitTicks(2);
         }

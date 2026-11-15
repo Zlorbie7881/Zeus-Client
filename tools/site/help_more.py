@@ -7,7 +7,7 @@ C = [("Credits", "/credits")]
 
 FAQ_MORE = [
  # ---------------------------------------------------------------- installing and launchers
- ("How do I install Zeus with Prism Launcher or MultiMC?", "Create an instance for Minecraft 1.21.11, choose Fabric as the loader, then open the instance's Mods tab and add the Fabric API jar and the Zeus jar. Start the instance and press Z in a world.", "prism multimc polymc instance launcher install fabric mods tab add", D),
+ ("How do I install Zeus with Prism Launcher or MultiMC?", "Create an instance for Minecraft 1.21.11, choose Fabric as the loader, then open the instance's Mods tab and add the Fabric API jar and the Zeus jar. Start the instance and press Right Shift in a world.", "prism multimc polymc instance launcher install fabric mods tab add", D),
  ("How do I install Zeus with the official Minecraft launcher?", "Run the Fabric installer for 1.21.11 (it adds a profile to the launcher), put Fabric API and the Zeus jar into .minecraft/mods and start the new Fabric profile, not the plain Release profile.", "official mojang launcher microsoft profile install fabric installer", D),
  ("Can I use the Modrinth App or CurseForge App?", "Yes, as long as the profile is Minecraft 1.21.11 with Fabric. Add Fabric API from their catalogue, then drag the Zeus jar into the profile's mods folder (open it from the profile's menu).", "modrinth curseforge app launcher profile import drag drop", D),
  ("The mods folder does not exist", "Start the Fabric profile once. The launcher creates .minecraft/mods the first time Fabric runs. You can also create the folder yourself, named exactly mods in lower case.", "mods folder missing doesnt exist create where not found", []),

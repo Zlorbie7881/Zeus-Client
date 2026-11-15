@@ -351,7 +351,7 @@
       var ask = h("button", { class: "btn btn-primary sm", type: "button" }, icon("chat", "small"), "Ask the helper");
       ask.addEventListener("click", function () { var q = "What does " + it.m.name + " do?"; closeDrawer(); if (Z.helper) Z.helper.ask(q); });
 
-      var where = "Press Z in a world, open " + c.label + " and click the " + it.m.name + " row.";
+      var where = "Press Right Shift in a world, open " + c.label + " and click the " + it.m.name + " row.";
       var panel = h("aside", { class: "drawer", role: "dialog", "aria-modal": "true", "aria-label": it.m.name, style: "--c:" + safeColor(c.color) },
         h("header", { class: "dh" },
           h("div", { class: "dh-t" }, h("span", { class: "dcat" }, h("span", { class: "dot" }), c.label), h("h2", {}, hl(it.m.name, terms0))),

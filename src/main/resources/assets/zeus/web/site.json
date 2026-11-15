@@ -91,7 +91,7 @@
     },
     {
       "title": "Open the menu",
-      "text": "Press Z in a world to open the Zeus menu (you can rebind it in Minecraft's controls)."
+      "text": "Press Right Shift in a world to open the Zeus menu (you can rebind it in Minecraft's controls)."
     }
   ],
   "warning": "Many servers ban cheat clients, and your account can be punished for using one. Only use Zeus where cheats are allowed, and read the server's rules first. What you do with it is your responsibility.",
@@ -99,7 +99,7 @@
   "tutorial": [
     {
       "title": "Open the menu",
-      "text": "Join a world or server and press Z. The modules are grouped into categories such as Combat, Movement, Visuals and Base Finding."
+      "text": "Join a world or server and press Right Shift. The modules are grouped into categories such as Combat, Movement, Visuals and Base Finding."
     },
     {
       "title": "Find a module",
@@ -125,7 +125,7 @@
   "commands": [
     {
       "cmd": "/zeus",
-      "text": "Opens the Zeus panel. Same as pressing Z."
+      "text": "Opens the Zeus panel. Same as pressing Right Shift."
     },
     {
       "cmd": "/zeus hud",
