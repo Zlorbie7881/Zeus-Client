@@ -212,6 +212,28 @@ public final class Craft {
         return true;
     }
 
+    /** Like hasAll, but what already sits in the crafting grid counts too (it is half laid out). */
+    public static boolean hasAllWithGrid(AbstractContainerMenu menu, Recipe recipe, boolean table) {
+        List<ItemStack> inv = new ArrayList<>();
+        int grid = table ? 9 : 4;
+        for (int i = 1; i <= grid && i < menu.slots.size(); i++) inv.add(menu.getSlot(i).getItem());
+        for (int i = playerStart(menu); i < menu.slots.size(); i++) inv.add(menu.getSlot(i).getItem());
+        int[] left = new int[inv.size()];
+        for (int i = 0; i < inv.size(); i++) left[i] = inv.get(i).getCount();
+        for (Predicate<ItemStack> cell : recipe.cells()) {
+            if (cell == null) continue;
+            boolean got = false;
+            for (int i = 0; i < inv.size(); i++) {
+                if (left[i] <= 0 || inv.get(i).isEmpty() || !cell.test(inv.get(i))) continue;
+                left[i]--;
+                got = true;
+                break;
+            }
+            if (!got) return false;
+        }
+        return true;
+    }
+
     /** A recipe whose product is a material this one still needs and whose own materials we hold. */
     public static Recipe subFor(AbstractContainerMenu menu, Recipe recipe) {
         for (Predicate<ItemStack> cell : recipe.cells()) {
@@ -229,7 +251,11 @@ public final class Craft {
     public static boolean ready(AbstractContainerMenu menu, Recipe recipe, boolean table) {
         for (int i = 0; i < 9; i++) {
             Predicate<ItemStack> want = recipe.cells().get(i);
-            if (want == null) continue;
+            if (want == null) {
+                int slot = slotFor(i, table);
+                if (slot >= 0 && !menu.getSlot(slot).getItem().isEmpty()) return false;   // a stray item makes a different recipe
+                continue;
+            }
             int slot = slotFor(i, table);
             if (slot < 0) return false;
             ItemStack have = menu.getSlot(slot).getItem();

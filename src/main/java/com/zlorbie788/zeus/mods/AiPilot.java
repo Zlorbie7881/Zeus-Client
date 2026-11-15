@@ -178,6 +178,7 @@ public final class AiPilot extends Module {
         int pathIndex;
 
         final long born = System.currentTimeMillis();
+        long settleUntil = born + 450L;
 
         Job(JobKind kind, String target, int wanted, Vec3 to) {
             this.kind = kind;
@@ -2523,7 +2524,7 @@ public final class AiPilot extends Module {
         // Right after a container closes the inventory is still catching up with the server; jobs that read it
         // (crafting, smelting, planning, chests) wait a moment so they see what the last job made.
         if ((job.kind == JobKind.CRAFT || job.kind == JobKind.SMELT || job.kind == JobKind.GOAL || job.kind == JobKind.STORE
-                || job.kind == JobKind.TAKE) && System.currentTimeMillis() - job.born < 450L && mc.screen == null) {
+                || job.kind == JobKind.TAKE) && System.currentTimeMillis() < job.settleUntil && mc.screen == null) {
             return;
         }
         if (mc.screen != null && job.kind != JobKind.CRAFT && job.kind != JobKind.SMELT) {
@@ -2671,9 +2672,17 @@ public final class AiPilot extends Module {
      * Closes the screen the way Escape does. A plain setScreen(null) never tells the server, so whatever sits
      * in the crafting grid stays there and every later job thinks those materials are gone.
      */
-    private static void closeScreen(Minecraft mc) {
+    private void closeScreen(Minecraft mc) {
         if (mc.player != null && mc.screen instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?>) mc.player.closeContainer();
         else mc.setScreen(null);
+        if (job != null) job.settleUntil = System.currentTimeMillis() + 450L;   // let the server hand the grid back
+    }
+
+    /** What the AI is doing right now (used by the in-game tests). */
+    public static String status() {
+        AiPilot self = find();
+        if (self == null || self.job == null) return "idle" + (self != null && !self.chain.isEmpty() ? " (" + self.chain.size() + " queued)" : "");
+        return self.job.label() + (self.job.note == null || self.job.note.isBlank() ? "" : " | " + self.job.note) + " | queued " + self.chain;
     }
 
     /** True while a job runs or jobs are queued (used by the in-game tests). */
@@ -2797,13 +2806,18 @@ public final class AiPilot extends Module {
             if (!Craft.ready(menu, recipe, table)) {
                 job.note = "laying " + shown + " out in the grid";
                 Craft.fill(mc, menu, recipe, table);
-                if (!Craft.hasAll(menu, recipe) && ++job.step > 6) {
+                if (!Craft.hasAllWithGrid(menu, recipe, table) && ++job.step > 6) {
                     closeScreen(mc);
                     job.step = 0;
                 }
                 return;
             }
             ItemStack out = menu.getSlot(0).getItem();
+            if (!out.isEmpty() && recipe.result() != null && !out.is(recipe.result())) {
+                job.note = "clearing the grid";          // something else would come out: start the layout again
+                Craft.clearGrid(mc, menu, table);
+                return;
+            }
             if (out.isEmpty()) {
                 if (++job.step > 60) {
                     closeScreen(mc);

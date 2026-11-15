@@ -243,6 +243,7 @@ public class ZeusScreensTest implements FabricClientGameTest {
             boolean busy = ctx.computeOnClient(c -> com.zlorbie788.zeus.mods.AiPilot.working());
             if (!busy) break;
             if (waited == 40) ctx.takeScreenshot("ai_" + item + "_working");
+            if (waited % 200 == 0) ctx.runOnClient(c -> System.out.println("ZEUS-AI-TEST status: " + com.zlorbie788.zeus.mods.AiPilot.status()));
             ctx.waitTicks(20);
             waited += 20;
         }
