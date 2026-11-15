@@ -257,6 +257,25 @@ public class ZeusScreensTest implements FabricClientGameTest {
         });
         ctx.runOnClient(c -> {
             for (String e : com.zlorbie788.zeus.mods.AiPilot.recentEvents()) System.out.println("ZEUS-AI-TEST event: " + e);
+            StringBuilder b = new StringBuilder();
+            var inv = c.player.getInventory();
+            for (int i = 0; i < inv.getContainerSize(); i++) if (!inv.getItem(i).isEmpty()) b.append(" [").append(i).append("]").append(inv.getItem(i).getCount()).append("x").append(net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(inv.getItem(i).getItem()).getPath());
+            System.out.println("ZEUS-AI-TEST client inventory:" + b);
+            StringBuilder m = new StringBuilder();
+            var menu = c.player.inventoryMenu;
+            for (int i = 0; i < 5; i++) if (!menu.getSlot(i).getItem().isEmpty()) m.append(" [").append(i).append("]").append(menu.getSlot(i).getItem().getCount()).append("x").append(net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(menu.getSlot(i).getItem().getItem()).getPath());
+            System.out.println("ZEUS-AI-TEST client craft grid:" + m + "  carried=" + c.player.containerMenu.getCarried());
+        });
+        sp.getServer().runOnServer(srv -> {
+            for (var pl : srv.getPlayerList().getPlayers()) {
+                StringBuilder b = new StringBuilder();
+                var inv = pl.getInventory();
+                for (int i = 0; i < inv.getContainerSize(); i++) if (!inv.getItem(i).isEmpty()) b.append(" [").append(i).append("]").append(inv.getItem(i).getCount()).append("x").append(net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(inv.getItem(i).getItem()).getPath());
+                System.out.println("ZEUS-AI-TEST server inventory:" + b);
+                StringBuilder m = new StringBuilder();
+                for (int i = 0; i < 5; i++) if (!pl.inventoryMenu.getSlot(i).getItem().isEmpty()) m.append(" [").append(i).append("]").append(pl.inventoryMenu.getSlot(i).getItem().getCount()).append("x").append(net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(pl.inventoryMenu.getSlot(i).getItem().getItem()).getPath());
+                System.out.println("ZEUS-AI-TEST server craft grid:" + m + "  carried=" + pl.containerMenu.getCarried());
+            }
         });
         System.out.println("ZEUS-AI-TEST " + (have >= count ? "PASS" : "FAIL") + ": '" + ask + "' -> " + have + " " + item + " after " + waited + " ticks");
         ctx.takeScreenshot("ai_" + item + "_done");
