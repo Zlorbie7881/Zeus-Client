@@ -159,13 +159,12 @@ public final class NameTags extends Module {
         // equipment cells: armour then the held item
         java.util.List<ItemStack> gear = new java.util.ArrayList<>(5);
         if (armor.on()) {
-            for (int i = Armor.SLOTS.length - 1; i >= 0; i--) {
-                ItemStack st = le.getItemBySlot(Armor.SLOTS[i]);
+            for (EquipmentSlot slot : Armor.SLOTS) {   // helmet first, boots last
+                ItemStack st = le.getItemBySlot(slot);
                 if (!st.isEmpty()) gear.add(st);
             }
         }
         if (held.on() && !le.getMainHandItem().isEmpty()) gear.add(le.getMainHandItem());
-        java.util.Collections.reverse(gear);   // helmet first
 
         int p = Math.round(5 * u);
         int faceS = showFace ? Math.round(16 * u) : 0;
