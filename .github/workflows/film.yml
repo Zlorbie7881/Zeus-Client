@@ -4,8 +4,6 @@ name: Film footage
 # knife tricks come out as smooth 30 fps clips for videos. Start it by hand from the Actions tab.
 on:
   workflow_dispatch:
-  push:
-    branches: [knife-types]
 
 permissions:
   contents: write
