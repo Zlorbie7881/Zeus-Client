@@ -38,6 +38,8 @@ public final class KeybindScreen extends Screen {
     private static final int CAP_HOT = 0xFF1C2742;
     private static final int CAP_EDGE = 0xFF070B14;
     private static final float KB_W = 22.5f, KB_H = 6.25f;
+    /** Height of the case's top bezel (logo and wordmark), in key units. */
+    private static final float BEZEL = 0.62f;
     private static final int ROW_H = 18;
 
     /** One key of the virtual keyboard, in key units. */
@@ -269,11 +271,12 @@ public final class KeybindScreen extends Screen {
         // sizes: the keyboard takes the top, the module list the rest
         // on short screens the keyboard gets nearly all the height, and the list slides up over it when needed
         boolean compact = height < 360;
-        u = Math.min(40f, Math.min((width - 24) / KB_W, (compact ? height - 80f : height * 0.5f) / KB_H));
+        u = Math.min(40f, Math.min((width - 40) / KB_W, (compact ? height - 90f : height * 0.5f) / (KB_H + BEZEL)));
         int kw = Math.round(KB_W * u), kh = Math.round(KB_H * u);
         kx = (width - kw) / 2;
-        ky = 30;
-        panelY = ky + kh + 14;
+        int casePad = Math.max(6, Math.round(u * 0.32f));
+        ky = 24 + casePad + Math.round(BEZEL * u);
+        panelY = ky + kh + casePad + 8;
         if (compact && (selected != null || listening != null || search.isFocused() || !search.getValue().isEmpty()))
             panelY = Math.min(panelY, Math.round(height * 0.38f));
         int bound = 0;
@@ -284,9 +287,7 @@ public final class KeybindScreen extends Screen {
         String stats = bound + " of " + all.size() + " modules bound" + (shared > 0 ? "  ·  " + shared + (shared == 1 ? " key links" : " keys link") + " several" : "");
         Draw.textRight(g, stats, kx + kw, 10, DIM);
 
-        // keyboard case
-        Draw.rrect(g, kx - 8, ky - 6, kw + 16, kh + 12, 8, 0xF00B1120);
-        Draw.rrectLine(g, kx - 8, ky - 6, kw + 16, kh + 12, 8, 0xFF22324F);
+        drawCase(g, kw, kh);
         String q = search.getValue().trim().toLowerCase(Locale.ROOT);
         Cap hover = null;
         for (Cap c : CAPS) {
@@ -301,10 +302,79 @@ public final class KeybindScreen extends Screen {
         panelX = kx - 8;
         panelW = kw + 16;
         panelH = height - panelY - 8;
-        if (panelY < ky + kh + 14) g.fill(0, panelY - 6, width, height, 0x99050A14);   // overlay: shade the keys behind
+        if (panelY < ky + kh + 8) g.fill(0, panelY - 6, width, height, 0x99050A14);   // overlay: shade the keys behind
         drawPanel(g, mx, my, partialTick, q);
 
         if (hover != null && listening == null) tooltip(g, hover, mx, my);
+    }
+
+    // ------------------------------------------------------------------ the mechanical keyboard look
+    private static final int ZEUS_BLUE = 0xFF3C92FF, ZEUS_CYAN = 0xFF35E0D0, ZEUS_PURPLE = 0xFFB77BFF;
+
+    /** The per-key RGB: a slow Zeus-coloured wave drifting across the board. */
+    private int backlight(float x, float y) {
+        float p = (x / KB_W) * 1.4f + y * 0.08f - t * 0.18f;
+        p -= (float) Math.floor(p);
+        float k = p * 3f;
+        int a = k < 1 ? ZEUS_BLUE : k < 2 ? ZEUS_CYAN : ZEUS_PURPLE;
+        int b = k < 1 ? ZEUS_CYAN : k < 2 ? ZEUS_PURPLE : ZEUS_BLUE;
+        float f = k - (float) Math.floor(k);
+        f = f * f * (3 - 2 * f);
+        return Draw.mix(a, b, f);
+    }
+
+    private void drawCase(GuiGraphics g, int kw, int kh) {
+        int pad = Math.max(6, Math.round(u * 0.32f));
+        int bez = Math.round(BEZEL * u);
+        int cx = kx - pad, cy = ky - pad - bez, cw = kw + 2 * pad, ch = kh + 2 * pad + bez;
+        int r = Math.max(6, Math.round(u * 0.32f));
+        // RGB underglow on the desk
+        for (int i = 0; i < 8; i++) {
+            float f = i / 7f;
+            Draw.glow(g, cx + Math.round(cw * f) - cw / 16, cy + ch - 6, cw / 8, 8, 4, backlight(f * KB_W, 6), Math.max(10, Math.round(u * 0.6f)), 0.10f);
+        }
+        // aluminium frame: lit from above, a bevel all round, a darker plate the keys sit in
+        Draw.rrect(g, cx - 1, cy + 2, cw + 2, ch + 2, r + 1, 0xFF020306);
+        Draw.rrect(g, cx, cy, cw, ch, r, 0xFF262D3E, 0xFF0D111A);
+        Draw.rrectLine(g, cx, cy, cw, ch, r, 0xFF05070C);
+        g.fill(cx + r, cy + 1, cx + cw - r, cy + 2, 0x40FFFFFF);
+        // brushed metal: a few faint horizontal streaks
+        for (int i = 0; i < 6; i++) {
+            int yy = cy + 3 + Math.round((ch - 6) * ((i * 37 % 100) / 100f));
+            g.fill(cx + r, yy, cx + cw - r, yy + 1, 0x07FFFFFF);
+        }
+        Draw.rrect(g, kx - 3, ky - 3, kw + 6, kh + 6, Math.max(3, r / 2), 0xFF07090F);
+        g.fill(kx - 1, ky - 3, kx + kw + 1, ky - 2, 0x50000000);
+        // screws in the corners
+        int sr = Math.max(2, Math.round(u * 0.07f));
+        int[][] screws = {{cx + pad / 2, cy + pad / 2}, {cx + cw - pad / 2, cy + pad / 2}, {cx + pad / 2, cy + ch - pad / 2}, {cx + cw - pad / 2, cy + ch - pad / 2}};
+        for (int[] sc : screws) {
+            Draw.rrect(g, sc[0] - sr, sc[1] - sr, sr * 2, sr * 2, sr, 0xFF3A4256, 0xFF151A26);
+            g.fill(sc[0] - sr + 1, sc[1], sc[0] + sr - 1, sc[1] + 1, 0xFF0A0D14);
+        }
+        // the bezel: Zeus medallion and lettering on the left, the model name on the right
+        int mid = cy + pad / 2 + bez / 2 + 1;
+        float ls = Math.max(10f, bez * 0.92f);
+        int lx = kx + Math.round(ls / 2f) + 2;
+        Logo.live("keyboard", g, lx, mid, ls, t, ZEUS_BLUE, ZEUS_CYAN, 1f);
+        int cap = Math.max(6, Math.round(bez * 0.42f));
+        int tx = lx + Math.round(ls / 2f) + Math.max(4, Math.round(u * 0.18f));
+        if (GreekFont.available()) {
+            GreekFont.draw(g, "ZEUS", tx, mid - cap / 2, cap, 0xFFE6EDFA, true);
+            int zw = GreekFont.width("ZEUS", cap);
+            int sub = Math.max(5, cap * 2 / 3);
+            GreekFont.draw(g, "GAMING", tx + zw + Math.max(3, cap / 2), mid - sub / 2 + 1, sub, Draw.rgba(backlight(4, 0), 0.9f), false);
+        }
+        String model = "K-100  MECHANICAL";
+        float ms = Math.max(0.5f, Math.min(1f, bez / 22f));
+        Draw.textRightS(g, model, kx + kw, mid - Math.round(4 * ms), 0x70B4C0D8, ms);
+        // RGB strip along the front edge
+        int sy = cy + ch - Math.max(2, pad / 3) - 1;
+        int seg = Math.max(2, Math.round(u * 0.25f));
+        for (int x = cx + r; x < cx + cw - r; x += seg) {
+            float f = (x - cx) / (float) cw;
+            g.fill(x, sy, Math.min(x + seg, cx + cw - r), sy + 2, Draw.rgba(backlight(f * KB_W, 6.5f), 0.9f));
+        }
     }
 
     private void drawCap(GuiGraphics g, Cap c, int x, int y, int w, int h, boolean hot, String q) {
@@ -313,51 +383,65 @@ public final class KeybindScreen extends Screen {
         boolean sel = c == selected;
         boolean down = c.key.getType() == InputConstants.Type.KEYSYM && InputConstants.isKeyDown(minecraft.getWindow(), c.key.getValue());
         boolean menuKey = ZeusClient.OPEN != null && !ZeusClient.OPEN.isUnbound() && ZeusClient.OPEN.saveString().equals(c.key.getName());
-        int depth = Math.max(2, Math.round(u * 0.09f));
-        int press = down || (sel && pressAnim > 0) ? depth - 1 : 0;
-        Draw.rrect(g, x, y, w, h, 3, CAP_EDGE);
-        int face = !c.bindable ? 0xFF0E1320 : hot || sel ? CAP_HOT : CAP;
-        int fy = y + press, fh = h - depth;
-        Draw.rrect(g, x, fy, w, fh, 3, face);
+        int travel = Math.max(1, Math.round(u * 0.07f));
+        boolean pressed = down || (sel && pressAnim > 0);
+        int py = pressed ? travel : 0;
+        // the light under the cap: module colour when linked, otherwise the drifting Zeus wave
+        int light = !c.bindable ? 0xFF2A3348 : sel ? 0xFF7FB8FF : !mods.isEmpty() ? mods.get(0).category.color() : menuKey ? GOLD : backlight(c.x + c.w / 2, c.y);
+        float glowA = !c.bindable ? 0.15f : sel ? 0.9f : !mods.isEmpty() ? 0.75f : menuKey ? 0.6f : 0.32f;
+        if (pressed) glowA = Math.min(1f, glowA + 0.35f);
+        int spill = Math.max(1, Math.round(u * 0.05f));
+        Draw.rrect(g, x - spill, y - spill + py, w + 2 * spill, h + 2 * spill, 4, Draw.rgba(light, glowA * 0.55f));
+        if (sel || pressed || !mods.isEmpty()) Draw.glow(g, x, y + py, w, h, 4, light, Math.max(3, Math.round(u * 0.18f)), sel ? 0.5f : 0.22f);
+        // the cap: a wide skirt, then the sculpted top surface set into it
+        int r = Math.max(3, Math.round(u * 0.13f));
+        int skirtTop = !c.bindable ? 0xFF161B27 : hot || sel ? 0xFF2B3550 : 0xFF222A3D;
+        Draw.rrect(g, x, y + py, w, h - py, r, skirtTop, 0xFF0C0F17);
+        int si = Math.max(2, Math.round(u * 0.11f));           // side slope
+        int st = Math.max(1, Math.round(u * 0.04f));           // back slope
+        int sb = Math.max(3, Math.round(u * 0.17f)) - py;      // front slope (shrinks as the cap goes down)
+        int fx = x + si, fy = y + py + st, fw = w - 2 * si, fh = h - py - st - sb;
+        int topA = !c.bindable ? 0xFF1A2030 : hot || sel ? 0xFF39456A : 0xFF2C3550;
+        int topB = !c.bindable ? 0xFF141925 : hot || sel ? 0xFF2A3452 : 0xFF20283C;
         if (!mods.isEmpty()) {
             int col = mods.get(0).category.color();
             boolean anyOn = false;
             for (Module m : mods) anyOn |= m.enabled();
-            Draw.rrect(g, x, fy, w, fh, 3, Draw.rgba(col, anyOn ? 0.42f : 0.26f));
-            g.fill(x + 3, fy + fh - 2, x + w - 3, fy + fh - 1, Draw.rgba(col, 0.9f));
+            topA = Draw.mix(topA, col, anyOn ? 0.42f : 0.30f);
+            topB = Draw.mix(topB, col, anyOn ? 0.34f : 0.22f);
         }
-        // top highlight for a keycap look
-        g.fill(x + 2, fy + 1, x + w - 2, fy + 2, 0x18FFFFFF);
+        Draw.rrect(g, fx, fy, fw, fh, Math.max(2, r - 1), topA, topB);
+        g.fill(fx + 2, fy, fx + fw - 2, fy + 1, 0x30FFFFFF);   // light catching the back edge
         if (!q.isEmpty() && listening == null) {
             boolean hit = false;
             for (Module m : mods) hit |= matches(m, q);
-            if (hit) Draw.rrectLine(g, x - 1, fy - 1, w + 2, fh + 2, 4, Draw.rgba(WARN, 0.55f + 0.4f * (float) Math.sin(t * 6)));
+            if (hit) Draw.rrectLine(g, x - 2, y - 2 + py, w + 4, h + 4 - py, r + 1, Draw.rgba(WARN, 0.55f + 0.4f * (float) Math.sin(t * 6)));
         }
-        if (sel) {
-            Draw.glow(g, x, fy, w, fh, 3, BLUE, 4, 0.5f);
-            Draw.rrectLine(g, x, fy, w, fh, 3, BLUE);
-        } else if (listening != null && c.bindable && hot) {
-            Draw.rrectLine(g, x, fy, w, fh, 3, BLUE);
-        } else if (menuKey) {
-            Draw.rrectLine(g, x, fy, w, fh, 3, GOLD);
-        }
+        if (sel) Draw.rrectLine(g, x - 1, y - 1 + py, w + 2, h + 2 - py, r, BLUE);
+        else if (listening != null && c.bindable && hot) Draw.rrectLine(g, x - 1, y - 1 + py, w + 2, h + 2 - py, r, BLUE);
+        else if (menuKey) Draw.rrectLine(g, x, y + py, w, h - py, r, GOLD);
+        // legends shine through like on a backlit board
         float ls = u < 26 ? 0.55f : u < 32 ? 0.65f : 0.75f;
-        int lc = !c.bindable ? FAINT : !mods.isEmpty() ? 0xFFFFFFFF : act.isEmpty() && !menuKey ? DIM : 0xFFC9D5EE;
-        Draw.textS(g, c.label, x + 3, fy + 3, lc, ls);
+        int lc = !c.bindable ? FAINT : !mods.isEmpty() ? 0xFFFFFFFF : menuKey ? 0xFFFFE3A3 : Draw.mix(0xFFE6EDFA, light, 0.35f);
+        Draw.textS(g, c.label, fx + 2, fy + 2, lc, ls);
         float ms = ls * 0.82f;
-        int lineY = fy + fh - Math.round(9 * ms) - 3;
+        int lineY = fy + fh - Math.round(9 * ms) - 1;
+        if (c.label.isEmpty() && mods.isEmpty() && GreekFont.available()) {
+            int cap = Math.max(5, Math.round(fh * 0.34f));
+            GreekFont.drawCentered(g, "ZEUS", fx + fw / 2, fy + (fh - cap) / 2, cap, 0x38FFFFFF, false);
+        }
         if (!mods.isEmpty()) {
-            Draw.textS(g, fitS(mods.get(0).name, w - 6, ms), x + 3, lineY, 0xFFFFFFFF, ms);
+            Draw.textS(g, fitS(mods.get(0).name, fw - 4, ms), fx + 2, lineY, 0xFFFFFFFF, ms);
             if (mods.size() > 1) {
                 String b = "+" + (mods.size() - 1);
                 int bw = Draw.widthS(b, ms) + 4;
-                Draw.rrect(g, x + w - bw - 2, fy + 2, bw, Math.round(9 * ms) + 2, 2, 0xFF0A1226);
-                Draw.textS(g, b, x + w - bw, fy + 3, WARN, ms);
+                Draw.rrect(g, fx + fw - bw - 1, fy + 1, bw, Math.round(9 * ms) + 2, 2, 0xE00A1226);
+                Draw.textS(g, b, fx + fw - bw + 1, fy + 2, WARN, ms);
             }
         } else if (menuKey) {
-            Draw.textS(g, fitS("Zeus menu", w - 6, ms), x + 3, lineY, GOLD, ms);
-        } else if (!act.isEmpty() && fh > 9 * ls + 9 * ms + 4) {
-            Draw.textS(g, fitS(act.get(0), w - 6, ms), x + 3, lineY, FAINT, ms);
+            Draw.textS(g, fitS("Zeus menu", fw - 4, ms), fx + 2, lineY, GOLD, ms);
+        } else if (!act.isEmpty() && fh > 9 * ls + 9 * ms + 3) {
+            Draw.textS(g, fitS(act.get(0), fw - 4, ms), fx + 2, lineY, Draw.mix(FAINT, light, 0.25f), ms);
         }
     }
 
