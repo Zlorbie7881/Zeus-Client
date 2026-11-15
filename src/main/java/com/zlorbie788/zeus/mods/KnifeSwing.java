@@ -165,8 +165,8 @@ public final class KnifeSwing extends Module {
     private final Setting.Choice sfinish = add(new Setting.Choice("Knife finish", "The paint of the straight knives: steel, Fade, Slaughter, Doppler, Case hardened and so on.", 0, KnifeArt.SFINISHES)).showIf(() -> false);
     private final Setting.Choice when = add(new Setting.Choice("When it shows", "Choose when the knife overlay replaces the first-person hand: empty hand, both hands empty, always, or whenever you hold any sword.", 0, "Empty hand", "Both hands empty", "Always", "Replace any sword")).showIf(() -> section.index() == 0);
     private final Setting.Bool hideHand = add(new Setting.Bool("Hide the game's own hand", "Hides the game's arm and held item while the knife is in your hand, so the two do not overlap.", true)).showIf(() -> section.index() == 0);
-        private final Setting.Choice trick = add(new Setting.Choice("Tsuki / Butterfly (Butterfly)", "Plays the Tsuki / Butterfly animation: the trick key or right click plays it, and the knife changes to Butterfly to match. The repeat count is shown in its display.", 0, TRICKS)).showIf(() -> false);
-        private final Setting.Choice ktrick = add(new Setting.Choice("Trick", "Plays the Tsuki animation on a karambit and other knives. The knife changes to a karambit-style version to match the animation. The repeat count is shown in its display.", 0, KTRICKS)).showIf(() -> section.index() == 2);
+        private final Setting.Choice trick = add(new Setting.Choice("Tsuki / Butterfly (Butterfly)", "Plays the Tsuki / Butterfly animation: the trick key or right click plays it, and the knife changes to Butterfly to match. The repeat count is shown in its display.", 0, TRICKS)).showIf(() -> section.index() == 2 && bfly());
+        private final Setting.Choice ktrick = add(new Setting.Choice("Trick", "Plays the Tsuki animation on a karambit and other knives. The knife changes to a karambit-style version to match the animation. The repeat count is shown in its display.", 0, KTRICKS)).showIf(() -> section.index() == 2 && !bfly());
         private final Setting.Bool rightClick = add(new Setting.Bool("Keyboard & mouse trick", "The keyboard makes this Tsuki / Butterfly. Pick the Tsuki key in Controls and choose the animation. The move that is already in there decides which animation happens.", true)).showIf(() -> section.index() == 2);
     private final Setting.Bool slash = add(new Setting.Bool("Slash when I attack", "The knife cuts across the screen when you attack.", true)).showIf(() -> section.index() == 2);
     private final Setting.Bool hold = add(new Setting.Bool("Always in hand", "The knife stays in your hand between tricks. Off: it only shows while it moves.", true)).showIf(() -> section.index() == 2);
@@ -284,8 +284,15 @@ public final class KnifeSwing extends Module {
         }
     }
 
+    /** Every knife but the butterflies plays the karambit-style tricks; a butterfly flips open like a real one. */
     private boolean karambit() {
-        return kind() >= 1;
+        return kind() >= 1 && !bfly();
+    }
+
+    /** The held HD knife is a butterfly in pieces: its handles and blade turn round the pins. */
+    private boolean bfly() {
+        int h = hd();
+        return h >= 0 && com.zlorbie788.zeus.ui.KnifeHD.pieces(h) != null;
     }
 
     private java.util.List<String> lines() {
@@ -343,7 +350,7 @@ public final class KnifeSwing extends Module {
 
     private int studioOr(int m) {
         if (m < SB_DRAW || m > SK_TOSS) return m;
-        String mesh = !model3d.on() ? null : karambit() ? KnifeArt.nameOf(key()) : "Butterfly knife";
+        String mesh = !model3d.on() || bfly() ? null : karambit() ? KnifeArt.nameOf(key()) : "Butterfly knife";
         if (mesh != null && KnifeMesh.has(mesh) && KnifeMesh.hasClip(mesh, CLIP_NAME[m - SB_DRAW])) return m;
         return switch (m) {
             case SB_DRAW -> OPEN;
@@ -1308,6 +1315,7 @@ public final class KnifeSwing extends Module {
         look.mirror = left;
         float fade = Math.min(1f, vis);
         int hdKnife = hd();
+        boolean bf = bfly();
         boolean mesh = hdKnife < 0 && meshReady();
         int colour = Draw.rgba(look.glow, 0.85f * fade);
 
@@ -1357,7 +1365,8 @@ public final class KnifeSwing extends Module {
             float[] a = ghostAngle.get(i);
             float al = 0.20f * ghostFade * (1f - i / (float) Math.max(1, ghostAt.size())) * fade;
             if (al < 0.02f) continue;
-            if (hdKnife >= 0 && KnifeHDGui.draw(g, hdKnife, ghostAt.get(i), u, al, false)) continue;
+            if (hdKnife >= 0 && (bf ? KnifeHDGui.drawButterfly(g, hdKnife, ghostAt.get(i), a[0], a[1], a[2], u, al, false)
+                    : KnifeHDGui.draw(g, hdKnife, ghostAt.get(i), u, al, false))) continue;
             if (!mesh || !drawMesh(g, ghostAt.get(i), a[0], a[1], a[2], look, u, al)) pixelKnife(g, ghostAt.get(i), a[0], a[1], a[2], look, u, al);
         }
 
@@ -1383,7 +1392,8 @@ public final class KnifeSwing extends Module {
 
         boolean knifeDrawn;
         if (hdKnife >= 0) {
-            knifeDrawn = KnifeHDGui.draw(g, hdKnife, f.knife, u, fade, true);
+            knifeDrawn = bf ? KnifeHDGui.drawButterfly(g, hdKnife, f.knife, p.a, p.b, p.c, u, fade, true)
+                    : KnifeHDGui.draw(g, hdKnife, f.knife, u, fade, true);
         } else if (mesh && p.clip != null && KnifeMesh.hasClip(meshName(), p.clip)) {
             try {
                 knifeDrawn = KnifeMesh.drawClip(g, meshName(), p.clip, p.clipT, f.knife, look, u, fade, Perf.gameFast());
@@ -1569,6 +1579,10 @@ public final class KnifeSwing extends Module {
     }
 
     private float[] tipOf(Frame f, Pose p) {
+        if (bfly()) {
+            int h = hd();
+            return com.zlorbie788.zeus.ui.KnifeHD.tip(com.zlorbie788.zeus.ui.KnifeHD.pieces(h).blade, KnifeHDGui.butterflyBlade(h, f.knife, p.a, p.b, p.c));
+        }
         return karambit() ? KnifeArt.kTip(f.knife, key()) : KnifeArt.tip(f.knife, p.c);
     }
 

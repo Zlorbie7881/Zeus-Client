@@ -105,7 +105,7 @@ public class ZeusScreensTest implements FabricClientGameTest {
                 try {
                     Method m = CratesScreen.class.getDeclaredMethod("openInspect", Crates.Item.class);
                     m.setAccessible(true);
-                    m.invoke(c.screen, new Crates.Item("karambit_bloodstone", Crates.Rarity.OLYMPIAN));
+                    m.invoke(c.screen, new Crates.Item("chroma_phoenix", Crates.Rarity.CHROMA));
                 } catch (ReflectiveOperationException e) {
                     throw new RuntimeException(e);
                 }
@@ -195,6 +195,27 @@ public class ZeusScreensTest implements FabricClientGameTest {
             ctx.runOnClient(c -> KnifeSwing.equipHd(Crates.starterHd()));
             ctx.waitTicks(30);
             ctx.takeScreenshot("hand_starter");
+            for (String k : new String[] {"chroma_karambit", "chroma_m9", "chroma_crystal", "chroma_phoenix", "chroma_kunai"}) {
+                ctx.runOnClient(c -> KnifeSwing.equipHd(Crates.hdOf(k)));
+                ctx.waitTicks(30);
+                ctx.takeScreenshot("hand_" + k);
+            }
+            // the butterfly flicks open when it is drawn, then plays its tricks: photograph the flip as it goes
+            for (String k : new String[] {"chroma_butterfly", "butterfly_fade"}) {
+                ctx.runOnClient(c -> KnifeSwing.equipHd(Crates.hdOf(k)));
+                for (int i = 0; i < 6; i++) {
+                    ctx.waitTicks(2);
+                    ctx.takeScreenshot("flip_" + k + "_open_" + i);
+                }
+                ctx.waitTicks(30);
+                ctx.takeScreenshot("flip_" + k + "_idle");
+                ctx.runOnClient(c -> KnifeSwing.pressTrick());
+                for (int i = 0; i < 10; i++) {
+                    ctx.waitTicks(3);
+                    ctx.takeScreenshot("flip_" + k + "_trick_" + i);
+                }
+                ctx.waitTicks(200);
+            }
             aiTest(ctx, sp, "get me an iron pickaxe", "iron_pickaxe", 1, "iron_ingot 3", "oak_log 2");
             aiTest(ctx, sp, "get me a lantern", "lantern", 1, "iron_ingot 1", "coal 1", "oak_log 2");
             aiTest(ctx, sp, "get me a shield", "shield", 1, "iron_ingot 1", "oak_log 3");
@@ -312,6 +333,7 @@ public class ZeusScreensTest implements FabricClientGameTest {
             owned.add("m9_frost");
             owned.add("butterfly_fade");
             owned.add("bowie_olympus");
+            for (String k : new String[] {"chroma_karambit", "chroma_m9", "chroma_crystal", "chroma_phoenix", "chroma_butterfly", "chroma_kunai"}) owned.add(k);
             // a remembered world, so the menu shows its Continue card
             Class<?> lp = Class.forName("com.zlorbie788.zeus.ui.LastPlayed");
             Class<?> en = Class.forName("com.zlorbie788.zeus.ui.LastPlayed$Entry");

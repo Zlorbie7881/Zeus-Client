@@ -39,7 +39,9 @@ public final class Crates {
         HEROIC("Heroic", 0xFF8847FF, 2500, 2),
         DIVINE("Divine", 0xFFD32CE6, 1000, 4),
         TITAN("Titan", 0xFFEB4B4B, 400, 8),
-        OLYMPIAN("Olympian", 0xFFFFC83A, 100, 20);
+        OLYMPIAN("Olympian", 0xFFFFC83A, 100, 20),
+        /** The secret tier: one hand-traced knife per crate, about 1 in 400 opens. Its colour runs through the rainbow. */
+        CHROMA("Chroma", 0xFFFF5AD2, 25, 60);
 
         public final String label;
         public final int colour;
@@ -56,7 +58,15 @@ public final class Crates {
         }
 
         public String odds() {
-            return weight % 100 == 0 ? (weight / 100) + "%" : String.format(Locale.ROOT, "%.1f%%", weight / 100f);
+            if (weight % 100 == 0) return (weight / 100) + "%";
+            return String.format(Locale.ROOT, weight < 100 ? "%.2f%%" : "%.1f%%", weight / 100f);
+        }
+
+        /** The colour to draw this rarity in right now: Chroma cycles slowly through the rainbow, the rest are fixed. */
+        public int tint() {
+            if (this != CHROMA) return colour;
+            float h = (System.nanoTime() % 6_000_000_000L) / 6e9f;
+            return 0xFF000000 | (java.awt.Color.HSBtoRGB(h, 0.55f, 1f) & 0xFFFFFF);
         }
     }
 
@@ -104,36 +114,42 @@ public final class Crates {
 
     public static final List<Crate> CRATES = List.of(
             new Crate("olympus", "Olympus Crate", "Marble, gold and the forge of the gods", 0xFFF5C04A, 0xFF3A2A08)
+                    .add(Rarity.CHROMA, "chroma_phoenix")
                     .add(Rarity.OLYMPIAN, "bowie_olympus")
                     .add(Rarity.TITAN, "tac_olympus", "ursus_gold")
                     .add(Rarity.DIVINE, "tac_damascus", "m9_damascus", "skeleton_case")
                     .add(Rarity.HEROIC, "tac_tiger", "bowie_damascus", "tac_case")
                     .add(Rarity.MORTAL, "huntsman_case", "stiletto_damascus", "stiletto_case"),
             new Crate("tempest", "Tempest Crate", "Storm steel, charged with lightning", 0xFF5AA8FF, 0xFF0A1A38)
+                    .add(Rarity.CHROMA, "chroma_crystal")
                     .add(Rarity.OLYMPIAN, "tac_lightning")
                     .add(Rarity.TITAN, "huntsman_storm", "karambit_sapphire")
                     .add(Rarity.DIVINE, "tac_doppler", "bowie_sapphire", "ursus_sapphire")
                     .add(Rarity.HEROIC, "tac_urban", "ursus_urban", "skeleton_night")
                     .add(Rarity.MORTAL, "m9_night", "huntsman_night", "stiletto_night"),
             new Crate("hades", "Hades Crate", "Forged in the underworld's fire", 0xFFFF4A4A, 0xFF3A0808)
+                    .add(Rarity.CHROMA, "chroma_m9")
                     .add(Rarity.OLYMPIAN, "karambit_bloodstone")
                     .add(Rarity.TITAN, "karambit_inferno", "bowie_inferno")
                     .add(Rarity.DIVINE, "karambit_crimson", "tac_ruby", "m9_ruby")
                     .add(Rarity.HEROIC, "tac_crimson", "karambit_slaughter", "huntsman_crimson")
                     .add(Rarity.MORTAL, "tac_slaughter", "butterfly_slaughter", "bowie_slaughter"),
             new Crate("nyx", "Nyx Crate", "Night, nebulae and things that shimmer", 0xFFB06AFF, 0xFF1E0A3A)
+                    .add(Rarity.CHROMA, "chroma_karambit")
                     .add(Rarity.OLYMPIAN, "karambit_nebula")
                     .add(Rarity.TITAN, "m9_phantom", "ursus_nebula")
                     .add(Rarity.DIVINE, "skeleton_phantom", "butterfly_ultraviolet", "karambit_fade")
                     .add(Rarity.HEROIC, "tac_ultraviolet", "butterfly_fade", "bowie_fade")
                     .add(Rarity.MORTAL, "tac_fade", "skeleton_fade", "stiletto_fade"),
             new Crate("poseidon", "Poseidon Crate", "Pulled up from the deep", 0xFF2AD0D0, 0xFF052A30)
+                    .add(Rarity.CHROMA, "chroma_butterfly")
                     .add(Rarity.OLYMPIAN, "skeleton_abyss")
                     .add(Rarity.TITAN, "m9_frost", "ursus_frost")
                     .add(Rarity.DIVINE, "stiletto_abyss", "tac_emerald", "butterfly_emerald")
                     .add(Rarity.HEROIC, "skeleton_emerald", "huntsman_urban", "huntsman_tiger")
                     .add(Rarity.MORTAL, "m9_camo", "m9_case"),
             new Crate("titan", "Titan Crate", "Loud colours for those who want to be seen", 0xFFFF8A2A, 0xFF3A1A04)
+                    .add(Rarity.CHROMA, "chroma_kunai")
                     .add(Rarity.OLYMPIAN, "butterfly_sunset")
                     .add(Rarity.TITAN, "butterfly_toxic", "karambit_tiger")
                     .add(Rarity.DIVINE, "butterfly_marble", "stiletto_sunset", "tac_marble")

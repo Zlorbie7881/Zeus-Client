@@ -46,10 +46,74 @@ public final class KnifeHDGui {
 
     /** Draws a knife at the rig transform k.  Returns false if it could not be drawn. */
     public static boolean draw(GuiGraphics g, int knife, Rig.T k, float unit, float alpha, boolean light) {
+        return drawModel(g, KnifeHD.model(knife), k, unit, alpha, light);
+    }
+
+    private static final Rig.T[] PIECE_AT = new Rig.T[3];
+    private static final KnifeHD.Model[] PIECE_M = new KnifeHD.Model[3];
+    private static final float[] PIECE_Z = new float[3];
+
+    /**
+     * Draws a butterfly knife in its three pieces at the pixel butterfly's angles (see {@link KnifeHD#butterfly}),
+     * furthest piece first. Knives without pieces are drawn whole, turned like the blade.
+     */
+    public static boolean drawButterfly(GuiGraphics g, int knife, Rig.T k, float a, float b, float c, float unit, float alpha, boolean light) {
+        if (broken()) return false;
+        KnifeHD.Pieces ps = KnifeHD.pieces(knife);
+        if (ps == null) return false;
+        KnifeHD.butterfly(ps, k, a, b, c, PIECE_AT);
+        PIECE_M[0] = ps.blade;
+        PIECE_M[1] = ps.held;
+        PIECE_M[2] = ps.swing;
+        int[] order = {0, 1, 2};
+        for (int i = 0; i < 3; i++) PIECE_Z[i] = KnifeHD.depth(PIECE_M[i], PIECE_AT[i]);
+        for (int i = 0; i < 3; i++) {
+            for (int j = i + 1; j < 3; j++) {
+                if (PIECE_Z[order[j]] > PIECE_Z[order[i]]) {
+                    int t = order[i];
+                    order[i] = order[j];
+                    order[j] = t;
+                }
+            }
+        }
+        boolean ok = true;
+        for (int i : order) ok &= drawModel(g, PIECE_M[i], PIECE_AT[i], unit, alpha, light);
+        return ok;
+    }
+
+    /** Where the blade of a butterfly is, for its tip and trail. */
+    public static Rig.T butterflyBlade(int knife, Rig.T k, float a, float b, float c) {
+        KnifeHD.Pieces ps = KnifeHD.pieces(knife);
+        if (ps == null) return k;
+        Rig.T[] out = new Rig.T[3];
+        KnifeHD.butterfly(ps, k, a, b, c, out);
+        return out[0];
+    }
+
+    /**
+     * A soft halo of the knife's glow colour behind a rare blade, breathing with the blade's own glow. A few
+     * cheap blurred spots along the blade, drawn before the knife so they sit behind it.
+     */
+    private static void aura(GuiGraphics g, KnifeHD.Model m, Rig.T k, float unit, float alpha) {
+        float e = m.emissive();
+        if (e <= 0f || m.piece == KnifeHD.PIECE_HELD || m.piece == KnifeHD.PIECE_SWING) return;
+        double t = (System.nanoTime() % 60_000_000_000L) / 1e9;
+        float breathe = 0.62f + 0.38f * (float) Math.sin(t * 2.2 + m.id.hashCode() % 7);
+        float au = Math.abs(unit);
+        int r = Math.max(4, Math.round(au * 4.2f));
+        for (int i = 0; i < 4; i++) {
+            float[] p = KnifeHD.along(m, k, 0.12f + 0.26f * i);
+            float s = unit * 90f / (90f + p[2]);
+            int x = Math.round(p[0] * s), y = Math.round(p[1] * s);
+            Draw.glow(g, x - r, y - r, r * 2, r * 2, r, m.glow, r, 0.10f * e * breathe * alpha);
+        }
+    }
+
+    public static boolean drawModel(GuiGraphics g, KnifeHD.Model m, Rig.T k, float unit, float alpha, boolean light) {
         if (broken()) return false;
         try {
-            KnifeHD.Model m = KnifeHD.model(knife);
             if (m == null) return false;
+            if (light) aura(g, m, k, unit, alpha);
             float pixels = (float) Minecraft.getInstance().getWindow().getGuiScale();
             KnifeHD.Frame f = KnifeHD.build(FRAME, m, k, unit, pixels, alpha, light);
             if (f.quads.isEmpty()) return false;
@@ -240,10 +304,10 @@ public final class KnifeHDGui {
 
         Batch(RenderPipeline pipeline, List<KnifeHD.Quad> qs, int from, int to) {
             this.pipeline = pipeline;
-            // Every quad is sent twice, once in each winding.  GUI pipelines cull back faces, and which
-            // winding survives depends on how the 3D knife is turned; with both copies exactly one passes
-            // the cull test, so no face of the knife can disappear and none is drawn twice.
-            int count = (to - from) * 8;
+            // GUI pipelines cull back faces, and which winding survives depends on how the 3D knife is turned.
+            // The knife's quads are flat, so each one is sent once, in the winding the GUI's own rectangles use
+            // (negative area with y down): half the vertices of sending both windings, nothing lost.
+            int count = (to - from) * 4;
             xy = new float[count * 2];
             uv = new float[count * 2];
             col = new int[count];
@@ -251,9 +315,15 @@ public final class KnifeHDGui {
             int o = 0;
             for (int i = from; i < to; i++) {
                 KnifeHD.Quad q = qs.get(i);
-                for (int pass = 0; pass < 2; pass++) {
+                float area = 0f;
+                for (int k = 0; k < 4; k++) {
+                    int n2 = (k + 1) & 3;
+                    area += q.x[k] * q.y[n2] - q.x[n2] * q.y[k];
+                }
+                boolean flip = area > 0f;
+                {
                     for (int k = 0; k < 4; k++) {
-                        int c = pass == 0 ? k : (4 - k) & 3;
+                        int c = flip ? (4 - k) & 3 : k;
                         float x = q.x[c], y = q.y[c];
                         if (!Float.isFinite(x) || !Float.isFinite(y)) {
                             x = 0f;
@@ -311,8 +381,11 @@ public final class KnifeHDGui {
 
         @Override
         public void buildVertices(VertexConsumer vc) {
+            // a mirrored pose turns every winding round: send each quad's corners in reverse then
+            boolean mirror = pose.determinant() < 0f;
             for (int i = 0; i < col.length; i++) {
-                vc.addVertexWith2DPose(pose, xy[i * 2], xy[i * 2 + 1]).setUv(uv[i * 2], uv[i * 2 + 1]).setColor(col[i]);
+                int j = mirror ? (i & ~3) | ((4 - (i & 3)) & 3) : i;
+                vc.addVertexWith2DPose(pose, xy[j * 2], xy[j * 2 + 1]).setUv(uv[j * 2], uv[j * 2 + 1]).setColor(col[j]);
             }
         }
 

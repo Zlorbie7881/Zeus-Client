@@ -67,6 +67,43 @@ public final class KnifeHD {
         /** Centre of material across the knife, sampled evenly along u from 0 to len. */
         public float[] centre = new float[0];
         public final List<Part> parts = new ArrayList<>();
+        /** For a butterfly: its blade and two handles as separate models that can turn round the pins. */
+        public Pieces pieces;
+        /** 0 a whole knife, else which butterfly piece this is (PIECE_BLADE, PIECE_HELD, PIECE_SWING). */
+        public int piece;
+        /** The knife this piece belongs to (its own id for a whole knife): rarity and glow come from it. */
+        public String owner;
+        private float glowK = Float.NaN;
+
+        /**
+         * How strongly the blade glows, 0 for none: Chroma knives glow fully, Olympian knives a little. Looked up
+         * once from the crates, which say how rare each knife is.
+         */
+        public float emissive() {
+            if (Float.isNaN(glowK)) {
+                float k = 0f;
+                try {
+                    var r = com.zlorbie788.zeus.core.Crates.rarityOf(owner == null ? id : owner);
+                    k = r == com.zlorbie788.zeus.core.Crates.Rarity.CHROMA ? 1f : r == com.zlorbie788.zeus.core.Crates.Rarity.OLYMPIAN ? 0.45f : 0f;
+                } catch (RuntimeException | LinkageError e) {
+                    k = 0f;
+                }
+                glowK = k;
+            }
+            return glowK;
+        }
+    }
+
+    public static final int PIECE_BLADE = 1, PIECE_HELD = 2, PIECE_SWING = 3;
+
+    /**
+     * A butterfly knife in three pieces. The held handle turns round its pin; the blade turns round the same pin;
+     * the swinging handle turns round its own pin, which rides on the blade, just like a real balisong.
+     */
+    public static final class Pieces {
+        public Model blade, held, swing;
+        /** Pin positions on the sheet (u along, v across). */
+        public float heldU, heldV, swingU, swingV;
     }
 
     /** One textured quad in screen space. uv are 0..1 over the whole sheet. */
@@ -124,41 +161,106 @@ public final class KnifeHD {
                 float half = root.get("half").getAsFloat();
                 float zmax = root.has("zmax") ? root.get("zmax").getAsFloat() : 1.4f;
                 for (JsonElement ke : root.getAsJsonArray("knives")) {
-                    JsonObject k = ke.getAsJsonObject();
-                    Model m = new Model();
-                    m.id = k.get("id").getAsString();
-                    m.minLevel = k.has("min_level") ? k.get("min_level").getAsInt() : 0;
-                    m.name = k.get("name").getAsString();
-                    String g = k.get("glow").getAsString().replace("#", "");
-                    m.glow = 0xFF000000 | Integer.parseInt(g, 16);
-                    m.len = len;
-                    m.half = k.has("half") ? k.get("half").getAsFloat() : half;  // the karambit uses a taller sheet
-                    m.zmax = zmax;
-                    JsonArray tip = k.getAsJsonArray("tip");
-                    m.tipU = tip.get(0).getAsFloat();
-                    m.tipV = tip.get(1).getAsFloat();
-                    if (k.has("centre")) {
-                        JsonArray c = k.getAsJsonArray("centre");
-                        m.centre = new float[c.size()];
-                        for (int i = 0; i < m.centre.length; i++) m.centre[i] = c.get(i).getAsFloat();
-                    }
-                    for (JsonElement pe : k.getAsJsonArray("parts")) {
+                    models.add(parse(ke.getAsJsonObject(), len, half, zmax));
+                }
+                if (root.has("pieces")) {
+                    for (JsonElement pe : root.getAsJsonArray("pieces")) {
                         JsonObject po = pe.getAsJsonObject();
-                        Part p = new Part();
-                        p.name = po.get("name").getAsString();
-                        p.u0 = po.get("u0").getAsFloat();
-                        p.u1 = po.get("u1").getAsFloat();
-                        p.t = po.get("t").getAsFloat();
-                        p.r = po.get("r").getAsFloat();
-                        m.parts.add(p);
+                        String of = po.get("of").getAsString();
+                        Model whole = null;
+                        for (Model m : models) if (m.id.equals(of)) whole = m;
+                        if (whole == null) continue;
+                        Pieces ps = new Pieces();
+                        ps.blade = parse(po.getAsJsonObject("blade"), len, half, zmax);
+                        ps.held = parse(po.getAsJsonObject("held"), len, half, zmax);
+                        ps.swing = parse(po.getAsJsonObject("swing"), len, half, zmax);
+                        ps.blade.piece = PIECE_BLADE;
+                        ps.held.piece = PIECE_HELD;
+                        ps.swing.piece = PIECE_SWING;
+                        ps.blade.owner = ps.held.owner = ps.swing.owner = of;
+                        JsonArray hp = po.getAsJsonArray("held_pin"), sp = po.getAsJsonArray("swing_pin");
+                        ps.heldU = hp.get(0).getAsFloat();
+                        ps.heldV = hp.get(1).getAsFloat();
+                        ps.swingU = sp.get(0).getAsFloat();
+                        ps.swingV = sp.get(1).getAsFloat();
+                        whole.pieces = ps;
                     }
-                    models.add(m);
                 }
             }
         } catch (Exception | Error e) {
             models = new ArrayList<>();
         }
         return models;
+    }
+
+    private static Model parse(JsonObject k, float len, float half, float zmax) {
+        Model m = new Model();
+        m.id = k.get("id").getAsString();
+        m.owner = m.id;
+        m.minLevel = k.has("min_level") ? k.get("min_level").getAsInt() : 0;
+        m.name = k.get("name").getAsString();
+        String g = k.get("glow").getAsString().replace("#", "");
+        m.glow = 0xFF000000 | Integer.parseInt(g, 16);
+        m.len = len;
+        m.half = k.has("half") ? k.get("half").getAsFloat() : half;  // the karambit uses a taller sheet
+        m.zmax = zmax;
+        JsonArray tip = k.getAsJsonArray("tip");
+        m.tipU = tip.get(0).getAsFloat();
+        m.tipV = tip.get(1).getAsFloat();
+        if (k.has("centre")) {
+            JsonArray c = k.getAsJsonArray("centre");
+            m.centre = new float[c.size()];
+            for (int i = 0; i < m.centre.length; i++) m.centre[i] = c.get(i).getAsFloat();
+        }
+        for (JsonElement pe : k.getAsJsonArray("parts")) {
+            JsonObject po = pe.getAsJsonObject();
+            Part p = new Part();
+            p.name = po.get("name").getAsString();
+            p.u0 = po.get("u0").getAsFloat();
+            p.u1 = po.get("u1").getAsFloat();
+            p.t = po.get("t").getAsFloat();
+            p.r = po.get("r").getAsFloat();
+            m.parts.add(p);
+        }
+        return m;
+    }
+
+    /** The butterfly pieces of HD knife i, or null if it is not a butterfly. */
+    public static Pieces pieces(int i) {
+        Model m = model(i);
+        return m == null ? null : m.pieces;
+    }
+
+    /** How far the handles sit in front of and behind the blade, in sheet units. */
+    private static final float PIECE_Z = 0.36f;
+    private static final float PI = (float) Math.PI, TAU = 2f * PI;
+
+    /**
+     * The three piece transforms of a butterfly, from the angles the pixel butterfly's tricks already animate:
+     * k is that knife's frame (origin between the pins, handles along +y), closed is a = b = c = 0, open is
+     * c = PI, b = TAU. The held handle turns by a, the blade by c round the held pin, and the swinging handle round
+     * its own pin on the blade, so it goes all the way round as the knife opens.
+     *
+     * @param out three transforms: blade, held handle, swinging handle
+     */
+    public static void butterfly(Pieces p, Rig.T k, float a, float b, float c, Rig.T[] out) {
+        float hx = mx(p.heldV), hy = my(p.heldU), sx = mx(p.swingV), sy = my(p.swingU);
+        // the sheet's knife lies with its blade along +y; the pixel butterfly opens its blade along -y, so turn it
+        // over (x stays, y and z flip): a turn round z there is the opposite turn here
+        Rig.T base = k.rotX(PI).move(-(hx + sx) * 0.5f, -(hy + sy) * 0.5f, 0f);
+        float blade = -(c - PI);
+        float swingAbs = -(b - TAU);
+        out[0] = base.move(hx, hy, 0f).rotZ(blade).move(-hx, -hy, 0f);
+        out[1] = base.move(hx, hy, PIECE_Z * SC).rotZ(-a).move(-hx, -hy, 0f);
+        out[2] = out[0].move(sx, sy, -PIECE_Z * SC).rotZ(swingAbs - blade).move(-sx, -sy, 0f);
+    }
+
+    /** Depth of a model's middle under a transform (larger is further from the camera). */
+    public static float depth(Model m, Rig.T k) {
+        float u = m.len * 0.5f;
+        for (Part pt : m.parts) u = (pt.u0 + pt.u1) * 0.5f;
+        world(k, u, 0f, 0f, W);
+        return W[2];
     }
 
     public static Model model(int i) {
@@ -311,6 +413,10 @@ public final class KnifeHD {
                 group++;
                 layer(f, m, k, p, GLOSS, p.t * side, unit, 0f, -2f, alpha, group, true, fx, fy, fz, ex, ey, ez);
                 layer(f, m, k, p, EDGE, p.t * side, unit, 0f, -3f, alpha, group, true, fx, fy, fz, ex, ey, ez);
+                // rare knives: the blade's own colours glow, breathing slowly
+                if ("blade".equals(p.name) && m.emissive() > 0f) {
+                    layer(f, m, k, p, FACE, p.t * side, unit, m.emissive(), -4f, alpha, group, true, fx, fy, fz, ex, ey, ez);
+                }
                 group++;
             }
         }
@@ -394,9 +500,25 @@ public final class KnifeHD {
         float bnx = fx * bc + ex * bs, bny = fy * bc + ey * bs, bnz = fz * bc + ez * bs;
 
         int a = Math.round(clamp(alpha) * 255f);
-        float[] px = new float[(nu + 1) * (nv + 1)];
-        float[] py = new float[px.length];
-        int[] col = new int[px.length];
+        int count = (nu + 1) * (nv + 1);
+        if (scratchX.length < count) {
+            scratchX = new float[count * 2];
+            scratchY = new float[count * 2];
+            scratchC = new int[count * 2];
+        }
+        float[] px = scratchX;
+        float[] py = scratchY;
+        int[] col = scratchC;
+        // the glow: the face texture added on top, tinted with the knife's glow colour, breathing slowly
+        int glowR = 0, glowG = 0, glowB = 0;
+        if (mode == -4f) {
+            double t = (System.nanoTime() % 60_000_000_000L) / 1e9;
+            float breathe = 0.62f + 0.38f * (float) Math.sin(t * 2.2 + m.id.hashCode() % 7);
+            float e = clamp(lum * breathe * alpha) * 0.85f;
+            glowR = Math.round(((m.glow >> 16) & 0xFF) * e);
+            glowG = Math.round(((m.glow >> 8) & 0xFF) * e);
+            glowB = Math.round((m.glow & 0xFF) * e);
+        }
         for (int j = 0; j <= nv; j++) {
             float v = v0 + (v1 - v0) * j / nv;
             for (int i = 0; i <= nu; i++) {
@@ -406,6 +528,11 @@ public final class KnifeHD {
                 int idx = j * (nu + 1) + i;
                 px[idx] = W[0] * s;
                 py[idx] = W[1] * s;
+                if (mode == -4f) {
+                    // alpha 1: the premultiplied pipeline then only adds light (alpha 0 would be discarded)
+                    col[idx] = (1 << 24) | (glowR << 16) | (glowG << 8) | glowB;
+                    continue;
+                }
                 float b;
                 if (mode >= 0f) {
                     b = lum;
@@ -429,10 +556,12 @@ public final class KnifeHD {
             }
         }
         // a light layer with nothing to add is skipped
-        if (light) {
+        if (mode == -4f && glowR + glowG + glowB < 3) return;
+        if (light && mode != -4f) {
             boolean any = false;
-            for (int c : col) {
-                if ((c & 0xFF) > 2) {
+            for (int ci = 0; ci < count; ci++) {
+                int c = col[ci];
+                if ((c & 0xFF) > 2 || ((c >> 8) & 0xFF) > 2 || ((c >> 16) & 0xFF) > 2) {
                     any = true;
                     break;
                 }
@@ -455,6 +584,10 @@ public final class KnifeHD {
             }
         }
     }
+
+    /** Reused per layer: the knife is built on the render thread only. */
+    private static float[] scratchX = new float[256], scratchY = new float[256];
+    private static int[] scratchC = new int[256];
 
     private static void set(Quad q, int i, float x, float y, float u, float v, int c) {
         q.x[i] = x;
