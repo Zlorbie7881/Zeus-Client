@@ -288,7 +288,19 @@ public final class Craft {
                 return false;
             }
             int from = find(menu, want);
-            if (from < 0) return false;
+            if (from < 0) {
+                // nothing left in the inventory, but a grid cell may hold two: move the spare across
+                int grid = table ? 9 : 4;
+                for (int g = 1; g <= grid; g++) {
+                    ItemStack st = menu.getSlot(g).getItem();
+                    if (g == slot || st.getCount() < 2 || !want.test(st)) continue;
+                    click(mc, menu, g, 1, ClickType.PICKUP);      // right click picks up half
+                    click(mc, menu, slot, 1, ClickType.PICKUP);   // one goes in the empty cell
+                    click(mc, menu, g, 0, ClickType.PICKUP);      // the rest goes back
+                    return false;
+                }
+                return false;
+            }
             click(mc, menu, from, 0, ClickType.PICKUP);
             click(mc, menu, slot, 1, ClickType.PICKUP);
             click(mc, menu, from, 0, ClickType.PICKUP);
@@ -345,7 +357,7 @@ public final class Craft {
                 }
                 if (result.isEmpty()) continue;
                 if (want != null && result.is(want)) return bookOf(entry, context);
-                if (loose == null && itemMatches(result, wanted)) loose = bookOf(entry, context);
+                if (want == null && loose == null && itemMatches(result, wanted)) loose = bookOf(entry, context);
             }
         }
         return loose;

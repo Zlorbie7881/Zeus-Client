@@ -153,6 +153,7 @@ public final class AiPilot extends Module {
         int pending;
         int seen;
         int attempts;
+        boolean noBook;                // the recipe book would not lay this out: fill the grid by hand
         int pathRetries;
         boolean phase;
         double bestDist;
@@ -2785,7 +2786,8 @@ public final class AiPilot extends Module {
             Craft.Recipe vanilla = com.zlorbie788.zeus.core.Recipes.craftFor(exactId, inventoryCounts(mc));
             if (vanilla != null) recipe = vanilla;
         }
-        Craft.Book book = recipe == null ? Craft.book(mc, job.target) : null;
+        // the server lays a recipe-book recipe out in one go, exactly; filling the grid click by click is the fallback
+        Craft.Book book = job.noBook ? null : Craft.book(mc, job.target);
         if (recipe == null && book == null) {
             giveUp(mc, "I do not know a recipe for " + job.target.replace('_', ' '));
             return;
@@ -2799,8 +2801,8 @@ public final class AiPilot extends Module {
                 closeScreen(mc);
                 return;
             }
-            if (recipe == null) {
-                bookCraft(mc, menu, book, shown);
+            if (book != null) {
+                bookCraft(mc, menu, book, shown, recipe != null);
                 return;
             }
             if (!Craft.ready(menu, recipe, table)) {
@@ -2903,7 +2905,7 @@ public final class AiPilot extends Module {
     }
 
     // The vanilla recipe book fills the grid for us, so anything the player has unlocked is fair game.
-    private void bookCraft(Minecraft mc, AbstractContainerMenu menu, Craft.Book book, String shown) {
+    private void bookCraft(Minecraft mc, AbstractContainerMenu menu, Craft.Book book, String shown, boolean canFallBack) {
         if (job.step == 0) {
             Craft.bookPlace(mc, menu, book.entry());
             job.step = 1;
@@ -2922,7 +2924,13 @@ public final class AiPilot extends Module {
             }
             return;
         }
+        if (job.step % 20 == 0) Craft.bookPlace(mc, menu, book.entry());   // ask again in case the first packet was early
         if (++job.step > 80) {
+            if (canFallBack) {
+                job.noBook = true;           // lay it out by hand instead
+                job.step = 0;
+                return;
+            }
             closeScreen(mc);
             giveUp(mc, "not enough materials for " + shown);
         }
