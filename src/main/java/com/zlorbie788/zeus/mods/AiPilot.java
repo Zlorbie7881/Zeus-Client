@@ -142,6 +142,9 @@ public final class AiPilot extends Module {
         double lastZ;
         int blocked;
         int entityId = -1;
+        int shooter = -1;
+        long shooterUntil;
+        long shooterScan;
         long actionAt;
         int pending;
         int seen;
@@ -2462,6 +2465,7 @@ public final class AiPilot extends Module {
             job.healUntil = 0L;
             mc.options.keyUse.setDown(false);
         }
+        if (mc.screen == null && answerShooter(mc)) return;
         if (mc.screen == null && defend(mc)) return;
         if (mc.screen == null) snack(mc);
         // Auto Eat owns the use key and the hotbar while it eats; fighting it would cancel the food.
@@ -5133,6 +5137,99 @@ public final class AiPilot extends Module {
         mc.gameMode.attack(p, mob);
         p.swing(InteractionHand.MAIN_HAND);
         job.note = "fighting off a " + mob.getName().getString();
+        return true;
+    }
+
+    // A skeleton can shoot a mining job from outside melee reach, and a job that ignores it just eats
+    // arrows until it dies. So being shot breaks the job off: shield up, walk at the shooter, hit it.
+    private boolean answerShooter(Minecraft mc) {
+        if (job == null || mc.level == null || mc.player == null) return false;
+        switch (job.kind) {
+            case FLEE, HUNT, SHOOT, GUARD, EAT, FOOD, SLEEP -> {
+                return false;
+            }
+            default -> {
+            }
+        }
+        Player p = mc.player;
+        long now = System.currentTimeMillis();
+        // Hit by something that shoots? Whatever the job was doing, that is what it has to answer.
+        if (p.hurtTime > 0) {
+            net.minecraft.world.entity.Entity attacker = p.getLastHurtByMob();
+            if (attacker != null && attacker.isAlive() && ranged(attacker) && p.distanceTo(attacker) <= 32) {
+                if (job.shooter != attacker.getId()) Notify.info("Zeus AI: the " + attacker.getName().getString() + " is shooting at it, breaking off");
+                job.shooter = attacker.getId();
+                job.shooterUntil = now + 9000L;
+            }
+        }
+        // Before the first arrow lands: a skeleton in plain sight down a tunnel is worth breaking off for.
+        if (job.shooter < 0 && now >= job.shooterScan) {
+            job.shooterScan = now + 600L;
+            net.minecraft.world.entity.Entity seen = nearestEntity(mc, 14.0,
+                    e -> e.isAlive() && ranged(e) && p.hasLineOfSight(e));
+            if (seen != null) {
+                job.shooter = seen.getId();
+                job.shooterUntil = now + 7000L;
+                Notify.info("Zeus AI: breaking off to answer the " + seen.getName().getString());
+            }
+        }
+        if (job.shooter < 0) return false;
+        net.minecraft.world.entity.Entity shooter = mc.level.getEntity(job.shooter);
+        double reach = Math.max(3.0, Combat.Reach.entityRange());
+        if (shooter == null || !shooter.isAlive()) {
+            job.shooter = -1;
+            return false;
+        }
+        double dist = p.distanceTo(shooter);
+        if (dist > 36 || (now > job.shooterUntil && dist > reach - 0.5)) {
+            job.shooter = -1;
+            return false;
+        }
+        String name = shooter.getName().getString();
+        releaseAttack(mc);
+        if (dist > reach - 0.5) {
+            // Facing the shooter is the same thing as walking at it, which is what the shield needs.
+            boolean shield = shieldsUp(mc);
+            mc.options.keyUse.setDown(shield);
+            job.note = (shield ? "shield up, closing on the " : "closing on the ") + name;
+            if (!walkTo(mc, shooter.position(), Math.max(1.2, reach - 0.9))) return true;
+            if (job == null) return false;
+        }
+        mc.options.keyUse.setDown(false);
+        mc.options.keyUp.setDown(false);
+        int weapon = bestWeapon(mc);
+        if (weapon >= 0 && weapon != Inv.selected()) Inv.select(weapon);
+        lookAt(p, shooter.position().add(0, shooter.getBbHeight() * 0.6, 0));
+        job.note = "breaking off to answer the " + name;
+        if (p.getAttackStrengthScale(0.5f) >= 0.9f) {
+            mc.gameMode.attack(p, shooter);
+            p.swing(InteractionHand.MAIN_HAND);
+        }
+        return true;
+    }
+
+    private static boolean ranged(net.minecraft.world.entity.Entity e) {
+        return e instanceof net.minecraft.world.entity.monster.Enemy
+                && e instanceof net.minecraft.world.entity.monster.RangedAttackMob;
+    }
+
+    // Only raise the shield when right click would actually reach it: a block, a pearl or a bucket in
+    // the main hand would be used first, so those slots are left alone.
+    private boolean shieldsUp(Minecraft mc) {
+        java.util.function.Predicate<ItemStack> shield = s -> s.is(Items.SHIELD);
+        if (Inv.offhand(shield)) {
+            int weapon = bestWeapon(mc);
+            if (weapon >= 0) Inv.select(weapon);
+            ItemStack main = Inv.get(Inv.selected());
+            // Anything right click would act on first: blocks, buckets, throwables, bows.
+            return !(main.getItem() instanceof net.minecraft.world.item.BlockItem)
+                    && !main.is(Items.BUCKET) && !main.is(Items.WATER_BUCKET) && !main.is(Items.LAVA_BUCKET)
+                    && !main.is(Items.ENDER_PEARL) && !main.is(Items.SNOWBALL) && !main.is(Items.EGG)
+                    && !main.is(Items.BOW) && !main.is(Items.CROSSBOW) && !main.is(Items.FISHING_ROD);
+        }
+        int slot = Inv.hotbar(shield);
+        if (slot < 0) return false;
+        Inv.select(slot);
         return true;
     }
 
