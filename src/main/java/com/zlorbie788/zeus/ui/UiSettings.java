@@ -100,7 +100,7 @@ public final class UiSettings {
 
     public static final Setting.Bool HUD_STRIPE = Zeus.UI.add(new Setting.Bool("HUD accent stripe", "The coloured bar on the left edge of the boxes.", false)).resetOnRev();
 
-    public static final Setting.Choice PERFORMANCE = Zeus.UI.add(new Setting.Choice("Effects quality", "Auto: the thunder, sway and slide-ins are drawn lighter when your frame rate drops below 40 and come back above 55. Quality: always full. Fast: always light (best for weak computers).", 0,
+    public static final Setting.Choice PERFORMANCE = Zeus.UI.add(new Setting.Choice("Effects quality", "Auto: the thunder, sway and slide-ins are drawn lighter when your frame rate drops below 30 and come back above 45. Quality: always full. Fast: always light (best for weak computers).", 0,
 
             "Auto", "Quality", "Fast"));
 
@@ -108,7 +108,7 @@ public final class UiSettings {
 
             "Balanced", "Light", "Minimal"));
 
-    public static final Setting.Bool AUTO_LIGHTEN = Zeus.UI.add(new Setting.Bool("Lighten automatically when the game lags", "When your frame rate falls below 45 Zeus steps up to at least Light, and below 30 to Minimal. It steps back down once the frame rate is healthy again.", true));
+    public static final Setting.Bool AUTO_LIGHTEN = Zeus.UI.add(new Setting.Bool("Lighten automatically when the game lags", "When your frame rate falls below 30 Zeus steps up to at least Light, and below 20 to Minimal. It steps back down once the frame rate is healthy again.", true));
 
     public static final Setting.Bool SHOW_COST = Zeus.UI.add(new Setting.Bool("Show what each module costs", "Measures how much of your frame time each switched-on module uses and shows it as a small percentage next to the module in the menu windows (green is small, red is a lot). The measuring itself is a few clock reads a frame. Switch it off for none.", true));
 

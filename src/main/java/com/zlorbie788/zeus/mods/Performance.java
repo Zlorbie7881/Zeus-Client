@@ -87,31 +87,50 @@ public final class Performance {
             Prof.hold("monitor", false);
         }
 
+        private long lastNs;
+        private float frameMs = 16.7f;
+
         @Override
         protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+            long now = System.nanoTime();
+            if (lastNs != 0) frameMs += ((now - lastNs) / 1e6f - frameMs) * 0.05f;
+            lastNs = now;
             List<Prof.Row> report = Prof.report();
-            int shown = 0;
             List<Prof.Row> pick = new ArrayList<>(rows.i());
+            double zeusMs = 0;
+            for (Prof.Row r : report) zeusMs += r.msPerFrame();
             for (Prof.Row r : report) {
-                if (shown >= rows.i()) break;
+                if (pick.size() >= rows.i()) break;
                 if (hideZeus.on() && r.percent() < 0.1) break;
                 pick.add(r);
-                shown++;
             }
-            int bw = Draw.width("Zeus total 00.0%") + 30;
-            for (Prof.Row r : pick) bw = Math.max(bw, Draw.width(r.module().name) + Draw.width(String.format(Locale.ROOT, "%.1f%%", r.percent())) + 24);
-            int bh = (pick.size() + 1) * 12 + Hud.TOP + 3;
-            int[] at = Hud.place(corner.index(), bw, bh, w, h);
-            Hud.panel(g, at[0], at[1], bw, bh);
             double total = Prof.total();
             int tc = total < 3 ? Accent.OK : total < 8 ? Accent.WARN : Accent.BAD;
-            Hud.header(g, at[0], at[1], bw, "Performance", null, tc);
-            Hud.row(g, at[0] + Hud.PAD, at[1] + Hud.TOP, bw - Hud.PAD * 2, "Zeus total", String.format(Locale.ROOT, "%.1f%%", total), Accent.DIM, tc);
-            for (int i = 0; i < pick.size(); i++) {
-                Prof.Row r = pick.get(i);
-                int y = at[1] + Hud.TOP + (i + 1) * 12;
-                int c = r.percent() < 1 ? Accent.TEXT : r.percent() < 4 ? Accent.WARN : Accent.BAD;
-                Hud.row(g, at[0] + Hud.PAD, y, bw - Hud.PAD * 2, r.module().name, String.format(Locale.ROOT, "%.1f%%", r.percent()), Accent.TEXT, c);
+            String head = String.format(Locale.ROOT, "%.1f ms frame  \u00b7  Zeus %.2f ms", frameMs, zeusMs);
+            int bw = Math.max(Draw.width(head) + 16, 150);
+            for (Prof.Row r : pick) bw = Math.max(bw, Draw.width(r.module().name) + Draw.width("00.0%  0.00 ms") + 24);
+            int rowH = 14;
+            int bh = 8 + 12 + 6 + Math.max(1, pick.size()) * rowH + 4;
+            int[] at = Hud.place(corner.index(), bw, bh, w, h);
+            int x = at[0], y = at[1];
+            Hud.panel(g, x, y, bw, bh);
+            // headline: frame time and how much of it is Zeus, with a share bar
+            Draw.text(g, head, x + 8, y + 6, Accent.TEXT);
+            int barW = bw - 16;
+            float share = (float) Math.min(1.0, zeusMs / Math.max(0.1, frameMs));
+            Draw.rrect(g, x + 8, y + 18, barW, 3, 1, Draw.rgba(0xFFFFFFFF, 0.10f));
+            Draw.rrect(g, x + 8, y + 18, Math.max(2, Math.round(barW * share)), 3, 1, tc);
+            int ry = y + 26;
+            if (pick.isEmpty()) Draw.text(g, "Measuring...", x + 8, ry + 2, Accent.DIM);
+            double top = pick.isEmpty() ? 1 : Math.max(0.01, pick.get(0).percent());
+            for (Prof.Row r : pick) {
+                int c = r.percent() < 1 ? Accent.OK : r.percent() < 4 ? Accent.WARN : Accent.BAD;
+                String val = String.format(Locale.ROOT, "%.1f%%  %.2f ms", r.percent(), r.msPerFrame());
+                Draw.text(g, Draw.fit(r.module().name, barW - Draw.width(val) - 6), x + 8, ry, Accent.TEXT);
+                Draw.textRight(g, val, x + bw - 8, ry, c);
+                Draw.rrect(g, x + 8, ry + 10, barW, 2, 1, Draw.rgba(0xFFFFFFFF, 0.06f));
+                Draw.rrect(g, x + 8, ry + 10, Math.max(2, (int) Math.round(barW * r.percent() / top)), 2, 1, Draw.rgba(c, 0.9f));
+                ry += rowH;
             }
         }
     }

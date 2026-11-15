@@ -32,6 +32,8 @@ public final class NameTags extends Module {
     private final Setting.Bool percent = add(new Setting.Bool("Durability percent", "Show the percentage left under each piece, in small numbers.", true)).showIf(armor::on);
     private final Setting.Bool face = add(new Setting.Bool("Player head", "The player's face from their skin at the left of the plate.", true));
     private final Setting.Bool held = add(new Setting.Bool("Held item", "The item in their main hand next to their armour.", true));
+    private final Setting.Bool closeFade = add(new Setting.Bool("Fade up close", "Plates of players right next to you turn see-through, so they never cover the fight.", true));
+    private final Setting.Bool targetOnly = add(new Setting.Bool("Only my target", "Show a plate only for who you are looking at or hit in the last few seconds.", false));
     private final Setting.Bool onlyPlayers = add(new Setting.Bool("Players only", "Off shows mobs too, with their health and any armour they picked up.", true));
     private final Setting.Bool hideFriends = add(new Setting.Bool("Hide friends", "Friends already have their own tag; this keeps this plate off them.", false));
     private final Setting.Bool hideVanilla = add(new Setting.Bool("Hide the game's tag", "Stops the ordinary name tag from drawing underneath this plate, so there is no doubled text.", true));
@@ -82,8 +84,12 @@ public final class NameTags extends Module {
         List<Entity> list = Env.entities(mc, range.get());
         // Furthest first, so the nearest plate is drawn last and wins any overlap.
         list.sort(Comparator.comparingDouble((Entity e) -> -mc.player.distanceToSqr(e)));
+        Entity looked = mc.crosshairPickEntity;
+        LivingEntity hit = mc.player.getLastHurtMob();
+        boolean recent = hit != null && mc.player.tickCount - mc.player.getLastHurtMobTimestamp() < 100;
         for (Entity e : list) {
             if (!applies(e)) continue;
+            if (targetOnly.on() && e != looked && !(recent && e == hit)) continue;
             LivingEntity le = (LivingEntity) e;
             if (!walls.on() && !mc.player.hasLineOfSight(le)) continue;
             double anchorY = le.getY() + le.getBbHeight() + (le.isShiftKeyDown() ? 0.15 : 0.35);
@@ -135,6 +141,7 @@ public final class NameTags extends Module {
         double dist = mc.player != null ? Math.sqrt(mc.player.distanceToSqr(le)) : 0;
         float far = (float) Math.max(0, Math.min(1, (dist - range.get() * 0.6) / Math.max(1, range.get() * 0.4)));
         float a = 1f - 0.4f * far;
+        if (closeFade.on()) a *= (float) Math.max(0.28, Math.min(1.0, (dist - 1.5) / 2.5));
 
         float max = Math.max(1f, le.getMaxHealth());
         float hf = Math.max(0f, Math.min(1f, le.getHealth() / max));

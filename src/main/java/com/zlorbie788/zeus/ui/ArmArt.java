@@ -41,6 +41,22 @@ public final class ArmArt {
         };
     }
 
+    /** A dark leather glove over the hand end of the arm, with a lighter cuff band and stitching. */
+    public static Rig.Painter glove(Skin s) {
+        return (g, c, face, w, h) -> {
+            g.fill(0, 0, w, h, c.col(0xFF24201E));
+            int cuff = Math.max(1, Math.round(h * 0.28f));
+            if (face != 2 && face != 3) {
+                g.fill(0, h - cuff, w, h, c.col(0xFF3A322C));
+                g.fill(0, h - cuff, w, h - cuff + 1, c.raw(0xFFFFFFFF, 0.10f));
+                for (int x = 1; x < w; x += 3) g.fill(x, h - cuff - 2, x + 1, h - cuff - 1, c.raw(0xFFB8A48C, 0.35f));
+                g.fill(0, 0, w, 1, c.raw(0xFFFFFFFF, 0.12f));
+            }
+            g.fill(0, 0, 1, h, c.raw(0xFF000000, 0.18f));
+            glow(g, c, s, w, h);
+        };
+    }
+
     private static int[] region(int face, boolean slim) {
         return switch (face) {
             case 5 -> new int[] {44, 20, slim ? 3 : 4, 12};

@@ -6,6 +6,7 @@
   "key.zeus.spear_lunge": "Spear Swap: lunge",
   "key.zeus.palette": "Command palette (hold Ctrl)",
   "key.zeus.ask_ai": "Ask Zeus AI (opens chat with /zeus ai)",
+  "key.zeus.ai_stop": "Stop the Zeus AI job",
   "key.zeus.module.killaura": "Kill Aura on / off",
   "key.zeus.module.crystalaura": "Crystal Aura on / off",
   "key.zeus.module.anchoraura": "Anchor Aura on / off",

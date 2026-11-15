@@ -16,8 +16,9 @@ public final class Perf {
         if (now - since < 500) return light;
         since = now;
         int fps = Brain.ctx().fps;
-        if (!light && fps > 0 && fps < 40) light = true;
-        else if (light && fps >= 55) light = false;
+        // most effects are cheap now, so only a frame rate that is really struggling turns them down
+        if (!light && fps > 0 && fps < 30) light = true;
+        else if (light && fps >= 45) light = false;
         return light;
     }
 
@@ -47,14 +48,14 @@ public final class Perf {
         if (UiSettings.AUTO_LIGHTEN.on()) {
             int fps = Brain.ctx().fps;
             if (fps > 0) {
-                int needed = fps < 30 ? 2 : fps < 45 ? 1 : 0;
+                int needed = fps < 20 ? 2 : fps < 30 ? 1 : 0;
                 if (needed > level) {
                     if (++lowSamples >= 2) {
                         level = needed;
                         lowSamples = 0;
                     }
                     highSamples = 0;
-                } else if (fps >= 60 && level > base) {
+                } else if (fps >= 50 && level > base) {
                     if (++highSamples >= 6) {
                         level--;
                         highSamples = 0;

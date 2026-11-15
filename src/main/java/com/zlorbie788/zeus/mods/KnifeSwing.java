@@ -186,6 +186,7 @@ public final class KnifeSwing extends Module {
     private final Setting.Num spins = add(new Setting.Num("Rollovers", "How many times the knife turns in a rollover.", 2, 1, 4, 1, "")).showIf(() -> section.index() == 2);
     private final Setting.Bool sway = add(new Setting.Bool("Sway with the camera", "The hand lags behind when you turn, like the game's own.", true)).showIf(() -> section.index() == 1);
     private final Setting.Bool handLight = add(new Setting.Bool("Light on the hand", "The knife throws a little of its colour on the hand when it flashes and spins.", true)).showIf(() -> section.index() == 0);
+    private final Setting.Choice glove = add(new Setting.Choice("Hand", "Glove: a dark leather glove where the hand holds the knife. Bare: just the arm.", 0, "Glove", "Bare")).showIf(() -> section.index() == 0);
     private final Setting.Bool safeDraw = add(new Setting.Bool("Safe draw", "Always uses the flat pixel knives, which draw on every setup. Turn it off to try the 3D models.", true)).showIf(() -> false);
     private final Setting.Info status = add(new Setting.Info("Knife", this::lines)).showIf(() -> section.index() == 0);
     private final Setting.Bool model3d = add(new Setting.Bool("3D knife models", "Draws the knives as real 3D models (a few hundred triangles each, flat shaded, cheap). Off: the classic pixel knives. Falls back to the pixel knives by itself if a model cannot be loaded.", false)).showIf(() -> false);
@@ -1386,6 +1387,11 @@ public final class KnifeSwing extends Module {
             float[] e = rig.extent();
             float bottom = y0 + swayY + moveOff[1] + Math.max(e[3] * u, e[1] * u);
             if (bottom >= h + 2f) break;
+        }
+        if (glove.index() == 0) {
+            // a leather glove over the hand end, so the arm does not end in a bare stump at the handle
+            float gl = 7f;
+            rig.box(f.arm, 0f, ARM_L * 0.03f - gl / 2f + 0.4f, 0f, aw + 1.0f, gl, 9f, ArmArt.glove(skin), false);
         }
         rig.flush(g, u);
 

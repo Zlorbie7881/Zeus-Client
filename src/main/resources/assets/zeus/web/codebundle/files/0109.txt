@@ -332,6 +332,81 @@ public final class AiPilot extends Module {
             drawChat(g, mc, w, h);
         } catch (Throwable ignored) {
         }
+        try {
+            drawJobCard(g, mc, w, h);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private final Setting.Bool jobCard = add(new Setting.Bool("Job card", "A small card at the top of the screen while the AI works: what it is doing, a progress bar and how to stop it.", true));
+    private static final java.util.regex.Pattern COUNT = java.util.regex.Pattern.compile("\\((\\d+)/(\\d+)\\)");
+    private float jobShown;
+    private String jobLabelShown = "";
+    private float barShown;
+    private long jobCardAt;
+
+    /** Stops the running job (the Stop Zeus AI key). */
+    public static void stopNow() {
+        AiPilot self = find();
+        if (self != null && self.job != null) {
+            self.cancelJob(Minecraft.getInstance());
+            talk(false, "Stopped.");
+        }
+    }
+
+    /** The job card: what the AI is doing, how far it got, how long it has run, and how to stop it. */
+    private void drawJobCard(net.minecraft.client.gui.GuiGraphics g, Minecraft mc, int w, int h) {
+        if (!jobCard.on() || mc.options.hideGui) return;
+        long now = System.nanoTime();
+        float dt = jobCardAt == 0 ? 0.016f : Math.min(0.1f, (now - jobCardAt) / 1e9f);
+        jobCardAt = now;
+        Job j = job;
+        boolean live = j != null || busy;
+        jobShown += ((live ? 1f : 0f) - jobShown) * (1f - (float) Math.exp(-dt * 10f));
+        if (jobShown < 0.02f) return;
+        String label = j != null ? j.label() : busy ? "thinking about your request" : jobLabelShown;
+        jobLabelShown = label;
+        float frac = -1f;
+        java.util.regex.Matcher mt = COUNT.matcher(label);
+        if (mt.find()) {
+            int got = Integer.parseInt(mt.group(1)), of = Math.max(1, Integer.parseInt(mt.group(2)));
+            frac = Math.min(1f, got / (float) of);
+            label = (label.substring(0, mt.start()) + label.substring(mt.end())).trim();
+        }
+        String title = label.isEmpty() ? "Working" : Character.toUpperCase(label.charAt(0)) + label.substring(1);
+        long secs = j != null ? (System.currentTimeMillis() - j.started) / 1000 : 0;
+        String right = frac >= 0 ? Math.round(frac * 100) + "%" : secs > 0 ? (secs >= 60 ? secs / 60 + "m " + secs % 60 + "s" : secs + "s") : "";
+        String stopKey = com.zlorbie788.zeus.client.ZeusClient.AI_STOP != null && !com.zlorbie788.zeus.client.ZeusClient.AI_STOP.isUnbound()
+                ? com.zlorbie788.zeus.client.ZeusClient.AI_STOP.getTranslatedKeyMessage().getString() : null;
+        String hint = j == null ? "" : stopKey != null ? "Stop: " + stopKey : "Stop: /zeus ai stop";
+        float a = Math.min(1f, jobShown);
+        int titleW = Math.min(220, com.zlorbie788.zeus.ui.Draw.width(title));
+        int bw = Math.max(150, 30 + titleW + 10 + com.zlorbie788.zeus.ui.Draw.width(right) + 8);
+        int bh = 33;
+        int x = (w - bw) / 2;
+        int y = 6 + Math.round((1f - a) * -8f);
+        com.zlorbie788.zeus.ui.Draw.rrect(g, x, y, bw, bh, 7, rgb(0x161D2E, 0.92f * a), rgb(0x0A0F1A, 0.92f * a));
+        com.zlorbie788.zeus.ui.Draw.rrectLine(g, x, y, bw, bh, 7, rgb(0xFFFFFF, 0.12f * a));
+        com.zlorbie788.zeus.ui.Draw.rrect(g, x + 6, y + 6, 14, 14, 4, rgb(0x2A5CC8, a), rgb(0x1A3A8A, a));
+        com.zlorbie788.zeus.ui.Draw.boldCenter(g, "Z", x + 13, y + 9, rgb(0xFFFFFF, a));
+        com.zlorbie788.zeus.ui.Draw.text(g, com.zlorbie788.zeus.ui.Draw.fit(title, titleW), x + 26, y + 6, rgb(0xFFFFFF, a));
+        if (!right.isEmpty()) com.zlorbie788.zeus.ui.Draw.textRight(g, right, x + bw - 8, y + 6, rgb(0x9FB2D8, a));
+        if (!hint.isEmpty()) com.zlorbie788.zeus.ui.Draw.text(g, hint, x + 26, y + 15, rgb(0x7F8DAA, 0.9f * a));
+        // progress: a real bar when the job counts, a moving sliver while it searches or thinks
+        int px = x + 6, pw = bw - 12, py = y + bh - 6;
+        com.zlorbie788.zeus.ui.Draw.rrect(g, px, py, pw, 3, 1, rgb(0xFFFFFF, 0.10f * a));
+        if (frac >= 0) {
+            barShown += (frac - barShown) * (1f - (float) Math.exp(-dt * 6f));
+            com.zlorbie788.zeus.ui.Draw.rrect(g, px, py, Math.max(3, Math.round(pw * barShown)), 3, 1, rgb(0x7FB4FF, a), rgb(0x3B74E0, a));
+        } else {
+            barShown = 0f;
+            float t = (now % 1_000_000_000_000L) / 1e9f;
+            float pos = (t * 0.6f) % 1.4f - 0.2f;
+            int sw = Math.max(12, pw / 4);
+            int sx = Math.round(px + pos * pw - sw / 2f);
+            int a0 = Math.max(px, sx), a1 = Math.min(px + pw, sx + sw);
+            if (a1 > a0) com.zlorbie788.zeus.ui.Draw.rrect(g, a0, py, a1 - a0, 3, 1, rgb(0x5FA8FF, 0.9f * a));
+        }
     }
 
     /** Wrapped text per chat line (lines never change, so each is wrapped once). */
@@ -370,7 +445,7 @@ public final class AiPilot extends Module {
         }
         String status = busy ? "Thinking" : job != null ? shorten(job.label()) : hasKey() ? "Ready" : "No key: /zeus ai tutorial";
         int statusCol = busy ? 0xFFD166 : job != null ? 0x5FA8FF : hasKey() ? 0x4ADE80 : 0xFF6B6B;
-        int ph = Math.max(used, 14) + 30;
+        int ph = Math.max(used, bubbles.isEmpty() && !busy && !hasKey() ? 40 : 14) + 30;
         int corner = chatCorner.index();
         int x = corner == 0 || corner == 1 ? sw - pw - 6 : 6;
         int y = corner == 0 ? sh - ph - Math.round(52 / sc) : corner == 3 ? (sh - ph) / 2 : 6;
@@ -395,7 +470,19 @@ public final class AiPilot extends Module {
 
         int by = y + 27;
         if (bubbles.isEmpty() && !busy) {
-            com.zlorbie788.zeus.ui.Draw.text(g, "Type /zeus ai <request>", x + 9, by + 3, rgb(0xFFFFFF, 0.55f * alpha));
+            if (!hasKey()) {
+                // first time: three steps to a free key, right where the answers will appear
+                String[][] steps = {{"1", "/zeus ai provider groq"}, {"2", "Get a free key: console.groq.com/keys"}, {"3", "/zeus ai key <your key>"}};
+                int sy = by + 1;
+                for (String[] st : steps) {
+                    com.zlorbie788.zeus.ui.Draw.rrect(g, x + 9, sy, 10, 10, 5, rgb(0x2A5CC8, alpha));
+                    com.zlorbie788.zeus.ui.Draw.textCenter(g, st[0], x + 14, sy + 1, rgb(0xFFFFFF, alpha));
+                    com.zlorbie788.zeus.ui.Draw.text(g, com.zlorbie788.zeus.ui.Draw.fit(st[1], pw - 34), x + 24, sy + 1, rgb(0xE6ECF8, alpha));
+                    sy += 13;
+                }
+            } else {
+                com.zlorbie788.zeus.ui.Draw.text(g, "Type /zeus ai <request>", x + 9, by + 3, rgb(0xFFFFFF, 0.55f * alpha));
+            }
         }
         for (Object[] b : bubbles) {
             Line l = (Line) b[0];

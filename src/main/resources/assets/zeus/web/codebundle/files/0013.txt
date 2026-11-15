@@ -262,6 +262,10 @@ public class ZeusScreensTest implements FabricClientGameTest {
             ctx.setScreen(() -> new com.zlorbie788.zeus.ui.ZeusScreen());
             ctx.waitTicks(30);
             ctx.takeScreenshot("zeus_menu_1920");
+            // searching for a setting name finds the modules that have it
+            ctx.setScreen(() -> com.zlorbie788.zeus.ui.ZeusScreen.at("opacity"));
+            ctx.waitTicks(30);
+            ctx.takeScreenshot("zeus_search_setting_1920");
             ctx.setScreen(() -> null);
             ctx.waitTicks(5);
             // Name Tags on mobs in armour (players only off), one hurt, one with worn armour.
@@ -277,6 +281,7 @@ public class ZeusScreensTest implements FabricClientGameTest {
                     throw new RuntimeException(e);
                 }
                 m.setEnabled(true);
+                com.zlorbie788.zeus.core.Zeus.get("perfmonitor").setEnabled(true);
             });
             sp.getServer().runCommand("execute as @a at @s run summon zombie ^-2 ^ ^6 {NoAI:1b,Silent:1b,PersistenceRequired:1b,Health:9f,CustomName:\"Hades\",equipment:{head:{id:\"minecraft:diamond_helmet\",components:{\"minecraft:damage\":300}},chest:{id:\"minecraft:netherite_chestplate\"},legs:{id:\"minecraft:iron_leggings\",components:{\"minecraft:damage\":180}},feet:{id:\"minecraft:diamond_boots\"},mainhand:{id:\"minecraft:netherite_sword\"}}}");
             sp.getServer().runCommand("execute as @a at @s run summon skeleton ^2.5 ^ ^9 {NoAI:1b,Silent:1b,PersistenceRequired:1b,equipment:{head:{id:\"minecraft:golden_helmet\",components:{\"minecraft:damage\":70}},mainhand:{id:\"minecraft:bow\"}}}");
@@ -311,6 +316,7 @@ public class ZeusScreensTest implements FabricClientGameTest {
                     throw new RuntimeException(e);
                 }
                 com.zlorbie788.zeus.mods.AiPilot.find().setEnabled(false);
+                com.zlorbie788.zeus.core.Zeus.get("perfmonitor").setEnabled(false);
                 com.zlorbie788.zeus.ui.UiSettings.PERFORMANCE.set(0);
             });
             sp.getServer().runCommand("kill @e[type=!player]");

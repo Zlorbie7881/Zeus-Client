@@ -60,7 +60,7 @@ public final class Interface {
     }
 
     public static final class ModuleList extends Module {
-        private final Setting.Bool glow = add(new Setting.Bool("Colour bar", "A coloured bar at the edge of every entry.", true));
+        private final Setting.Bool glow = add(new Setting.Bool("Colour bar", "A small bar in the module's category colour at the edge of every entry.", true));
         private final Setting.Bool details = add(new Setting.Bool("Show details", "Extra information after the name, like the speed.", true));
         private final Setting.Bool cost = add(new Setting.Bool("Show what each costs", "A small percentage after each name: how much of your frame time that module uses. Needs \"Show what each module costs\" in the Interface settings (on by default).", false));
 
@@ -129,34 +129,51 @@ public final class Interface {
                 Hud.listHeight = 0;
                 return;
             }
-            String tally = Integer.toString(count);
-            int widest = Hud.captionWidth("Modules") + 12 + Hud.chipWidth(tally);
-            for (int i = 0; i < count; i++) widest = Math.max(widest, widths[i] + 26);
-            int pad = 8;
-            int rowH = 13;
-            int bw = widest + pad * 2;
-            int bh = Hud.TOP + count * rowH + 2;
-            int x = w - 6 - bw;
+            // one slim pill per module, widest first, right-aligned to the screen edge; the category
+            // colour is a small bar on the outside edge, the name is white and any detail is dim
+            int rowH = 12;
+            int gap = 1;
+            int padX = 5;
+            int barW = glow.on() ? 2 : 0;
+            int widest = 0;
+            for (int i = 0; i < count; i++) widest = Math.max(widest, widths[i]);
+            int right = w - 6;
             int y = 6;
-            Hud.record(x, y, bw, bh);
-            Hud.panel(g, x, y, bw, bh);
-            Hud.caption(g, x + pad, y + 7, "Modules", Draw.rgba(Hud.accent(), 0.85f));
-            Hud.chip(g, x + bw - pad, y + 5, tally, Hud.accent());
-            Hud.rule(g, x + pad, y + 18, bw - pad * 2);
-            boolean bar = glow.on();
-            int a1 = Hud.accent();
-            int a2 = Accent.second();
+            int total = count * (rowH + gap) - gap;
+            Hud.record(right - widest - padX * 2 - barW, y, widest + padX * 2 + barW, total);
+            int bg = Hud.panelBg();
             for (int i = 0; i < count; i++) {
-                int ry = y + Hud.TOP + i * rowH;
-                int c = Draw.mix(a1, a2, (i % 8) / 7f);
-                int tx = x + pad + (bar ? 6 : 0);
-                if (bar) Draw.rrect(g, x + pad, ry + 4, 2, 5, 1, Draw.rgba(c, 0.9f));
-                Draw.text(g, rows[i].name, tx, ry + 2, c);
-                if (infos[i] != null) Draw.text(g, infos[i], tx + nameWidths[i] + 4, ry + 2, 0xFF8B97B3);
-                if (i < count - 1) Hud.rule(g, x + pad, ry + rowH - 1, bw - pad * 2);
+                int ry = y + i * (rowH + gap);
+                int rw = widths[i] + padX * 2;
+                int rx = right - barW - rw;
+                int c = rows[i].category.color();
+                Draw.rrect(g, rx, ry, rw + barW, rowH, 3, Draw.lighten(bg, 0.04f), Draw.darken(bg, 0.12f));
+                if (barW > 0) Draw.rrect(g, right - barW, ry + 2, barW, rowH - 4, 1, c);
+                Draw.text(g, rows[i].name, rx + padX, ry + 2, 0xFFF2F5FC);
+                if (infos[i] != null) Draw.text(g, infos[i], rx + padX + nameWidths[i] + 4, ry + 2, 0xFF8B97B3);
             }
-            Hud.listHeight = bh;
+            Hud.listHeight = total;
         }
+    }
+
+    /** A compact card of label / value rows (no title bar): dim labels on the left, values on the right. */
+    private static void card(GuiGraphics g, int x, int y, int bw, List<String[]> rows, String strongLabel) {
+        int bh = rows.size() * 11 + 7;
+        Hud.record(x, y, bw, bh);
+        Hud.panel(g, x, y, bw, bh);
+        for (int i = 0; i < rows.size(); i++) {
+            String[] r = rows.get(i);
+            int ry = y + 5 + i * 11;
+            Draw.text(g, r[0], x + 7, ry, Accent.DIM);
+            if (r[0].equals(strongLabel)) Draw.bold(g, r[1], x + bw - 7 - Draw.widthBold(r[1]), ry, Accent.TEXT);
+            else Draw.text(g, r[1], x + bw - 7 - Draw.width(r[1]), ry, Accent.TEXT);
+        }
+    }
+
+    private static int cardWidth(List<String[]> rows, String strongLabel) {
+        int w = 0;
+        for (String[] r : rows) w = Math.max(w, Draw.width(r[0]) + 12 + (r[0].equals(strongLabel) ? Draw.widthBold(r[1]) : Draw.width(r[1])));
+        return w + 14;
     }
 
     private static void row(GuiGraphics g, Minecraft mc, int x, int y, int w, String label, String value, boolean strong) {
@@ -203,22 +220,13 @@ public final class Interface {
             if (now - linesAt > 100_000_000L || cached.isEmpty()) {
                 linesAt = now;
                 cached = buildRows(mc);
-                boxW = 0;
-                for (String[] r : cached) boxW = Math.max(boxW, Hud.captionWidth(r[0]) + 18 + Draw.width(r[1]));
+                // the width only grows while the panel is up, so it does not twitch as numbers change
+                boxW = Math.max(boxW, cardWidth(cached, null));
             }
             List<String[]> rows = cached;
             if (rows.isEmpty()) return;
-            int bw = Math.max(boxW, Hud.captionWidth("Info")) + Hud.PAD * 2;
-            int bh = Hud.TOP + rows.size() * 12 + 3;
-            int x = 6;
-            int y = h - bh - 6 - 40;
-            Hud.record(x, y, bw, bh);
-            Hud.panel(g, x, y, bw, bh);
-            Hud.caption(g, x + Hud.PAD, y + 7, "Info", Draw.rgba(Hud.accent(), 0.85f));
-            Hud.rule(g, x + Hud.PAD, y + 18, bw - Hud.PAD * 2);
-            for (int i = 0; i < rows.size(); i++) {
-                row(g, mc, x + Hud.PAD, y + Hud.TOP + i * 12, bw - Hud.PAD * 2, rows.get(i)[0], rows.get(i)[1], false);
-            }
+            int bh = rows.size() * 11 + 7;
+            card(g, 6, h - bh - 6 - 40, boxW, rows, null);
         }
 
         private List<String[]> cached = List.of();
@@ -271,22 +279,12 @@ public final class Interface {
             if (now - linesAt > 100_000_000L || cached.isEmpty()) {
                 linesAt = now;
                 cached = buildRows(mc);
-                boxW = 0;
-                for (String[] r : cached) boxW = Math.max(boxW, Hud.captionWidth(r[0]) + 18 + (r[0].equals("XYZ") ? Draw.widthBold(r[1]) : Draw.width(r[1])));
+                int want = cardWidth(cached, "XYZ");
+                boxW = want > boxW || want < boxW - 24 ? want : boxW;
             }
             List<String[]> rows = cached;
             if (rows.isEmpty()) return;
-            int bw = Math.max(boxW, Hud.captionWidth("Position")) + Hud.PAD * 2;
-            int bh = Hud.TOP + rows.size() * 12 + 3;
-            int x = 6;
-            int y = 30;
-            Hud.record(x, y, bw, bh);
-            Hud.panel(g, x, y, bw, bh);
-            Hud.caption(g, x + Hud.PAD, y + 7, "Position", Draw.rgba(Hud.accent(), 0.85f));
-            Hud.rule(g, x + Hud.PAD, y + 18, bw - Hud.PAD * 2);
-            for (int i = 0; i < rows.size(); i++) {
-                row(g, mc, x + Hud.PAD, y + Hud.TOP + i * 12, bw - Hud.PAD * 2, rows.get(i)[0], rows.get(i)[1], rows.get(i)[0].equals("XYZ"));
-            }
+            card(g, 6, 30, boxW, rows, "XYZ");
         }
 
         private List<String[]> buildRows(Minecraft mc) {

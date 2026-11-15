@@ -1019,7 +1019,34 @@ public final class ZeusScreen extends Screen {
             cachedQuery = q;
             scoreCache.clear();
             resultCache.clear();
+            settingHit.clear();
         }
+    }
+
+    /** Per module, for the current search: the setting the search found it by, or "" when it matched by name. */
+    private final java.util.Map<Module, String> settingHit = new java.util.HashMap<>();
+
+    private String settingHit(Module m, String q) {
+        if (q == null || q.isBlank()) return "";
+        syncSearchCache(q);
+        String have = settingHit.get(m);
+        if (have != null) return have;
+        Index ix = INDEX.computeIfAbsent(m, Index::new);
+        String needle = normalizeSearch(q);
+        int byName = Math.max(scoreText(ix.name, m.name, needle), scoreText(ix.id, m.id, needle));
+        for (int i = 0; i < ix.aliasText.length; i++) byName = Math.max(byName, scoreText(ix.aliasText[i], m.aliases().get(i), needle) - 10);
+        String hit = "";
+        int best = Math.max(byName, 0);
+        List<Setting> list = m.settings();
+        for (int i = 0; i < ix.settingNames.length && i < list.size(); i++) {
+            int sc = scoreText(ix.settingNames[i], list.get(i).name, needle) - 90;
+            if (sc >= 0 && sc > best - 90 && byName < 0) {
+                best = sc + 90;
+                hit = list.get(i).name;
+            }
+        }
+        settingHit.put(m, hit);
+        return hit;
     }
 
     private boolean matches(Module m, String q) {
@@ -1704,7 +1731,18 @@ public final class ZeusScreen extends Screen {
         }
         int descCy = cy + K(13);
         if (m.error != null) tx(g, Ty.fit("Switched off: " + m.error, textRight - textLeft, tp(13.5), Ty.REG), textLeft, descCy, 13.5, Ty.REG, 0xFFFF7B7B);
-        else tx(g, Ty.fit(m.desc, textRight - textLeft, tp(13.5), Ty.REG), textLeft, descCy, 13.5, Ty.REG, cDim());
+        else {
+            // a search that found this module by one of its settings says which one
+            String hit = settingHit(m, query());
+            if (!hit.isEmpty()) {
+                String lead = "Setting: " + hit;
+                int lw = tw(lead, 13.5, Ty.SEMI);
+                tx(g, lead, textLeft, descCy, 13.5, Ty.SEMI, 0xFF8CC4FF);
+                tx(g, Ty.fit("  \u00b7  " + m.desc, textRight - textLeft - lw, tp(13.5), Ty.REG), textLeft + lw, descCy, 13.5, Ty.REG, cDim());
+            } else {
+                tx(g, Ty.fit(m.desc, textRight - textLeft, tp(13.5), Ty.REG), textLeft, descCy, 13.5, Ty.REG, cDim());
+            }
+        }
 
         if (ee > 0.02f && ax != null) {
             g.enableScissor(x, y + rowH, x + w, y + h);
