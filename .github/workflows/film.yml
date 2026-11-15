@@ -1,0 +1,60 @@
+name: Film footage
+
+# Runs the client in film mode: the UI clock steps one video frame per picture, so menus, crate openings and
+# knife tricks come out as smooth 30 fps clips for videos. Start it by hand from the Actions tab.
+on:
+  workflow_dispatch:
+
+jobs:
+  film:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install a virtual display and ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y xvfb ffmpeg
+
+      - name: Film
+        env:
+          ZEUS_FILM: "1"
+        run: chmod +x gradlew && ./gradlew runClientGameTest --stacktrace --no-daemon --console=plain -Pzeus_build=1
+
+      - name: Encode the clips
+        if: always()
+        run: |
+          mkdir -p /tmp/film /tmp/clips
+          find . -name "*_film_*.png" -path "*screenshots*" -exec cp {} /tmp/film/ \;
+          python3 - <<'PY'
+          import os, re, subprocess, collections
+          seqs = collections.defaultdict(list)
+          for f in os.listdir('/tmp/film'):
+              m = re.match(r'(\d+)_film_(.+)_(\d{4})\.png$', f)
+              if m: seqs[m.group(2)].append((int(m.group(1)), f))
+          for name, files in seqs.items():
+              d = f'/tmp/seq_{name}'
+              os.makedirs(d, exist_ok=True)
+              for i, (_, f) in enumerate(sorted(files)):
+                  os.symlink(f'/tmp/film/{f}', f'{d}/{i:05d}.png')
+              subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-framerate', '30', '-i', f'{d}/%05d.png',
+                              '-c:v', 'libx264', '-preset', 'slow', '-crf', '12', '-pix_fmt', 'yuv420p',
+                              f'/tmp/clips/{name}.mp4'], check=True)
+              print(name, len(files))
+          PY
+          ls -la /tmp/clips
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: film
+          path: |
+            /tmp/clips/*.mp4
+            build/run/**/logs/latest.log
+          if-no-files-found: warn

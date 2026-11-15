@@ -15,7 +15,7 @@ final class MenuSnow {
         int mode = UiSettings.SEASON.index();
         if (mode == 2) return false;
         if (mode == 1) return true;
-        long now = System.currentTimeMillis();
+        long now = com.zlorbie788.zeus.core.Clock.millis();
         if (now - checkedAt > 30_000L) {
             checkedAt = now;
             december = java.time.LocalDate.now().getMonthValue() == 12;
@@ -28,7 +28,7 @@ final class MenuSnow {
     }
 
     static void update() {
-        long now = System.nanoTime();
+        long now = com.zlorbie788.zeus.core.Clock.nanoTime();
         float dt = last == 0 ? 0f : Math.min(0.1f, (now - last) / 1e9f);
         last = now;
         float want = season() ? 1f : 0f;

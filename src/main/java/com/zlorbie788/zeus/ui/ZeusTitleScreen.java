@@ -58,7 +58,7 @@ public final class ZeusTitleScreen extends Screen {
     private static final int CLOUD_H = 890;
     private static final int MIST_H = 420;
 
-    private final long born = System.nanoTime();
+    private final long born = com.zlorbie788.zeus.core.Clock.nanoTime();
     private final float[] glow = new float[7];
     private final float[] iconGlow = new float[5];
     private final float[] plateSpring = new float[7];
@@ -149,7 +149,7 @@ public final class ZeusTitleScreen extends Screen {
     }
 
     private float time() {
-        return (System.nanoTime() - born) / 1e9f;
+        return (com.zlorbie788.zeus.core.Clock.nanoTime() - born) / 1e9f;
     }
 
     private float u() {
@@ -580,7 +580,7 @@ public final class ZeusTitleScreen extends Screen {
     }
 
     static float strike(GuiGraphics g, int width, int height, float t, long[] state) {
-        long now = System.nanoTime();
+        long now = com.zlorbie788.zeus.core.Clock.nanoTime();
         if (state[0] == 0) state[0] = now + (long) (3.5e9 + 3e9 * Lightning.hash((int) (now >> 20), 9));
         float since = (now - state[0]) / 1e9f;
         if (since < 0f) return 0f;
@@ -600,7 +600,7 @@ public final class ZeusTitleScreen extends Screen {
 
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-        long now = System.nanoTime();
+        long now = com.zlorbie788.zeus.core.Clock.nanoTime();
         float dt = lastNanos == 0 ? 0.016f : Math.min(0.05f, (now - lastNanos) / 1e9f);
         lastNanos = now;
         float t = time();
@@ -763,7 +763,7 @@ public final class ZeusTitleScreen extends Screen {
         updBox = MenuExtras.updatePill(g, mouseX, mouseY, t, dt);
 
         if (clickIdx >= 0) {
-            float cp = (System.nanoTime() - clickAt) / 1e9f / CLICK_LENGTH;
+            float cp = (com.zlorbie788.zeus.core.Clock.nanoTime() - clickAt) / 1e9f / CLICK_LENGTH;
             PlateFx.click(g, clickBox[0], clickBox[1], Math.round(clickBox[2]), Math.round(clickBox[3]), Math.round(clickBox[4]), Math.round(clickBox[5]), u, cp, width, height, clickIdx * 7 + clickKind * 3 + 1);
         }
 
@@ -787,7 +787,7 @@ public final class ZeusTitleScreen extends Screen {
         int ly = uy(LOGO_Y) + Math.round((1f - appear) * (1f - appear) * 8f * u);
         float cx = lx + (MEDAL_CX - LOGO_X) * u;
         float cy = ly + (MEDAL_CY - LOGO_Y) * u;
-        long nowNs = System.nanoTime();
+        long nowNs = com.zlorbie788.zeus.core.Clock.nanoTime();
         float ldt = logoHotAt == 0 ? 0f : Math.min(0.1f, (nowNs - logoHotAt) / 1e9f);
         logoHotAt = nowNs;
         boolean over = inLogo(curX, curY) && clickIdx < 0;
@@ -889,7 +889,7 @@ public final class ZeusTitleScreen extends Screen {
         }
         clickKind = kind;
         clickIdx = i;
-        clickAt = System.nanoTime();
+        clickAt = com.zlorbie788.zeus.core.Clock.nanoTime();
         float u = u();
         if (kind == 0) {
             int w = plateW();
@@ -929,7 +929,7 @@ public final class ZeusTitleScreen extends Screen {
 
     @Override
     public void tick() {
-        if (clickIdx >= 0 && (System.nanoTime() - clickAt) / 1e9f >= CLICK_GO) {
+        if (clickIdx >= 0 && (com.zlorbie788.zeus.core.Clock.nanoTime() - clickAt) / 1e9f >= CLICK_GO) {
             int kind = clickKind;
             int i = clickIdx;
             clickIdx = -1;

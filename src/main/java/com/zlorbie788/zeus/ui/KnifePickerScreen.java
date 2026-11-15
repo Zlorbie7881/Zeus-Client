@@ -185,7 +185,7 @@ public final class KnifePickerScreen extends Screen {
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         layout();
-        float time = (System.nanoTime() % 3_600_000_000_000L) / 1e9f;
+        float time = (com.zlorbie788.zeus.core.Clock.nanoTime() % 3_600_000_000_000L) / 1e9f;
         String[] all = KnifeArt.allKnives();
         g.fill(0, 0, width, height, 0xB0030610);
         Draw.shadow(g, px, py, pw, ph, 8, 10, 0.5f);

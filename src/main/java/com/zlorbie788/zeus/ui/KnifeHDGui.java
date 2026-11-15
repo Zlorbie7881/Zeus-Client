@@ -31,7 +31,7 @@ public final class KnifeHDGui {
 
     /** One failure (a texture still uploading, a resource reload) should not cost the HD knife for the whole session. */
     private static boolean broken() {
-        return failures >= 5 || System.currentTimeMillis() < brokenUntil;
+        return failures >= 5 || com.zlorbie788.zeus.core.Clock.millis() < brokenUntil;
     }
 
     public static String problem() {
@@ -97,7 +97,7 @@ public final class KnifeHDGui {
     private static void aura(GuiGraphics g, KnifeHD.Model m, Rig.T k, float unit, float alpha) {
         float e = m.emissive();
         if (e <= 0f || m.piece == KnifeHD.PIECE_HELD || m.piece == KnifeHD.PIECE_SWING) return;
-        double t = (System.nanoTime() % 60_000_000_000L) / 1e9;
+        double t = (com.zlorbie788.zeus.core.Clock.nanoTime() % 60_000_000_000L) / 1e9;
         float breathe = 0.62f + 0.38f * (float) Math.sin(t * 2.2 + m.id.hashCode() % 7);
         float au = Math.abs(unit);
         int r = Math.max(4, Math.round(au * 3.6f));
@@ -123,7 +123,7 @@ public final class KnifeHDGui {
             return geo != null && submit(g, geo);
         } catch (RuntimeException | Error e) {
             failures++;
-            brokenUntil = System.currentTimeMillis() + 5_000L;
+            brokenUntil = com.zlorbie788.zeus.core.Clock.millis() + 5_000L;
             lastError = e.getClass().getSimpleName() + (e.getMessage() == null ? "" : ": " + e.getMessage());
             com.zlorbie788.zeus.core.Zeus.LOG.warn("HD knife could not be drawn (attempt {}); using the pixel knife", failures, e);
             return false;
@@ -242,7 +242,7 @@ public final class KnifeHDGui {
             return ok;
         } catch (RuntimeException | Error e) {
             failures++;
-            brokenUntil = System.currentTimeMillis() + 5_000L;
+            brokenUntil = com.zlorbie788.zeus.core.Clock.millis() + 5_000L;
             lastError = e.getClass().getSimpleName() + (e.getMessage() == null ? "" : ": " + e.getMessage());
             return false;
         }

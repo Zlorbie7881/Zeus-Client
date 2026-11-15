@@ -211,7 +211,7 @@ public final class Draw {
     }
 
     public static float sweep(long periodMs) {
-        return (System.currentTimeMillis() % Math.max(1L, periodMs)) / (float) Math.max(1L, periodMs);
+        return (com.zlorbie788.zeus.core.Clock.millis() % Math.max(1L, periodMs)) / (float) Math.max(1L, periodMs);
     }
 
     public static void shadow(GuiGraphics g, int x, int y, int w, int h, int r, int spread, float strength) {

@@ -61,7 +61,7 @@ final class MenuStorm {
     }
 
     static float update() {
-        long now = System.nanoTime();
+        long now = com.zlorbie788.zeus.core.Clock.nanoTime();
         float dt = last == 0 ? 0f : (now - last) / 1e9f;
         last = now;
         if (dt > 2.5f) {

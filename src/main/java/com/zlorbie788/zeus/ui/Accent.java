@@ -5,7 +5,7 @@ public final class Accent {
 
     private static int wheel(float offset) {
         float speed = (float) UiSettings.RAINBOW_SPEED.get() / 100f;
-        float hue = ((System.nanoTime() / 1_000_000_000.0f) * 0.08f * speed + offset) % 1f;
+        float hue = ((com.zlorbie788.zeus.core.Clock.nanoTime() / 1_000_000_000.0f) * 0.08f * speed + offset) % 1f;
         return 0xFF000000 | java.awt.Color.HSBtoRGB(hue, 0.62f, 1f);
     }
 

@@ -15,7 +15,7 @@ final class MenuClock {
 
     static void draw(GuiGraphics g, int width, int height, float u, float appear) {
         if (!UiSettings.MENU_CLOCK.on() || appear <= 0.01f) return;
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(com.zlorbie788.zeus.core.Clock.millis()), java.time.ZoneId.systemDefault());
         String time = (UiSettings.CLOCK_24H.on() ? TIME_24 : TIME_12).format(now);
         String date = DATE.format(now);
         float ts = Math.max(1f, Math.round(u * 2.2f * 2f) / 2f);

@@ -196,7 +196,7 @@ public final class KnifeSwing extends Module {
     private final Setting.Num trailStrength = add(new Setting.Num("Trail strength", "Opacity of the blade trail. Set to 0% to keep trails enabled but invisible, or lower it for a cleaner look.", 100, 0, 150, 5, "%")).showIf(() -> section.index() == 3 && trail.on());
     private final Setting.Num ghostStrength = add(new Setting.Num("Ghost opacity", "Opacity of the motion-blur ghost knives. Lower values make fast tricks less busy.", 100, 0, 150, 5, "%")).showIf(() -> section.index() == 3 && blur.on());
     private final Setting.Num flashStrength = add(new Setting.Num("Flash intensity", "Strength of the impact bloom and sparks. Lower it for a subtler knife effect.", 100, 0, 150, 5, "%")).showIf(() -> section.index() == 3 && sparks.on());
-    private final Setting.Action showNow = add(new Setting.Action("Show it now", "Draws the knife for four seconds whatever your hand is doing, so you can check the knife and its trick without emptying your hand.", () -> previewUntil = System.currentTimeMillis() + 4000L)).showIf(() -> section.index() == 0);
+    private final Setting.Action showNow = add(new Setting.Action("Show it now", "Draws the knife for four seconds whatever your hand is doing, so you can check the knife and its trick without emptying your hand.", () -> previewUntil = com.zlorbie788.zeus.core.Clock.millis() + 4000L)).showIf(() -> section.index() == 0);
     private final Setting.Action[] play = new Setting.Action[TRICKS.length];
     private final Setting.Action[] kplay = new Setting.Action[KTRICKS.length];
     private int lastType;
@@ -235,7 +235,7 @@ public final class KnifeSwing extends Module {
         super("knife", "Knives", "An HD tactical knife in your own hand: lit high-resolution 3D models with spins, flips and inspects. Shows when your hand is empty by default, and right click or the trick key plays a trick.", Category.RENDER);
         self = this;
         add(new Setting.Action("Play the chosen trick", "Plays the trick picked above right now, even with something in your hand.", () -> {
-            previewUntil = System.currentTimeMillis() + 4000L;
+            previewUntil = com.zlorbie788.zeus.core.Clock.millis() + 4000L;
             perform(ktrick.index());
         })).showIf(() -> section.index() == 2);
     }
@@ -328,7 +328,7 @@ public final class KnifeSwing extends Module {
 
     public static boolean hidesHand() {
         if (self == null || !self.enabled() || !self.hideHand.on() || self.vis <= 0.02f) return false;
-        return self.frames > 0 && System.nanoTime() - self.drewAt < 250_000_000L;
+        return self.frames > 0 && com.zlorbie788.zeus.core.Clock.nanoTime() - self.drewAt < 250_000_000L;
     }
     private void perform(int id) {
         int n = karambit() ? KTRICKS.length : TRICKS.length;
@@ -411,21 +411,21 @@ public final class KnifeSwing extends Module {
             t += MOVE_TIME[line.get(i)[0]];
         }
         lineTotal = t;
-        start = System.nanoTime();
+        start = com.zlorbie788.zeus.core.Clock.nanoTime();
         carry = lastShown;
         carryStart = null;
-        carryAt = System.nanoTime();
+        carryAt = com.zlorbie788.zeus.core.Clock.nanoTime();
     }
     @Override
     protected void onEnable() {
-        enter = System.nanoTime();
+        enter = com.zlorbie788.zeus.core.Clock.nanoTime();
         queue.clear();
         line.clear();
         isOpen = false;
         vis = 0f;
         frames = 0;
         drewAt = 0L;
-        enabledAt = System.nanoTime();
+        enabledAt = com.zlorbie788.zeus.core.Clock.nanoTime();
         warned = false;
         lastFrame = 0;
         lastYaw = Float.NaN;
@@ -453,7 +453,7 @@ public final class KnifeSwing extends Module {
                 default -> main;
             };
         }
-        if (System.currentTimeMillis() < previewUntil) want = true;
+        if (com.zlorbie788.zeus.core.Clock.millis() < previewUntil) want = true;
         boolean active = want && vis > 0.5f;
         boolean down = mc.screen == null && mc.options.keyAttack.isDown();
         if (down && !wasDown && active && slash.on() && !(playing() && secs() < 0.3f)) launchSlash();
@@ -467,15 +467,15 @@ public final class KnifeSwing extends Module {
             line.clear();
             if (!queue.isEmpty()) launch(queue.poll());
         }
-        if (auto.on() && active && !playing() && System.currentTimeMillis() - autoAt > 2500) {
-            autoAt = System.currentTimeMillis();
+        if (auto.on() && active && !playing() && com.zlorbie788.zeus.core.Clock.millis() - autoAt > 2500) {
+            autoAt = com.zlorbie788.zeus.core.Clock.millis();
             perform((karambit() ? KTRICKS.length : TRICKS.length) - 1);
         }
     }
 
     private float secs() {
         if (start == 0) return 99f;
-        return (System.nanoTime() - start) / 1e9f * speed.f() * BASE;
+        return (com.zlorbie788.zeus.core.Clock.nanoTime() - start) / 1e9f * speed.f() * BASE;
     }
     private static float c01(float x) {
         return Math.max(0f, Math.min(1f, x));
@@ -636,7 +636,7 @@ public final class KnifeSwing extends Module {
 
     private Pose idle(boolean open) {
         Pose p = new Pose();
-        float idleT = (System.nanoTime() % 20_000_000_000L) / 1e9f;
+        float idleT = (com.zlorbie788.zeus.core.Clock.nanoTime() % 20_000_000_000L) / 1e9f;
         p.c = open ? PI : 0f;
         if (karambit()) {
             p.gripY = grip();
@@ -657,7 +657,7 @@ public final class KnifeSwing extends Module {
     private Pose shown(float s, boolean running) {
         Pose p = pose(s, running);
         if (carry != null) {
-            float age = (System.nanoTime() - carryAt) / 1e9f;
+            float age = (com.zlorbie788.zeus.core.Clock.nanoTime() - carryAt) / 1e9f;
             if (age < CARRY) {
                 if (carryStart == null) carryStart = p;
                 p = carryOver(p, carry, carryStart, 1f - easeSmoother(age / CARRY));
@@ -1263,7 +1263,7 @@ public final class KnifeSwing extends Module {
     @Override
     protected void onHud(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
         if (mc.screen != null || !enabled() || mc.player == null) return;
-        long now = System.nanoTime();
+        long now = com.zlorbie788.zeus.core.Clock.nanoTime();
         float dt = lastFrame == 0L ? 0.016f : Math.min(0.08f, (now - lastFrame) / 1e9f);
         lastFrame = now;
         vis += ((want ? 1f : 0f) - vis) * Math.min(1f, dt * 9f);
@@ -1430,9 +1430,9 @@ public final class KnifeSwing extends Module {
             knifeDrawn = true;
         }
         if (knifeDrawn) {
-            drewAt = System.nanoTime();
+            drewAt = com.zlorbie788.zeus.core.Clock.nanoTime();
             frames++;
-        } else if (!warned && System.nanoTime() - enabledAt > 3_000_000_000L) {
+        } else if (!warned && com.zlorbie788.zeus.core.Clock.nanoTime() - enabledAt > 3_000_000_000L) {
             warned = true;
             com.zlorbie788.zeus.core.Zeus.toast("The knife is not drawing. Try Safe draw in Knife Swing.", false);
         }
@@ -1525,7 +1525,7 @@ public final class KnifeSwing extends Module {
     }
 
     private KnifeArt.Look lookFor() {
-        float time = (System.nanoTime() % 60_000_000_000L) / 1e9f;
+        float time = (com.zlorbie788.zeus.core.Clock.nanoTime() % 60_000_000_000L) / 1e9f;
         if (kind() == 0) return KnifeArt.look(preset.index(), shape.index(), finish.index(), design.index(), time);
         if (kind() == 1) return KnifeArt.kLook(kcolor.index(), kcurve.index(), time);
         KnifeArt.Look l = KnifeArt.sLook(sfinish.index(), kind() - 2, time);

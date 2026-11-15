@@ -26,6 +26,14 @@ public class ZeusScreensTest implements FabricClientGameTest {
     @Override
     public void runTest(ClientGameTestContext ctx) {
         ctx.getInput().resizeWindow(1920, 1080);
+        if (System.getenv("ZEUS_FILM") != null) {
+            film(ctx);
+            ctx.runOnClient(c -> com.zlorbie788.zeus.core.Clock.manual = -1L);
+            ctx.runOnClient(c -> UiSettings.MENU.set(false));
+            ctx.setScreen(TitleScreen::new);
+            ctx.waitTicks(5);
+            return;
+        }
         // the intro video plays first; wait for the Zeus menu itself, then let its buttons slide in
         ctx.waitFor(c -> c.screen instanceof ZeusTitleScreen, 20 * 60);
         ctx.runOnClient(c -> grant());
@@ -273,6 +281,155 @@ public class ZeusScreensTest implements FabricClientGameTest {
         ctx.runOnClient(c -> UiSettings.MENU.set(false));
         ctx.setScreen(TitleScreen::new);
         ctx.waitTicks(5);
+    }
+
+    // ------------------------------------------------------------------ film mode (ZEUS_FILM=1): smooth 30 fps footage
+    private static final long FRAME = 33_333_333L;
+
+    /** Records n frames: the UI clock moves exactly one video frame per picture. */
+    private static void shoot(ClientGameTestContext ctx, String name, int n) {
+        for (int i = 0; i < n; i++) {
+            ctx.runOnClient(c -> com.zlorbie788.zeus.core.Clock.manual += FRAME);
+            ctx.waitTicks(1);
+            ctx.takeScreenshot(String.format("film_%s_%04d", name, i));
+        }
+    }
+
+    private static float screenNow(Minecraft c) {
+        try {
+            Method m = CratesScreen.class.getDeclaredMethod("now");
+            m.setAccessible(true);
+            return (float) m.invoke(c.screen);
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static void startOpening(Minecraft c, String crate, String knife, Crates.Rarity rarity, boolean skip) {
+        try {
+            Crates.Crate cr = Crates.crate(crate);
+            Crates.Result res = new Crates.Result(new Crates.Item(knife, rarity), cr, false, 0);
+            Class<?> oc = Class.forName("com.zlorbie788.zeus.ui.CratesScreen$Opening");
+            var ctor = oc.getDeclaredConstructors()[0];
+            ctor.setAccessible(true);
+            Object op = ctor.newInstance(c.screen, cr, res, c.getWindow().getGuiScaledWidth() / 2 - 40, c.getWindow().getGuiScaledHeight() / 2, 70);
+            set(c.screen, "opening", op);
+            if (skip) {
+                Method sk = oc.getDeclaredMethod("skip");
+                sk.setAccessible(true);
+                sk.invoke(op);
+            }
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static void film(ClientGameTestContext ctx) {
+        ctx.waitFor(c -> c.screen instanceof ZeusTitleScreen, 20 * 60);
+        ctx.runOnClient(c -> grant());
+        ctx.runOnClient(c -> Crates.setQuick(false));
+        run(ctx, 2.0f);
+        // the main menu building itself
+        ctx.runOnClient(c -> com.zlorbie788.zeus.core.Clock.manual = System.nanoTime());
+        ctx.setScreen(ZeusTitleScreen::new);
+        shoot(ctx, "title", 165);
+        // crates: the screen opening, picking crates, the tabs
+        ctx.runOnClient(c -> { c.options.guiScale().set(0); c.resizeDisplay(); });
+        ctx.setScreen(() -> new CratesScreen(null));
+        shoot(ctx, "crates", 60);
+        for (int i : new int[] {1, 3, 5}) {
+            ctx.runOnClient(c -> { set(c.screen, "sel", i); set(c.screen, "selAt", screenNow(c)); });
+            shoot(ctx, "crates_sel" + i, 40);
+        }
+        ctx.runOnClient(c -> { set(c.screen, "sel", 0); set(c.screen, "selAt", screenNow(c)); });
+        shoot(ctx, "crates_sel0", 30);
+        for (int t : new int[] {4, 1}) {
+            ctx.runOnClient(c -> { set(c.screen, "prevTab", 0); set(c.screen, "tab", t); set(c.screen, "tabAt", screenNow(c)); });
+            shoot(ctx, "crates_tab" + t, 50);
+        }
+        ctx.runOnClient(c -> { set(c.screen, "prevTab", 1); set(c.screen, "tab", 0); set(c.screen, "tabAt", screenNow(c)); });
+        shoot(ctx, "crates_back", 20);
+        // a full opening that lands on an Olympian karambit, then inspecting it
+        ctx.runOnClient(c -> startOpening(c, "hades", "karambit_bloodstone", Crates.Rarity.OLYMPIAN, false));
+        shoot(ctx, "opening", 330);
+        ctx.runOnClient(c -> set(c.screen, "opening", null));
+        ctx.runOnClient(c -> {
+            try {
+                Method m = CratesScreen.class.getDeclaredMethod("openInspect", Crates.Item.class);
+                m.setAccessible(true);
+                m.invoke(c.screen, new Crates.Item("karambit_bloodstone", Crates.Rarity.OLYMPIAN));
+            } catch (ReflectiveOperationException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        shoot(ctx, "inspect", 120);
+        ctx.runOnClient(c -> set(c.screen, "inspect", null));
+        // the Chroma drop, from the reel stopping to the reveal
+        ctx.runOnClient(c -> startOpening(c, "poseidon", "chroma_butterfly", Crates.Rarity.CHROMA, false));
+        ctx.runOnClient(c -> {
+            try {
+                Object op = c.screen.getClass().getDeclaredField("opening");
+                Field f = (Field) op;
+                f.setAccessible(true);
+                Object o = f.get(c.screen);
+                Field sb = o.getClass().getDeclaredField("skipBy");
+                sb.setAccessible(true);
+                sb.set(o, 5.6f);           // start near the end of the spin
+            } catch (ReflectiveOperationException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        shoot(ctx, "chroma", 210);
+        ctx.runOnClient(c -> set(c.screen, "opening", null));
+        ctx.setScreen(() -> null);
+        // the keyboard: the backlight, then a key with its module list
+        ctx.setScreen(() -> new com.zlorbie788.zeus.ui.KeybindScreen(null));
+        shoot(ctx, "keys", 90);
+        ctx.runOnClient(c -> {
+            try {
+                Method sel = c.screen.getClass().getDeclaredMethod("select", Class.forName("com.zlorbie788.zeus.ui.KeybindScreen$Cap"));
+                Method cap = c.screen.getClass().getDeclaredMethod("capFor", com.mojang.blaze3d.platform.InputConstants.Key.class);
+                sel.setAccessible(true);
+                cap.setAccessible(true);
+                sel.invoke(c.screen, cap.invoke(c.screen, com.mojang.blaze3d.platform.InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_G)));
+            } catch (ReflectiveOperationException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        shoot(ctx, "keys_pick", 60);
+        ctx.setScreen(() -> null);
+        // in a world: knives in the hand, tricks, the butterfly, the Zeus menu
+        try (TestSingleplayerContext sp = ctx.worldBuilder().create()) {
+            sp.getClientWorld().waitForChunksRender();
+            sp.getServer().runCommand("time set 1000");
+            sp.getServer().runCommand("gamerule doDaylightCycle false");
+            ctx.runOnClient(c -> KnifeSwing.equipHd(Crates.hdOf("karambit_bloodstone")));
+            shoot(ctx, "hand_draw", 60);
+            ctx.runOnClient(c -> KnifeSwing.pressTrick());
+            shoot(ctx, "hand_trick1", 120);
+            ctx.runOnClient(c -> { KnifeSwing.nextTrick(); KnifeSwing.nextTrick(); KnifeSwing.pressTrick(); });
+            shoot(ctx, "hand_trick2", 120);
+            ctx.runOnClient(c -> KnifeSwing.equipHd(Crates.hdOf("tac_lightning")));
+            shoot(ctx, "hand_lightning", 75);
+            ctx.runOnClient(c -> KnifeSwing.pressTrick());
+            shoot(ctx, "hand_lightning_trick", 105);
+            ctx.runOnClient(c -> KnifeSwing.equipHd(Crates.hdOf("chroma_phoenix")));
+            shoot(ctx, "hand_phoenix", 75);
+            ctx.runOnClient(c -> KnifeSwing.pressTrick());
+            shoot(ctx, "hand_phoenix_trick", 105);
+            ctx.runOnClient(c -> KnifeSwing.equipHd(Crates.hdOf("chroma_butterfly")));
+            shoot(ctx, "hand_butterfly", 75);
+            ctx.runOnClient(c -> KnifeSwing.pressTrick());
+            shoot(ctx, "hand_butterfly_trick", 150);
+            ctx.runOnClient(c -> KnifeSwing.equipHd(Crates.hdOf("chroma_karambit")));
+            shoot(ctx, "hand_galaxy", 90);
+            ctx.setScreen(() -> new com.zlorbie788.zeus.ui.ZeusScreen());
+            shoot(ctx, "menu", 150);
+            ctx.setScreen(() -> null);
+            sp.getServer().runCommand("time set midnight");
+            ctx.waitTicks(10);
+            shoot(ctx, "night_galaxy", 75);
+        }
     }
 
     /** Keeps the game ticking and drawing for this many real seconds. */

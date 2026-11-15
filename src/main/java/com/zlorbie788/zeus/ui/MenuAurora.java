@@ -26,7 +26,7 @@ final class MenuAurora {
     }
 
     static void draw(GuiGraphics g, int width, int height, float t, float storm, float moonX, float moonY, float moonR, boolean still) {
-        long now = System.nanoTime();
+        long now = com.zlorbie788.zeus.core.Clock.nanoTime();
         float dt = last == 0 ? 0f : Math.min(0.1f, (now - last) / 1e9f);
         last = now;
         float want = UiSettings.MENU_AURORA.on() && !Perf.fast() ? MenuSnow.level() * (1f - Math.min(1f, storm * 1.4f)) : 0f;

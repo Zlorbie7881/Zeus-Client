@@ -526,7 +526,7 @@ public final class KnifeHD {
         // the glow: the face texture added on top, tinted with the knife's glow colour, breathing slowly
         int glowR = 0, glowG = 0, glowB = 0;
         if (mode == -4f) {
-            double t = (System.nanoTime() % 60_000_000_000L) / 1e9;
+            double t = (com.zlorbie788.zeus.core.Clock.nanoTime() % 60_000_000_000L) / 1e9;
             float breathe = 0.62f + 0.38f * (float) Math.sin(t * 2.2 + m.id.hashCode() % 7);
             float e = clamp(lum * breathe * alpha) * 0.85f;
             glowR = Math.round(((m.glow >> 16) & 0xFF) * e);

@@ -40,7 +40,7 @@ public final class CratesScreen extends Screen {
     private static final int PANEL = 0xFF080C18;
 
     private final Screen parent;
-    private final long born = System.nanoTime();
+    private final long born = com.zlorbie788.zeus.core.Clock.nanoTime();
     private int tab;
     private int prevTab;
     private float tabAt = -10f;
@@ -92,7 +92,7 @@ public final class CratesScreen extends Screen {
     }
 
     private float now() {
-        return (System.nanoTime() - born) / 1e9f;
+        return (com.zlorbie788.zeus.core.Clock.nanoTime() - born) / 1e9f;
     }
 
     // ------------------------------------------------------------------ easing
@@ -486,7 +486,7 @@ public final class CratesScreen extends Screen {
         floaters(g, t);
 
         if (!flash.isEmpty()) {
-            float a = 1f - Math.max(0f, (System.currentTimeMillis() - flashAt - 2200) / 600f);
+            float a = 1f - Math.max(0f, (com.zlorbie788.zeus.core.Clock.millis() - flashAt - 2200) / 600f);
             if (a <= 0) flash = "";
             else Draw.toast(g, minecraft, width / 2, py + ph - 52, flash, true, a);
         }
@@ -858,7 +858,7 @@ public final class CratesScreen extends Screen {
         hit(H_FIELD, -1, bx, by, bw, 22);
         button(g, H_REDEEM, cx - 60, by + 30, 120, 20, "REDEEM", GOLD, !codeBox.getValue().isBlank(), true, mx, my, t, dt);
         if (!codeMsg.isEmpty()) {
-            long since = System.currentTimeMillis() - codeAt;
+            long since = com.zlorbie788.zeus.core.Clock.millis() - codeAt;
             float a = Math.min(1f, since / 200f);
             float shake = codeOk ? 0f : (1f - Math.min(1f, since / 350f)) * 4f * (float) Math.sin(since / 18.0);
             Draw.textCenter(g, codeMsg, cx + Math.round(shake), by + 58, Draw.rgba(codeOk ? 0xFF6FE3A0 : 0xFFFF7A7A, a));
@@ -880,7 +880,7 @@ public final class CratesScreen extends Screen {
 
     // ------------------------------------------------------------------ history tab
     private static String ago(long at) {
-        long s = Math.max(0, (System.currentTimeMillis() - at) / 1000);
+        long s = Math.max(0, (com.zlorbie788.zeus.core.Clock.millis() - at) / 1000);
         if (s < 60) return "just now";
         if (s < 3600) return (s / 60) + " min ago";
         if (s < 86400) return (s / 3600) + " h ago";
@@ -1226,7 +1226,7 @@ public final class CratesScreen extends Screen {
         Crates.Redeem r = Crates.redeem(codeBox.getValue());
         codeMsg = r.message();
         codeOk = r.ok();
-        codeAt = System.currentTimeMillis();
+        codeAt = com.zlorbie788.zeus.core.Clock.millis();
         if (r.ok()) {
             codeBox.setValue("");
             snd(SoundEvents.PLAYER_LEVELUP, 1.4f, 0.6f);
@@ -1237,7 +1237,7 @@ public final class CratesScreen extends Screen {
 
     private void say(String s) {
         flash = s;
-        flashAt = System.currentTimeMillis();
+        flashAt = com.zlorbie788.zeus.core.Clock.millis();
     }
 
     private void equip(String id) {
@@ -1298,7 +1298,7 @@ public final class CratesScreen extends Screen {
         final float land;
         final float over;
         final int fromX, fromY, fromSize;
-        final long start = System.nanoTime();
+        final long start = com.zlorbie788.zeus.core.Clock.nanoTime();
         float skipBy;
         int lastCard = Integer.MIN_VALUE;
         long lastTick;
@@ -1345,7 +1345,7 @@ public final class CratesScreen extends Screen {
         }
 
         float t() {
-            return (System.nanoTime() - start) / 1e9f + skipBy;
+            return (com.zlorbie788.zeus.core.Clock.nanoTime() - start) / 1e9f + skipBy;
         }
 
         float landedAt() {
@@ -1488,7 +1488,7 @@ public final class CratesScreen extends Screen {
             if (a <= 0.01f) return;
             int under = (int) Math.floor(pos + 0.5f);
             if (under != lastCard) {
-                long n = System.nanoTime();
+                long n = com.zlorbie788.zeus.core.Clock.nanoTime();
                 if (lastCard != Integer.MIN_VALUE && n - lastTick > 26_000_000L && t < landedAt() + SETTLE + 0.05f) {
                     float speed = Math.abs(vel(t));
                     snd(SoundEvents.UI_BUTTON_CLICK, 1.45f + Math.min(0.55f, speed / 55f), 0.20f + Math.min(0.15f, speed / 200f));
