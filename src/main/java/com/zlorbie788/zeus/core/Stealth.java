@@ -34,6 +34,7 @@ public final class Stealth {
 
     private static int attackTick = -1;
     private static int useTick = -1;
+    private static int breakTick = -1;
 
     private static int samples;
     private static int offGrid;
@@ -58,6 +59,19 @@ public final class Stealth {
         int tick = mc.player.tickCount;
         if (tick == useTick) return false;
         useTick = tick;
+        return true;
+    }
+
+    /**
+     * One block start per tick. Vanilla can only begin digging one block at a time, and the modules
+     * that dig many (nuker, fast break, the AI in creative) send a start per block: the extra ones are
+     * what a break-rate check counts, so they wait for the next tick.
+     */
+    public static boolean allowBreak(Minecraft mc) {
+        if (mc.player == null) return false;
+        int tick = mc.player.tickCount;
+        if (tick == breakTick) return false;
+        breakTick = tick;
         return true;
     }
 
