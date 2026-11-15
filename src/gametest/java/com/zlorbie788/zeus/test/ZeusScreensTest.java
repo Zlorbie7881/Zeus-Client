@@ -200,6 +200,7 @@ public class ZeusScreensTest implements FabricClientGameTest {
             aiTest(ctx, sp, "get me a shield", "shield", 1, "iron_ingot 1", "oak_log 3");
             aiTest(ctx, sp, "get me 3 iron ingots", "iron_ingot", 3, "raw_iron 3", "coal 1", "cobblestone 8");
             aiTest(ctx, sp, "get me 2 cooked beef", "cooked_beef", 2, "beef 2", "coal 1");
+            aiTest(ctx, sp, "get me full iron armor", "worn:iron", 4, "iron_ingot 24", "oak_log 1");
         }
         // the test framework wants to finish on the vanilla title screen
         ctx.runOnClient(c -> UiSettings.MENU.set(false));
@@ -244,13 +245,21 @@ public class ZeusScreensTest implements FabricClientGameTest {
         while (waited < 1800) {
             boolean busy = ctx.computeOnClient(c -> com.zlorbie788.zeus.mods.AiPilot.working());
             if (!busy) break;
-            if (waited == 40) ctx.takeScreenshot("ai_" + item + "_working");
+            if (waited == 40) ctx.takeScreenshot("ai_" + item.replace(':', '_') + "_working");
             if (waited % 200 == 0) ctx.runOnClient(c -> System.out.println("ZEUS-AI-TEST status: " + com.zlorbie788.zeus.mods.AiPilot.status()));
             ctx.waitTicks(20);
             waited += 20;
         }
         int have = ctx.computeOnClient(c -> {
             int n = 0;
+            if (item.startsWith("worn:")) {        // count armour pieces of this material actually being worn
+                for (var slot : new net.minecraft.world.entity.EquipmentSlot[] {net.minecraft.world.entity.EquipmentSlot.HEAD,
+                        net.minecraft.world.entity.EquipmentSlot.CHEST, net.minecraft.world.entity.EquipmentSlot.LEGS, net.minecraft.world.entity.EquipmentSlot.FEET}) {
+                    var st = c.player.getItemBySlot(slot);
+                    if (!st.isEmpty() && net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(st.getItem()).getPath().startsWith(item.substring(5) + "_")) n++;
+                }
+                return n;
+            }
             var inv = c.player.getInventory();
             for (int i = 0; i < inv.getContainerSize(); i++) {
                 var st = inv.getItem(i);
@@ -281,7 +290,7 @@ public class ZeusScreensTest implements FabricClientGameTest {
             }
         });
         System.out.println("ZEUS-AI-TEST " + (have >= count ? "PASS" : "FAIL") + ": '" + ask + "' -> " + have + " " + item + " after " + waited + " ticks");
-        ctx.takeScreenshot("ai_" + item + "_done");
+        ctx.takeScreenshot("ai_" + item.replace(':', '_') + "_done");
         ctx.setScreen(() -> null);
         ctx.waitTicks(5);
     }

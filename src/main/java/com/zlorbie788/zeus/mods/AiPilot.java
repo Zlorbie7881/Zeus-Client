@@ -1922,6 +1922,9 @@ public final class AiPilot extends Module {
         // "get me an iron pickaxe", "i need 16 torches", "make me a shield": the planner handles any item
         java.util.regex.Matcher want = java.util.regex.Pattern
                 .compile("^(?:please )?(?:get me|obtain|i want|i need|make me|craft me|give me|build me)(?: (\\d+))? (?:a |an |some |the )?([a-z_ ]+?)(?: please)?$").matcher(text);
+        if (!text.contains(" then ") && SET.matcher(text).find() && !expandSets(text).equals(text)) {
+            return new Step("job", "", "", text);
+        }
         if (want.find() && !text.contains(" then ")) {
             String id = goalItem(want.group(2));
             if (id != null && com.zlorbie788.zeus.core.Recipes.known(id)) {
@@ -2126,6 +2129,7 @@ public final class AiPilot extends Module {
         }
         cancelJob(mc);
         chain.clear();
+        text = expandSets(text);
         java.util.regex.Matcher fetch = java.util.regex.Pattern
                 .compile("^(?:fetch|stock|refill|give me) (\\d+) ([a-z_ ]+)$").matcher(text.trim());
         if (fetch.find()) {
@@ -2718,6 +2722,35 @@ public final class AiPilot extends Module {
             if (!st.isEmpty()) m.merge(BuiltInRegistries.ITEM.getKey(st.getItem()).getPath(), st.getCount(), Integer::sum);
         }
         return m;
+    }
+
+    private static final java.util.regex.Pattern SET = java.util.regex.Pattern.compile(
+            "(?:obtain |get me |get |make me |make )?(?:a |an )?(?:full |a full set of |full set of |set of |complete )?(?:set of )?"
+                    + "(iron|diamond|golden|gold|leather|chainmail|netherite|stone|wooden|wood) (armou?r|tools|gear)(?: set)?");
+
+    /** "full iron armour" and "diamond tools" as the separate items, with the armour put on at the end. */
+    static String expandSets(String text) {
+        java.util.regex.Matcher m = SET.matcher(text);
+        StringBuilder out = new StringBuilder();
+        while (m.find()) {
+            String mat = m.group(1).equals("gold") ? "golden" : m.group(1).equals("wood") ? "wooden" : m.group(1);
+            String kind = m.group(2);
+            String rep;
+            if (kind.startsWith("armo") || kind.equals("gear") && !mat.equals("stone") && !mat.equals("wooden")) {
+                if (mat.equals("stone") || mat.equals("wooden")) {
+                    m.appendReplacement(out, java.util.regex.Matcher.quoteReplacement(m.group()));
+                    continue;
+                }
+                rep = "obtain 1 " + mat + " helmet then obtain 1 " + mat + " chestplate then obtain 1 " + mat
+                        + " leggings then obtain 1 " + mat + " boots then put on armor";
+                if (kind.equals("gear")) rep += " then obtain 1 " + mat + " sword then obtain 1 " + mat + " pickaxe";
+            } else {
+                rep = "obtain 1 " + mat + " pickaxe then obtain 1 " + mat + " axe then obtain 1 " + mat + " shovel then obtain 1 " + mat + " sword";
+            }
+            m.appendReplacement(out, java.util.regex.Matcher.quoteReplacement(rep));
+        }
+        m.appendTail(out);
+        return out.toString();
     }
 
     /** The item id a spoken name means: exact ids, aliases (iron = ingot), plurals and "a stone pickaxe". */
