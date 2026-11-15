@@ -173,6 +173,9 @@ public final class AiPilot extends Module {
         int toolTried;
         int progressMark;
         long progressAt;
+        BlockPos farStation;           // a table or furnace out of reach that is worth walking back to
+        boolean farLooked;
+        long farSince;
         java.util.List<Vec3> path;
         Vec3 pathFor;
         long pathAt;
@@ -2925,6 +2928,7 @@ public final class AiPilot extends Module {
         BlockPos bench = stationAt(mc, state -> state.is(Blocks.CRAFTING_TABLE), 5);
         if (bench == null) {
             if (ensureHotbar(mc, s -> s.is(Items.CRAFTING_TABLE)) < 0) {
+                if (walkBackTo(mc, state -> state.is(Blocks.CRAFTING_TABLE), "crafting table")) return;
                 if (job.attempts++ < 2 && !job.target.contains("crafting_table")) {
                     String resume = "craft " + Math.max(1, job.wanted) + " " + job.target.replace('_', ' ');
                     chain.addFirst(resume);
@@ -3128,6 +3132,7 @@ public final class AiPilot extends Module {
         BlockPos oven = stationAt(mc, state -> state.is(Blocks.FURNACE) || state.is(Blocks.BLAST_FURNACE) || state.is(Blocks.SMOKER), 5);
         if (oven == null) {
             if (ensureHotbar(mc, s -> s.is(Items.FURNACE)) < 0) {
+                if (walkBackTo(mc, state -> state.is(Blocks.FURNACE), "furnace")) return;
                 if (job.attempts++ < 2 && !job.target.contains("furnace")) {
                     String resume = "smelt " + Math.max(1, job.wanted) + " " + job.target.replace('_', ' ');
                     chain.addFirst(resume);
@@ -3149,6 +3154,27 @@ public final class AiPilot extends Module {
         }
         job.note = "opening the furnace";
         openStation(mc, oven);
+    }
+
+    /**
+     * A crafting table or furnace further off than arm's reach (the one used a few jobs ago, before a hunt or a
+     * mining trip led away from it): walk back to it rather than make a new one. Looks once per job, up to 32
+     * blocks away; false when there is none or the walk takes too long.
+     */
+    private boolean walkBackTo(Minecraft mc, java.util.function.Predicate<BlockState> match, String what) {
+        if (!job.farLooked) {
+            job.farLooked = true;
+            job.farStation = search(mc, mc.player.blockPosition(), 32, 4, match);
+            job.farSince = System.currentTimeMillis();
+        }
+        if (job.farStation == null) return false;
+        if (!match.test(mc.level.getBlockState(job.farStation)) || System.currentTimeMillis() - job.farSince > 30_000L) {
+            job.farStation = null;
+            return false;
+        }
+        job.note = "walking back to the " + what;
+        walkTo(mc, centre(job.farStation), 2.5);
+        return true;
     }
 
     private BlockPos stationAt(Minecraft mc, java.util.function.Predicate<BlockState> match, int radius) {

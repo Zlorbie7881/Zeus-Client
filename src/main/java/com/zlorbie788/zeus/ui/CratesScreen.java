@@ -319,7 +319,8 @@ public final class CratesScreen extends Screen {
         int er = Math.max(3, Math.round(size * 0.14f));
         int ecy = y + Math.round(h * 0.52f);
         float pulse = Math.min(1f, breath + glowBoost * 3f);
-        Draw.glow(g, -er, ecy - er, er * 2, er * 2, er, c.colour, Math.max(3, er), 0.05f + 0.10f * pulse);
+        int spread = Math.max(3, Math.round(er * 1.5f));
+        Draw.glow(g, -1, ecy - 1, 2, 2, 1, c.colour, spread, (0.10f + 0.22f * pulse) * 3f / spread);
         // light leaking from the seam as the lid is about to go
         if (glowBoost > 0.02f || lid > 0f) {
             float k = Math.min(1f, glowBoost * 2f + lid * 3f);
