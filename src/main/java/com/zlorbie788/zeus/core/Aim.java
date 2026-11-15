@@ -2,6 +2,7 @@ package com.zlorbie788.zeus.core;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -43,45 +44,111 @@ public final class Aim {
         return sendRotation(yaw, pitch);
     }
 
-    // A real mouse can only turn in whole steps set by the sensitivity slider, so every angle
-    // an ordinary player produces sits on that grid. Rotations between the steps are the
-    // cheapest thing a server-side check can spot, so sent angles are snapped onto it.
-    private static float step() {
-        Minecraft mc = Minecraft.getInstance();
-        try {
-            double f = mc.options.sensitivity().get() * 0.6 + 0.2;
-            return (float) Math.max(0.0008, f * f * f * 1.2);
-        } catch (RuntimeException e) {
-            return 0f;
-        }
-    }
+    private static boolean sentOnce;
 
-    private static float snap(float angle, float step) {
-        if (step <= 0f || !Float.isFinite(angle)) return angle;
-        return Math.round(angle / step) * step;
-    }
+    private static int silentUntil;
+    private static float silentYaw;
+    private static float silentPitch;
+    private static int fadeLeft;
+    private static float fadeTargetYaw;
+    private static float fadeTargetPitch;
 
     public static boolean sendRotation(float yaw, float pitch) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.getConnection() == null) return false;
         float[] shaped = Hand.shape(yaw, Math.max(-90f, Math.min(90f, pitch)));
-        float grid = step();
-        float y = snap(shaped[0], grid);
-        float p = Math.max(-90f, Math.min(90f, snap(shaped[1], grid)));
         int tick = mc.player.tickCount;
         if (tick != sentTick) {
             sentTick = tick;
             sentCount = 0;
         }
-        if (sentCount >= 2 && Math.abs(y - sentYaw) < 12f && Math.abs(p - sentPitch) < 12f) return true;
+        // Every delta is a whole number of mouse steps measured from the last angle sent, because
+        // that is the number a real mouse produces and the number Grim's aim processor takes the GCD
+        // of. Quantising the absolute angle instead would leave the offset from the real view behind.
+        float prevYaw = sentYaw;
+        float prevPitch = sentPitch;
+        boolean had = sentOnce;
+        float[] tuned = Stealth.shape(mc, shaped[0], shaped[1], prevYaw, prevPitch, had);
+        float y = tuned[0];
+        float p = tuned[1];
+        float[] allowed = com.zlorbie788.zeus.mods.Oracle.limitRotation(mc.player.getYRot(), mc.player.getXRot(), y, p);
+        y = allowed[0];
+        p = allowed[1];
+        if (!Float.isFinite(y) || !Float.isFinite(p)) return false;
+        if (sentCount >= 2 && Math.abs(Mth.wrapDegrees(y - sentYaw)) < 12f && Math.abs(p - sentPitch) < 12f) return true;
+        // Sending the same look twice is Vulcan's "repeated yaw values"; the game already carries the
+        // real view every tick, so an identical packet adds nothing but a flag.
+        if (y == sentYaw && p == sentPitch) return true;
+        sentOnce = true;
         sentCount++;
         sentYaw = y;
         sentPitch = p;
         lastYaw = y;
         lastPitch = p;
-        com.zlorbie788.zeus.mods.Exposure.rotation(mc.player.getYRot(), mc.player.getXRot(), y, p);
+        float viewYaw = mc.player.getYRot();
+        float viewPitch = mc.player.getXRot();
+        double grid = Stealth.grid(mc);
+        boolean away = Math.abs(Mth.wrapDegrees(y - viewYaw)) > Math.max(grid * 2.0, 0.35)
+                || Math.abs(p - viewPitch) > Math.max(grid * 2.0, 0.35);
+        if (away) {
+            // Remember the flick: it is held, then walked home in steps instead of snapping back.
+            silentYaw = y;
+            silentPitch = p;
+            silentUntil = tick + Stealth.HOLD_TICKS;
+            fadeLeft = 0;
+        } else {
+            silentUntil = 0;
+        }
+        Stealth.sent(y, p, viewYaw, viewPitch, prevYaw, prevPitch, had);
+        com.zlorbie788.zeus.mods.Oracle.rotation(viewYaw, viewPitch, y, p);
         mc.getConnection().send(new ServerboundMovePlayerPacket.Rot(y, p, mc.player.onGround(), mc.player.horizontalCollision));
         return true;
+    }
+
+    /**
+     * Called every client tick. A silent rotation that nobody is refreshing is held for a moment and
+     * then walked back to the real view in whole mouse steps, so the outgoing stream looks like a
+     * player who looked at something and then looked away instead of a view that teleports home.
+     */
+    public static void tick(Minecraft mc) {
+        if (mc.player == null || mc.getConnection() == null || silentUntil == 0) return;
+        int tick = mc.player.tickCount;
+        if (sentTick == tick) return;                 // a module aimed this tick, it owns the look
+        if (tick <= silentUntil) {
+            sendRaw(mc, silentYaw, silentPitch, tick);
+            return;
+        }
+        if (fadeLeft == 0) {
+            fadeLeft = Stealth.FADE_TICKS;
+            fadeTargetYaw = mc.player.getYRot();
+            fadeTargetPitch = mc.player.getXRot();
+        }
+        double grid = Stealth.grid(mc);
+        silentYaw = Stealth.fadeStep(silentYaw, fadeTargetYaw, fadeLeft, grid, false);
+        silentPitch = Stealth.fadeStep(silentPitch, fadeTargetPitch, fadeLeft, grid, true);
+        sendRaw(mc, silentYaw, silentPitch, tick);
+        if (--fadeLeft <= 0) {
+            silentUntil = 0;
+            silentYaw = fadeTargetYaw;
+            silentPitch = fadeTargetPitch;
+        }
+    }
+
+    private static void sendRaw(Minecraft mc, float yaw, float pitch, int tick) {
+        float p = Math.max(-90f, Math.min(90f, pitch));
+        if (yaw == sentYaw && p == sentPitch) return;
+        float prevYaw = sentYaw;
+        float prevPitch = sentPitch;
+        boolean had = sentOnce;
+        sentOnce = true;
+        sentTick = tick;
+        sentCount = 1;
+        sentYaw = yaw;
+        sentPitch = p;
+        lastYaw = yaw;
+        lastPitch = p;
+        Stealth.sent(yaw, p, mc.player.getYRot(), mc.player.getXRot(), prevYaw, prevPitch, had);
+        mc.getConnection().send(new ServerboundMovePlayerPacket.Rot(yaw, p, mc.player.onGround(), mc.player.horizontalCollision));
     }
 
     // Distance from the eyes to the nearest point of the hitbox, which is what a server measures.
@@ -95,6 +162,19 @@ public final class Aim {
         double dy = Math.max(box.minY - eye.y, Math.max(0.0, eye.y - box.maxY));
         double dz = Math.max(box.minZ - eye.z, Math.max(0.0, eye.z - box.maxZ));
         return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    /** True when the rotation the server currently has would already look at that point. */
+    public static boolean isLookingAt(Vec3 point, double degrees) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || point == null) return true;
+        Vec3 eye = mc.player.getEyePosition();
+        float yaw = yawTo(eye, point);
+        float pitch = pitchTo(eye, point);
+        float baseYaw = sentOnce ? sentYaw : mc.player.getYRot();
+        float basePitch = sentOnce ? sentPitch : mc.player.getXRot();
+        return Math.abs(Mth.wrapDegrees(yaw - baseYaw)) <= degrees
+                && Math.abs(pitch - basePitch) <= degrees;
     }
 
     public static void forget() {

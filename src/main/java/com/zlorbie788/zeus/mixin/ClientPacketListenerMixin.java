@@ -12,6 +12,7 @@ import net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket;
 import net.minecraft.network.protocol.game.ClientboundSectionBlocksUpdatePacket;
 import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket;
+import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
 import com.zlorbie788.zeus.mods.AdvancedFeatures;
 import com.zlorbie788.zeus.mods.MediaBaseFinder;
 import org.spongepowered.asm.mixin.Mixin;
@@ -73,6 +74,15 @@ public abstract class ClientPacketListenerMixin {
     @Inject(method = "handleRemoveEntities", at = @At("HEAD"), require = 0)
     private void zeus$removed(ClientboundRemoveEntitiesPacket packet, CallbackInfo ci) {
         for (int id : packet.getEntityIds()) com.zlorbie788.zeus.core.Hits.confirm(id);
+    }
+
+    @Inject(method = "handleMovePlayer", at = @At("HEAD"), require = 0)
+    private void zeus$position(ClientboundPlayerPositionPacket packet, CallbackInfo ci) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null) return;
+        // Relative moves are not a correction we can measure: only absolute teleports are evidence.
+        if (!packet.relatives().isEmpty()) return;
+        com.zlorbie788.zeus.mods.Oracle.correction(mc.player.position(), packet.change().position());
     }
 
     @Inject(method = "handleMoveVehicle", at = @At("HEAD"), cancellable = true, require = 0)

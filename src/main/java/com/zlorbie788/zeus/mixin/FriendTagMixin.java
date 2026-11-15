@@ -12,6 +12,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class FriendTagMixin {
     @Inject(method = "shouldShowName(Lnet/minecraft/world/entity/LivingEntity;D)Z", at = @At("RETURN"), cancellable = true, require = 0)
     private void zeus$friendTag(LivingEntity entity, double distanceSq, CallbackInfoReturnable<Boolean> cir) {
-        if (cir.getReturnValue() && Friends.hideNameTag(entity)) cir.setReturnValue(false);
+        if (cir.getReturnValue() && (Friends.hideNameTag(entity)
+                || com.zlorbie788.zeus.mods.NameTags.hideVanilla(entity))) cir.setReturnValue(false);
     }
 }

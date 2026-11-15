@@ -113,6 +113,9 @@ public class ZeusClient implements ClientModInitializer {
     private static void onTick(Minecraft mc) {
         try {
             onTickBody(mc);
+            // Last word on the look each tick: holds and fade-homes for silent rotations even when no
+            // module aims, so the view never snaps back in one packet. Always on, not a module.
+            com.zlorbie788.zeus.core.Aim.tick(mc);
         } catch (Throwable t) {
             tickErrors++;
             long now = System.currentTimeMillis();
