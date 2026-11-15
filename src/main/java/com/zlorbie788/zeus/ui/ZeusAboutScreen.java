@@ -66,10 +66,9 @@ public final class ZeusAboutScreen extends Screen {
     }
 
     private static final String[] ABOUT = {
-        "Zeus is one Fabric client that brings everything you use every day into one place: a clean panel, a HUD you place yourself, visuals, building and movement tools, automation and base finding.",
-        "Every module has a short description and plain settings. Open the panel, flip a switch, and tune it only if you want to.",
-        "Zeus runs entirely in your own game. It does not send your data anywhere.",
-        "It is updated often. Ideas and bug reports go in the Discord, and most new features start there.",
+        "Zeus puts everything you use every day into one Fabric client: a clean panel, a HUD you place yourself, visuals, building, movement, automation and base finding.",
+        "Every module has a short description and plain settings: flip a switch, tune it only if you want to.",
+        "Zeus runs entirely in your own game and sends none of your data anywhere. It is updated often, and ideas from the Discord shape what comes next.",
     };
 
     @Override
@@ -80,8 +79,17 @@ public final class ZeusAboutScreen extends Screen {
         float in = Math.min(1f, t / 0.35f);
         float ease = 1f - (1f - in) * (1f - in);
 
-        int pw = Math.min(width - 24, 380);
-        int ph = Math.min(height - 24, 300);
+        int pw = Math.min(width - 24, 440);
+        int textW = pw - 40;
+        if (wrappedFor != textW) {
+            wrapped = new ArrayList<>();
+            for (String para : ABOUT) {
+                wrapped.addAll(wrap(para, textW));
+                wrapped.add("");
+            }
+            wrappedFor = textW;
+        }
+        int ph = Math.min(height - 16, 52 + 38 + chipRows(pw) * 16 + 6 + textHeight() + 32);
         int px = (width - pw) / 2;
         int py = (height - ph) / 2 + Math.round((1f - ease) * 10f);
         Draw.glow(g, px, py, pw, ph, 10, Draw.rgba(ACCENT, 0.5f), 14, 0.35f * ease);
@@ -90,13 +98,13 @@ public final class ZeusAboutScreen extends Screen {
 
         // title
         int cx = width / 2;
-        int y = py + 14;
+        int y = py + 12;
         Draw.boldCenterS(g, "ABOUT ZEUS", cx, y, 0xFFFFFFFF, 1.6f);
-        y += 18;
+        y += 17;
         Draw.textCenter(g, "Version " + Zeus.VERSION + "  ·  Fabric 1.21.11", cx, y, DIM);
-        y += 16;
+        y += 14;
         g.fill(px + 20, y, px + pw - 20, y + 1, Draw.rgba(LINE, 0.8f));
-        y += 10;
+        y += 9;
 
         // three facts as tiles
         String[] big = {String.valueOf(modules), String.valueOf(cats.size()), ZeusClient.menuKeyName()};
@@ -105,12 +113,12 @@ public final class ZeusAboutScreen extends Screen {
         int tw = (pw - 40 - 2 * gap) / 3;
         for (int i = 0; i < 3; i++) {
             int tx = px + 20 + i * (tw + gap);
-            Draw.rrect(g, tx, y, tw, 34, 6, 0xFF101C34, 0xFF0C1528);
-            Draw.rrectLine(g, tx, y, tw, 34, 6, 0xFF1E3660);
-            Draw.boldCenterS(g, Draw.fit(big[i], tw - 8), tx + tw / 2, y + 6, 0xFFFFFFFF, 1f);
-            Draw.textCenter(g, small[i], tx + tw / 2, y + 20, DIM);
+            Draw.rrect(g, tx, y, tw, 30, 6, 0xFF101C34, 0xFF0C1528);
+            Draw.rrectLine(g, tx, y, tw, 30, 6, 0xFF1E3660);
+            Draw.boldCenterS(g, Draw.fit(big[i], tw - 8), tx + tw / 2, y + 5, 0xFFFFFFFF, 1f);
+            Draw.textCenter(g, small[i], tx + tw / 2, y + 17, DIM);
         }
-        y += 44;
+        y += 38;
 
         // category chips
         int chipX = px + 20;
@@ -119,7 +127,7 @@ public final class ZeusAboutScreen extends Screen {
             Category c = cats.get(i);
             String s = c.label + " " + catCounts.get(i);
             int w = Draw.width(s) + 16;
-            if (chipX + w > px + pw - 20) {
+            if (chipX > px + 20 && chipX + w > px + pw - 20) {
                 chipX = px + 20;
                 chipY += 16;
             }
@@ -131,15 +139,6 @@ public final class ZeusAboutScreen extends Screen {
         y = chipY + 22;
 
         // a few plain paragraphs
-        int textW = pw - 40;
-        if (wrappedFor != textW) {
-            wrapped = new ArrayList<>();
-            for (String para : ABOUT) {
-                wrapped.addAll(wrap(para, textW));
-                wrapped.add("");
-            }
-            wrappedFor = textW;
-        }
         int bh = 18;
         int by = py + ph - bh - 12;
         for (String line : wrapped) {
@@ -164,6 +163,25 @@ public final class ZeusAboutScreen extends Screen {
         float fl = ZeusTitleScreen.strike(g, width, height, t, strike);
         if (fl > 0.01f) g.fill(0, 0, width, height, Draw.rgba(0xFFCFE4FF, 0.10f * fl));
         if (in < 1f) g.fill(0, 0, width, height, Draw.rgba(0xFF000000, 1f - ease));
+    }
+
+    private int chipRows(int pw) {
+        int rows = 1, x = 0, max = pw - 40;
+        for (int i = 0; i < cats.size(); i++) {
+            int w = Draw.width(cats.get(i).label + " " + catCounts.get(i)) + 16;
+            if (x > 0 && x + w > max) {
+                rows++;
+                x = 0;
+            }
+            x += w + 4;
+        }
+        return rows;
+    }
+
+    private int textHeight() {
+        int h = 0;
+        for (String l : wrapped) h += l.isEmpty() ? 4 : 10;
+        return h;
     }
 
     private static List<String> wrap(String text, int width) {
