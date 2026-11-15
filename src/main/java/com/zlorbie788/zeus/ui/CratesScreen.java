@@ -671,7 +671,7 @@ public final class CratesScreen extends Screen {
             if (onIcon) {
                 String s = "" + n;
                 int bw = Math.max(9, Draw.widthBold(s) + 5);
-                int bx = x + 18 + shift + 8, byy = y + 1;
+                int bx = x + 18 + shift - bw - 3, byy = y + 1;
                 Draw.rrect(g, bx, byy, bw, 9, 4, c.colour);
                 Draw.boldCenter(g, s, bx + bw / 2, byy + 1, 0xFF0A0A10);
             } else if (n > 0) {
