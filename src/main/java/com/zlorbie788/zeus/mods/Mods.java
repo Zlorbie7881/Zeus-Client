@@ -94,7 +94,6 @@ public final class Mods {
         m.add(new XRay());
         m.add(new HoverTotem());
         m.add(new Ghost());
-        m.add(new Fingerprint());
         m.add(new Clutch.AutoMlg());
         m.add(new Clutch.PearlCatch());
         m.add(new Clutch.AutoWindCharge());

@@ -593,6 +593,7 @@ public final class Oracle extends Module {
                 "Sitting at " + (fit.on() ? "the envelope (sliders are ceilings)" : "the raw sliders"),
                 record.on() ? "Traces     config/zeus/traces/" + (traceName.isEmpty() ? "(not started)" : traceName)
                         + " (" + traceLines + " lines)" : "Traces     off",
+                "Stream     " + com.zlorbie788.zeus.core.Stealth.summary(),
                 mc.getCurrentServer() == null ? "Singleplayer, nothing to measure" : "Measured for " + serverKey());
     }
 
