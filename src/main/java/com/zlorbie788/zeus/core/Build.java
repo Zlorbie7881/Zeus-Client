@@ -17,15 +17,37 @@ import java.util.function.Predicate;
 public final class Build {
     private Build() {}
 
-    public static final double REACH = 4.6;
+    /**
+     * Vanilla block interaction range. The server keeps its own copy of this attribute and never sees
+     * the Reach module, so Grim's FarPlace measures against 4.5 no matter what the slider says: a
+     * placement past this is a flag on every module that places, from scaffold to surround to
+     * crystals. Placements therefore use this, not the slider.
+     */
+    public static final double REACH = 4.5;
 
-    /** The block range the game currently allows: the Reach module widens it, so placement uses all of it. */
     public static double reach() {
-        try {
-            return Math.max(REACH, com.zlorbie788.zeus.mods.Combat.Reach.blockRange());
-        } catch (Throwable t) {
-            return REACH;
+        return REACH;
+    }
+
+    /** The most a placement may use: the server's own range, whatever the module asked for. */
+    private static double placeReach(double asked) {
+        return Math.min(REACH, Math.max(asked, REACH));
+    }
+
+    /** Nothing solid between the eyes and the face being used, so it is not a placement through a wall. */
+    private static boolean sees(Vec3 eye, Vec3 hit) {
+        Minecraft mc = mc();
+        if (mc.level == null) return true;
+        double dist = eye.distanceTo(hit);
+        int steps = (int) Math.ceil(dist / 0.15);
+        // Stop short of the face itself: the block being clicked is solid and the last samples are
+        // inside it. Everything before that must be air, otherwise we are reaching through a wall.
+        for (int i = 2; i < steps - 2; i++) {
+            Vec3 at = eye.lerp(hit, (double) i / steps);
+            BlockPos p = BlockPos.containing(at.x, at.y, at.z);
+            if (solid(p)) return false;
         }
+        return true;
     }
 
     private static Minecraft mc() {
@@ -86,13 +108,15 @@ public final class Build {
     }
 
     public static boolean canPlace(BlockPos pos, double reach) {
-        double r = Math.max(reach, reach());
-        return replaceable(pos) && !blocked(pos) && against(pos, r) != null;
+        BlockHitResult hit = against(pos, placeReach(reach));
+        return replaceable(pos) && !blocked(pos) && hit != null && sees(eye(), hit.getLocation());
     }
 
     public static boolean useOn(BlockHitResult hit, Predicate<ItemStack> item, boolean swing) {
         Minecraft mc = mc();
         if (mc.gameMode == null || mc.player == null) return false;
+        // One block use per tick: a second one is MultiPlace, and so is the same block twice.
+        if (!Stealth.allowUse(mc)) return false;
         if (Inv.offhand(item)) {
             mc.gameMode.useItemOn(mc.player, InteractionHand.OFF_HAND, hit);
             if (swing) mc.player.swing(InteractionHand.OFF_HAND);
@@ -115,8 +139,11 @@ public final class Build {
         Minecraft mc = mc();
         if (mc.player == null) return false;
         if (mc.player.tickCount == placedTick) return false;
-        BlockHitResult hit = against(pos, Math.max(reach, reach()));
+        // Using an item while the game is digging is its own packet-order flag, so the placement waits.
+        if (mc.gameMode.isDestroying()) return false;
+        BlockHitResult hit = against(pos, placeReach(reach));
         if (hit == null) return false;
+        if (!sees(eye(), hit.getLocation())) return false;
         // A placement whose face was never in the player's line of sight is a flag of its own, so
         // look at it first. The rotation goes out before the use packet in the same tick.
         if (!Aim.isLookingAt(hit.getLocation(), 8.0)) Aim.look(hit.getLocation());

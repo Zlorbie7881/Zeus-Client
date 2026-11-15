@@ -32,10 +32,34 @@ public final class Stealth {
     public static final int FADE_TICKS = 4;
     private static final double HAND_STEPS = 1.0;
 
+    private static int attackTick = -1;
+    private static int useTick = -1;
+
     private static int samples;
     private static int offGrid;
     private static int repeated;
     private static double maxDelta;
+
+    /**
+     * One attack per tick, like a hand: a second entity hit in the same tick is Grim's MultiInteract,
+     * and auras and bots are the modules that do it. A real player can only click once a tick.
+     */
+    public static boolean allowAttack(Minecraft mc) {
+        if (mc.player == null) return false;
+        int tick = mc.player.tickCount;
+        if (tick == attackTick) return false;
+        attackTick = tick;
+        return true;
+    }
+
+    /** One block use per tick: two placements in a tick is MultiPlace and Vulcan's place speed. */
+    public static boolean allowUse(Minecraft mc) {
+        if (mc.player == null) return false;
+        int tick = mc.player.tickCount;
+        if (tick == useTick) return false;
+        useTick = tick;
+        return true;
+    }
 
     /** Degrees per mouse pixel at this client's sensitivity: the grid a real mouse sits on. */
     public static double grid(Minecraft mc) {
