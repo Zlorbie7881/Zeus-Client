@@ -598,7 +598,9 @@ public final class Combat {
         /** What the game will actually let a hit reach right now, so bots never stop short of it. */
         public static double entityRange() {
             Reach r = instance;
-            return r != null && r.enabled() ? r.entityValue() : 3.0;
+            double slider = r != null && r.enabled() ? r.entityValue() : 3.0;
+            // The oracle measured what this server refuses: never hand out more than that.
+            return Oracle.limitReach(slider);
         }
 
         public static double blockRange() {

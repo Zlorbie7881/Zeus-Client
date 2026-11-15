@@ -192,13 +192,18 @@ public final class Zeus {
                 LOG.warn("Could not switch the profile for this server", e);
             }
             try {
-                com.zlorbie788.zeus.mods.Exposure.onWorldEntered();
+                com.zlorbie788.zeus.mods.Oracle.onWorldEntered();
             } catch (RuntimeException e) {
-                LOG.warn("Could not start the exposure meter", e);
+                LOG.warn("Could not start the oracle", e);
             }
         }
         wasInWorld = in;
         if (!in) {
+            try {
+                com.zlorbie788.zeus.mods.Oracle.onWorldLeft();
+            } catch (RuntimeException e) {
+                LOG.warn("Could not close the oracle", e);
+            }
             flushIfDue();
             return;
         }

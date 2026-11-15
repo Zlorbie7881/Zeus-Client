@@ -79,7 +79,10 @@ public final class Aim {
         sentPitch = p;
         lastYaw = y;
         lastPitch = p;
-        com.zlorbie788.zeus.mods.Exposure.rotation(mc.player.getYRot(), mc.player.getXRot(), y, p);
+        float[] allowed = com.zlorbie788.zeus.mods.Oracle.limitRotation(mc.player.getYRot(), mc.player.getXRot(), y, p);
+        y = allowed[0];
+        p = allowed[1];
+        com.zlorbie788.zeus.mods.Oracle.rotation(mc.player.getYRot(), mc.player.getXRot(), y, p);
         mc.getConnection().send(new ServerboundMovePlayerPacket.Rot(y, p, mc.player.onGround(), mc.player.horizontalCollision));
         return true;
     }

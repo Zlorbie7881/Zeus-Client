@@ -214,7 +214,7 @@ public final class Mods {
         m.add(new HudExtra.Nearby());
         m.add(new HudExtra.Ticks());
         m.add(new HudExtra.DynamicIsland());
-        m.add(new Exposure());
+        m.add(new Oracle());
         m.add(new HandModel());
         m.add(new Reticle());
         m.add(new PriceTags());

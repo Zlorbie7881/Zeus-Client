@@ -59,7 +59,7 @@ public final class Hits {
 
     public static void attempt(Entity e) {
         if (e == null) return;
-        com.zlorbie788.zeus.mods.Exposure.swing(e);
+        com.zlorbie788.zeus.mods.Oracle.swing(e);
         attempt(e.getId());
     }
 
