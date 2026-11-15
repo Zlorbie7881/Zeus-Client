@@ -330,8 +330,8 @@ public final class KeybindScreen extends Screen {
         int r = Math.max(6, Math.round(u * 0.32f));
         // RGB underglow on the desk
         for (int i = 0; i < 8; i++) {
-            float f = i / 7f;
-            Draw.glow(g, cx + Math.round(cw * f) - cw / 16, cy + ch - 6, cw / 8, 8, 4, backlight(f * KB_W, 6), Math.max(10, Math.round(u * 0.6f)), 0.10f);
+            float f = 0.08f + 0.84f * i / 7f;
+            Draw.glow(g, cx + Math.round(cw * f) - cw / 18, cy + ch - 4, cw / 9, 4, 2, backlight(f * KB_W, 6), Math.max(6, Math.round(u * 0.3f)), 0.07f);
         }
         // aluminium frame: lit from above, a bevel all round, a darker plate the keys sit in
         Draw.rrect(g, cx - 1, cy + 2, cw + 2, ch + 2, r + 1, 0xFF020306);
@@ -435,8 +435,13 @@ public final class KeybindScreen extends Screen {
             if (mods.size() > 1) {
                 String b = "+" + (mods.size() - 1);
                 int bw = Draw.widthS(b, ms) + 4;
-                Draw.rrect(g, fx + fw - bw - 1, fy + 1, bw, Math.round(9 * ms) + 2, 2, 0xE00A1226);
-                Draw.textS(g, b, fx + fw - bw + 1, fy + 2, WARN, ms);
+                if (fw >= Draw.widthS(c.label, ls) + bw + 6) {
+                    Draw.rrect(g, fx + fw - bw - 1, fy + 1, bw, Math.round(9 * ms) + 2, 2, 0xE00A1226);
+                    Draw.textS(g, b, fx + fw - bw + 1, fy + 2, WARN, ms);
+                } else {
+                    int d = Math.max(2, Math.round(u * 0.08f));
+                    Draw.rrect(g, fx + fw - d - 2, fy + 2, d, d, d / 2, WARN);   // too small for the number: a dot
+                }
             }
         } else if (menuKey) {
             Draw.textS(g, fitS("Zeus menu", fw - 4, ms), fx + 2, lineY, GOLD, ms);
@@ -503,7 +508,7 @@ public final class KeybindScreen extends Screen {
         // header
         clearBtn = doneBtn = null;
         if (listening != null) {
-            Draw.text(g, "Click a key above, or press one, to link " + listening.name + ".", x0, y0 + 2, BLUE);
+            Draw.text(g, Draw.fit("Click a key above, or press one, to link " + listening.name + ".", panelW - 30 - Draw.width("Escape cancels")), x0, y0 + 2, BLUE);
             Draw.textRight(g, "Escape cancels", panelX + panelW - 10, y0 + 2, DIM);
         } else if (selected != null) {
             String nm = selected.label.isEmpty() ? "Space" : selected.key.getDisplayName().getString();
@@ -522,7 +527,7 @@ public final class KeybindScreen extends Screen {
             else clearBtn = null;
             button(g, doneBtn, "Done", false, mx, my, BLUE);
         } else {
-            Draw.text(g, "Click any key, or press one on your keyboard. Or pick a module below, then a key.", x0, y0 + 2, DIM);
+            Draw.text(g, Draw.fit("Click any key, or press one on your keyboard. Or pick a module below, then a key.", panelW - 20), x0, y0 + 2, DIM);
         }
         // search and filters
         int sy = y0 + 18;

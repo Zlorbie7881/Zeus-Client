@@ -103,6 +103,10 @@ public final class AiPilot extends Module {
     private static volatile String followPrompt = "";
     private static volatile long followAt;
     private static volatile int followUps;
+    /** Times the AI has checked back on one request after its jobs finished. */
+    private static volatile int goalRounds;
+    /** True while the running jobs were planned by the model for lastAsked (so checking back on it makes sense). */
+    private static volatile boolean modelGoal;
 
     private final Setting.Bool jobs = add(new Setting.Bool("Do jobs in the world", "Lets the AI chop, mine, quarry, tunnel, farm, replant, collect drops, fight, flee, shoot, shear, milk, eat, place blocks, craft at a grid or a crafting table it places itself, smelt in a furnace, build a house (gathering the materials first), swim, climb, bridge, light the area with torches, drop items, sleep, explore, walk to coordinates through obstacles and follow players.", true));
     private final Setting.Num jobRange = add(new Setting.Num("Job search range", "How far a job looks for trees, ore and drops.", 16, 6, 40, 2, " blocks")).showIf(() -> jobs.on());
@@ -114,7 +118,7 @@ public final class AiPilot extends Module {
     private enum JobKind { CHOP, MINE_UNTIL, MINE_COUNT, GOTO, FOLLOW, COLLECT, TUNNEL, FARM, SLEEP,
                            REPLANT, EAT, FOOD, FISH, HUNT, FLEE, SHOOT, SHEAR, MILK, QUARRY, PLACE, TORCH, DROP, RETURN, EXPLORE,
                            HOUSE, SWIM, CLIMB, BRIDGE, TILL, CRAFT, SMELT, STORE, TAKE, SCHEMATIC,
-                           BREED, PLANT, GUARD, ARMOR }
+                           BREED, PLANT, GUARD, ARMOR, GOAL }
 
     private static final class Job {
         final JobKind kind;
@@ -223,6 +227,7 @@ public final class AiPilot extends Module {
                 case SMELT -> "smelting " + target.replace('_', ' ') + " (" + crafts + "/" + Math.max(1, wanted) + ")";
                 case STORE -> "putting " + target.replace('_', ' ') + " away (" + mined + ")";
                 case TAKE -> "taking " + target.replace('_', ' ') + " out (" + mined + ")";
+                case GOAL -> "working out how to get " + Math.max(1, wanted) + " " + target.replace('_', ' ');
             };
         }
     }
@@ -258,6 +263,7 @@ public final class AiPilot extends Module {
     private final Setting.Num chatSize = add(new Setting.Num("Chat window size", "How big the chat window is.", 1.0, 0.6, 1.6, 0.1, "x")).showIf(() -> chatHud.on());
     private final Setting.Bool chatFade = add(new Setting.Bool("Chat window hides when quiet", "Fades the chat window out 30 seconds after the last message. Off: it stays.", true)).showIf(() -> chatHud.on());
     private final Setting.Bool shareChat = add(new Setting.Bool("Share recent chat", "Sends the last few chat lines with each request, so you can say reply to him or what did they say. Off by default because it sends other players' messages to your AI provider.", false));
+    private final Setting.Bool keepGoing = add(new Setting.Bool("Keep going until done", "When the jobs for a request finish, the AI looks at the inventory and surroundings again and carries on if the request is not done yet (up to three times).", true));
     private final Setting.Bool selfHeal = add(new Setting.Bool("Retry what failed", "When an action did not take effect, asks the model one more time with the results so it can correct itself.", true));
     private final Setting.Info status = add(new Setting.Info("Status", this::lines));
 
@@ -780,8 +786,8 @@ public final class AiPilot extends Module {
                 || lowered.equals("same again") || lowered.equals("one more time");
         if (again && lastAsked.isBlank()) return "Nothing to repeat yet.";
         final String prompt = again ? lastAsked : typed;
-        if (!typed.startsWith("These actions were attempted")) talk(true, typed);
-        if (!again && !prompt.startsWith("These actions were attempted")) lastAsked = prompt;
+        if (!typed.startsWith("These actions were attempted") && !typed.startsWith("These jobs finished")) talk(true, typed);
+        if (!again && !prompt.startsWith("These actions were attempted") && !prompt.startsWith("These jobs finished")) lastAsked = prompt;
         Step work = jobStep(prompt.toLowerCase(Locale.ROOT));
         if (work != null && !"job".equals(work.action()) && !"stop".equals(work.action())) {
             apply(work);
@@ -793,12 +799,16 @@ public final class AiPilot extends Module {
                 cancelJob(Minecraft.getInstance());
                 return was ? "Stopped the job." : "No job was running.";
             }
+            modelGoal = false;
             startJob(work.value());
             if (job == null && "home set here".equals(lastAction)) return "Home set here. Say go home to come back.";
             return job == null ? "Could not start that job. Check the Zeus AI Functions settings." : "Zeus AI: " + job.label();
         }
         loadMemory();
-        if (!prompt.startsWith("These actions were attempted")) followUps = 0;
+        if (!prompt.startsWith("These actions were attempted") && !prompt.startsWith("These jobs finished")) {
+            followUps = 0;
+            goalRounds = 0;
+        }
         String secret = token.get();
         if (!hasKey()) {
             String done = local(prompt, "No AI key saved, so the built-in parser handled it");
@@ -1072,6 +1082,7 @@ public final class AiPilot extends Module {
         }
         switch (verb) {
             case "job", "task" -> {
+                modelGoal = true;
                 startJob(step.value());
                 return;
             }
@@ -1500,7 +1511,9 @@ public final class AiPilot extends Module {
         builder.append("Schema: {\"say\":\"one short friendly sentence for the player\",\"actions\":[{\"do\":\"<verb>\",\"module\":\"<id>\",\"setting\":\"<exact setting name>\",\"value\":\"<new value>\"}]}\n");
         builder.append("More jobs: breed (or breed cows), plant 6 saplings, guard me (fights mobs near the player until stop), put on armor (wears the best pieces it has), set home, go home.\n");
         builder.append("Schematics: job value build schematic <name> gathers the materials (chops, mines, crafts, smelts what it can) and then builds it 3 blocks in front of the player; add here to restart it at the current spot. do=materials with value <name> lists what it needs; do=schematics lists the files.\n");
-        builder.append("Plan like a player: for a goal that needs several jobs, chain them with then in one job value, checking the inventory in the context first. Example, diamonds with no iron pickaxe: prepare then mine until iron then smelt 3 iron then craft iron pickaxe then mine until diamond. Do not repeat steps the inventory shows are already done.\n");
+        builder.append("GETTING ITEMS: the job obtain N <item> gets any item the game can make. It reads Minecraft's real recipes, works out every raw material from the inventory, makes the pickaxe each ore needs and a crafting table or furnace when none is near, then chops, mines, smelts and crafts in the right order, checks the result and tops it up if a step came up short. Use it whenever the player wants an item: obtain 1 iron pickaxe, obtain 16 torch, obtain 1 shield, obtain 64 oak planks, obtain 1 bow (it says what it cannot gather alone, like string). Use item ids from the game (iron_chestplate, golden_apple); plain words work too.\n");
+        builder.append("Plan like a player: think about what the request needs, check the Inventory and Wearing in the context first, never redo what is already there, and chain jobs with then in one job value. Examples: diamonds with no iron pickaxe -> obtain 1 iron pickaxe then mine until diamond. full iron armour -> obtain 1 iron helmet then obtain 1 iron chestplate then obtain 1 iron leggings then obtain 1 iron boots then put on armor. ready for the night -> obtain 16 torch then food 3 then obtain 1 white bed. ready for the nether -> obtain 1 iron pickaxe then obtain 1 flint and steel then obtain 1 shield then food 4 (and say that obsidian needs a diamond pickaxe or a bucket of water on lava).\n");
+        builder.append("Big goals (beat the game, a base, a farm, get strong): pick the next stage only, send its jobs, and say the plan in one sentence. When the jobs finish you get a message starting with These jobs finished: look at the new context, and either confirm in say with no actions, or send the jobs for what is still missing.\n");
         builder.append("Finding ores: always use the job mine until <ore> (it digs a safe staircase to the right depth). Never use dig down to look for ores; digging straight down is dangerous.\n");
         builder.append("look turns the player toward value: coordinates (x y z), the nearest player or mob, a mob name or a block name. remind sets a chat reminder: value is minutes then the text, for example 10 check the furnace (use 30s or 2h for other units).\n");
         builder.append("Verbs: on, off, toggle, set (need module); job, stop, hold, look, remind, preset, theme, waypoint, explain, remember, forget, report, help, open, hud, keybinds, panic, undo (no module). hold puts an item in hand: value is the item (pickaxe, bread, diamond sword, nothing).\n");
@@ -1508,6 +1521,8 @@ public final class AiPilot extends Module {
         builder.append("turn on sprint and fullbright -> {\"say\":\"Sprint and Fullbright are on.\",\"actions\":[{\"do\":\"on\",\"module\":\"sprint\"},{\"do\":\"on\",\"module\":\"fullbright\"}]}\n");
         builder.append("make killaura reach 4 -> {\"say\":\"Range set to 4.\",\"actions\":[{\"do\":\"set\",\"module\":\"killaura\",\"setting\":\"Range\",\"value\":\"4\"}]}\n");
         builder.append("get me 10 iron then come back -> {\"say\":\"Off to mine iron.\",\"actions\":[{\"do\":\"job\",\"value\":\"mine 10 iron then return\"}]}\n");
+        builder.append("get me full iron armor and put it on -> {\"say\":\"Getting you a full set of iron armour.\",\"actions\":[{\"do\":\"job\",\"value\":\"obtain 1 iron helmet then obtain 1 iron chestplate then obtain 1 iron leggings then obtain 1 iron boots then put on armor\"}]}\n");
+        builder.append("make me a diamond pickaxe -> {\"say\":\"On it: tools, then diamonds.\",\"actions\":[{\"do\":\"job\",\"value\":\"obtain 1 diamond pickaxe\"}]}\n");
         builder.append("what does esp do? -> {\"say\":\"ESP outlines players and mobs through walls.\",\"actions\":[{\"do\":\"explain\",\"value\":\"esp\"}]}\n");
         builder.append("hi / thanks / a question with nothing to change -> {\"say\":\"<a short helpful answer>\",\"actions\":[]}\n");
         builder.append("For a Minecraft or client question (a recipe, where to find something, what a module does), answer it in say in up to three sentences, with real facts for Minecraft 1.21. Do not make up mechanics. If something is ambiguous and a wrong guess would be costly, ask one short question in say and send no actions.\n");
@@ -1528,7 +1543,7 @@ public final class AiPilot extends Module {
         builder.append("Fetch items: fetch 64 dirt, stock 32 oak planks, give me 16 end crystal. In creative the AI takes them straight out of the creative menu, in survival it crafts them when it knows the recipe and mines them otherwise. Crafting and smelting jobs also skip the work and take the result in creative.\n");
         builder.append("Creative mode: every block breaks on the first swing without a tool, nothing is used up when you place it, flying is allowed and hunger never drops. Do not queue crafting or food jobs there, just mine, build and go where you are told.\n");
         builder.append("Chests: store 20 cobblestone, put away 32 dirt, deposit 5 diamond, take 32 iron, loot 16 bread, grab 4 torch. The job finds a chest, barrel or trapped chest within five blocks, opens it and shift-clicks one stack at a time, counts real items against the number asked for, and only matches the exact item: iron means ingots, never ore or a sword, so say iron_ore for ore.\n");
-        builder.append("Crafting and furnaces: craft 4 planks, craft a crafting table, craft sticks, craft a furnace, craft a stone pickaxe, craft iron sword, craft torch, craft chest, craft bucket, craft bed, smelt 8 iron, cook 4 porkchop. The job places and opens its own crafting table or furnace, crafts planks or sticks from logs first when it has to, and furnishes fuel itself. Known recipes: planks, stick, crafting_table, furnace, chest, torch, stone_pickaxe, stone_axe, stone_shovel, stone_sword, stone_hoe, iron_pickaxe, iron_sword, bucket, bed.\n");
+        builder.append("Crafting and furnaces: craft 4 planks, craft a crafting table, craft sticks, craft a furnace, craft a stone pickaxe, craft iron sword, craft torch, craft chest, craft bucket, craft bed, smelt 8 iron, cook 4 porkchop. The job places and opens its own crafting table or furnace, crafts planks or sticks from logs first when it has to, and furnishes fuel itself. craft and smelt know every vanilla recipe (craft lays the grid out itself, smelt works for any furnace recipe like cooked beef or charcoal); when materials are missing they hand over to the planner, so obtain is the safer choice.\n");
         if (!context.isBlank()) builder.append("Context: ").append(context).append('\n');
         if (!NOTES.isEmpty()) builder.append("Notes from earlier sessions: ").append(String.join(" | ", NOTES)).append('\n');
         builder.append("Presets available through do=preset: pvp, crystal, survival, performance, privacy.\n");
@@ -1900,6 +1915,15 @@ public final class AiPilot extends Module {
                 || text.equals("stop the job") || text.equals("cancel the job")) {
             return new Step("stop", "", "", "");
         }
+        // "get me an iron pickaxe", "i need 16 torches", "make me a shield": the planner handles any item
+        java.util.regex.Matcher want = java.util.regex.Pattern
+                .compile("^(?:please )?(?:get me|obtain|i want|i need|make me|craft me|give me|build me)(?: (\\d+))? (?:a |an |some |the )?([a-z_ ]+?)(?: please)?$").matcher(text);
+        if (want.find() && !text.contains(" then ")) {
+            String id = goalItem(want.group(2));
+            if (id != null && com.zlorbie788.zeus.core.Recipes.known(id)) {
+                return new Step("job", "", "", "obtain " + (want.group(1) == null ? 1 : want.group(1)) + " " + id);
+            }
+        }
         if (text.contains(" then ") || text.contains(";") || text.contains("->")) {
             String head = text.split("\\s*(?:,|;|->|\\band then\\b|\\bthen\\b)\\s*")[0].trim();
             if (head.matches("^(chop|cut|break|mine|dig|get|go|goto|walk|come|follow|farm|harvest|collect|pick|tunnel|strip|sleep|replant|torch|quarry|milk|shear|hunt|flee|shoot|eat|food|meat|drop|return|explore|place|put|house|build|swim|climb|pillar|bridge|craft|make|smelt|cook)\\b.*")) {
@@ -2108,8 +2132,9 @@ public final class AiPilot extends Module {
                 return;
             }
             if (!creative(mc)) {
-                String id = what.replace(' ', '_');
-                text = (Craft.find(id) != null ? "craft " : "mine ") + n + " " + what;
+                String id = goalItem(what);
+                text = id != null && com.zlorbie788.zeus.core.Recipes.known(id) ? "obtain " + n + " " + id.replace('_', ' ')
+                        : (Craft.find(what.replace(' ', '_')) != null ? "craft " : "mine ") + n + " " + what;
                 Notify.info("Zeus AI: no creative menu, so " + text);
             }
         }
@@ -2136,6 +2161,22 @@ public final class AiPilot extends Module {
     private boolean startOne(String text) {
         Minecraft mc = Minecraft.getInstance();
         Job started;
+        java.util.regex.Matcher obtain = java.util.regex.Pattern
+                .compile("^(?:obtain|get me|acquire|work towards|work toward)(?: (\\d+))? (?:a |an |some )?([a-z_ ]+?)(?: #(\\d))?$").matcher(text.trim());
+        if (obtain.find()) {
+            String id = goalItem(obtain.group(2));
+            if (id == null) {
+                Notify.warn("Zeus AI: I do not know an item called " + obtain.group(2));
+                return false;
+            }
+            started = new Job(JobKind.GOAL, id, obtain.group(1) == null ? 1 : Math.max(1, Math.min(2304, Integer.parseInt(obtain.group(1)))), null);
+            started.attempts = obtain.group(3) == null ? 0 : Integer.parseInt(obtain.group(3));
+            job = started;
+            blueprint = null;
+            blueprintIndex = 0;
+            lastAction = "job: " + started.label();
+            return true;
+        }
         java.util.regex.Matcher forest = java.util.regex.Pattern
                 .compile("^(?:chop|cut|break|mine|get) (\\d+) trees?$").matcher(text);
         if (forest.find()) {
@@ -2459,6 +2500,12 @@ public final class AiPilot extends Module {
             Notify.info("Zeus AI: next up, " + next);
             if (!startOne(next)) chain.clear();
             lastAction = label + ": " + reason + " · now " + (job == null ? "idle" : job.label());
+        } else if (job == null && modelGoal && keepGoing.on() && hasSecret() && !lastAsked.isBlank() && goalRounds < 3 && followAt == 0 && !preview.on()) {
+            // Everything queued for the request is done: look again before calling it finished.
+            goalRounds++;
+            followPrompt = "These jobs finished for the player's request \"" + lastAsked + "\". The last one ended with: " + label + " - " + reason
+                    + ". Look at the context again (inventory, armour, held item, position, nearby blocks). If the request is completely done, reply with one short say that confirms it and an empty actions list. If anything is still missing, send only the actions that finish it. Reply with the single JSON object and nothing else.";
+            followAt = System.currentTimeMillis() + 1500L;
         }
     }
 
@@ -2596,6 +2643,7 @@ public final class AiPilot extends Module {
             case SMELT -> smeltTick(mc);
             case STORE -> storeTick(mc);
             case TAKE -> takeTick(mc);
+            case GOAL -> goalTick(mc);
         }
     }
 
@@ -2611,6 +2659,87 @@ public final class AiPilot extends Module {
         return java.util.List.of();
     }
 
+    /** True while a job runs or jobs are queued (used by the in-game tests). */
+    public static boolean working() {
+        AiPilot self = find();
+        return self != null && (self.job != null || !self.chain.isEmpty());
+    }
+
+    /** The AI's recent event log, oldest first (used by the in-game tests). */
+    public static List<String> recentEvents() {
+        synchronized (EVENTS) {
+            return new ArrayList<>(EVENTS);
+        }
+    }
+
+    /** Every item the player holds (inventory, armour, offhand) by id, for the planner. */
+    private static java.util.Map<String, Integer> inventoryCounts(Minecraft mc) {
+        java.util.Map<String, Integer> m = new java.util.HashMap<>();
+        if (mc.player == null) return m;
+        net.minecraft.world.entity.player.Inventory inv = mc.player.getInventory();
+        for (int i = 0; i < inv.getContainerSize(); i++) {
+            ItemStack st = inv.getItem(i);
+            if (!st.isEmpty()) m.merge(BuiltInRegistries.ITEM.getKey(st.getItem()).getPath(), st.getCount(), Integer::sum);
+        }
+        return m;
+    }
+
+    /** The item id a spoken name means: exact ids, aliases (iron = ingot), plurals and "a stone pickaxe". */
+    static String goalItem(String spoken) {
+        if (spoken == null) return null;
+        String s = spoken.toLowerCase(Locale.ROOT).trim().replaceFirst("^(some|a|an|the|my|me) ", "");
+        net.minecraft.world.item.Item it = Craft.exact(s);
+        if (it == null && s.endsWith("es")) it = Craft.exact(s.substring(0, s.length() - 2));
+        if (it == null) {
+            String flip = s.replace(' ', '_');
+            if (flip.endsWith("_chest_plate")) flip = flip.replace("_chest_plate", "_chestplate");
+            if (flip.endsWith("_pick")) flip = flip + "axe";
+            it = Craft.exact(flip);
+        }
+        if (it == null || it == Items.AIR) return null;
+        return BuiltInRegistries.ITEM.getKey(it).getPath();
+    }
+
+    // A goal is "have N of this item". It checks the inventory, plans the rest from the real recipes, queues
+    // the jobs, and comes back after them to check again, so a short haul is topped up instead of failing.
+    private void goalTick(Minecraft mc) {
+        String id = job.target;
+        int want = Math.max(1, job.wanted);
+        String shown = id.replace('_', ' ');
+        java.util.Map<String, Integer> inv = inventoryCounts(mc);
+        int have = inv.getOrDefault(id, 0);
+        if (have >= want) {
+            endJob(mc, "you have " + have + " " + shown);
+            return;
+        }
+        if (creative(mc) && creativeGive(mc, id, want - have)) {
+            endJob(mc, "took " + (want - have) + " " + shown + " from the creative menu");
+            return;
+        }
+        if (job.attempts >= 3) {
+            giveUp(mc, "still short of " + shown + " after three tries (" + have + "/" + want + ")");
+            return;
+        }
+        boolean tableNear = stationAt(mc, st -> st.is(Blocks.CRAFTING_TABLE), 5) != null;
+        boolean furnaceNear = stationAt(mc, st -> st.is(Blocks.FURNACE), 5) != null;
+        com.zlorbie788.zeus.core.Plan.Result plan = com.zlorbie788.zeus.core.Plan.make(id, want, inv, tableNear, furnaceNear);
+        if (!plan.problems().isEmpty()) {
+            String need = String.join(", ", new java.util.LinkedHashSet<>(plan.problems()));
+            giveUp(mc, "I cannot gather " + need + " by myself; get " + need + " and I will do the rest of the " + shown);
+            return;
+        }
+        if (plan.empty()) {
+            giveUp(mc, "I do not know how to get " + shown);
+            return;
+        }
+        event("plan for " + want + " " + shown + ": " + com.zlorbie788.zeus.core.Plan.describe(plan));
+        if (speak.on()) AiTutorial.chat("Plan for " + want + " " + shown + ": " + com.zlorbie788.zeus.core.Plan.describe(plan), false);
+        chain.addFirst("obtain " + want + " " + id + " #" + (job.attempts + 1));
+        java.util.List<String> steps = plan.steps();
+        for (int i = steps.size() - 1; i >= 0; i--) chain.addFirst(steps.get(i));
+        endJob(mc, "planned " + steps.size() + " step(s)");
+    }
+
     private void craftTick(Minecraft mc) {
         if (creative(mc)) {
             int n = Math.max(1, job.wanted);
@@ -2620,6 +2749,12 @@ public final class AiPilot extends Module {
             }
         }
         Craft.Recipe recipe = Craft.find(job.target);
+        net.minecraft.world.item.Item exactItem = Craft.exact(job.target);
+        if (exactItem != null && (recipe == null || recipe.result() != exactItem)) {
+            String exactId = BuiltInRegistries.ITEM.getKey(exactItem).getPath();
+            Craft.Recipe vanilla = com.zlorbie788.zeus.core.Recipes.craftFor(exactId, inventoryCounts(mc));
+            if (vanilla != null) recipe = vanilla;
+        }
         Craft.Book book = recipe == null ? Craft.book(mc, job.target) : null;
         if (recipe == null && book == null) {
             giveUp(mc, "I do not know a recipe for " + job.target.replace('_', ' '));
@@ -2670,6 +2805,20 @@ public final class AiPilot extends Module {
         }
         job.step = 0;
         AbstractContainerMenu backpack = mc.player.inventoryMenu;
+        if (recipe != null && !Craft.hasAll(backpack, recipe) && job.attempts < 3 && recipe.result() != null) {
+            String rid = BuiltInRegistries.ITEM.getKey(recipe.result()).getPath();
+            boolean planned = false;
+            for (String queued : chain) planned |= queued.startsWith("obtain ") && (queued.contains(rid) || queued.contains(rid.replace('_', ' ')));
+            if (com.zlorbie788.zeus.core.Recipes.known(rid) && !planned) {
+                job.attempts++;
+                int want = Math.max(1, job.wanted) - job.crafts;
+                String goal = "obtain " + Math.max(1, want) + " " + rid.replace('_', ' ');
+                Notify.info("Zeus AI: missing materials for " + shown + ", planning how to get them");
+                chain.addFirst(goal);
+                endJob(mc, "handing over to the planner");
+                return;
+            }
+        }
         if (recipe != null && !Craft.hasAll(backpack, recipe)) {
             Craft.Recipe sub = Craft.subFor(backpack, recipe);
             if (sub != null && job.attempts++ < 4) {
@@ -6370,13 +6519,30 @@ public final class AiPilot extends Module {
         builder.append(" World: ").append(client.level.dimension().identifier())
                 .append(client.hasSingleplayerServer() ? " (singleplayer)" : " (multiplayer)").append('.');
         long clock = client.level.getDayTime() % 24000L;
-        builder.append(" Time: ").append(clock < 12300L || clock > 23850L ? "day" : "night").append('.');
+        builder.append(" Time: ").append(clock < 12300L || clock > 23850L ? "day" : "night")
+                .append(client.level.isThundering() ? ", thunderstorm" : client.level.isRaining() ? ", raining" : "").append('.');
+        if (client.gameMode != null) builder.append(" Game mode: ").append(client.gameMode.getPlayerMode().getName()).append('.');
+        try {
+            builder.append(" Biome: ").append(client.level.getBiome(client.player.blockPosition()).unwrapKey().map(k -> k.identifier().getPath()).orElse("unknown")).append('.');
+        } catch (RuntimeException ignored) {
+        }
         builder.append(" Health ").append(Math.round(p.getHealth())).append("/20, food ")
                 .append(p.getFoodData().getFoodLevel()).append("/20, armor ").append(p.getArmorValue()).append('.');
         builder.append(" Position ").append(Math.round(p.getX())).append(' ').append(Math.round(p.getY())).append(' ')
                 .append(Math.round(p.getZ())).append(", facing ").append(p.getDirection().getName()).append('.');
         ItemStack held = p.getMainHandItem();
-        builder.append(" Holding ").append(held.isEmpty() ? "nothing" : held.getCount() + " " + held.getHoverName().getString()).append('.');
+        builder.append(" Holding ").append(held.isEmpty() ? "nothing" : held.getCount() + " " + held.getHoverName().getString() + wear(held)).append('.');
+        ItemStack off = p.getOffhandItem();
+        if (!off.isEmpty()) builder.append(" Offhand: ").append(off.getCount()).append(' ').append(off.getHoverName().getString()).append('.');
+        StringBuilder worn = new StringBuilder();
+        for (net.minecraft.world.entity.EquipmentSlot slot : new net.minecraft.world.entity.EquipmentSlot[] {
+                net.minecraft.world.entity.EquipmentSlot.HEAD, net.minecraft.world.entity.EquipmentSlot.CHEST,
+                net.minecraft.world.entity.EquipmentSlot.LEGS, net.minecraft.world.entity.EquipmentSlot.FEET}) {
+            ItemStack a = p.getItemBySlot(slot);
+            if (!a.isEmpty()) worn.append(worn.length() == 0 ? "" : ", ").append(a.getHoverName().getString()).append(wear(a));
+        }
+        builder.append(" Wearing: ").append(worn.length() == 0 ? "no armour" : worn).append('.');
+        builder.append(" XP level ").append(p.experienceLevel).append('.');
         if (client.hitResult instanceof net.minecraft.world.phys.BlockHitResult hit
                 && client.hitResult.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
             builder.append(" Looking at ").append(client.level.getBlockState(hit.getBlockPos()).getBlock().getName().getString())
@@ -6396,14 +6562,15 @@ public final class AiPilot extends Module {
         for (int i = 0; i < Math.min(36, inventory.getContainerSize()); i++) {
             ItemStack stack = inventory.getItem(i);
             if (stack.isEmpty()) continue;
-            items.merge(stack.getHoverName().getString(), stack.getCount(), Integer::sum);
+            items.merge(stack.getHoverName().getString() + " [" + BuiltInRegistries.ITEM.getKey(stack.getItem()).getPath() + "]" + wear(stack), stack.getCount(), Integer::sum);
         }
         if (!items.isEmpty()) {
-            List<java.util.Map.Entry<String, Integer>> sorted = new ArrayList<>(items.entrySet());
-            sorted.sort((a, b) -> b.getValue() - a.getValue());
-            builder.append(" Inventory:");
-            for (int i = 0; i < Math.min(14, sorted.size()); i++) {
-                builder.append(i == 0 ? " " : ", ").append(sorted.get(i).getValue()).append(' ').append(sorted.get(i).getKey());
+            // every distinct item: a single pickaxe matters as much as a stack of dirt when planning
+            builder.append(" Inventory (count name [id]):");
+            int i = 0;
+            for (java.util.Map.Entry<String, Integer> e : items.entrySet()) {
+                if (i >= 36) break;
+                builder.append(i++ == 0 ? " " : ", ").append(e.getValue()).append(' ').append(e.getKey());
             }
             builder.append('.');
         } else {
@@ -6443,6 +6610,13 @@ public final class AiPilot extends Module {
         }
         if (shown == 0) builder.append(" none");
         return builder.toString();
+    }
+
+    /** " (worn out)" or " (half worn)" for damaged tools and armour, so the model knows to replace them. */
+    private static String wear(ItemStack s) {
+        if (!s.isDamageableItem() || s.getMaxDamage() <= 0) return "";
+        float left = 1f - s.getDamageValue() / (float) s.getMaxDamage();
+        return left < 0.15f ? " (nearly broken)" : left < 0.5f ? " (half worn)" : "";
     }
 
     /** Useful blocks around the player (containers, stations, beds, ores in view of the air), nearest of each kind. */

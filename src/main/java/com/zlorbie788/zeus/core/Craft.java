@@ -381,7 +381,11 @@ public final class Craft {
             case "smooth_stone" -> s -> s.is(Items.STONE);
             case "glass" -> s -> s.is(Items.SAND) || s.is(Items.RED_SAND);
             case "deepslate" -> s -> s.is(Items.COBBLED_DEEPSLATE);
-            default -> only(wanted);
+            default -> {
+                Item item = exact(wanted);
+                Predicate<ItemStack> vanilla = item == null ? null : Recipes.smeltInput(BuiltInRegistries.ITEM.getKey(item).getPath());
+                yield vanilla != null ? vanilla : only(wanted);
+            }
         };
     }
 

@@ -195,6 +195,9 @@ public class ZeusScreensTest implements FabricClientGameTest {
             ctx.runOnClient(c -> KnifeSwing.equipHd(Crates.starterHd()));
             ctx.waitTicks(30);
             ctx.takeScreenshot("hand_starter");
+            aiTest(ctx, sp, "get me an iron pickaxe", "iron_pickaxe", 1, "iron_ingot 3", "oak_log 2");
+            aiTest(ctx, sp, "get me a lantern", "lantern", 1, "iron_ingot 1", "coal 1", "oak_log 2");
+            aiTest(ctx, sp, "get me a shield", "shield", 1, "iron_ingot 1", "oak_log 3");
         }
         // the test framework wants to finish on the vanilla title screen
         ctx.runOnClient(c -> UiSettings.MENU.set(false));
@@ -220,6 +223,47 @@ public class ZeusScreensTest implements FabricClientGameTest {
     }
 
     @SuppressWarnings("unchecked")
+    /** Asks Zeus AI for an item the way a player would (no AI key: the built-in parser and the planner) and checks the result. */
+    private static void aiTest(ClientGameTestContext ctx, TestSingleplayerContext sp, String ask, String item, int count, String... give) {
+        sp.getServer().runCommand("gamemode survival @a");
+        sp.getServer().runCommand("clear @a");
+        sp.getServer().runCommand("time set day");
+        sp.getServer().runCommand("difficulty peaceful");
+        for (String g : give) sp.getServer().runCommand("give @a " + g);
+        ctx.waitTicks(10);
+        ctx.runOnClient(c -> {
+            for (com.zlorbie788.zeus.core.Module m : com.zlorbie788.zeus.core.Zeus.all()) {
+                if (m instanceof com.zlorbie788.zeus.mods.AiPilot && !m.enabled()) m.toggle();
+            }
+            System.out.println("ZEUS-AI-TEST ask: " + ask + " -> " + com.zlorbie788.zeus.mods.AiPilot.ask(ask));
+        });
+        ctx.waitTicks(5);
+        int waited = 0;
+        while (waited < 1800) {
+            boolean busy = ctx.computeOnClient(c -> com.zlorbie788.zeus.mods.AiPilot.working());
+            if (!busy) break;
+            if (waited == 40) ctx.takeScreenshot("ai_" + item + "_working");
+            ctx.waitTicks(20);
+            waited += 20;
+        }
+        int have = ctx.computeOnClient(c -> {
+            int n = 0;
+            var inv = c.player.getInventory();
+            for (int i = 0; i < inv.getContainerSize(); i++) {
+                var st = inv.getItem(i);
+                if (!st.isEmpty() && net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(st.getItem()).getPath().equals(item)) n += st.getCount();
+            }
+            return n;
+        });
+        ctx.runOnClient(c -> {
+            for (String e : com.zlorbie788.zeus.mods.AiPilot.recentEvents()) System.out.println("ZEUS-AI-TEST event: " + e);
+        });
+        System.out.println("ZEUS-AI-TEST " + (have >= count ? "PASS" : "FAIL") + ": '" + ask + "' -> " + have + " " + item + " after " + waited + " ticks");
+        ctx.takeScreenshot("ai_" + item + "_done");
+        ctx.setScreen(() -> null);
+        ctx.waitTicks(5);
+    }
+
     private static void grant() {
         try {
             Crates.load();
