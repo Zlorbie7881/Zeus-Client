@@ -35,6 +35,9 @@ public final class Stealth {
     private static int attackTick = -1;
     private static int useTick = -1;
     private static int breakTick = -1;
+    private static int blockedAttacks;
+    private static int blockedUses;
+    private static int blockedBreaks;
 
     private static int samples;
     private static int offGrid;
@@ -48,7 +51,10 @@ public final class Stealth {
     public static boolean allowAttack(Minecraft mc) {
         if (mc.player == null) return false;
         int tick = mc.player.tickCount;
-        if (tick == attackTick) return false;
+        if (tick == attackTick) {
+            blockedAttacks++;
+            return false;
+        }
         attackTick = tick;
         return true;
     }
@@ -57,7 +63,10 @@ public final class Stealth {
     public static boolean allowUse(Minecraft mc) {
         if (mc.player == null) return false;
         int tick = mc.player.tickCount;
-        if (tick == useTick) return false;
+        if (tick == useTick) {
+            blockedUses++;
+            return false;
+        }
         useTick = tick;
         return true;
     }
@@ -70,7 +79,10 @@ public final class Stealth {
     public static boolean allowBreak(Minecraft mc) {
         if (mc.player == null) return false;
         int tick = mc.player.tickCount;
-        if (tick == breakTick) return false;
+        if (tick == breakTick) {
+            blockedBreaks++;
+            return false;
+        }
         breakTick = tick;
         return true;
     }
@@ -149,9 +161,11 @@ public final class Stealth {
     }
 
     public static String summary() {
-        if (samples == 0) return "no rotations sent yet";
-        return String.format(java.util.Locale.ROOT, "%.1f%% of %d deltas on the mouse grid, %d repeated, largest %.1f\\u00B0",
+        String rotations = samples == 0 ? "no rotations sent yet"
+                : String.format(java.util.Locale.ROOT, "%.1f%% of %d deltas on the mouse grid, %d repeated, largest %.1f\u00B0",
                 100.0 - 100.0 * offGrid / samples, samples, repeated, maxDelta);
+        return rotations + String.format(java.util.Locale.ROOT, " \u00B7 held back: %d attacks, %d uses, %d breaks",
+                blockedAttacks, blockedUses, blockedBreaks);
     }
 
     public static boolean clean() {
@@ -163,5 +177,8 @@ public final class Stealth {
         offGrid = 0;
         repeated = 0;
         maxDelta = 0;
+        blockedAttacks = 0;
+        blockedUses = 0;
+        blockedBreaks = 0;
     }
 }

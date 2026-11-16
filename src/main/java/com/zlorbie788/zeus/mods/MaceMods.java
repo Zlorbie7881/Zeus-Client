@@ -173,6 +173,8 @@ public final class MaceMods {
         protected void onTick(Minecraft mc) {
             shown = null;
             if (!ready(mc)) return;
+            // Entity ids are never reused, so the hit-delay map would grow for the whole session.
+            if (lastHit.size() > 64) lastHit.clear();
             var me = mc.player;
             boolean boosted = MaceDamage.isOn();
 

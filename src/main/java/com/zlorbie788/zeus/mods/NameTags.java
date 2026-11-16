@@ -76,7 +76,7 @@ public final class NameTags extends Module {
         int barH = Math.max(2, Math.round(3 * sc));
         int armorRowH = Math.round(7 * sc) + 2;
         float[] t = new float[2];
-        List<Entity> list = Env.entities(mc, range.get());
+        List<Entity> list = new java.util.ArrayList<>(Env.entities(mc, range.get()));
         // Furthest first, so the nearest plate is drawn last and wins any overlap.
         list.sort(Comparator.comparingDouble((Entity e) -> -mc.player.distanceToSqr(e)));
         for (Entity e : list) {

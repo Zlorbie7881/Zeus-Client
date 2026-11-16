@@ -28,12 +28,30 @@ public final class Env {
         return c == null || c instanceof net.minecraft.world.level.chunk.EmptyLevelChunk ? null : c;
     }
 
+    private static int cacheTick = -1;
+    private static final Map<Double, java.util.List<net.minecraft.world.entity.Entity>> CACHE = new LinkedHashMap<>();
+
+    /**
+     * Every entity within a box of this radius. Ten modules asking for the same range in the same tick
+     * used to be ten full entity sweeps; the answer cannot change inside a tick, so it is kept until
+     * the tick number moves. Callers must copy the list before sorting it.
+     */
     public static java.util.List<net.minecraft.world.entity.Entity> entities(Minecraft mc, double range) {
         if (mc.level == null || mc.player == null) return java.util.List.of();
+        int tick = mc.player.tickCount;
+        if (tick != cacheTick) {
+            cacheTick = tick;
+            CACHE.clear();
+        }
+        java.util.List<net.minecraft.world.entity.Entity> hit = CACHE.get(range);
+        if (hit != null) return hit;
         double x = mc.player.getX();
         double y = mc.player.getY();
         double z = mc.player.getZ();
-        return mc.level.getEntities((net.minecraft.world.entity.Entity) null, new net.minecraft.world.phys.AABB(x - range, y - range, z - range, x + range, y + range, z + range));
+        java.util.List<net.minecraft.world.entity.Entity> list = mc.level.getEntities((net.minecraft.world.entity.Entity) null,
+                new net.minecraft.world.phys.AABB(x - range, y - range, z - range, x + range, y + range, z + range));
+        if (CACHE.size() < 12) CACHE.put(range, list);
+        return list;
     }
 
     private record Kept(String attribute, double value, String op) {}
