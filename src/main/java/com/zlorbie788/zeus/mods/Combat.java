@@ -127,7 +127,9 @@ public final class Combat {
                     return;
                 }
             }
-            if (confirm.on() && Hits.cold(best.getId())) {
+            // Only trust the miss tracker while damage confirmations are actually arriving; a server
+            // that does not broadcast damage events would otherwise mark every target cold.
+            if (confirm.on() && Hits.recentLanded() > 0 && Hits.cold(best.getId())) {
                 target = null;
                 return;
             }

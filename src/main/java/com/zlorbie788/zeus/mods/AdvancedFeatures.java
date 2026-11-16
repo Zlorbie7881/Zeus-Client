@@ -167,7 +167,7 @@ public final class AdvancedFeatures {
             // of sending several attack packets inside a single tick.
             for (int i = 0; i < Math.min(targets.i(), candidates.size()); i++) {
                 LivingEntity pick = candidates.get(i);
-                if (Hits.cold(pick.getId())) continue;
+                if (Hits.recentLanded() > 0 && Hits.cold(pick.getId())) continue;
                 queue.add(pick);
             }
             if (queue.isEmpty()) return;
@@ -179,7 +179,7 @@ public final class AdvancedFeatures {
             if (mc.player == null || target == null || !target.isAlive()) return;
             double r = range.get();
             if (mc.player.distanceToSqr(target) > r * r) return;
-            if (Hits.cold(target.getId())) return;
+            if (Hits.recentLanded() > 0 && Hits.cold(target.getId())) return;
             Hits.attempt(target);
             Aim.look(target.position().add(0, target.getBbHeight() * 0.55, 0));
             mc.gameMode.attack(mc.player, target);
