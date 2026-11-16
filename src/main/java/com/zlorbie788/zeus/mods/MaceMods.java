@@ -126,7 +126,8 @@ public final class MaceMods {
         private final Setting.Num reach = add(new Setting.Num("Hit from", "How far away the hit is made. The game's own reach is 3 blocks.", 3.0, 2.5, 4.5, 0.1, " blocks"));
         private final Setting.Num minFall = add(new Setting.Num("Fall at least", "A smash needs more than 1.5 blocks of fall. A little extra keeps a slow server from refusing it.", 1.8, 1.6, 8.0, 0.2, " blocks"));
         private final Setting.Choice priority = add(new Setting.Choice("Pick the target by", "Closest, or the one with the least health.", 0, "Closest", "Lowest health"));
-        private final Setting.Bool full = add(new Setting.Bool("Wait for full swing", "Only hit with a full attack bar, which is what the smash damage needs.", true));
+        private final Setting.Num charge = add(new Setting.Num("Minimum attack charge", "How full the attack bar must be before a smash is thrown. The mace takes about 1.7 seconds to recharge and a fall lasts about half of that, so demanding a full bar silently throws most falls away. 0 spends every fall, which is the point of the smash; raise it only to save falls for stronger base hits.", 0, 0, 1, 0.05, ""));
+        private final Setting.Info status = addSetting(new Setting.Info("Why it is not hitting", this::statusLines));
         private final Setting.Bool humanAim = add(new Setting.Bool("Humanised aim", "Turn the server's copy of your view toward the target at a human speed instead of snapping to it, and hit only once it is on target.", true));
         private final Setting.Num turn = add(new Setting.Num("Turn speed", "The fastest the server-side view turns, in degrees per second.", 420, 180, 1080, 20, "\u00b0/s")).showIf(humanAim::on);
         private final Setting.Bool silent = add(new Setting.Bool("Silent rotation", "Send a look packet at the target right before the hit, without turning your camera.", true)).showIf(() -> !humanAim.on());
@@ -140,10 +141,9 @@ public final class MaceMods {
         private int previous = -1;
         private int lost;
         private String shown;
+        private String why;
         private boolean warned;
         private final Map<Integer, Long> lastHit = new java.util.HashMap<>();
-        private long lookedAt;
-        private boolean looked;
         private float aimYaw = Float.NaN;
         private float aimPitch;
         private static volatile MaceAura live;
@@ -172,6 +172,7 @@ public final class MaceMods {
         @Override
         protected void onTick(Minecraft mc) {
             shown = null;
+            why = null;
             if (!ready(mc)) return;
             // Entity ids are never reused, so the hit-delay map would grow for the whole session.
             if (lastHit.size() > 64) lastHit.clear();
@@ -183,11 +184,14 @@ public final class MaceMods {
                 settle(me);
                 return;
             }
-            if (assist.on() && !me.onGround() && mayFall(me)) lineUp(me, best);
+            // Lining up mid-fall used to cancel the fall itself: the assistant would pull you back up
+            // toward the hover height and fallDistance collapsed, so no smash ever came out.
+            if (assist.on() && mayFall(me) && me.fallDistance < 0.4) lineUp(me, best);
 
-            boolean airborne = !me.onGround() && me.fallDistance > minFall.get() && mayFall(me);
-            boolean falling = airborne && me.getDeltaMovement().y < 0.05;
+            boolean airborne = mayFall(me) && me.fallDistance > minFall.get();
+            boolean falling = airborne && me.getDeltaMovement().y <= 0.10;
             if (!(falling || boosted && mayFall(me))) {
+                why = String.format(java.util.Locale.ROOT, "fall %.1f of %.1f blocks", me.fallDistance, minFall.get());
                 settle(me);
                 return;
             }
@@ -195,6 +199,7 @@ public final class MaceMods {
 
             int mace = Inv.hotbar(s -> s.is(Items.MACE));
             if (mace < 0) {
+                why = "no mace in the hotbar";
                 if (!warned) {
                     warned = true;
                     com.zlorbie788.zeus.core.Zeus.toast("Mace Aura: no mace in your hotbar", false);
@@ -208,36 +213,48 @@ public final class MaceMods {
             }
             lost = 0;
 
-            if (Hits.cold(best.getId())) return;
-            if (confirmHits.on() && Hits.ratio(best.getId()) < 0.25f && Hits.swings(best.getId()) >= 3) return;
+            // These gates drop a target the server keeps ignoring. They are only trusted while
+            // confirmations are actually arriving for other hits, otherwise a quiet server turns every
+            // target "cold" and the aura stops swinging for good, which is what was happening.
+            boolean confirming = Hits.recentLanded() > 0;
+            if (confirming && Hits.cold(best.getId())) {
+                why = "server is ignoring this target (no damage coming back)";
+                return;
+            }
+            if (confirming && confirmHits.on() && Hits.ratio(best.getId()) < 0.25f && Hits.swings(best.getId()) >= 3) {
+                why = "too many misses on this target, picking another";
+                return;
+            }
             long now = System.currentTimeMillis();
             long since = now - lastHit.getOrDefault(best.getId(), 0L);
             int delay = Math.max(0, hitDelay.i() - 1);
-            if (delay > 0 && since < delay * 50L) return;
+            if (delay > 0 && since < delay * 50L) {
+                why = "hit delay " + (delay * 50L - since) + " ms";
+                return;
+            }
 
             AABB box = best.getBoundingBox();
             double eyeDist = box.distanceToSqr(me.getEyePosition());
             // The Reach module moves the game's own hit range, so the aura has to follow it or it
             // stops swinging at exactly the distance reach was turned on for.
-            double hit = Math.max(reach.get(), Combat.Reach.entityRange() - 0.02);
-            if (eyeDist > hit * hit) return;
-            if (full.on() && me.getAttackStrengthScale(0f) < 0.97f) return;
-            if (best.invulnerableTime > 10) return;
+            double hit = Math.max(reach.get(), Combat.Reach.entityRange());
+            // Use the game's own range test as well as the distance: it is the exact check the swing is
+            // measured against, so a smash is never thrown from a spot the client itself would refuse.
+            if (!me.isWithinEntityInteractionRange(best, 0.0) || eyeDist > hit * hit) {
+                why = String.format(java.util.Locale.ROOT, "target %.1f blocks away, hit reach %.1f", Math.sqrt(eyeDist), hit);
+                return;
+            }
+            float chargeNow = me.getAttackStrengthScale(0f);
+            if (charge.get() > 0.01 && chargeNow < charge.get()) {
+                why = "attack bar " + Math.round(chargeNow * 100f) + "% of " + Math.round(charge.get() * 100f) + "%";
+                return;
+            }
 
             Vec3 aimAt = best.position().add(0, best.getBbHeight() * 0.5, 0);
             if (humanAim.on()) {
-                if (!humanAim(me, aimAt)) return;
+                humanAim(me, aimAt);
             } else if (silent.on()) {
-                if (!looked) {
-                    Aim.look(aimAt);
-                    lookedAt = now;
-                    looked = true;
-                    return;
-                }
-                if (now - lookedAt < 30L) return;
-                looked = false;
-            } else {
-                looked = false;
+                Aim.look(aimAt);
             }
 
             Hits.attempt(best);
@@ -336,6 +353,18 @@ public final class MaceMods {
         @Override
         public String info() {
             return shown;
+        }
+
+        private java.util.List<String> statusLines() {
+            java.util.List<String> out = new java.util.ArrayList<>();
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.player == null) return out;
+            out.add("Target: " + (shown == null ? "none lined up" : shown));
+            out.add("State: " + (why == null ? "ready, waiting for a fall" : why));
+            out.add(String.format(java.util.Locale.ROOT, "Fall %.1f of %.1f blocks, attack bar %d%%",
+                    mc.player.fallDistance, minFall.get(), Math.round(mc.player.getAttackStrengthScale(0f) * 100f)));
+            out.add("Recent hits: " + Hits.recentLanded() + " landed of " + Hits.recentSwings() + " swings");
+            return out;
         }
     }
 }
