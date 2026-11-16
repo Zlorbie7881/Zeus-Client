@@ -94,7 +94,7 @@ public final class Macros {
             if (!Build.air(up) || !Build.air(up.above()) || Build.blocked(up) || Build.blocked(up.above())) return;
             if (Build.distTo(baseAt) > range.get() + 0.5) return;
             if (!safe(mc, new Vec3(baseAt.getX() + 0.5, baseAt.getY() + 1.0, baseAt.getZ() + 0.5))) return;
-            if (rotate.on()) Aim.look(new Vec3(baseAt.getX() + 0.5, baseAt.getY() + 1.0, baseAt.getZ() + 0.5));
+            if (rotate.on()) Aim.look(new Vec3(baseAt.getX() + 0.5, baseAt.getY() + 1.0, baseAt.getZ() + 0.5), Aim.P_PLACE);
             if (Build.useOn(Build.top(baseAt), Inv.is(Items.END_CRYSTAL), swing.on())) {
                 placeCd = placeDelay.i();
             } else if (!Build.rateLimited() && System.currentTimeMillis() - warned > 5000) {
@@ -148,7 +148,7 @@ public final class Macros {
                 if (!place.on()) return;
                 BlockPos np = at.relative(hit.getDirection());
                 if (!Build.replaceable(np) || Build.blocked(np)) return;
-                if (rotate.on()) Aim.look(hit.getLocation());
+                if (rotate.on()) Aim.look(hit.getLocation(), Aim.P_PLACE);
                 if (Build.useOn(hit, Inv.is(Items.RESPAWN_ANCHOR), swing.on())) cd = delay.i();
                 else warn("Anchor Macro: no respawn anchor in your hotbar");
                 return;
@@ -156,7 +156,7 @@ public final class Macros {
 
             int have = CrystalAnchor.AnchorAura.chargeOf(Build.state(at));
             Vec3 c = Vec3.atCenterOf(at);
-            if (rotate.on()) Aim.look(c);
+            if (rotate.on()) Aim.look(c, Aim.P_PLACE);
             if (have < charges.i()) {
                 if (Build.useOn(hit, Inv.is(Items.GLOWSTONE), swing.on())) cd = Math.max(delay.i(), 1);
                 else warn("Anchor Macro: no glowstone in your hotbar");

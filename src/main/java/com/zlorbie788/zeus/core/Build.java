@@ -158,7 +158,9 @@ public final class Build {
         if (!sees(eye(), hit.getLocation())) return false;
         // A placement whose face was never in the player's line of sight is a flag of its own, so
         // look at it first. The rotation goes out before the use packet in the same tick.
-        if (!Aim.isLookingAt(hit.getLocation(), 8.0)) Aim.look(hit.getLocation());
+        // Placement claims the tick's rotation ahead of any aura: a face that was never in the line
+        // of sight is what a rotation-place check flags, so this look has to win.
+        if (!Aim.isLookingAt(hit.getLocation(), 8.0)) Aim.look(hit.getLocation(), Aim.P_PLACE);
         if (!useOn(hit, item, swing)) return false;
         placedTick = mc.player.tickCount;
         return true;

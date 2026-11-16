@@ -35,13 +35,33 @@ public final class Aim {
         return (float) -Math.toDegrees(Math.atan2(dy, flat));
     }
 
+    /**
+     * Who gets the tick's rotation. One look per tick is what a hand produces; without priorities the
+     * last module to run owned it, so an aura and a scaffold could send two unrelated angles in the
+     * same tick and the ghost layer would quantise the churn instead of one intended movement.
+     */
+    public static final int P_AURA = 40;
+    public static final int P_PLACE = 80;
+    public static final int P_CLUTCH = 100;
+
+    private static int sentPriority = Integer.MIN_VALUE;
+
     public static boolean look(Vec3 point) {
+        return request(point, P_AURA);
+    }
+
+    /** Aim at a point, claiming the tick's rotation at this priority. Placement should use P_PLACE. */
+    public static boolean look(Vec3 point, int priority) {
+        return request(point, priority);
+    }
+
+    public static boolean request(Vec3 point, int priority) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.getConnection() == null || point == null) return false;
         Vec3 eye = mc.player.getEyePosition();
         float yaw = yawTo(eye, point);
         float pitch = Math.max(-90f, Math.min(90f, pitchTo(eye, point)));
-        return sendRotation(yaw, pitch);
+        return send(yaw, pitch, priority);
     }
 
     private static boolean sentOnce;
@@ -54,6 +74,10 @@ public final class Aim {
     private static float fadeTargetPitch;
 
     public static boolean sendRotation(float yaw, float pitch) {
+        return send(yaw, pitch, P_AURA);
+    }
+
+    private static boolean send(float yaw, float pitch, int priority) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.getConnection() == null) return false;
         float[] shaped = Hand.shape(yaw, Math.max(-90f, Math.min(90f, pitch)));
@@ -61,7 +85,13 @@ public final class Aim {
         if (tick != sentTick) {
             sentTick = tick;
             sentCount = 0;
+            sentPriority = Integer.MIN_VALUE;
         }
+        // One rotation packet a tick. A second is only allowed when it comes from something strictly
+        // more important (a placement over an aura), which is the one case where the later angle
+        // matters more than keeping the tick clean.
+        if (sentCount >= 2) return false;
+        if (sentCount >= 1 && priority <= sentPriority) return false;
         // Every delta is a whole number of mouse steps measured from the last angle sent, because
         // that is the number a real mouse produces and the number Grim's aim processor takes the GCD
         // of. Quantising the absolute angle instead would leave the offset from the real view behind.
@@ -75,12 +105,12 @@ public final class Aim {
         y = allowed[0];
         p = allowed[1];
         if (!Float.isFinite(y) || !Float.isFinite(p)) return false;
-        if (sentCount >= 2 && Math.abs(Mth.wrapDegrees(y - sentYaw)) < 12f && Math.abs(p - sentPitch) < 12f) return true;
         // Sending the same look twice is Vulcan's "repeated yaw values"; the game already carries the
         // real view every tick, so an identical packet adds nothing but a flag.
         if (y == sentYaw && p == sentPitch) return true;
         sentOnce = true;
         sentCount++;
+        sentPriority = priority;
         sentYaw = y;
         sentPitch = p;
         lastYaw = y;
@@ -143,6 +173,7 @@ public final class Aim {
         sentOnce = true;
         sentTick = tick;
         sentCount = 1;
+        sentPriority = Integer.MIN_VALUE;
         sentYaw = yaw;
         sentPitch = p;
         lastYaw = yaw;

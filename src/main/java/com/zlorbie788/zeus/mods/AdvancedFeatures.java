@@ -150,7 +150,7 @@ public final class AdvancedFeatures {
             net.minecraft.world.phys.Vec3 look = self.getLookAngle();
             double cone = Math.cos(Math.toRadians(Math.min(360.0, fov.get()) / 2.0));
             List<LivingEntity> candidates = new ArrayList<>();
-            for (Entity entity : mc.level.getEntities((Entity) null, new AABB(self.getX()-r,self.getY()-r,self.getZ()-r,self.getX()+r,self.getY()+r,self.getZ()+r))) {
+            for (Entity entity : Env.entities(mc, r)) {
                 if (!(entity instanceof LivingEntity living) || living == self || !living.isAlive() || living.isSpectator()) continue;
                 if (living instanceof TamableAnimal pet && pet.isTame()) continue;
                 boolean allowed = (hostiles.on() && living instanceof Enemy) || (players.on() && living instanceof Player && !(living instanceof net.minecraft.client.player.LocalPlayer) && !Friends.protects(living));

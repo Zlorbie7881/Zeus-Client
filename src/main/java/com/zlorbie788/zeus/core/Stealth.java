@@ -39,6 +39,23 @@ public final class Stealth {
     private static int blockedUses;
     private static int blockedBreaks;
 
+    // One a tick is still twenty a second, which no hand does. These budgets are the sustained rate a
+    // player can actually keep up, measured over a moving second.
+    private static final int ATTACKS_PER_SECOND = 8;
+    private static final int USES_PER_SECOND = 6;
+    private static final int BREAKS_PER_SECOND = 6;
+    private static final java.util.ArrayDeque<Long> ATTACK_WINDOW = new java.util.ArrayDeque<>();
+    private static final java.util.ArrayDeque<Long> USE_WINDOW = new java.util.ArrayDeque<>();
+    private static final java.util.ArrayDeque<Long> BREAK_WINDOW = new java.util.ArrayDeque<>();
+
+    private static boolean withinSecond(java.util.ArrayDeque<Long> window, int perSecond) {
+        long now = System.currentTimeMillis();
+        while (!window.isEmpty() && now - window.peekFirst() > 1000L) window.pollFirst();
+        if (window.size() >= perSecond) return false;
+        window.addLast(now);
+        return true;
+    }
+
     private static int samples;
     private static int offGrid;
     private static int repeated;
@@ -51,7 +68,7 @@ public final class Stealth {
     public static boolean allowAttack(Minecraft mc) {
         if (mc.player == null) return false;
         int tick = mc.player.tickCount;
-        if (tick == attackTick) {
+        if (tick == attackTick || !withinSecond(ATTACK_WINDOW, ATTACKS_PER_SECOND)) {
             blockedAttacks++;
             return false;
         }
@@ -63,7 +80,7 @@ public final class Stealth {
     public static boolean allowUse(Minecraft mc) {
         if (mc.player == null) return false;
         int tick = mc.player.tickCount;
-        if (tick == useTick) {
+        if (tick == useTick || !withinSecond(USE_WINDOW, USES_PER_SECOND)) {
             blockedUses++;
             return false;
         }
@@ -79,7 +96,7 @@ public final class Stealth {
     public static boolean allowBreak(Minecraft mc) {
         if (mc.player == null) return false;
         int tick = mc.player.tickCount;
-        if (tick == breakTick) {
+        if (tick == breakTick || !withinSecond(BREAK_WINDOW, BREAKS_PER_SECOND)) {
             blockedBreaks++;
             return false;
         }
@@ -180,5 +197,8 @@ public final class Stealth {
         blockedAttacks = 0;
         blockedUses = 0;
         blockedBreaks = 0;
+        ATTACK_WINDOW.clear();
+        USE_WINDOW.clear();
+        BREAK_WINDOW.clear();
     }
 }

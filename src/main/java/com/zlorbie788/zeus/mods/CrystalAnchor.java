@@ -182,7 +182,7 @@ public final class CrystalAnchor {
                 }
                 if (bestBase != null) {
                     if (!ActionCoordinator.claim("crystal")) return;
-                    if (rotate.on()) Aim.look(new Vec3(bestBase.getX() + 0.5, bestBase.getY() + 1.0, bestBase.getZ() + 0.5));
+                    if (rotate.on()) Aim.look(new Vec3(bestBase.getX() + 0.5, bestBase.getY() + 1.0, bestBase.getZ() + 0.5), Aim.P_PLACE);
                     if (Build.useOn(Build.top(bestBase), CRYSTAL, swing.on())) {
                         placeCd = jitterTicks(placeDelay.i());
                         info = target.getName().getString() + " " + Math.round(bestScore);
@@ -221,7 +221,7 @@ public final class CrystalAnchor {
                 }
                 if (bestSpot != null) {
                     if (!ActionCoordinator.claim("crystal")) return;
-                    if (rotate.on()) Aim.look(Vec3.atCenterOf(bestSpot));
+                    if (rotate.on()) Aim.look(Vec3.atCenterOf(bestSpot), Aim.P_PLACE);
                     if (Build.place(bestSpot, OBSIDIAN, swing.on(), Build.REACH)) obsCd = jitterTicks(obsidianDelay.i());
                 }
             }
@@ -351,7 +351,7 @@ public final class CrystalAnchor {
                 }
                 if (best == null) return;
                 if (!ActionCoordinator.claim("anchor")) return;
-                if (rotate.on()) Aim.look(Vec3.atCenterOf(best));
+                if (rotate.on()) Aim.look(Vec3.atCenterOf(best), Aim.P_PLACE);
                 if (Build.place(best, Inv.is(Items.RESPAWN_ANCHOR), swing.on(), Build.REACH)) {
                     anchor = best;
                     placedAt = ticks;
@@ -368,7 +368,7 @@ public final class CrystalAnchor {
                 anchor = null;
                 return;
             }
-            if (rotate.on()) Aim.look(Vec3.atCenterOf(anchor));
+            if (rotate.on()) Aim.look(Vec3.atCenterOf(anchor), Aim.P_PLACE);
             if (charged < charges.i()) {
                 if (!ActionCoordinator.claim("anchor")) return;
                 if (Build.useOn(click, Inv.is(Items.GLOWSTONE), swing.on())) {
