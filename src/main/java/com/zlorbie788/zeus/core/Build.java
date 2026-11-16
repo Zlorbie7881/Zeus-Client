@@ -112,11 +112,23 @@ public final class Build {
         return replaceable(pos) && !blocked(pos) && hit != null && sees(eye(), hit.getLocation());
     }
 
+    private static volatile long useLimitedAt;
+
+    /** True when the last use was refused only because another use already happened this tick. */
+    public static boolean rateLimited() {
+        return System.currentTimeMillis() - useLimitedAt < 150;
+    }
+
     public static boolean useOn(BlockHitResult hit, Predicate<ItemStack> item, boolean swing) {
         Minecraft mc = mc();
         if (mc.gameMode == null || mc.player == null) return false;
         // One block use per tick: a second one is MultiPlace, and so is the same block twice.
-        if (!Stealth.allowUse(mc)) return false;
+        // A refusal here is not a failure of the calling module, so it is flagged and not reported
+        // as one: the crystal macros used it to decide their "no crystals" toast.
+        if (!Stealth.allowUse(mc)) {
+            useLimitedAt = System.currentTimeMillis();
+            return false;
+        }
         if (Inv.offhand(item)) {
             mc.gameMode.useItemOn(mc.player, InteractionHand.OFF_HAND, hit);
             if (swing) mc.player.swing(InteractionHand.OFF_HAND);

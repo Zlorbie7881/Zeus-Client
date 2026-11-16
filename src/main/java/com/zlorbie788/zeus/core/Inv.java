@@ -78,6 +78,8 @@ public final class Inv {
     private static int clicksThisTick;
     /** Two clicks a tick is a fast hand (pick up, put down); more is a script. */
     private static final int CLICK_CEILING = 2;
+    private static final java.util.ArrayDeque<int[]> PENDING = new java.util.ArrayDeque<>();
+    private static final int MAX_PENDING = 6;
     private static int clickSlot = -1;
     private static int clickButton = -1;
     private static ClickType clickType;
@@ -95,11 +97,35 @@ public final class Inv {
         }
         // A hand cannot click a dozen times in one tick. Auto armour, totems and the auction bots all
         // move several stacks, and every click past the second is a click-rate flag waiting to happen.
-        if (++clicksThisTick > CLICK_CEILING) return;
+        // The extra clicks are queued rather than dropped: half a swap would leave an item stuck on
+        // the cursor, which is much worse than the same swap happening a tick later.
+        if (++clicksThisTick > CLICK_CEILING) {
+            if (PENDING.size() < MAX_PENDING) PENDING.add(new int[] {menuSlot, button, type.ordinal()});
+            return;
+        }
         clickSlot = menuSlot;
         clickButton = button;
         clickType = type;
         mc.gameMode.handleInventoryMouseClick(mc.player.inventoryMenu.containerId, menuSlot, button, type, mc.player);
+    }
+
+    /**
+     * Runs the clicks the rate limit refused last tick. Called once per client tick before modules get
+     * their turn, so a sequence that wanted three clicks finishes a tick later instead of stopping
+     * with an item on the cursor.
+     */
+    public static void tick(Minecraft mc) {
+        if (PENDING.isEmpty() || mc.player == null || mc.gameMode == null) return;
+        int tick = mc.player.tickCount;
+        if (tick == clickTick) return;
+        clickTick = tick;
+        clicksThisTick = 0;
+        while (!PENDING.isEmpty() && clicksThisTick < CLICK_CEILING) {
+            int[] c = PENDING.poll();
+            clicksThisTick++;
+            mc.gameMode.handleInventoryMouseClick(mc.player.inventoryMenu.containerId, c[0], c[1],
+                    ClickType.values()[c[2]], mc.player);
+        }
     }
 
     public static void toOffhand(int invSlot) {

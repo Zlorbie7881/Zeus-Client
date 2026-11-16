@@ -97,7 +97,7 @@ public final class Macros {
             if (rotate.on()) Aim.look(new Vec3(baseAt.getX() + 0.5, baseAt.getY() + 1.0, baseAt.getZ() + 0.5));
             if (Build.useOn(Build.top(baseAt), Inv.is(Items.END_CRYSTAL), swing.on())) {
                 placeCd = placeDelay.i();
-            } else if (System.currentTimeMillis() - warned > 5000) {
+            } else if (!Build.rateLimited() && System.currentTimeMillis() - warned > 5000) {
                 warned = System.currentTimeMillis();
                 Zeus.toast("Crystal Macro: no end crystals in your hotbar or offhand", false);
             }

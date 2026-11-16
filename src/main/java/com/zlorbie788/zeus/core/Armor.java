@@ -76,23 +76,34 @@ public final class Armor {
     public static int softestSlot() {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) return -1;
-        int best = -1;
-        double bestDmg = Double.MAX_VALUE;
+        int hand = -1;
+        int block = -1;
+        int weak = -1;
+        double weakDmg = Double.MAX_VALUE;
         for (int i = 0; i < 9; i++) {
             ItemStack s = mc.player.getInventory().getItem(i);
-            double dmg = 1.0; // an empty hand hits for one
-            if (!s.isEmpty()) {
-                double[] bonus = {0};
-            s.forEachModifier(EquipmentSlot.MAINHAND, (attr, mod) -> {
-                    if (attr.value() == Attributes.ATTACK_DAMAGE.value()) bonus[0] += mod.amount();
-                });
-                dmg = 1.0 + bonus[0];
+            if (s.isEmpty()) {
+                if (hand < 0) hand = i;
+                continue;
             }
-            if (dmg < bestDmg) {
-                bestDmg = dmg;
-                best = i;
+            // Blocks, food and buckets hit for fist damage and have no durability, so they are the
+            // ideal armour breaker: nothing of yours wears out while their armour does.
+            if (!s.isDamageableItem()) {
+                if (block < 0) block = i;
+                continue;
+            }
+            double[] bonus = {0};
+            s.forEachModifier(EquipmentSlot.MAINHAND, (attr, mod) -> {
+                if (attr.value() == Attributes.ATTACK_DAMAGE.value()) bonus[0] += mod.amount();
+            });
+            double dmg = 1.0 + bonus[0];
+            if (dmg < weakDmg) {
+                weakDmg = dmg;
+                weak = i;
             }
         }
-        return best;
+        if (hand >= 0) return hand;
+        if (block >= 0) return block;
+        return weak;
     }
 }

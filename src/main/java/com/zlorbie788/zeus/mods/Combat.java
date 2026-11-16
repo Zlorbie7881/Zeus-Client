@@ -556,6 +556,9 @@ public final class Combat {
             }
             if ((mode.index() == 1 || mode.index() == 2) && now >= nextRight && (!hold.on() || mc.options.keyUse.isDown())) {
                 nextRight = now + delay();
+                // Same one-use-a-tick ceiling the placement modules obey, so a high click rate can
+                // never turn into two blocks placed in a tick.
+                if (!com.zlorbie788.zeus.core.Stealth.allowUse(mc)) return;
                 HitResult hit = mc.hitResult;
                 if (hit instanceof BlockHitResult bhr && bhr.getType() != HitResult.Type.MISS) {
                     mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, bhr);

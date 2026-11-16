@@ -135,7 +135,7 @@ public final class MaceMods {
         private final Setting.Bool assist = add(new Setting.Bool("Mace assistant", "Line yourself up for the hit: closes the gap to the target and holds you just above its head, so the smash comes down on it instead of sailing past. Only your own movement is touched, and only while this is on.", true));
         private final Setting.Num hover = add(new Setting.Num("Hover above", "How far above the target's head the assistant holds you before it lets you drop.", 0.9, 0.4, 3.0, 0.1, " blocks").showIf(() -> assist.on()));
         private final Setting.Num glide = add(new Setting.Num("Correction speed", "How far it pulls you into line each tick.", 0.45, 0.15, 1.2, 0.05, " blocks/tick").showIf(() -> assist.on()));
-        private final Setting.Num hitDelay = add(new Setting.Num("Hit delay", "Ticks between hits on the same target, so the server's answers arrive instead of being drowned out. With Mace Damage on it is best left short.", 2, 0, 8, 1, " ticks").showIf(() -> false));
+        private final Setting.Num hitDelay = add(new Setting.Num("Hit delay", "Ticks between hits on the same target, so the server's answers arrive instead of being drowned out. With Mace Damage on it is best left short.", 2, 0, 8, 1, " ticks"));
         private final Setting.Bool confirmHits = add(new Setting.Bool("Stop on misses", "When recent swings at a target are not landing, stop hitting it and pick another.", true));
         private int previous = -1;
         private int lost;

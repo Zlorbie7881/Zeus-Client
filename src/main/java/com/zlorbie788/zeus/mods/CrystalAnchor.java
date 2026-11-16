@@ -186,7 +186,7 @@ public final class CrystalAnchor {
                     if (Build.useOn(Build.top(bestBase), CRYSTAL, swing.on())) {
                         placeCd = jitterTicks(placeDelay.i());
                         info = target.getName().getString() + " " + Math.round(bestScore);
-                    } else if (System.currentTimeMillis() - warned > 5000) {
+                    } else if (!Build.rateLimited() && System.currentTimeMillis() - warned > 5000) {
                         warned = System.currentTimeMillis();
                         Zeus.toast("Crystal Aura: no end crystals in your hotbar or offhand", false);
                     }
@@ -357,7 +357,7 @@ public final class CrystalAnchor {
                     placedAt = ticks;
                     charged = 0;
                     cd = jitterTicks(delay.i());
-                } else {
+                } else if (!Build.rateLimited()) {
                     warn("Anchor Aura: no respawn anchor in your hotbar");
                 }
                 return;
@@ -375,7 +375,7 @@ public final class CrystalAnchor {
                     charged++;
                     chargedAt = ticks;
                     cd = Math.max(jitterTicks(delay.i()), 1);
-                } else {
+                } else if (!Build.rateLimited()) {
                     warn("Anchor Aura: no glowstone in your hotbar");
                 }
                 return;
@@ -391,6 +391,9 @@ public final class CrystalAnchor {
                 return;
             }
             if (!ActionCoordinator.claim("anchor")) return;
+            // This path talks to the game directly instead of going through Build, so it takes the
+            // same one-use-a-tick slot itself; otherwise it could be the second use in a tick.
+            if (!com.zlorbie788.zeus.core.Stealth.allowUse(mc)) return;
             Inv.with(slot, () -> {
                 mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, click);
                 if (swing.on()) mc.player.swing(InteractionHand.MAIN_HAND);
