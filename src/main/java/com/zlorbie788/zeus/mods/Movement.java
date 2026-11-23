@@ -52,15 +52,22 @@ public final class Movement {
     }
 
     public static final class Speed extends Module {
+        private final Setting.Choice mode = add(new Setting.Choice("Mode",
+                "Attribute: the game makes you faster (a speed attribute). Strafe: your own velocity is set every tick, so it keeps in the air and ignores ground friction. Hop: a jump's worth of momentum on every landing.",
+                0, "Attribute", "Strafe", "Hop"));
         private final Setting.Num factor = add(new Setting.Num("Speed", "How much faster you run than normal.", 2.0, 1.1, 8.0, 0.1, "x"));
+        private final Setting.Num air = add(new Setting.Num("Air control", "How much of the speed Strafe keeps while you are off the ground.", 70, 0, 100, 5, "%"))
+                .showIf(() -> this.mode.index() != 0);
 
         public Speed() {
-            super("speed", "Speed", "Run faster.", Category.MOVEMENT);
+            super("speed", "Speed", "Run faster, in the way you prefer.", Category.MOVEMENT);
             factor.onChange(this::apply);
+            mode.onChange(this::apply);
         }
 
         private void apply() {
-            if (enabled()) Env.attribute("movement_speed", "speed", factor.get() - 1.0, "add_multiplied_total");
+            Env.attributeOff("movement_speed", "speed");
+            if (enabled() && mode.index() == 0) Env.attribute("movement_speed", "speed", factor.get() - 1.0, "add_multiplied_total");
         }
 
         @Override
@@ -79,8 +86,31 @@ public final class Movement {
         }
 
         @Override
+        protected void onTick(Minecraft mc) {
+            var p = mc.player;
+            if (p == null || mc.screen != null || mode.index() == 0) return;
+            if (p.isPassenger() || p.getAbilities().flying || p.isFallFlying()) return;
+            double forward = (mc.options.keyUp.isDown() ? 1 : 0) - (mc.options.keyDown.isDown() ? 1 : 0);
+            double left = (mc.options.keyLeft.isDown() ? 1 : 0) - (mc.options.keyRight.isDown() ? 1 : 0);
+            if (forward == 0 && left == 0) return;
+            double yaw = Math.toRadians(p.getYRot());
+            double dx = -Math.sin(yaw) * forward + Math.cos(yaw) * left;
+            double dz = Math.cos(yaw) * forward + Math.sin(yaw) * left;
+            double length = Math.sqrt(dx * dx + dz * dz);
+            if (length < 1e-6) return;
+            double wanted = 0.28 * factor.get();
+            if (!p.onGround()) wanted *= 0.35 + air.get() / 100.0;
+            dx = dx / length * wanted;
+            dz = dz / length * wanted;
+            var motion = p.getDeltaMovement();
+            double up = motion.y;
+            if (mode.index() == 2 && p.onGround()) up = 0.42;
+            p.setDeltaMovement(dx, up, dz);
+        }
+
+        @Override
         public String info() {
-            return factor.text();
+            return mode.index() == 0 ? factor.text() : mode.value() + " " + factor.text();
         }
     }
 

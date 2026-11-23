@@ -164,6 +164,9 @@ public final class Mods {
         m.add(new AmethystBypass());
         m.add(new BedrockVoid());
         m.add(new SkeletonEsp());
+        m.add(new SkyFx());
+        m.add(new ClearView());
+        m.add(new ElytraFly());
         m.add(new Finders.KelpFinder());
         m.add(new Finders.CropFinder());
         m.add(new Finders.AncientCityFinder());

@@ -64,6 +64,7 @@
     "SnapTapMixin",
     "ContainerPriceMixin",
     "NoHurtCamMixin",
+    "ScreenEffectMixin",
     "NoBreakDelayMixin",
     "LivingEntityAccessor",
     "SkinMixin"
