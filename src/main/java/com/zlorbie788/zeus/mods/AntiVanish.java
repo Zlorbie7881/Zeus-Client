@@ -4,6 +4,8 @@ import com.zlorbie788.zeus.core.Category;
 import com.zlorbie788.zeus.core.Module;
 import com.zlorbie788.zeus.core.Setting;
 import com.zlorbie788.zeus.core.Zeus;
+import com.zlorbie788.zeus.render.Projector;
+import com.zlorbie788.zeus.render.Wire;
 import com.zlorbie788.zeus.ui.Accent;
 import com.zlorbie788.zeus.ui.Draw;
 import net.minecraft.client.Minecraft;
@@ -31,6 +33,8 @@ public final class AntiVanish extends Module {
     private final Setting.Num near = add(new Setting.Num("Digger range", "Only breaking this close to you counts.", 24, 6, 64, 2, " blocks"));
     private final Setting.Num show = add(new Setting.Num("Show the card for", "How long the warning stays.", 6, 2, 20, 1, " s"));
     private final Setting.Bool chat = add(new Setting.Bool("Also a message at the top", "A short message as well as the card.", true));
+    private final Setting.Bool marker = add(new Setting.Bool("Box on the spot", "A box and a beam where the vanished player was last seen, also after the body is gone.", true));
+    private final Setting.Bool returnNotice = add(new Setting.Bool("Tell me when they come back", "A short message when a flagged player shows up in the tab list again.", true));
 
     private record Sus(UUID id, String name, long since, long until, String why, int x, int y, int z, int confidence) {}
 
@@ -165,6 +169,11 @@ public final class AntiVanish extends Module {
             boolean packetProof = removedFromTab.containsKey(id);
             if (raise(id, p.getName().getString(), "visible entity missing from tab list", p.getBlockX(), p.getBlockY(), p.getBlockZ(), packetProof ? 85 : 55)) alerted.put(id, now);
         }
+        Sus back = current;
+        if (back != null && back.id != null && mc.getConnection().getPlayerInfo(back.id) != null && find(mc, back.id) != null) {
+            if (returnNotice.on()) Zeus.toast(back.name + " is back in the tab list", true);
+            current = null;
+        }
         pending.keySet().removeIf(id -> find(mc, id) == null);
         knownNames.keySet().removeIf(id -> find(mc, id) == null && !removedFromTab.containsKey(id));
         evidenceTimes.entrySet().removeIf(e -> now - e.getValue() > 60_000);
@@ -212,6 +221,29 @@ public final class AntiVanish extends Module {
         Draw.text(g, Draw.fit(evidence, cw - (tx - x) - 10), tx, y + 30, Draw.rgba(0xFFFFB3BA, a));
         String where = Math.round(Math.sqrt(mc.player.distanceToSqr(c.x + 0.5, c.y, c.z + 0.5))) + " blocks away";
         Draw.text(g, Draw.fit(where, cw - (tx - x) - 10), tx, y + 44, Draw.rgba(Accent.DIM, a));
+    }
+
+    /** Where the vanished player was last seen: a box on the body, or on the spot the alert came from. */
+    @Override
+    protected void onHudWorld(GuiGraphics g, Minecraft mc, float partial, int w, int h) {
+        Sus c = current;
+        if (c == null || !marker.on() || mc.player == null) return;
+        long now = System.currentTimeMillis();
+        if (now > c.until) return;
+        AbstractClientPlayer body = c.id == null ? null : find(mc, c.id);
+        double x1, y1, z1, x2, y2, z2;
+        if (body != null) {
+            var bound = body.getBoundingBox();
+            x1 = bound.minX; y1 = bound.minY; z1 = bound.minZ;
+            x2 = bound.maxX; y2 = bound.maxY; z2 = bound.maxZ;
+        } else {
+            x1 = c.x; y1 = c.y; z1 = c.z;
+            x2 = c.x + 1.0; y2 = c.y + 2.0; z2 = c.z + 1.0;
+        }
+        if (!Projector.prepare(mc, partial, w, h)) return;
+        float pulse = 0.55f + 0.45f * (float) Math.sin(now / 180.0);
+        Wire.box(g, x1, y1, z1, x2, y2, z2, 2.0f, Draw.rgba(0xFFFF4D5E, 0.9f * pulse), true);
+        Wire.line(g, c.x + 0.5, c.y, c.z + 0.5, c.x + 0.5, c.y + 12.0, c.z + 0.5, 1.4f, Draw.rgba(0xFFFF4D5E, 0.35f * pulse), true);
     }
 
     private static AbstractClientPlayer find(Minecraft mc, UUID id) {

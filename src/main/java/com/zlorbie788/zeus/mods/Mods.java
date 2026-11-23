@@ -170,6 +170,7 @@ public final class Mods {
         m.add(new Finders.BedFinder());
         m.add(new Finders.BeeFinder());
         m.add(new AntiVanish());
+        m.add(new AnticheatFeed());
         m.add(new PlayerBypass());
         m.add(new ChunkScanner());
         m.add(new AdvancedFeatures.GoliathRtp());
