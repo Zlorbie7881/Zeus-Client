@@ -26,6 +26,7 @@ public final class Mods {
         m.add(new Combat.Reach());
         m.add(new Combat.AntiKnockback());
         m.add(new Combat.AntiMiss());
+        m.add(new Criticals());
         m.add(new Combat.BreachSwap());
         m.add(new Combat.TotemHit());
         m.add(new Combat.HitFx());
@@ -161,6 +162,8 @@ public final class Mods {
         m.add(new Sense.ThreatRadar());
         m.add(new Finders.SpawnerEsp());
         m.add(new AmethystBypass());
+        m.add(new BedrockVoid());
+        m.add(new SkeletonEsp());
         m.add(new Finders.KelpFinder());
         m.add(new Finders.CropFinder());
         m.add(new Finders.AncientCityFinder());

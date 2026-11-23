@@ -26,7 +26,7 @@ import java.util.Set;
 
 /**
  * Where the DonutSMP anticheat is currently off, read from the public anticheat feed.
- * Port of SoberClient's Anti Cheat module (dev.sober.modules.AntiCheat and dev.sober.util.AcOffFeed).
+ * Each entry becomes a short warning, a card and a beam, so a window is easy to act on.
  */
 public final class AnticheatFeed extends Module {
     private static final String DEFAULT_FEED = "https://anticheat.imjules.be/api.json";

@@ -18,6 +18,7 @@ public abstract class GameModeHooksMixin {
         com.zlorbie788.zeus.mods.MaceMods.MaceDamage.beforeAttack(player, target);
         com.zlorbie788.zeus.mods.Combat.BreachSwap.beforeAttack();
         com.zlorbie788.zeus.mods.Combat.TotemHit.beforeAttack();
+        com.zlorbie788.zeus.mods.Criticals.beforeAttack(player, target);
     }
 
     @Inject(method = "attack", at = @At("HEAD"), cancellable = true, require = 0)
