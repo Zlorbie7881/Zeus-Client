@@ -8,6 +8,7 @@ import com.google.gson.JsonParser;
 import com.zlorbie788.zeus.core.Category;
 import com.zlorbie788.zeus.core.Module;
 import com.zlorbie788.zeus.core.Setting;
+import com.zlorbie788.zeus.core.ShareCode;
 import com.zlorbie788.zeus.core.Zeus;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
@@ -52,6 +53,11 @@ public final class Profiles extends Module {
     private final Setting.Pick slot;
     private final Setting.Text typedName;
     private final Setting.Text typedCode;
+    private final Setting.Text shareName;
+    private final Setting.Action shareCode;
+    private final Setting.Text typedShort;
+    private final Setting.Action loadShortTyped;
+    private final Setting.Action loadShortPaste;
     private final Setting.Bool follow = add(new Setting.Bool("Keep the active profile up to date", "While a profile is active, every change you make is also saved into it.", true));
     private static boolean followOn = true;
     private final Setting.Bool autoSwitch = add(new Setting.Bool("Switch profile per server", "When you join a server (or a singleplayer world) that has a profile assigned in the buttons below, that profile is loaded for you automatically.", true));
@@ -85,6 +91,11 @@ public final class Profiles extends Module {
         add(new Setting.Action("Put the code from my clipboard here", "Pastes a share code you copied into this profile and loads it.", this::pasteCode));
         typedCode = add(new Setting.Text("Or type or paste a code", "Click the box, press Ctrl+V (or type the code), then press the button under it.", "", MAX_CODE).temporary());
         add(new Setting.Action("Put the typed code here", "Puts the code typed above into this profile and loads it.", this::typedCodeHere));
+        shareName = add(new Setting.Text("Share name", "The short code you want: 3 to 16 letters, digits or _, like PVP or BASE_1. Leave it empty for a random number. Anyone with SC-PVP can then load this profile.", "", 16));
+        shareCode = add(new Setting.Action("Get a short share code (SC-...)", "Uploads the picked profile and copies a short code to your clipboard, like SC-123456 or SC-PVP. Anyone who has that code can load the profile with the button below, so you no longer have to send the whole long code.", this::shareOnlineNow));
+        typedShort = add(new Setting.Text("Or type a short code", "Click the box, press Ctrl+V (or type a code like SC-123456), then press the button under it.", "", 24).temporary());
+        loadShortTyped = add(new Setting.Action("Load the typed short code", "Downloads that shared profile into the picked profile and loads it.", this::loadShortTypedNow));
+        loadShortPaste = add(new Setting.Action("Load a short code from my clipboard", "Reads the short code on your clipboard and loads that shared profile into the picked profile.", this::loadShortClipboard));
         add(new Setting.Action("Empty it", "Clears this profile. The settings you have now stay as they are.", this::clearHere));
         followOn = follow.on();
         autoOn = autoSwitch.on();
@@ -455,6 +466,11 @@ public final class Profiles extends Module {
             return;
         }
         int i = chosen();
+        adopt(i, got);
+        say("Code put into profile " + (i + 1) + " and loaded");
+    }
+
+    private void adopt(int i, Object[] got) {
         DATA[i] = (JsonObject) got[1];
         if (got[0] != null) NAMES[i] = (String) got[0];
         if (got.length > 2 && got[2] != null) {
@@ -465,7 +481,89 @@ public final class Profiles extends Module {
         active = i;
         write();
         Zeus.apply(DATA[i]);
-        say("Code put into profile " + (i + 1) + " and loaded");
+    }
+
+    private static String reason(Throwable thrown) {
+        Throwable cause = thrown;
+        while (cause.getCause() != null && cause.getCause() != cause) cause = cause.getCause();
+        String text = cause.getMessage();
+        return text == null || text.isBlank() ? "The share server could not be reached." : text;
+    }
+
+    private void shareOnlineNow() {
+        int i = chosen();
+        JsonObject data = DATA[i] != null ? DATA[i] : Zeus.snapshot(true);
+        String payload;
+        try {
+            payload = encode(NAMES[i], IDS[i], data);
+        } catch (IOException | RuntimeException e) {
+            message = "Could not make a code.";
+            Zeus.toast(message, false);
+            return;
+        }
+        String wanted = ShareCode.cleanName(shareName.get());
+        message = wanted.isEmpty() ? "Uploading profile " + (i + 1) + "..." : "Uploading as SC-" + wanted + "...";
+        ShareCode.upload(payload, wanted).whenComplete((code, problem) -> {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc == null) return;
+            mc.execute(() -> {
+                if (problem != null) {
+                    message = reason(problem);
+                    Zeus.toast(message, false);
+                    return;
+                }
+                try {
+                    mc.keyboardHandler.setClipboard(code);
+                } catch (RuntimeException ignored) {
+                }
+                say("Copied " + code + " - anyone with it can load profile " + (i + 1));
+            });
+        });
+    }
+
+    private void loadShortClipboard() {
+        String clip = "";
+        try {
+            clip = Minecraft.getInstance().keyboardHandler.getClipboard();
+        } catch (RuntimeException ignored) {
+        }
+        loadShortCode(clip);
+    }
+
+    private void loadShortTypedNow() {
+        String text = typedShort.get();
+        typedShort.set("");
+        loadShortCode(text);
+    }
+
+    private void loadShortCode(String raw) {
+        String code = ShareCode.shortCode(raw);
+        if (code == null) {
+            message = "That is not a short code. It looks like SC-123456.";
+            Zeus.toast(message, false);
+            return;
+        }
+        int slotIndex = chosen();
+        message = "Looking up " + ShareCode.PREFIX + code + "...";
+        ShareCode.download(code).whenComplete((payload, problem) -> {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc == null) return;
+            mc.execute(() -> {
+                if (problem != null) {
+                    message = reason(problem);
+                    Zeus.toast(message, false);
+                    return;
+                }
+                Object[] got = decode(payload);
+                if (got == null) {
+                    message = "That code did not hold a Zeus profile.";
+                    Zeus.toast(message, false);
+                    return;
+                }
+                adopt(slotIndex, got);
+                say(ShareCode.PREFIX + code + " put into profile " + (slotIndex + 1) + " and loaded");
+            });
+        });
     }
 
     public static String encode(String name, JsonObject data) throws IOException {
